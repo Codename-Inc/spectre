@@ -1056,5 +1056,64 @@ class TestCompleteV11HandoffScenario:
         assert "Implement token refresh" in ctx
 
 
+class TestCopyPluginReferences:
+    """Test copy_plugin_references() function."""
+
+    def test_copies_md_files_from_plugin_references_to_claude_spectre(self, tmp_path, monkeypatch):
+        """Happy path: copies .md files from CLAUDE_PLUGIN_ROOT/references/ to .claude/spectre/."""
+        # Import the function to test
+        sys.path.insert(0, str(SCRIPT_PATH.parent))
+        from importlib import import_module
+        handoff_resume = import_module("handoff-resume")
+
+        # Setup: create fake plugin root with references
+        plugin_root = tmp_path / "plugin"
+        references_dir = plugin_root / "references"
+        references_dir.mkdir(parents=True)
+
+        # Create test .md files
+        (references_dir / "next_steps_guide.md").write_text("# Next Steps Guide\nContent here")
+        (references_dir / "other_reference.md").write_text("# Other Reference\nMore content")
+
+        # Setup project directory
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        # Set environment variable
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+        # Execute
+        handoff_resume.copy_plugin_references()
+
+        # Verify
+        spectre_dir = project_dir / ".claude" / "spectre"
+        assert spectre_dir.exists()
+        assert (spectre_dir / "next_steps_guide.md").exists()
+        assert (spectre_dir / "other_reference.md").exists()
+        assert (spectre_dir / "next_steps_guide.md").read_text() == "# Next Steps Guide\nContent here"
+
+    def test_returns_early_when_plugin_root_not_set(self, tmp_path, monkeypatch):
+        """Failure path: returns early without error when CLAUDE_PLUGIN_ROOT not set."""
+        sys.path.insert(0, str(SCRIPT_PATH.parent))
+        from importlib import import_module
+        handoff_resume = import_module("handoff-resume")
+
+        # Setup project directory
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        # Ensure env var is NOT set
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        # Execute - should not raise
+        handoff_resume.copy_plugin_references()
+
+        # Verify - .claude/spectre should NOT be created
+        spectre_dir = project_dir / ".claude" / "spectre"
+        assert not spectre_dir.exists()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

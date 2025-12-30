@@ -15,9 +15,33 @@ Usage: Called automatically by SessionStart hook, or manually:
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+def copy_plugin_references():
+    """Copy plugin reference files to .claude/spectre/ for command access.
+
+    Workaround for ${CLAUDE_PLUGIN_ROOT} not expanding in command markdown files.
+    See: https://github.com/anthropics/claude-code/issues/9354
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not plugin_root:
+        return
+
+    references_src = Path(plugin_root) / "references"
+    if not references_src.exists():
+        return
+
+    references_dst = Path(".claude/spectre")
+    references_dst.mkdir(parents=True, exist_ok=True)
+
+    for ref_file in references_src.glob("*.md"):
+        dst_file = references_dst / ref_file.name
+        if not dst_file.exists():  # Don't overwrite (like cp -n)
+            shutil.copy2(ref_file, dst_file)
 
 
 def get_git_branch() -> str:
@@ -388,6 +412,9 @@ def merge_todos_into_handoff(handoff_path: Path, todos: dict, history: dict | No
 
 def main():
     """Main entry point for SessionStart hook."""
+    # Copy plugin references to .claude/spectre/ for command access
+    copy_plugin_references()
+
     # Get project directory from environment or cwd
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
 
