@@ -26,6 +26,8 @@ def copy_plugin_references():
 
     Workaround for ${CLAUDE_PLUGIN_ROOT} not expanding in command markdown files.
     See: https://github.com/anthropics/claude-code/issues/9354
+
+    Also appends .claude/spectre/ to .gitignore if it exists and .claude/ not already ignored.
     """
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if not plugin_root:
@@ -42,6 +44,14 @@ def copy_plugin_references():
         dst_file = references_dst / ref_file.name
         if not dst_file.exists():  # Don't overwrite (like cp -n)
             shutil.copy2(ref_file, dst_file)
+
+    # Append to .gitignore if it exists and .claude/ not already ignored
+    gitignore = Path(".gitignore")
+    if gitignore.exists():
+        content = gitignore.read_text()
+        if ".claude/" not in content and ".claude/spectre/" not in content:
+            with open(gitignore, "a") as f:
+                f.write("\n# SPECTRE plugin files\n.claude/spectre/\n")
 
 
 def get_git_branch() -> str:
@@ -412,8 +422,14 @@ def merge_todos_into_handoff(handoff_path: Path, todos: dict, history: dict | No
 
 def main():
     """Main entry point for SessionStart hook."""
-    # Copy plugin references to .claude/spectre/ for command access
-    copy_plugin_references()
+    # Fork to copy plugin references in background (non-blocking)
+    pid = os.fork()
+    if pid == 0:
+        try:
+            copy_plugin_references()
+        except Exception:
+            pass
+        os._exit(0)
 
     # Get project directory from environment or cwd
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))

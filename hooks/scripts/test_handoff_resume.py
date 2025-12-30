@@ -1114,6 +1114,61 @@ class TestCopyPluginReferences:
         spectre_dir = project_dir / ".claude" / "spectre"
         assert not spectre_dir.exists()
 
+    def test_appends_to_gitignore_when_exists_and_claude_not_ignored(self, tmp_path, monkeypatch):
+        """Appends .claude/spectre/ to .gitignore when it exists and .claude/ not already ignored."""
+        sys.path.insert(0, str(SCRIPT_PATH.parent))
+        from importlib import import_module
+        handoff_resume = import_module("handoff-resume")
+
+        # Setup plugin root with references
+        plugin_root = tmp_path / "plugin"
+        references_dir = plugin_root / "references"
+        references_dir.mkdir(parents=True)
+        (references_dir / "guide.md").write_text("# Guide")
+
+        # Setup project with existing .gitignore
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        gitignore = project_dir / ".gitignore"
+        gitignore.write_text("node_modules/\n*.log\n")
+        monkeypatch.chdir(project_dir)
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+        # Execute
+        handoff_resume.copy_plugin_references()
+
+        # Verify .gitignore was appended
+        content = gitignore.read_text()
+        assert ".claude/spectre/" in content
+        assert "node_modules/" in content  # Original content preserved
+
+    def test_skips_gitignore_when_claude_already_ignored(self, tmp_path, monkeypatch):
+        """Does not modify .gitignore when .claude/ is already ignored."""
+        sys.path.insert(0, str(SCRIPT_PATH.parent))
+        from importlib import import_module
+        handoff_resume = import_module("handoff-resume")
+
+        # Setup plugin root with references
+        plugin_root = tmp_path / "plugin"
+        references_dir = plugin_root / "references"
+        references_dir.mkdir(parents=True)
+        (references_dir / "guide.md").write_text("# Guide")
+
+        # Setup project with .gitignore that already has .claude/
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        gitignore = project_dir / ".gitignore"
+        original_content = "node_modules/\n.claude/\n*.log\n"
+        gitignore.write_text(original_content)
+        monkeypatch.chdir(project_dir)
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+        # Execute
+        handoff_resume.copy_plugin_references()
+
+        # Verify .gitignore was NOT modified
+        assert gitignore.read_text() == original_content
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
