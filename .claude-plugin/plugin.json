@@ -1,7 +1,7 @@
 {
   "name": "spectre",
   "version": "1.0.0",
-  "description": "👻 SPECTRE is an Agentic Coding Workflow - /Scope, /Plan, /Execute, /Clean, /Test, /Release, /Evaluate - that uses a simple step by step product development workflow to generate high quality results from your AI Coding Agents. SPECTRE uses meta prompting techniques (prompts that run prompts that run subagents that run prompts) for your agents to do more autonomously for longer.",
+  "description": "SPECTRE is an Agentic Coding Workflow - /Scope, /Plan, /Execute, /Clean, /Test, /Release, /Evaluate - that uses a simple step by step product development workflow to generate high quality results from your AI Coding Agents. SPECTRE uses meta prompting techniques (prompts that run prompts that run subagents that run prompts) for your agents to do more autonomously for longer.",
   "author": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
