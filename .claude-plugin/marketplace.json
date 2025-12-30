@@ -8,12 +8,12 @@
   "metadata": {
     "description": "SPECTRE is an Agentic Coding Workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate - that uses simply step by step product development workflow to generate high quality results from your AI Coding Agents. SPECTRE uses meta prompting (prompts that run prompts that run subagents that run prompts) for your agents to do more autonomously for longer.",
     "homepage": "https://github.com/Codename-Inc/spectre",
-    "pluginRoot": ".."
+    "pluginRoot": "./"
   },
   "plugins": [
     {
       "name": "spectre",
-      "source": "..",
+      "source": "./",
       "description": "SPECTRE is an Agentic Coding Workflow - /Scope, /Plan, /Execute, /Clean, /Test, /Release, /Evaluate - that uses a simple step by step product development workflow to generate high quality results from your AI Coding Agents. SPECTRE uses meta prompting techniques (prompts that run prompts that run subagents that run prompts) for your agents to do more autonomously for longer.",
       "version": "0.1.0",
       "author": {

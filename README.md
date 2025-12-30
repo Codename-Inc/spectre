@@ -10,7 +10,7 @@ A complete development workflow plugin for Claude Code.
 
 ```bash
 # Add the marketplace
-/plugin marketplace add joefernandez/spectre
+/plugin marketplace add Codename-Inc/spectre
 
 # Install the plugin
 /plugin install spectre@spectre-marketplace
@@ -20,7 +20,7 @@ A complete development workflow plugin for Claude Code.
 
 ```bash
 # From GitHub
-/plugin install github:joefernandez/spectre
+/plugin install github:Codename-Inc/spectre
 
 # Local development
 claude --plugin-dir /path/to/spectre
@@ -34,7 +34,7 @@ Add to your project's `.claude/settings.json` for automatic team discovery:
 {
   "extraKnownMarketplaces": {
     "spectre-marketplace": {
-      "source": { "source": "github", "repo": "joefernandez/spectre" }
+      "source": { "source": "github", "repo": "Codename-Inc/spectre" }
     }
   },
   "enabledPlugins": {
