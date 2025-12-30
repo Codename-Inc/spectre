@@ -224,27 +224,43 @@ def format_context(
     task_name = data.get("task_name", "unknown")
     branch_name = data.get("branch_name", "unknown")
 
+    # Progress update fields (v1.1 schema)
     progress = data.get("progress_update", {})
     summary = progress.get("summary", "No summary available.")
-    accomplished = progress.get("accomplished", [])
+    goal = progress.get("goal", "")
+    constraints = progress.get("constraints", [])
     decisions = progress.get("decisions", [])
-    blockers = progress.get("blockers", [])
+    accomplished = progress.get("accomplished", [])
+    now = progress.get("now", "")
     next_steps = progress.get("next_steps", [])
+    blockers = progress.get("blockers", [])
+    open_questions = progress.get("open_questions", [])
     confidence = progress.get("confidence", "unknown")
     risks = progress.get("risks", [])
 
+    # Working set (v1.1 schema) - fall back to context.key_files for v1.0
+    working_set = data.get("working_set", {})
+    key_files = working_set.get("key_files", [])
+    active_ids = working_set.get("active_ids", [])
+    recent_commands = working_set.get("recent_commands", [])
+
+    # Fall back to old context structure if working_set not present
+    if not key_files:
+        context = data.get("context", {})
+        key_files = context.get("key_files", [])
+
+    # Beads tasks
     beads = data.get("beads", {})
-    epic_id = beads.get("epic_id", "unknown")
-    epic_title = beads.get("epic_title", "Workspace Epic")
+    beads_available = beads.get("available", True)  # Default true for v1.0 compat
     tasks = beads.get("tasks", [])
 
+    # Context
     context = data.get("context", {})
     last_commit = context.get("last_commit", "unknown")
     wip_state = context.get("wip_state", "unknown")
-    current_file = context.get("current_file", "unknown")
 
-    # Build checkbox tree for tasks
-    checkbox_tree = build_checkbox_tree(tasks)
+    # Build checkbox tree for beads tasks
+    checkbox_tree = build_checkbox_tree(tasks) if beads_available and tasks else ""
 
     # Format todos section if available
     todos_section = format_todos_section(todos) if todos else ""
@@ -252,42 +268,84 @@ def format_context(
 
     # User-visible notice
     visible_notice = (
-        f"👻 | Resuming: {task_name} | Branch: {branch_name} | "
+        f"Resuming: {task_name} | Branch: {branch_name} | "
         f"Ready to continue where we left off"
     )
 
-    # Hidden context for Claude
-    hidden_context = f"""<session-context>
-# Session Context: {task_name}
+    # Build the hidden context sections
+    sections = []
 
-{todos_section}
-{history_summary}
+    sections.append(f"# Session Context: {task_name}")
 
-## Last Session Summary
-{summary}
+    # Todos section (if available)
+    if todos_section:
+        sections.append(todos_section)
+        if history_summary:
+            sections.append(history_summary)
 
-### What We Accomplished
-{format_list(accomplished)}
+    # Last session summary
+    sections.append(f"\n## Last Session Summary\n{summary}")
 
-### What's Next
-{format_list(next_steps)}
+    # Goal (if available - v1.1)
+    if goal:
+        sections.append(f"\n### Goal\n{goal}")
 
-### Blockers
-{format_list(blockers) if blockers else "- None"}
+    # Constraints (if available - v1.1)
+    if constraints:
+        sections.append(f"\n### Constraints\n{format_list(constraints)}")
 
-### Decisions Made
-{format_list(decisions) if decisions else "- None"}
+    # What we accomplished
+    sections.append(f"\n### What We Accomplished\n{format_list(accomplished)}")
 
-**Confidence**: {confidence} | **Risks**: {format_list(risks, '') if risks else 'None identified'}
+    # What we were working on (critical for resume - v1.1)
+    if now:
+        sections.append(f"\n### Active Work (Resume Here)\n**{now}**")
 
+    # What's next
+    sections.append(f"\n### What's Next\n{format_list(next_steps)}")
+
+    # Blockers
+    if blockers:
+        sections.append(f"\n### Blockers\n{format_list(blockers)}")
+
+    # Open questions (v1.1)
+    if open_questions:
+        sections.append(f"\n### Open Questions\n{format_list(open_questions)}")
+
+    # Decisions
+    if decisions:
+        sections.append(f"\n### Decisions Made\n{format_list(decisions)}")
+
+    # Confidence and risks
+    risks_str = format_list(risks, '') if risks else 'None identified'
+    sections.append(f"\n**Confidence**: {confidence} | **Risks**: {risks_str}")
+
+    # Working set (v1.1)
+    working_set_lines = []
+    if key_files:
+        working_set_lines.append(f"- **Key Files**: {', '.join(key_files)}")
+    if active_ids:
+        working_set_lines.append(f"- **Active IDs**: {', '.join(active_ids)}")
+    if recent_commands:
+        working_set_lines.append(f"- **Recent Commands**: {', '.join(recent_commands)}")
+
+    if working_set_lines:
+        sections.append("\n### Working Set\n" + "\n".join(working_set_lines))
+
+    # Context
+    sections.append(f"""
 ---
 
 ## Context
 - **Branch**: {branch_name}
 - **Last Commit**: {last_commit}
-- **WIP State**: {wip_state}
-- **Last Active File**: {current_file}
-</session-context>"""
+- **WIP State**: {wip_state}""")
+
+    # Beads tasks (if available)
+    if beads_available and checkbox_tree:
+        sections.append(f"\n### Beads Tasks\n{checkbox_tree}")
+
+    hidden_context = f"<session-context>\n{''.join(sections)}\n</session-context>"
 
     return {
         "systemMessage": visible_notice,
