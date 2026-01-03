@@ -1,12 +1,65 @@
 ---
-description: 👻 | Adaptive Wave-Based Build -> Code_Review -> Validate Flow
+description: 👻 | Resume interrupted execute workflow - primary agent
 ---
 
-# build_review_validate: Adaptive Task Execution with Quality Gates
+# continue: Resume In-Progress Development Work
 
 ## Description
-- **What** — Execute tasks in parallel waves with reflection after each wave, adapting future tasks based on implementation learnings, then conduct code review and validate requirements compliance
-- **Outcome** — Complete feature implementation with verified code quality and requirement coverage, with tasks that evolved intelligently based on what was learned during development
+- **What** — Resume an interrupted `/spectre:execute` workflow by finding the task document, identifying remaining work, and continuing from where we left off
+- **Outcome** — Seamless continuation of feature development through execution, code review, and validation
+
+## Variables
+
+### Dynamic Variables
+- `task_doc_path`: Optional path to task document — (via ARGUMENTS: $ARGUMENTS)
+
+### Static Variables
+- `out_dir`: docs/active_tasks/{branch_name}
+
+## ARGUMENTS Input
+
+Optional: Path to task document if you want to specify explicitly.
+
+<ARGUMENTS>
+$ARGUMENTS
+</ARGUMENTS>
+
+## Step (1/7) - Find Task Document
+
+- **Action** — LocateTaskDoc: Find the task document to resume.
+  - `branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)`
+  - `OUT_DIR=docs/active_tasks/{branch_name}`
+  - **If** ARGUMENTS provides a path → use that path
+  - **Else** → search `{OUT_DIR}/specs/` and `{OUT_DIR}/` for files matching `*task*.md`
+
+- **Action** — ResolveDocument:
+  - **If** exactly 1 task document found → use it
+  - **If** 0 or >1 task documents found → ask user:
+    > **📂 Task document needed**
+    >
+    > Found {count} task documents in `{OUT_DIR}`:
+    > {list files if any}
+    >
+    > Please provide the path to the task document you want to continue.
+  - **Wait** for user response if needed
+
+- **Action** — LoadDocuments: Read the identified task document.
+  - Also check for and read scope doc (`*scope*.md`) in same directory
+  - These provide context for the work
+
+## Step (2/7) - Find Resume Point
+
+- **Action** — IdentifyRemainingWork: Parse the task document.
+  - Find all tasks marked `[ ]` (incomplete)
+  - Find the first incomplete parent task — this is where we resume
+  - Note any tasks marked `[x]` (already completed)
+
+- **Action** — ConfirmResume: Brief status to user.
+  > **📍 Resuming**: {first incomplete parent task title}
+  >
+  > Progress: {complete}/{total} parent tasks done
+  >
+  > Continuing execution...
 
 ## Primary Agent State
 
@@ -16,13 +69,8 @@ Throughout execution, maintain internal tracking of:
 
 This tracking will be included in the final summary report.
 
-## Step (1/5) - Adaptive Wave Execution
+## Step (3/7) - Adaptive Wave Execution
 
-- **Action** — LoadTaskList: Read tasks document to understand wave-based execution strategy.
-  - Locate `docs/active_tasks/{branch_name}/specs/tasks.md`, similarly named `tasks` document (e.g., `quick_tasks`), or the open Beads epic/tasks/subtasks for this Workspace
-  - Review Parallel Execution Plan section for wave structure
-  - Identify first wave of tasks
-  - Locate the requirements source (PRD, plan doc, or other specification) for reference during adaptation decision
 - **Action** — ExecuteAdaptiveLoop: Complete the following execution loop until all tasks complete.
 
   **Adaptive Execution Loop:**
@@ -83,9 +131,9 @@ This tracking will be included in the final summary report.
 
   6. **Continue Wave Dispatch**: Continue to dispatch @coder agents in parallel waves until all tasks complete
      - **If** uncompleted tasks remain → return to step 1
-     - **Else** → exit loop and continue to Step 2
+     - **Else** → exit loop and continue to Step 4
 
-## Step (2/5) - Code Review Loop
+## Step (4/7) - Code Review Loop
 
 - **Action** — ExecuteCodeReviewLoop: Complete the following code review loop until no critical/high priority feedback remains.
 
@@ -98,7 +146,7 @@ This tracking will be included in the final summary report.
 
   2. **Analyze Feedback**: Review code review findings
      - Identify critical and high priority items
-     - **If** no critical/high priority feedback → exit loop and continue to Step 3
+     - **If** no critical/high priority feedback → exit loop and continue to Step 5
      - **Else** → proceed to address feedback
 
   3. **Address Feedback**: Dispatch parallel @coder subagents to address critical and high priority feedback
@@ -108,7 +156,7 @@ This tracking will be included in the final summary report.
 
   4. **Re-verify**: Return to step 1 for next code review iteration
 
-## Step (3/5) - Validate Requirements
+## Step (5/7) - Validate Requirements
 
 - **Action** — SpawnValidationAgent: Dispatch @independent-review-engineer subagent for requirement validation.
   - Instruct subagent to run `/spectre:validate` slash command
@@ -117,17 +165,17 @@ This tracking will be included in the final summary report.
 - **Action** — AddressFeedback: Review validation findings and address high priority gaps.
   - Identify high priority requirement gaps
   - **If** gaps exist → dispatch parallel @coder subagents to address feedback
-  - **Else** → proceed to Step 4
+  - **Else** → proceed to Step 6
   - Document all requirement gap resolutions
 
-## Step (4/5) - Prepare for QA
+## Step (6/7) - Prepare for QA
 
 - **Action** — GenerateTestGuide: Create manual test guide based on completed work.
   - Have @coder subagent run `/spectre:create_test_guide` slash command
   - Verify test guide covers all implemented functionality
   - Save to `{OUT_DIR}/test_guide.md`
 
-## Step (5/5) - Respond to User
+## Step (7/7) - Respond to User
 
 - **Action** — SummarizeCompletion: Generate comprehensive summary for user.
   - **Summary includes**:
