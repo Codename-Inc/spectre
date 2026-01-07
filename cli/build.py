@@ -290,7 +290,7 @@ def validate_inputs(
     return True
 
 
-def run_claude_iteration(prompt: str) -> tuple[int, str, str]:
+def run_claude_iteration(prompt: str, timeout: int | None = None) -> tuple[int, str, str]:
     """
     Execute Claude with the given prompt and stream output.
 
@@ -300,17 +300,20 @@ def run_claude_iteration(prompt: str) -> tuple[int, str, str]:
 
     Args:
         prompt: The full prompt to send to Claude
+        timeout: Optional timeout in seconds for the subprocess
 
     Returns:
         Tuple of (exit_code, full_output, error_output)
 
     Raises:
         FileNotFoundError: If claude CLI is not installed
+        subprocess.TimeoutExpired: If timeout is exceeded
     """
     # Build command - use -p flag for print mode (non-interactive)
     cmd = ["claude", "-p"]
 
     # Start subprocess with pipes for all streams
+    # FileNotFoundError is raised here if claude CLI is not installed
     process = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -327,12 +330,18 @@ def run_claude_iteration(prompt: str) -> tuple[int, str, str]:
     output_lines: list[str] = []
 
     # Stream stdout line-by-line, printing each immediately
+    # Note: Timeout cannot be applied during streaming - only on final wait
     for line in process.stdout:
         print(line, end="", flush=True)
         output_lines.append(line)
 
-    # Wait for process to complete
-    process.wait()
+    # Wait for process to complete (with optional timeout)
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()  # Clean up zombie process
+        raise
 
     # Capture stderr for error reporting
     error_output = process.stderr.read()
@@ -415,13 +424,37 @@ def main() -> None:
         prompt = build_prompt(tasks_file, context_files)
 
         # Invoke Claude subprocess with constructed prompt
-        exit_code, output, stderr = run_claude_iteration(prompt)
+        try:
+            exit_code, output, stderr = run_claude_iteration(prompt)
+        except FileNotFoundError:
+            print(f"\n{'='*60}", file=sys.stderr)
+            print("❌ ERROR: Claude CLI not found", file=sys.stderr)
+            print(f"   Iteration: {iteration}/{max_iterations}", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("The 'claude' command is not installed or not in PATH.", file=sys.stderr)
+            print("Install Claude Code CLI: https://claude.ai/code", file=sys.stderr)
+            print(f"{'='*60}", file=sys.stderr)
+            sys.exit(127)  # Standard exit code for command not found
+        except subprocess.TimeoutExpired:
+            print(f"\n{'='*60}", file=sys.stderr)
+            print("❌ ERROR: Claude execution timed out", file=sys.stderr)
+            print(f"   Iteration: {iteration}/{max_iterations}", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("The Claude subprocess exceeded the allowed time.", file=sys.stderr)
+            print("Consider increasing timeout or breaking down tasks.", file=sys.stderr)
+            print(f"{'='*60}", file=sys.stderr)
+            sys.exit(124)  # Standard exit code for timeout
 
-        # Handle non-zero exit code (error handling in Task 2.3)
+        # Handle non-zero exit code from Claude
         if exit_code != 0:
-            print(f"\n❌ Claude exited with code {exit_code}", file=sys.stderr)
+            print(f"\n{'='*60}", file=sys.stderr)
+            print(f"❌ ERROR: Claude exited with code {exit_code}", file=sys.stderr)
+            print(f"   Iteration: {iteration}/{max_iterations}", file=sys.stderr)
             if stderr:
-                print(f"stderr: {stderr}", file=sys.stderr)
+                print("", file=sys.stderr)
+                print("stderr output:", file=sys.stderr)
+                print(stderr, file=sys.stderr)
+            print(f"{'='*60}", file=sys.stderr)
             sys.exit(exit_code)
 
         # Parse output for completion promises
