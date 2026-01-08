@@ -16,6 +16,57 @@ Every prompt includes "next steps" suggestions, so you don't need to memorize co
 
 ---
 
+## Installation
+
+### Option 1: Plugin Install (Claude Code Marketplace)
+
+```bash
+/plugin marketplace add Codename-Inc/spectre
+/plugin install spectre@codename
+```
+
+### Option 2: CLI Install (pip)
+
+For full CLI capabilities including build loops and programmatic agent execution:
+
+```bash
+pip install git+https://github.com/Codename-Inc/spectre.git
+spectre setup
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/Codename-Inc/spectre.git
+cd spectre
+pip install -e .
+spectre setup
+```
+
+The `spectre setup` command:
+- Symlinks the plugin to `~/.claude/plugins/`
+- Installs agent files to `~/.claude/agents/`
+- Installs the Spectre skill for `@agent` and `/command` pattern recognition
+
+### Team Setup (Recommended)
+
+Add to your project's `.claude/settings.json`:
+```json
+{
+  "extraKnownMarketplaces": {
+    "codename": {
+      "source": { "source": "github", "repo": "Codename-Inc/spectre" }
+    }
+  },
+  "enabledPlugins": {
+    "spectre@codename": true
+  }
+}
+```
+This auto-installs SPECTRE for everyone on the project.
+
+---
+
 ## Quick Start: Pick Your Path
 
 ### 1. Standard Workflow (80% of tasks)
@@ -80,33 +131,83 @@ Your todos and progress summary appear at the start of each new session.
 
 ---
 
-## Installation
+## Spectre CLI
 
-### Quick Install
+The `spectre` CLI provides programmatic access to build loops, subagents, and slash commands.
+
+### Build Loop
+
+Run Claude Code in an automated task loop, completing one task per iteration:
+
 ```bash
-/plugin marketplace add Codename-Inc/spectre
-/plugin install spectre@codename
+# Interactive mode (prompts for inputs)
+spectre build
+
+# With flags
+spectre build --tasks docs/tasks.md --max-iterations 10
+
+# With additional context files
+spectre build --tasks docs/tasks.md --context docs/scope.md --context docs/spec.md
 ```
 
-### Team Setup (Recommended)
-Add to your project's `.claude/settings.json`:
-```json
-{
-  "extraKnownMarketplaces": {
-    "codename": {
-      "source": { "source": "github", "repo": "Codename-Inc/spectre" }
-    }
-  },
-  "enabledPlugins": {
-    "spectre@codename": true
-  }
-}
+### Subagents
+
+Run specialized agents in isolated Claude sessions:
+
+```bash
+# Run vanilla Claude (no agent)
+spectre subagent run "explain this codebase"
+
+# Run with specific agent
+spectre subagent run tdd-agent "write tests for the auth module"
+
+# List available agents
+spectre subagent list
+
+# Show agent details
+spectre subagent show tdd-agent
+
+# Run multiple agents in parallel
+spectre subagent parallel tdd-agent:"write tests" coder:"implement feature"
 ```
-This auto-installs SPECTRE for everyone on the project.
+
+### Slash Commands
+
+Retrieve and execute slash command prompts programmatically:
+
+```bash
+# Get command prompt text
+spectre command get /spectre:scope
+
+# With arguments (interpolates $1, $2, etc.)
+spectre command get /deploy backend production
+
+# List available commands
+spectre command list
+
+# Show command details
+spectre command show /spectre:scope
+```
+
+### Setup
+
+Install plugins and skills to Claude Code:
+
+```bash
+# Install everything
+spectre setup
+
+# Overwrite existing symlinks
+spectre setup --force
+
+# Skip specific installations
+spectre setup --skip-agents
+spectre setup --skip-skill
+```
 
 ---
 
-## Command Reference
+## Slash Command Reference
 
 ### Core Workflow
 | Command | Description |

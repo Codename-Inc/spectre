@@ -231,17 +231,17 @@ Migrate subspace-cli into the spectre repo, rename all references from "subspace
   - [x] `[tool.setuptools.packages.find]` includes cli, plugins
   - [x] Package data includes .md files in plugins/
 
-#### [4.2] Update Installation & README
-- [ ] **4.2.1** Test pip install -e . works
-  - [ ] All entry points accessible after install
-  - [ ] `spectre --help` works
-  - [ ] `spectre build`, `spectre subagent`, `spectre command` all work
+#### [x] [4.2] Update Installation & README
+- [x] **4.2.1** Test pip install -e . works
+  - [x] All entry points accessible after install
+  - [x] `spectre --help` works
+  - [x] `spectre build`, `spectre subagent`, `spectre command` all work
 
-- [ ] **4.2.2** Update README.md for unified CLI
-  - [ ] Installation instructions updated
-  - [ ] Usage examples for all commands
-  - [ ] Setup instructions (spectre setup)
-  - [ ] Plugin development section
+- [x] **4.2.2** Update README.md for unified CLI
+  - [x] Installation instructions updated
+  - [x] Usage examples for all commands
+  - [x] Setup instructions (spectre setup)
+  - [x] Plugin development section (covered in CLI section)
 
 ---
 
