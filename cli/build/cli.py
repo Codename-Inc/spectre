@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from .loop import run_build_loop
+from ..notify import notify_build_complete, notify_build_error
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +52,19 @@ Examples:
         type=int,
         default=10,
         help="Maximum number of iterations (default: 10)",
+    )
+
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        default=True,
+        help="Send macOS notification on completion (default: enabled)",
+    )
+
+    parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="Disable completion notifications",
     )
 
     return parser.parse_args()
@@ -159,9 +173,28 @@ def validate_inputs(
     return True
 
 
+def format_duration(seconds: float) -> str:
+    """Format duration in human-readable form."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
+
 def main() -> None:
     """Main entry point for Spectre Build CLI."""
+    import time
+
     args = parse_args()
+
+    # Determine notification setting (--no-notify overrides --notify)
+    send_notification = args.notify and not args.no_notify
 
     # Get tasks file - from args or interactive prompt
     tasks_file = args.tasks
@@ -193,6 +226,24 @@ def main() -> None:
     tasks_file = str(Path(tasks_file).resolve())
     context_files = [str(Path(f).resolve()) for f in context_files]
 
+    # Track build duration
+    start_time = time.time()
+
     # Run the build loop
-    exit_code = run_build_loop(tasks_file, context_files, max_iterations)
+    exit_code, iterations_completed = run_build_loop(
+        tasks_file, context_files, max_iterations
+    )
+
+    # Calculate duration
+    duration = time.time() - start_time
+    duration_str = format_duration(duration)
+
+    # Send notification if enabled
+    if send_notification:
+        notify_build_complete(
+            tasks_completed=iterations_completed,
+            total_time=duration_str,
+            success=(exit_code == 0),
+        )
+
     sys.exit(exit_code)

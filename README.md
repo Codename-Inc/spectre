@@ -165,7 +165,12 @@ spectre build --tasks docs/tasks.md --max-iterations 10
 
 # With additional context files
 spectre build --tasks docs/tasks.md --context docs/scope.md --context docs/spec.md
+
+# Disable completion notification
+spectre build --tasks docs/tasks.md --no-notify
 ```
+
+Build sends a **macOS notification** when complete (enabled by default). To use a custom sound, drop an audio file at `~/Library/Sounds/spectre.aiff`.
 
 ### Subagents
 

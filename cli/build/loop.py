@@ -147,7 +147,7 @@ def run_build_loop(
     tasks_file: str,
     context_files: list[str],
     max_iterations: int,
-) -> int:
+) -> tuple[int, int]:
     """
     Run the main build loop.
 
@@ -160,7 +160,9 @@ def run_build_loop(
         max_iterations: Maximum number of iterations
 
     Returns:
-        Exit code (0 for success, non-zero for failure)
+        Tuple of (exit_code, iterations_completed)
+        - exit_code: 0 for success, non-zero for failure
+        - iterations_completed: Number of successfully completed iterations
     """
     # Display configuration
     print("\n--- Spectre Build Configuration ---")
@@ -199,7 +201,7 @@ def run_build_loop(
             print("Install Claude Code CLI: https://claude.ai/code", file=sys.stderr)
             print(f"{'='*60}", file=sys.stderr)
             stats.print_summary()
-            return 127  # Standard exit code for command not found
+            return 127, stats.iterations_completed  # Command not found
         except subprocess.TimeoutExpired:
             print(f"\n{'='*60}", file=sys.stderr)
             print("❌ ERROR: Claude execution timed out", file=sys.stderr)
@@ -210,7 +212,7 @@ def run_build_loop(
             print(f"{'='*60}", file=sys.stderr)
             stats.iterations_failed += 1
             stats.print_summary()
-            return 124  # Standard exit code for timeout
+            return 124, stats.iterations_completed  # Timeout
 
         # Check for promise FIRST - if agent completed its task, trust that
         promise = detect_promise(output)
@@ -232,7 +234,7 @@ def run_build_loop(
                 print(f"{'='*60}", file=sys.stderr)
                 stats.iterations_failed += 1
                 stats.print_summary()
-                return exit_code
+                return exit_code, stats.iterations_completed
 
         # Handle promise-based flow control
         if promise == "BUILD_COMPLETE":
@@ -241,7 +243,7 @@ def run_build_loop(
             print("✅ BUILD COMPLETE - All tasks finished!")
             print(f"{'='*60}")
             stats.print_summary()
-            return 0
+            return 0, stats.iterations_completed
         elif promise == "TASK_COMPLETE":
             stats.iterations_completed += 1
             print(f"\n✓ Task complete. Continuing to next iteration...")
@@ -257,4 +259,4 @@ def run_build_loop(
     print("   Review build_progress.md and tasks file to assess state.")
     print(f"{'='*60}")
     stats.print_summary()
-    return 1
+    return 1, stats.iterations_completed
