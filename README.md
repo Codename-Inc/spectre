@@ -12,7 +12,7 @@ SPECTRE guides AI agents through a structured workflow:
 
 Every prompt includes "next steps" suggestions, so you don't need to memorize commands—just follow the flow.
 
-> **Note**: SPECTRE creates `.claude/spectre/` in your project to store workflow reference files. Add `.claude/` to `.gitignore`.
+> **Note**: SPECTRE creates `.spectre/` in your project to store session logs and handoff files. This directory is automatically added to `.gitignore` on first use.
 
 ---
 
@@ -265,6 +265,11 @@ spectre setup --skip-skill
 | `/spectre:code_review` | Independent code review |
 | `/spectre:validate` | Requirements verification |
 | `/spectre:tdd` | Test-driven development execution |
+| `/spectre:architecture_review` | Principal architect assessment |
+| `/spectre:create_test_guide` | Generate manual test checklist |
+| `/spectre:document` | Generate feature documentation |
+| `/spectre:plan_review` | Review plan for over-engineering |
+| `/spectre:continue` | Resume interrupted execution |
 
 ### Learn Plugin
 | Command | Description |
@@ -304,6 +309,8 @@ spectre/
 │   │   ├── plugin.json
 │   │   ├── commands/       # Slash commands (scope.md, plan.md, etc.)
 │   │   ├── agents/         # Subagent definitions
+│   │   ├── skills/         # Plugin skills
+│   │   │   └── spectre/    # Workflow reference (next steps, commands)
 │   │   └── hooks/          # Session memory hooks
 │   └── learn/              # Knowledge capture plugin
 │       ├── plugin.json
