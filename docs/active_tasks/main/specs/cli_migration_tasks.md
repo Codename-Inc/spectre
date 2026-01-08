@@ -133,21 +133,21 @@ Migrate subspace-cli into the spectre repo, rename all references from "subspace
   - [x] Output formatting imports point to cli/shared/output.py (not needed - using click.echo)
   - [x] All relative imports corrected
 
-#### [2.2] Port Command Module
-- [ ] **2.2.1** Copy subspace-cli command code to cli/command/
-  - [ ] `get.py` — retrieve command prompt
-  - [ ] `list.py` — list available commands
-  - [ ] `show.py` — show command details
-  - [ ] `__init__.py` with Click command group
+#### [x] [2.2] Port Command Module
+- [x] **2.2.1** Copy subspace-cli command code to cli/command/
+  - [x] `get.py` — retrieve command prompt
+  - [x] `list.py` — list available commands
+  - [x] `show.py` — show command details
+  - [x] `__init__.py` with Click command group
 
-- [ ] **2.2.2** Rename all "subspace" references to "spectre"
-  - [ ] Module docstrings updated
-  - [ ] CLI help text updated
-  - [ ] Error messages updated
+- [x] **2.2.2** Rename all "subspace" references to "spectre"
+  - [x] Module docstrings updated
+  - [x] CLI help text updated
+  - [x] Error messages updated
 
-- [ ] **2.2.3** Update imports for new repo structure
-  - [ ] Discovery imports point to cli/shared/
-  - [ ] All relative imports corrected
+- [x] **2.2.3** Update imports for new repo structure
+  - [x] Discovery imports point to cli/shared/
+  - [x] All relative imports corrected
 
 #### [2.3] Create Unified CLI Entry Point
 - [ ] **2.3.1** Create cli/main.py with Click command groups
