@@ -76,3 +76,18 @@
 - Renamed CODEX_HOME to CLAUDE_HOME and updated sandbox paths to .spectre/
 - Using click.echo() for output instead of separate output.py module
 **Blockers/Risks**: None
+
+## Iteration — [2.2] Port Command Module
+**Status**: Complete
+**What Was Done**: Ported the command module from subspace-cli to spectre. Created cli/command/get.py (retrieve prompt text with argument interpolation), cli/command/list.py (list available commands), cli/command/show.py (show command details). Updated cli/command/__init__.py with Click command group. All commands use the shared discovery module created in task 2.1.
+**Files Changed**:
+- cli/command/get.py (new - retrieve command prompt)
+- cli/command/list.py (new - list available commands)
+- cli/command/show.py (new - show command details)
+- cli/command/__init__.py (updated - Click command group)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated)
+**Key Decisions**:
+- Reused discovery logic from cli/shared/discovery.py (already had command discovery from task 2.1)
+- Used click.echo() for output (consistent with subagent module)
+- Supports namespaced commands (e.g., /spectre:scope) via subdirectory structure
+**Blockers/Risks**: None
