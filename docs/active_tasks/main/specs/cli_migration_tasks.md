@@ -114,24 +114,24 @@ Migrate subspace-cli into the spectre repo, rename all references from "subspace
 
 ### Phase 2: Port subspace-cli Code
 
-#### [2.1] Port Subagent Module
-- [ ] **2.1.1** Copy subspace-cli subagent code to cli/subagent/
-  - [ ] `run.py` — single agent execution
-  - [ ] `list.py` — list available agents
-  - [ ] `parallel.py` — parallel agent execution
-  - [ ] `show.py` — show agent details
-  - [ ] `__init__.py` with Click command group
+#### [x] [2.1] Port Subagent Module
+- [x] **2.1.1** Copy subspace-cli subagent code to cli/subagent/
+  - [x] `run.py` — single agent execution
+  - [x] `list.py` — list available agents
+  - [x] `parallel.py` — parallel agent execution
+  - [x] `show.py` — show agent details
+  - [x] `__init__.py` with Click command group
 
-- [ ] **2.1.2** Rename all "subspace" references to "spectre"
-  - [ ] Module docstrings updated
-  - [ ] CLI help text updated
-  - [ ] Error messages updated
-  - [ ] Any hardcoded paths updated
+- [x] **2.1.2** Rename all "subspace" references to "spectre"
+  - [x] Module docstrings updated
+  - [x] CLI help text updated
+  - [x] Error messages updated
+  - [x] Any hardcoded paths updated
 
-- [ ] **2.1.3** Update imports for new repo structure
-  - [ ] Discovery imports point to cli/shared/discovery.py
-  - [ ] Output formatting imports point to cli/shared/output.py
-  - [ ] All relative imports corrected
+- [x] **2.1.3** Update imports for new repo structure
+  - [x] Discovery imports point to cli/shared/discovery.py
+  - [x] Output formatting imports point to cli/shared/output.py (not needed - using click.echo)
+  - [x] All relative imports corrected
 
 #### [2.2] Port Command Module
 - [ ] **2.2.1** Copy subspace-cli command code to cli/command/
