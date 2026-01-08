@@ -104,3 +104,18 @@
 - Placeholder setup command returns exit(1) until task 3.1 implementation
 - Both `spectre` and `spectre-build` entry points available for backwards compatibility
 **Blockers/Risks**: None
+
+## Iteration — [2.4] Create Shared Utilities Module
+**Status**: Complete
+**What Was Done**: Completed the shared utilities module by adding output.py (JSON, JSONL, text/table formatting) and config.py (configuration loading from files and environment variables). The discovery.py was already created in task 2.1. Updated __init__.py to export all new functions from these modules.
+**Files Changed**:
+- cli/shared/output.py (new - 200+ lines of output formatting utilities)
+- cli/shared/config.py (new - 300+ lines of config management)
+- cli/shared/__init__.py (updated - exports all new modules)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated)
+**Key Decisions**:
+- output.py provides format_json, format_table, output_jsonl, and error/warning utilities
+- config.py uses simple YAML parsing (stdlib only, no PyYAML dependency)
+- Configuration supports environment variable overrides (SPECTRE_*, CLAUDE_HOME, CODEX_HOME)
+- Singleton pattern for global config access via get_config()
+**Blockers/Risks**: None
