@@ -94,6 +94,22 @@ def notify(
         return False
 
 
+def get_git_branch() -> str | None:
+    """Get the current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return None
+
+
 def notify_build_complete(
     tasks_completed: int,
     total_time: str,
@@ -112,6 +128,17 @@ def notify_build_complete(
     Returns:
         True if notification was sent successfully
     """
+    # Build subtitle with project and branch
+    branch = get_git_branch()
+    if project and branch:
+        subtitle = f"[{project}] {branch}"
+    elif project:
+        subtitle = f"[{project}]"
+    elif branch:
+        subtitle = branch
+    else:
+        subtitle = None
+
     if success:
         title = "👻 | SPECTRE"
         message = f"Build complete! {tasks_completed} tasks in {total_time}"
@@ -119,7 +146,7 @@ def notify_build_complete(
         title = "👻 | SPECTRE"
         message = f"Build failed after {tasks_completed} tasks ({total_time})"
 
-    return notify(message=message, title=title, subtitle=project)
+    return notify(message=message, title=title, subtitle=subtitle)
 
 
 def notify_build_error(error: str) -> bool:
