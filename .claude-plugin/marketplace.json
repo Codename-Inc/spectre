@@ -21,6 +21,17 @@
         "email": "joe@bycodename.com"
       },
       "keywords": ["workflow", "tdd", "planning", "code-review", "session-management", "handoff"]
+    },
+    {
+      "name": "learn",
+      "source": "./learn",
+      "description": "Capture project knowledge into skills. Save patterns, decisions, gotchas, and procedures from conversations.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Joe Fernandez",
+        "email": "joe@bycodename.com"
+      },
+      "keywords": ["learning", "knowledge", "patterns", "decisions", "documentation"]
     }
   ]
 }

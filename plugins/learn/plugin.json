@@ -1,0 +1,10 @@
+{
+  "name": "learn",
+  "version": "1.0.0",
+  "description": "Capture project knowledge into skills. Use /learn to save patterns, decisions, gotchas, and procedures from conversations.",
+  "author": {
+    "name": "Joe Fernandez",
+    "email": "joe@bycodename.com"
+  },
+  "skills": "skills"
+}
