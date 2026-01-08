@@ -56,3 +56,23 @@
 - Plugin.json declares relative paths: "commands", "agents", "hooks/hooks.json"
 - Hooks paths use ${CLAUDE_PLUGIN_ROOT} variable which resolves to plugin directory
 **Blockers/Risks**: None
+
+## Iteration — [2.1] Port Subagent Module
+**Status**: Complete
+**What Was Done**: Ported the complete subagent module from subspace-cli to spectre. Created cli/shared/discovery.py with unified agent and command discovery logic. Created cli/subagent/ with runner.py (sandbox execution), run.py, list.py, parallel.py, and show.py (Click commands). All references to "subspace" renamed to "spectre" and imports updated for new repo structure.
+**Files Changed**:
+- cli/shared/discovery.py (new - 500+ lines)
+- cli/shared/__init__.py (updated - exports discovery functions)
+- cli/subagent/runner.py (new - agent execution with sandbox)
+- cli/subagent/run.py (new - single agent execution)
+- cli/subagent/list.py (new - list available agents)
+- cli/subagent/parallel.py (new - parallel agent execution)
+- cli/subagent/show.py (new - show agent details)
+- cli/subagent/__init__.py (updated - Click command group)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated)
+**Key Decisions**:
+- Combined agent and command discovery into single cli/shared/discovery.py (task 2.4 partial)
+- Used Click instead of argparse for CLI (matching subspace-cli pattern)
+- Renamed CODEX_HOME to CLAUDE_HOME and updated sandbox paths to .spectre/
+- Using click.echo() for output instead of separate output.py module
+**Blockers/Risks**: None
