@@ -90,25 +90,25 @@ Migrate subspace-cli into the spectre repo, rename all references from "subspace
   - [x] `spectre build --help` displays correctly
   - [x] `spectre build --tasks <file>` executes successfully
 
-#### [1.3] Move Plugin Assets to plugins/spectre/
-- [ ] **1.3.1** Relocate current commands/ to plugins/spectre/commands/
-  - [ ] All .md command files moved
-  - [ ] Directory structure preserved
-  - [ ] No broken references
+#### [x] [1.3] Move Plugin Assets to plugins/spectre/
+- [x] **1.3.1** Relocate current commands/ to plugins/spectre/commands/
+  - [x] All .md command files moved
+  - [x] Directory structure preserved
+  - [x] No broken references
 
-- [ ] **1.3.2** Relocate current agents/ to plugins/spectre/agents/
-  - [ ] All .md agent files moved
-  - [ ] Directory structure preserved
+- [x] **1.3.2** Relocate current agents/ to plugins/spectre/agents/
+  - [x] All .md agent files moved
+  - [x] Directory structure preserved
 
-- [ ] **1.3.3** Relocate current hooks/ to plugins/spectre/hooks/
-  - [ ] hooks.json moved
-  - [ ] scripts/ subdirectory moved with Python files
-  - [ ] Paths in hooks.json updated if needed
+- [x] **1.3.3** Relocate current hooks/ to plugins/spectre/hooks/
+  - [x] hooks.json moved
+  - [x] scripts/ subdirectory moved with Python files
+  - [x] Paths in hooks.json updated if needed
 
-- [ ] **1.3.4** Create/update plugins/spectre/plugin.json
-  - [ ] Valid plugin.json manifest created
-  - [ ] Commands, agents, hooks paths configured correctly
-  - [ ] Plugin loads without errors when symlinked
+- [x] **1.3.4** Create/update plugins/spectre/plugin.json
+  - [x] Valid plugin.json manifest created
+  - [x] Commands, agents, hooks paths configured correctly
+  - [x] Plugin loads without errors when symlinked
 
 ---
 

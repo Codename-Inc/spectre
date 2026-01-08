@@ -1,0 +1,12 @@
+{
+  "name": "spectre",
+  "version": "1.0.0",
+  "description": "SPECTRE is an Agentic Coding Workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate - that uses a simple step by step product development workflow to generate high quality results from your AI Coding Agents.",
+  "author": {
+    "name": "Joe Fernandez",
+    "email": "joe@bycodename.com"
+  },
+  "commands": "commands",
+  "agents": "agents",
+  "hooks": "hooks/hooks.json"
+}
