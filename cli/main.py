@@ -148,14 +148,24 @@ def build(tasks: str | None, context: tuple[str, ...], max_iterations: int) -> N
     sys.exit(exit_code)
 
 
-# Setup command - placeholder for task 3.1
+# Setup command - install plugins, agents, and skills
 @cli.command()
 @click.option(
     "--force",
     is_flag=True,
     help="Overwrite existing symlinks",
 )
-def setup(force: bool) -> None:
+@click.option(
+    "--skip-agents",
+    is_flag=True,
+    help="Skip agent symlinking",
+)
+@click.option(
+    "--skip-skill",
+    is_flag=True,
+    help="Skip skill installation",
+)
+def setup(force: bool, skip_agents: bool, skip_skill: bool) -> None:
     """Install plugins and skills to Claude Code.
 
     This command sets up Spectre by:
@@ -165,12 +175,14 @@ def setup(force: bool) -> None:
 
     \b
     EXAMPLES:
-      spectre setup          # Install everything
-      spectre setup --force  # Overwrite existing symlinks
+      spectre setup                  # Install everything
+      spectre setup --force          # Overwrite existing symlinks
+      spectre setup --skip-agents    # Skip agent installation
+      spectre setup --skip-skill     # Skip skill installation
     """
-    click.echo("Setup command not yet implemented.")
-    click.echo("This will be implemented in task 3.1")
-    sys.exit(1)
+    from cli.setup import run_setup
+    exit_code = run_setup(force=force, skip_agents=skip_agents, skip_skill=skip_skill)
+    sys.exit(exit_code)
 
 
 # Register command groups

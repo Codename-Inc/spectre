@@ -187,22 +187,22 @@ Migrate subspace-cli into the spectre repo, rename all references from "subspace
 
 ### Phase 3: Setup Command & Skill
 
-#### [3.1] Implement spectre setup Command
-- [ ] **3.1.1** Create cli/setup.py with plugin linking logic
-  - [ ] Discovers plugins in repo's plugins/ directory
-  - [ ] Creates symlinks in ~/.claude/plugins/
-  - [ ] Handles existing symlinks gracefully (skip or update)
-  - [ ] Reports what was linked
+#### [x] [3.1] Implement spectre setup Command
+- [x] **3.1.1** Create cli/setup.py with plugin linking logic
+  - [x] Discovers plugins in repo's plugins/ directory
+  - [x] Creates symlinks in ~/.claude/plugins/
+  - [x] Handles existing symlinks gracefully (skip or update)
+  - [x] Reports what was linked
 
-- [ ] **3.1.2** Add agent installation to setup
-  - [ ] Copies/symlinks agents/ to ~/.claude/agents/
-  - [ ] Merges with existing agents (no overwrites without flag)
-  - [ ] Reports what was installed
+- [x] **3.1.2** Add agent installation to setup
+  - [x] Copies/symlinks agents/ to ~/.claude/agents/
+  - [x] Merges with existing agents (no overwrites without flag)
+  - [x] Reports what was installed
 
-- [ ] **3.1.3** Add skill installation to setup
-  - [ ] Installs spectre skill to ~/.claude/skills/ or ~/.codex/skills/
-  - [ ] Skill teaches Claude @agent and /command patterns
-  - [ ] Uses `spectre` command instead of `subspace`
+- [x] **3.1.3** Add skill installation to setup
+  - [x] Installs spectre skill to ~/.claude/skills/ or ~/.codex/skills/
+  - [x] Skill teaches Claude @agent and /command patterns
+  - [x] Uses `spectre` command instead of `subspace`
 
 #### [3.2] Update Skill File for Spectre
 - [ ] **3.2.1** Create/update skill SKILL.md
