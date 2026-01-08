@@ -91,3 +91,16 @@
 - Used click.echo() for output (consistent with subagent module)
 - Supports namespaced commands (e.g., /spectre:scope) via subdirectory structure
 **Blockers/Risks**: None
+
+## Iteration — [2.3] Create Unified CLI Entry Point
+**Status**: Complete
+**What Was Done**: Created cli/main.py with Click command groups to unify all subcommands under the main `spectre` command. Root command includes --version flag, build subcommand with Click wrapper (delegates to existing argparse logic), subagent and command groups from their respective modules, and placeholder setup command. Updated pyproject.toml to add `spectre` entry point alongside existing `spectre-build` alias.
+**Files Changed**:
+- cli/main.py (new - unified CLI entry point)
+- pyproject.toml (updated - added spectre entry point)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated)
+**Key Decisions**:
+- Used Click wrapper for build command to preserve existing argparse logic and interactive prompts
+- Placeholder setup command returns exit(1) until task 3.1 implementation
+- Both `spectre` and `spectre-build` entry points available for backwards compatibility
+**Blockers/Risks**: None
