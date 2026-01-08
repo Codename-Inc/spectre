@@ -230,11 +230,17 @@ def link_agents(force: bool = False) -> list[SetupResult]:
     return results
 
 
+# Skills that should only be installed for Codex (not Claude Code)
+# Claude Code has native subagent/slash command support, so spectre_agent_tools
+# would override that behavior unnecessarily
+CODEX_ONLY_SKILLS = {"spectre_agent_tools"}
+
+
 def install_skills(force: bool = False) -> list[SetupResult]:
     """Install all skills from repo to Claude/Codex skills directories.
 
-    Skills are copied (not symlinked) to both ~/.claude/skills/ and ~/.codex/skills/.
-    Each skill directory should contain a SKILL.md file.
+    Skills are copied (not symlinked) to ~/.codex/skills/ (and ~/.claude/skills/
+    for skills not in CODEX_ONLY_SKILLS).
 
     Args:
         force: If True, overwrite existing skills.
@@ -264,11 +270,15 @@ def install_skills(force: bool = False) -> list[SetupResult]:
 
         skill_name = skill_dir.name
 
-        # Install to both Claude and Codex locations
-        targets = [
-            get_claude_home() / "skills" / skill_name,
-            get_codex_home() / "skills" / skill_name,
-        ]
+        # Determine install targets based on skill
+        # Some skills only go to Codex (Claude Code has native support)
+        if skill_name in CODEX_ONLY_SKILLS:
+            targets = [get_codex_home() / "skills" / skill_name]
+        else:
+            targets = [
+                get_claude_home() / "skills" / skill_name,
+                get_codex_home() / "skills" / skill_name,
+            ]
 
         installed = []
         failed = False
