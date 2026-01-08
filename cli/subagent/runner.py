@@ -94,11 +94,64 @@ def _safe_copy_file(src: Path, dst: Path) -> bool:
         return False
 
 
+def _ensure_gitignore_entry(directory: str) -> bool:
+    """Ensure a directory is in .gitignore.
+
+    Adds the entry if .gitignore exists and doesn't already contain it.
+    Creates .gitignore if in a git repo but file doesn't exist.
+
+    Returns True if entry was added, False otherwise.
+    """
+    gitignore_path = Path.cwd() / ".gitignore"
+    git_dir = Path.cwd() / ".git"
+
+    # Only modify if we're in a git repo
+    if not git_dir.exists():
+        return False
+
+    entry = f"{directory}/"
+
+    # Check if .gitignore exists and already has the entry
+    if gitignore_path.exists():
+        try:
+            content = gitignore_path.read_text()
+            # Check for exact entry (with or without trailing slash)
+            lines = content.splitlines()
+            for line in lines:
+                line = line.strip()
+                if line == directory or line == entry or line == f"/{directory}" or line == f"/{entry}":
+                    return False  # Already present
+        except OSError:
+            return False
+
+        # Append entry
+        try:
+            with open(gitignore_path, "a") as f:
+                # Add newline if file doesn't end with one
+                if content and not content.endswith("\n"):
+                    f.write("\n")
+                f.write(f"{entry}\n")
+            debug(f"Added {entry} to .gitignore")
+            return True
+        except OSError:
+            return False
+    else:
+        # Create .gitignore with the entry
+        try:
+            gitignore_path.write_text(f"{entry}\n")
+            debug(f"Created .gitignore with {entry}")
+            return True
+        except OSError:
+            return False
+
+
 def setup_codex_home() -> Path:
     """Sync Codex credentials to workspace for sandboxed subagent execution.
 
     Copies config.toml and auth.json from ~/.codex to .spectre/codex-subagent/
     so child processes can authenticate while running in sandbox mode.
+
+    Also ensures .spectre/ is in .gitignore (auto-adds if missing).
 
     Security: Rejects symlinks to prevent symlink attacks.
 
@@ -106,6 +159,9 @@ def setup_codex_home() -> Path:
     """
     workspace_home = Path.cwd() / SUBAGENT_CODEX_HOME
     workspace_home.mkdir(parents=True, exist_ok=True)
+
+    # Ensure .spectre/ is gitignored
+    _ensure_gitignore_entry(".spectre")
 
     user_codex_home = Path.home() / ".codex"
 
