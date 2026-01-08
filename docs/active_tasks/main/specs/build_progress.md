@@ -134,3 +134,23 @@
 - Setup is idempotent: re-running skips already-correct symlinks, --force overwrites
 - Uses click.echo() for consistent output with rest of CLI
 **Blockers/Risks**: None
+
+## Iteration — [3.2] Update Skill File for Spectre
+**Status**: Complete (already done in 3.1)
+**What Was Done**: Verified that the skill file created in task 3.1 meets all 3.2 requirements. The SKILL.md at skills/spectre_agent_tools/SKILL.md already contains: pattern recognition for @agent-name syntax, pattern recognition for /command-name syntax, instructions referencing `spectre subagent run` and `spectre command get`, and examples using spectre commands.
+**Files Changed**: None (skill file already complete)
+**Key Decisions**:
+- Task 3.2 was effectively completed as part of task 3.1 — the skill file was created with all required content
+**Blockers/Risks**: None
+
+## Iteration — [4.1] Update pyproject.toml
+**Status**: Complete
+**What Was Done**: Updated pyproject.toml for unified CLI. Updated description to reflect all CLI capabilities (build loop, subagent orchestration, slash commands, plugin setup). Added click>=8.0 as explicit dependency. Extended package discovery to include plugins* and skills* directories. Added package-data config to include .md and .json files.
+**Files Changed**:
+- pyproject.toml (updated - description, dependencies, package discovery, package-data)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated - marked 3.2 and 4.1 complete)
+**Key Decisions**:
+- click>=8.0 specified as explicit dependency (was implicitly required by CLI modules)
+- Package discovery includes cli*, plugins*, skills* to capture all directories
+- Package-data uses wildcard to include .md and .json across all packages
+**Blockers/Risks**: None
