@@ -41,3 +41,18 @@
 - Used lazy import in __init__.py main() to avoid circular imports
 - Entry point remains `cli.build:main` which works with new package structure
 **Blockers/Risks**: None
+
+## Iteration — [1.3] Move Plugin Assets to plugins/spectre/
+**Status**: Complete
+**What Was Done**: Moved commands/, agents/, and hooks/ directories from repo root to plugins/spectre/ using git mv to preserve history. Created plugins/spectre/plugin.json manifest with proper paths to commands, agents, and hooks. The hooks.json uses ${CLAUDE_PLUGIN_ROOT} which resolves correctly in the new location.
+**Files Changed**:
+- commands/ → plugins/spectre/commands/ (24 .md files)
+- agents/ → plugins/spectre/agents/ (7 .md files)
+- hooks/ → plugins/spectre/hooks/ (hooks.json + scripts/)
+- plugins/spectre/plugin.json (new)
+- docs/active_tasks/main/specs/cli_migration_tasks.md (updated)
+**Key Decisions**:
+- Used git mv to preserve commit history for moved files
+- Plugin.json declares relative paths: "commands", "agents", "hooks/hooks.json"
+- Hooks paths use ${CLAUDE_PLUGIN_ROOT} variable which resolves to plugin directory
+**Blockers/Risks**: None
