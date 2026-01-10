@@ -191,7 +191,7 @@ spectre subagent list --output json
 spectre subagent show spectre:coder
 
 # Run multiple agents in parallel
-spectre subagent parallel spectre:coder:"implement feature" spectre:test-lead:"write tests"
+spectre subagent parallel -j spectre:coder "implement feature" -j spectre:test-lead "write tests"
 ```
 
 ### Slash Commands

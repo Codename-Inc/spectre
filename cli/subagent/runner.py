@@ -504,21 +504,31 @@ def parse_agent_task_pair(pair: str) -> tuple[str, str]:
 
 
 def run_parallel(
-    pairs: list[str],
+    jobs: list[tuple[str, str]],
     sources: list["AgentSource"],
     output_format: str = "text",
     timeout: int = 600,
     enable_debug: bool = False,
     codex_bin: str = "codex",
 ) -> int:
-    """Run multiple agents in parallel."""
+    """Run multiple agents in parallel.
+
+    Args:
+        jobs: List of (agent_name, task) tuples - no parsing needed.
+        sources: Agent discovery sources.
+        output_format: 'text' or 'jsonl'.
+        timeout: Timeout in seconds per agent.
+        enable_debug: Enable debug logging.
+        codex_bin: Path to codex executable.
+    """
     from cli.shared.discovery import find_agent
 
-    # Parse agent:task pairs
+    # Validate and resolve agent paths
     requests: list[tuple[str, str, Path]] = []
-    for pair in pairs:
+    for agent, task in jobs:
+        # Validate agent name
         try:
-            agent, task = parse_agent_task_pair(pair)
+            validate_agent_name(agent)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1

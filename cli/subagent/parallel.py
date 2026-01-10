@@ -12,7 +12,13 @@ from cli.subagent.runner import run_parallel
 
 
 @click.command("parallel")
-@click.argument("pairs", nargs=-1, required=True)
+@click.option(
+    "-j", "--job",
+    nargs=2,
+    multiple=True,
+    metavar="AGENT TASK",
+    help="Agent and task pair (can be repeated)",
+)
 @click.option(
     "--output",
     type=click.Choice(["text", "jsonl"]),
@@ -36,7 +42,7 @@ from cli.subagent.runner import run_parallel
     help="Override: use single directory instead of discovery",
 )
 def cmd_parallel(
-    pairs: tuple,
+    job: tuple[tuple[str, str], ...],
     output: str,
     timeout: int,
     debug: bool,
@@ -44,15 +50,20 @@ def cmd_parallel(
 ) -> None:
     """Run multiple agents in parallel.
 
-    Each pair should be in format agent:task or agent:"task with spaces".
-
     Example:
 
-        spectre subagent parallel tdd-agent:"write tests" coder:"implement feature"
+        spectre subagent parallel -j coder "implement feature" -j tdd-agent "write tests"
+
+        spectre subagent parallel --job coder "Run /spectre:tdd" --job reviewer "Check code"
     """
     if debug:
         from cli.shared import discovery
         discovery.DEBUG = True
+
+    if not job:
+        print("Error: At least one --job/-j is required", file=sys.stderr)
+        print("Usage: spectre subagent parallel -j AGENT TASK [-j AGENT TASK ...]", file=sys.stderr)
+        sys.exit(1)
 
     # Get agent sources (respects --agents-dir override)
     if agents_dir:
@@ -61,7 +72,7 @@ def cmd_parallel(
         sources = get_agent_sources()
 
     exit_code = run_parallel(
-        pairs=list(pairs),
+        jobs=list(job),
         sources=sources,
         output_format=output,
         timeout=timeout,

@@ -121,10 +121,22 @@ spectre subagent run "explain this codebase"
 
 ```bash
 spectre subagent parallel \
-  'agent1:task for agent one' \
-  'agent2:task for agent two' \
-  'agent3:task for agent three'
+  -j agent1 "task for agent one" \
+  -j agent2 "task for agent two" \
+  -j agent3 "task for agent three"
 ```
+
+**Or with long form:**
+```bash
+spectre subagent parallel \
+  --job coder "implement the feature" \
+  --job tdd-agent "write tests for auth"
+```
+
+**Key points:**
+- `-j` / `--job` takes two arguments: AGENT and TASK
+- Tasks can contain any characters (colons, slashes, file paths, etc.)
+- Each `-j` flag adds another agent to run in parallel
 
 ### Scenario: Parallel Research Phase
 
@@ -138,9 +150,9 @@ When a prompt requests multiple research agents like:
 **Translate to:**
 ```bash
 spectre subagent parallel \
-  'codebase-locator:Find all files related to [topic], return file:line references' \
-  'codebase-analyzer:Analyze how [topic] works, trace data flow, document behavior' \
-  'web-search-researcher:Search for [topic] best practices, return links'
+  -j codebase-locator "Find all files related to [topic], return file:line references" \
+  -j codebase-analyzer "Analyze how [topic] works, trace data flow, document behavior" \
+  -j web-search-researcher "Search for [topic] best practices, return links"
 ```
 
 ### Scenario: Multi-Agent Code Review
@@ -152,9 +164,19 @@ When asked to analyze code from multiple perspectives:
 **Translate to:**
 ```bash
 spectre subagent parallel \
-  'code-reviewer:Review PR for bugs, logic errors, code quality' \
-  'security-analyzer:Check for security vulnerabilities' \
-  'performance-analyzer:Identify performance bottlenecks'
+  -j code-reviewer "Review PR for bugs, logic errors, code quality" \
+  -j security-analyzer "Check for security vulnerabilities" \
+  -j performance-analyzer "Identify performance bottlenecks"
+```
+
+### Scenario: Tasks with Special Characters
+
+Tasks can safely include colons, slashes, file paths, and command references:
+
+```bash
+spectre subagent parallel \
+  -j coder "Run /spectre:tdd on src/auth/login.py" \
+  -j reviewer "Check file:line references in docs/api.md"
 ```
 
 ### Decision Flowchart
