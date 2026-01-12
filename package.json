@@ -1,0 +1,12 @@
+{
+  "name": "spectre",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tokens": "node scripts/count-tokens.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4"
+  }
+}

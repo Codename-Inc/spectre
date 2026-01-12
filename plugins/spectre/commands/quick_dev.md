@@ -19,12 +19,22 @@ $ARGUMENTS
 ## Step (1/7) - Immediate Reply & Gather Context
 
 - **Action** — ImmediateReply: Respond immediately before running any commands or tools.
-  - Send structured template to gather comprehensive task information without preamble
-  - **If** ARGUMENTS section provided → acknowledge under "Initial Context" heading, then request any missing details
-  - **Else** → send request without assumptions from branch/path
-  - Template: "I'm excited to help! Let's gather context. Please share: **Task Description** (what/why/type), **Supporting Materials** (docs/designs/tickets/mockups), **Additional Context** (requirements/scope/constraints/dependencies). Don't organize perfectly - just dump everything."
+  - **If** ARGUMENTS section has task context → acknowledge briefly, then **proceed directly to Step 3** (Scope Confirmation)
+  - **Else If** ARGUMENTS empty → request task description: "What are you trying to build or fix? Share any docs, tickets, or context."
   - **CRITICAL**: Do NOT run any tool calls in this step
-- **Wait** — User provides complete task description and materials
+  - **CRITICAL**: Do NOT ask technical clarifying questions — those are answered by research in Step 4
+
+- **What to NEVER ask in Step 1:**
+  - ❌ "Where is X in the codebase?" (research answers this)
+  - ❌ "Should we use approach A or B?" (scope confirmation, not here)
+  - ❌ "How does Y work?" (research answers this)
+  - ❌ Any question the agent could answer by reading code
+
+- **What to ask if needed:**
+  - ✅ "What are you trying to accomplish?" (only if truly unclear)
+  - ✅ "Is there a doc or ticket I should read?" (only if referenced but not provided)
+
+- **Wait** — Only if ARGUMENTS was empty and user needs to provide task description
 
 ## Step (2/7) - Read Referenced Files
 
