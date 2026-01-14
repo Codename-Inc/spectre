@@ -1,88 +1,132 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-SPECTRE is a Claude Code plugin that implements an agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents that execute specialized prompts.
+SPECTRE is a Claude Code plugin system with a Python CLI that implements an agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
+
+This repo contains **two plugins** (spectre, learn) and a **CLI** for programmatic access.
 
 ## Repository Structure
 
 ```
-commands/           # 23 markdown command prompts (scope.md, plan.md, execute.md, etc.)
-agents/             # 7 specialized subagent definitions (@coder, @analyzer, @locator, etc.)
-hooks/              # Python hooks for session memory
-  hooks.json        # Hook registration
-  scripts/          # handoff-resume.py, capture-todos.py
-references/         # Shared reference docs injected into prompts
-.claude-plugin/     # Plugin registration (plugin.json, marketplace.json)
-docs/               # Generated artifacts (scope docs, plans, handoff state)
+cli/                      # Python CLI (Click-based)
+├── main.py               # Entry point
+├── build/                # Build loop commands
+├── subagent/             # Subagent orchestration
+├── command/              # Slash command retrieval
+└── setup.py              # Plugin/agent installation
+
+plugins/
+├── spectre/              # Core workflow plugin
+│   ├── plugin.json
+│   ├── commands/         # Slash commands (scope.md, plan.md, etc.)
+│   ├── agents/           # Subagent definitions
+│   ├── skills/           # Plugin skills
+│   └── hooks/            # Session memory hooks
+└── learn/                # Knowledge capture plugin
+    ├── plugin.json
+    └── skills/learn/
+
+skills/
+└── spectre_agent_tools/  # Codex-only skill
+
+.claude-plugin/
+└── marketplace.json      # Marketplace registration
 ```
 
 ## Commands
 
-Run tests:
 ```bash
-pytest hooks/scripts/test_handoff_resume.py
-```
+# Run hook tests
+pytest plugins/spectre/hooks/scripts/ -v
 
-No build or lint commands - this is a prompt/configuration-only plugin.
+# CLI commands
+spectre --help
+spectre build                    # Automated task loop
+spectre subagent list            # List available agents
+spectre command list             # List slash commands
+```
 
 ## Architecture
 
+### Two Plugins
+- **spectre**: Core workflow (scope → plan → execute → clean → test → rebase → evaluate)
+- **learn**: Capture knowledge from conversations into reusable skills
+
 ### Meta-Prompt Orchestration
 Commands are markdown prompts that:
-1. Read user arguments
-2. Spawn parallel subagents (`@spectre:coder`, `@spectre:analyzer`, etc.)
-3. Subagents execute their specialized prompts
+1. Parse user arguments
+2. Spawn parallel subagents (`@spectre:coder`, `@spectre:codebase-analyzer`, etc.)
+3. Subagents execute specialized prompts
 4. Main prompt synthesizes findings and produces artifacts
 
-### Wave-Based Execution
-`execute.md` groups tasks into dependency-aware waves that run in parallel, with reflection and adaptation between waves.
+### Subagents
+| Agent | Purpose |
+|-------|---------|
+| `@spectre:coder` | Implementation with MVP focus |
+| `@spectre:codebase-analyzer` | Understand how code works |
+| `@spectre:codebase-locator` | Find where code lives |
+| `@spectre:codebase-pattern-finder` | Find reusable patterns |
+| `@spectre:web-search-researcher` | Web research |
+| `@spectre:test-lead` | Test automation |
+| `@spectre:independent-review-engineer` | Independent review |
 
-### Session Memory (Hooks)
-Two Python hooks maintain context across sessions:
-- **SessionStart** (`handoff-resume.py`): Restores previous session context from `docs/` handoff files
-- **UserPromptSubmit** (`capture-todos.py`): Captures todos when `/spectre:handoff` is triggered
+### Session Memory
+Hooks in `plugins/spectre/hooks/` maintain context across sessions:
+- **SessionStart**: Restores previous session context
+- **UserPromptSubmit**: Captures todos on `/spectre:handoff`
 
-Both use `os.fork()` for non-blocking background processing.
+Session state is stored in `.spectre/` (gitignored).
 
-### Generated Artifacts
-Commands create files in `docs/active_tasks/{branch}/`:
-- `{task}_scope.md` - Scope boundaries
-- `{task}_plan.md` - Implementation plan
-- `tasks.md` - Task breakdown
-- `{timestamp}_handoff.json` - Session state
-- `{timestamp}_todos.json` - Captured todos
+### CLI Build Loop
+The `spectre build` command runs Claude Code in an automated task loop, completing one task per iteration from a task file.
+
+## Working in This Repo
+
+### Adding Commands
+Create markdown in `plugins/spectre/commands/` following existing patterns:
+- ARGUMENTS section for input parsing
+- EXECUTION FLOW for step-by-step logic
+- "Next Steps" output for workflow continuity
+
+### Adding Agents
+Create markdown in `plugins/spectre/agents/` with:
+- Role and mission sections
+- Methodology for how the agent works
+- Tool preferences
+
+### Adding Skills
+Create directory in `plugins/spectre/skills/{skill-name}/` with `SKILL.md`.
+
+### Modifying Hooks
+Update Python scripts in `plugins/spectre/hooks/scripts/`. Hooks must:
+- Use `os.fork()` for non-blocking execution
+- Use only Python 3 standard library
+- Return valid JSON to stdout
+
+### CLI Development
+Python CLI uses Click. Entry point is `cli/main.py`.
 
 ## Key Patterns
+
+### Command Flow
+Every command ends with contextual "Next Steps" suggestions grounded in actual codebase state.
 
 ### Hook Non-Blocking Pattern
 ```python
 pid = os.fork()
 if pid == 0:
-    do_work()  # Child does I/O
+    do_work()
     os._exit(0)
 else:
-    sys.exit(0)  # Parent returns immediately
+    sys.exit(0)
 ```
-
-### Command Flow
-Every command ends with contextual "Next Steps" suggestions. Follow them—they're grounded in actual codebase state.
-
-### Subagent Invocation
-Commands spawn agents like `@spectre:codebase-analyzer` for parallel research. Agents return file:line references, not generic advice.
-
-## Working in This Repo
-
-- **Adding commands**: Create markdown in `commands/` following existing patterns (ARGUMENTS parsing, EXECUTION FLOW, Next Steps output)
-- **Adding agents**: Create markdown in `agents/` with role, mission, and methodology sections
-- **Modifying hooks**: Update Python scripts in `hooks/scripts/`, run tests, ensure non-blocking behavior
-- **Testing hooks**: `pytest hooks/scripts/test_handoff_resume.py -v`
 
 ## Important Notes
 
-- Commands always use `/spectre:` prefix (e.g., `/spectre:scope`)
-- Session state lives in `docs/` and `.claude/spectre/` (both gitignored)
-- Hooks use Python 3 standard library only (no external dependencies)
-- `os.fork()` is Unix-only—Windows compatibility not yet implemented
+- Commands use `/spectre:` prefix (e.g., `/spectre:scope`)
+- Session state lives in `.spectre/` (gitignored)
+- `os.fork()` is Unix-only
+- CLI installed via `pipx install -e .` or `pipx install git+https://github.com/Codename-Inc/spectre.git`
