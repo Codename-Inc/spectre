@@ -46,22 +46,28 @@ $ARGUMENTS
 
 **Goal**: Establish clear in-scope/out-of-scope boundaries BEFORE research to prevent wasted effort.
 
+**CRITICAL — Functional Scope Only**:
+- Scope confirmation is about **WHAT** we're building, not **HOW**
+- Focus on: features, user value, behaviors, boundaries
+- Do NOT include: technical approach, implementation patterns, architecture decisions
+- Technical design is determined by research in Step 4, not confirmed here
+
 - **Action** — SummarizeUnderstanding: Based on user input and referenced files, present scope summary for confirmation:
   > **📋 Scope Confirmation**
   >
-  > **Objective**: [1-2 sentence summary of what we're building/fixing]
+  > **Objective**: [1-2 sentence summary of what we're building/fixing — functional outcome]
   >
-  > **✅ In Scope**:
-  > - [Specific item 1]
-  > - [Specific item 2]
-  > - [Specific item 3]
+  > **✅ In Scope** (functional behaviors):
+  > - [What the feature does 1 - e.g., "Wrapper injects --settings flag when user runs claude"]
+  > - [What the feature does 2 - e.g., "Terminal spawns with GROVE_PANE_ID set"]
+  > - [What the feature does 3]
   >
-  > **❌ Out of Scope**:
-  > - [Explicit exclusion 1 - e.g., "No UI changes"]
-  > - [Explicit exclusion 2 - e.g., "No database migrations"]
-  > - [Explicit exclusion 3 - e.g., "No performance optimization"]
+  > **❌ Out of Scope** (functional boundaries):
+  > - [Feature we're NOT building - e.g., "No codex support this iteration"]
+  > - [Behavior we're NOT changing - e.g., "No changes to existing terminal behavior"]
+  > - [Capability we're deferring - e.g., "No UI configuration for hook settings"]
   >
-  > **Constraints**: [Any mentioned constraints - scope, tech stack, etc.]
+  > **Constraints**: [User-provided constraints only — NOT technical assumptions]
   >
   > Does this match your expectations? Reply with corrections or 'Confirmed' to proceed.
 
