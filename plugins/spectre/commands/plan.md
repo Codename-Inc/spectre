@@ -115,21 +115,21 @@ $ARGUMENTS
 
 ### Step (4/4) - Route to Workflow
 
-#### If DIRECT_TASKS:
+**CRITICAL**: You MUST use the Skill tool to invoke the appropriate slash command. Do NOT just describe or suggest — actually execute it.
 
-- **Route** — `/spectre:create_tasks {OUT_DIR}/task_context.md`
-- **Result** — Task breakdown with execution strategies
-- **Done** — Present completion summary with next steps
+- **If** decision is `DIRECT_TASKS`:
+  - **Action** — ExecuteSkill: Use the Skill tool to invoke `/spectre:create_tasks {OUT_DIR}/task_context.md`
+  - **Wait** — Skill completes and returns task breakdown
+  - **Action** — PresentCompletion: Show completion summary with next steps
 
-#### If PLAN_FIRST:
-
-- **Route** — `/spectre:create_plan {OUT_DIR}/task_context.md`
-- **Result** — Technical design saved (scoped name if `plan.md` exists)
-- **Action** — PromptUser: "Review the plan and reply 'Approved' or provide feedback"
-- **Wait** — User approval
-- **Route** — `/spectre:create_tasks` (uses approved plan)
-- **Result** — Task breakdown saved (scoped name if `tasks.md` exists)
-- **Done** — Present completion summary with next steps
+- **ElseIf** decision is `PLAN_FIRST`:
+  - **Action** — ExecuteSkill: Use the Skill tool to invoke `/spectre:create_plan {OUT_DIR}/task_context.md`
+  - **Wait** — Skill completes and returns technical design
+  - **Action** — PromptUser: "Review the plan and reply 'Approved' or provide feedback"
+  - **Wait** — User approval
+  - **Action** — ExecuteSkill: Use the Skill tool to invoke `/spectre:create_tasks` (uses approved plan)
+  - **Wait** — Skill completes and returns task breakdown
+  - **Action** — PresentCompletion: Show completion summary with next steps
 
 ## Next Steps
 
@@ -155,7 +155,8 @@ $ARGUMENTS
 - [ ] Route announced with reasoning
 
 **Step 4 - Route to Workflow**:
-- [ ] Correct slash command executed
-- [ ] For PLAN_FIRST: plan created, user approved, then tasks created
+- [ ] Skill tool used to invoke slash command (not just described or suggested)
+- [ ] For DIRECT_TASKS: `/spectre:create_tasks` executed via Skill tool
+- [ ] For PLAN_FIRST: `/spectre:create_plan` executed, user approved, then `/spectre:create_tasks` executed
 - [ ] Tasks doc created without overwriting existing files
 - [ ] Next steps guide read and footer rendered
