@@ -6,14 +6,14 @@
     "email": "joe@bycodename.com"
   },
   "metadata": {
-    "description": "Spectre CLI and plugins - agentic workflow tools for Claude Code.",
+    "description": "SPECTRE agentic workflow plugins - Scope, Plan, Execute, Clean, Test, Release, Evaluate.",
     "homepage": "https://github.com/Codename-Inc/spectre",
-    "pluginRoot": "./"
+    "pluginRoot": "./plugins"
   },
   "plugins": [
     {
       "name": "spectre",
-      "source": "./plugins/spectre",
+      "source": "./spectre",
       "description": "SPECTRE agentic workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate. Meta-prompting system where prompts invoke subagents that execute specialized prompts.",
       "version": "1.0.0",
       "author": {
@@ -24,7 +24,7 @@
     },
     {
       "name": "learn",
-      "source": "./plugins/learn",
+      "source": "./learn",
       "description": "Capture project knowledge into skills. Save patterns, decisions, gotchas, and procedures from conversations.",
       "version": "1.0.0",
       "author": {
