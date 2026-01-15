@@ -1,9 +1,9 @@
 {
-  "name": "codename",
-  "version": "1.2.0",
+  "name": "subspace",
+  "version": "1.2.1",
   "owner": {
     "name": "Joe Fernandez",
-    "email": "joe@bycodename.com"
+    "email": "joe@subspace.build"
   },
   "metadata": {
     "description": "SPECTRE agentic workflow plugins - Scope, Plan, Execute, Clean, Test, Release, Evaluate.",
@@ -14,11 +14,11 @@
     {
       "name": "spectre",
       "source": "./plugins/spectre",
-      "description": "SPECTRE agentic workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate. Meta-prompting system where prompts invoke subagents that execute specialized prompts.",
-      "version": "1.2.0",
+      "description": "SPECTRE Agentic Feature Development Workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate. Meta-prompting system where prompts invoke subagents that execute specialized prompts.",
+      "version": "1.2.1",
       "author": {
         "name": "Joe Fernandez",
-        "email": "joe@bycodename.com"
+        "email": "joe@subspace.build"
       },
       "keywords": [
         "workflow",
@@ -30,11 +30,11 @@
     {
       "name": "session-memory",
       "source": "./plugins/session-memory",
-      "description": "Session memory for Claude Code - handoff state snapshots, auto-resume on startup, and session clearing.",
-      "version": "1.2.0",
+      "description": "Easy to use Session Memory for Claude Code - /handoff to generate status update, status injected automatically on next session, clear memory with /forget if needed.",
+      "version": "1.2.1",
       "author": {
         "name": "Joe Fernandez",
-        "email": "joe@bycodename.com"
+        "email": "joe@subspace.build"
       },
       "keywords": [
         "session",
@@ -47,11 +47,11 @@
     {
       "name": "learn",
       "source": "./plugins/learn",
-      "description": "Capture project knowledge into skills. Save patterns, decisions, gotchas, and procedures from conversations.",
-      "version": "1.2.0",
+      "description": "Build project level knowledge over time that your Agent automatically loads when relevant. Save patterns, decisions, gotchas, product strategy, and procedures from conversations, and Agent will automatically load them when relevant.",
+      "version": "1.2.1",
       "author": {
         "name": "Joe Fernandez",
-        "email": "joe@bycodename.com"
+        "email": "joe@subspace.build"
       },
       "keywords": [
         "learning",

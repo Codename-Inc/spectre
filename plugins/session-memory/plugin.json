@@ -1,6 +1,6 @@
 {
   "name": "session-memory",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Session memory for Claude Code - handoff state snapshots, auto-resume on startup, and session clearing.",
   "author": {
     "name": "Joe Fernandez",
