@@ -124,6 +124,30 @@ else:
     sys.exit(0)
 ```
 
+## Plugin Release Process
+
+Plugins are cached by version. To release updates users can actually receive:
+
+1. **Bump version** in `plugins/spectre/plugin.json` (and `plugins/learn/plugin.json` if changed)
+2. **Commit and push** to GitHub
+3. **Users update** via `/plugin update spectre@codename`
+
+```bash
+# Example release flow
+# 1. Edit plugin.json: "version": "1.0.0" → "1.1.0"
+# 2. Commit and push
+git add -A && git commit -m "release: bump plugin version to 1.1.0" && git push
+
+# 3. Users run:
+/plugin marketplace update codename
+/plugin update spectre@codename
+```
+
+**For local development**: Use `--plugin-dir` to bypass caching:
+```bash
+claude --plugin-dir /path/to/spectre/plugins/spectre
+```
+
 ## Important Notes
 
 - Commands use `/spectre:` prefix (e.g., `/spectre:scope`)
