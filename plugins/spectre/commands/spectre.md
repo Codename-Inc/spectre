@@ -53,6 +53,13 @@ $ARGUMENTS
 
 - **Wait** — User says "Go"
 
+### 1d - UX Specification (Conditional)
+
+- **Action** — AssessUXComplexity: If feature involves significant UI (new screens, complex interactions, user flows):
+  - Ask: "This feature has UI components. Want to define detailed UX spec before planning? (Recommended for UI-heavy features)"
+  - **If yes** → Execute `/spectre:ux_spec`, wait for approval, proceed
+  - **If no** → Skip to Plan
+
 ## Step 2 - P: Plan
 
 - **Action** — RunSpectrePlan: Execute `/spectre:spectre_plan` with locked scope

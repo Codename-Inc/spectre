@@ -119,6 +119,10 @@ Discovery and requirements definition.
   - Purpose: Interactive feature scoping through structured questions and contextual suggestions, producing a comprehensive scope document.
   - When to use: When exploring ideas, defining boundaries, or clarifying concepts before formal requirements.
 
+- **/spectre:ux_spec**
+  - Purpose: Transform requirements into detailed UX specification through two-stage flow alignment then behavioral spec generation.
+  - When to use: **After scope, when the feature has significant UI/UX components** that need detailed screen layouts, user flows, component states, and interaction definitions before implementation.
+
 ---
 
 ## Phase: Plan
@@ -243,6 +247,9 @@ Documentation and architectural assessment.
 
 **Starting fresh?**
 → `/spectre:kickoff` or `/spectre:scope`
+
+**Have scope, UI-heavy feature?**
+→ `/spectre:ux_spec` → then `/spectre:plan`
 
 **Have scope, need plan?**
 → `/spectre:plan`
