@@ -54,20 +54,27 @@ $ARGUMENTS
 
 ## Step 3 - Create Implementation Plan
 
-- **Action** — DesignTechnicalApproach: Create plan with sections as needed:
+- **Action** — DetermineDepth: Read `--depth` from ARGUMENTS
+  - Default: `standard` if not specified
+  - Options: `standard`, `comprehensive`
 
-  | Section | Content |
-  |---------|---------|
-  | Overview | What we're implementing and why |
-  | Current State | What exists, constraints, key discoveries with file:line refs |
-  | Desired End State | Target state and verification approach |
-  | Out of Scope | Explicit exclusions to prevent scope creep |
-  | Technical Approach | Architecture, tech choices, integration points |
-  | System Architecture | Component diagram, data flow, boundaries |
-  | Implementation Phases | Logical progression, dependencies, risks |
-  | Component/Data Architecture | Modules, data models, schema, access patterns |
-  | API Design | Endpoints, schemas, error handling, auth flow |
-  | Testing Strategy | Unit/integration/e2e approach, performance testing |
+- **Action** — DesignTechnicalApproach: Create plan with sections **based on depth**:
+
+  | Section | STANDARD | COMPREHENSIVE | Content |
+  |---------|----------|---------------|---------|
+  | Overview | ✓ | ✓ | What we're implementing and why |
+  | Current State | | ✓ | What exists, constraints, key discoveries with file:line refs |
+  | Desired End State | ✓ | ✓ | Target state and verification approach |
+  | Out of Scope | ✓ | ✓ | Explicit exclusions to prevent scope creep |
+  | Technical Approach | ✓ | ✓ | Architecture, tech choices, integration points |
+  | System Architecture | | ✓ | Component diagram, data flow, boundaries |
+  | Implementation Phases | | ✓ | Logical progression, dependencies, risks |
+  | Component/Data Architecture | | ✓ | Modules, data models, schema, access patterns |
+  | API Design | | ✓ (if applicable) | Endpoints, schemas, error handling, auth flow |
+  | Testing Strategy | | ✓ | Unit/integration/e2e approach, performance testing |
+
+  **STANDARD** depth: Focused plan for contained changes. 4-5 sections, concise.
+  **COMPREHENSIVE** depth: Full technical design for complex/risky changes. All applicable sections.
 
 - **Action** — DocumentPlan: Save to `{OUT_DIR}/specs/plan.md` (use scoped name if exists)
 
