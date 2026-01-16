@@ -1,5 +1,5 @@
 # /learn - Capture Project Knowledge
 
-Load the `learn` skill from `.claude/skills/learn/SKILL.md` and follow its instructions.
+Load the `/skill-learn:learn skill using your Skill tool.`
 
 **Arguments provided**: $ARGUMENTS
