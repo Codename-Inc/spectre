@@ -1,6 +1,6 @@
 {
   "name": "subspace",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
@@ -15,7 +15,7 @@
       "name": "spectre",
       "source": "./plugins/spectre",
       "description": "SPECTRE Agentic Feature Development Workflow - Scope, Plan, Execute, Clean, Test, Release, Evaluate. Meta-prompting system where prompts invoke subagents that execute specialized prompts.",
-      "version": "1.3.1",
+      "version": "1.3.2",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"
