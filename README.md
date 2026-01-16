@@ -45,7 +45,7 @@ spectre setup
 
 The `spectre setup` command:
 - Symlinks plugins to `~/.claude/plugins/` (spectre, learn)
-- Symlinks agents to `~/.claude/agents/` (spectre:coder, spectre:analyzer, etc.)
+- Symlinks agents to `~/.claude/agents/` (spectre:dev, spectre:analyzer, etc.)
 - Installs the Spectre skill to `~/.codex/skills/` (Codex only—Claude Code has native support)
 
 ### Team Setup (Recommended)
@@ -186,17 +186,17 @@ Run specialized agents in isolated Claude sessions:
 spectre subagent run "explain this codebase"
 
 # Run with specific agent
-spectre subagent run spectre:coder "implement the login form"
+spectre subagent run spectre:dev "implement the login form"
 
 # List available agents
 spectre subagent list
 spectre subagent list --output json
 
 # Show agent details
-spectre subagent show spectre:coder
+spectre subagent show spectre:dev
 
 # Run multiple agents in parallel
-spectre subagent parallel -j spectre:coder "implement feature" -j spectre:test-lead "write tests"
+spectre subagent parallel -j spectre:dev "implement feature" -j spectre:tester "write tests"
 ```
 
 ### Slash Commands
@@ -294,13 +294,13 @@ SPECTRE includes specialized agents you can invoke directly:
 
 | Agent | Purpose |
 |-------|---------|
-| `@spectre:coder` | Implementation with MVP focus |
-| `@spectre:codebase-analyzer` | Understand how code works |
-| `@spectre:codebase-locator` | Find where code lives |
-| `@spectre:codebase-pattern-finder` | Find reusable patterns |
-| `@spectre:web-search-researcher` | Web research for best practices |
-| `@spectre:test-lead` | Test automation and quality engineering |
-| `@spectre:independent-review-engineer` | Independent code/plan review |
+| `@spectre:dev` | Implementation with MVP focus |
+| `@spectre:analyst` | Understand how code works |
+| `@spectre:finder` | Find where code lives |
+| `@spectre:patterns` | Find reusable patterns |
+| `@spectre:researcher` | Web research for best practices |
+| `@spectre:tester` | Test automation and quality engineering |
+| `@spectre:reviewer` | Independent code/plan review |
 
 ---
 

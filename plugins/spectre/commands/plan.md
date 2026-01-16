@@ -30,7 +30,7 @@ $ARGUMENTS
   - **Else** → proceed
 
 - **Action** — AutomatedResearch: Spawn parallel agents
-  - `@codebase-locator`, `@codebase-analyzer`, `@codebase-pattern-finder`
+  - `@finder`, `@analyst`, `@patterns`
   - **Wait** for all; read identified files
 
 - **Action** — SaveResearch: Update `{OUT_DIR}/task_context.md` with Architecture Patterns, Dependencies, Implementation Approaches, Impact Summary
@@ -50,9 +50,9 @@ Use research findings from Step 1 to determine appropriate planning depth.
 
   | Signal | Source | Assessment |
   |--------|--------|------------|
-  | Files impacted | @codebase-locator | 1-3 files = Low, 4-8 = Med, 9+ = High |
-  | Pattern match | @codebase-pattern-finder | Clear existing pattern = Low, Adapt pattern = Med, New pattern = High |
-  | Components crossed | @codebase-analyzer | 1 component = Low, 2-3 = Med, 4+ = High |
+  | Files impacted | @finder | 1-3 files = Low, 4-8 = Med, 9+ = High |
+  | Pattern match | @patterns | Clear existing pattern = Low, Adapt pattern = Med, New pattern = High |
+  | Components crossed | @analyst | 1 component = Low, 2-3 = Med, 4+ = High |
   | Data model changes | Research findings | None = Low, Modify existing = Med, New models/schema = High |
   | Integration points | Research findings | Internal only = Low, 1-2 external = Med, 3+ external = High |
 

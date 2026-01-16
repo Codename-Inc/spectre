@@ -1,6 +1,6 @@
 ---
-name: codebase-analyzer
-description: Analyzes codebase implementation details. Call the codebase-analyzer agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
+name: analyst
+description: Analyzes codebase implementation details. Call the analyst agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
 tools: Read, Grep, Glob, LS
 color: white
 model: claude-haiku-4-5-20251001

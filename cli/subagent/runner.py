@@ -33,7 +33,7 @@ AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_:-]+$")
 def validate_agent_name(name: str) -> None:
     """Validate agent name to prevent path traversal attacks.
 
-    Supports namespaced agents like 'spectre:coder'.
+    Supports namespaced agents like 'spectre:dev'.
     Raises ValueError if name contains unsafe characters.
     """
     if not name:
@@ -462,14 +462,14 @@ def _run_codex_sync(
 def parse_agent_task_pair(pair: str) -> tuple[str, str]:
     """Parse 'agent:task' or 'agent:"task with spaces"' format.
 
-    Supports namespaced agents like 'spectre:coder:"task here"'.
+    Supports namespaced agents like 'spectre:dev:"task here"'.
     Validates agent names to prevent path traversal attacks.
     Raises ValueError if format is invalid or agent name is unsafe.
     """
     agent: str | None = None
     task: str | None = None
 
-    # Handle quoted task: agent:"task here" or spectre:coder:"task here"
+    # Handle quoted task: agent:"task here" or spectre:dev:"task here"
     # Use greedy match (.+) to capture namespaced agents up to last :"
     match = re.match(r'^(.+):"(.+)"$', pair)
     if match:

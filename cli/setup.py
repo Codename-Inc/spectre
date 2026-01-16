@@ -186,7 +186,7 @@ def link_agents(force: bool = False) -> list[SetupResult]:
         # Link each agent file
         for agent_file in agents_source.glob("*.md"):
             # Use namespaced name: plugin:agent
-            # e.g., spectre/coder.md -> spectre:coder.md in ~/.claude/agents/
+            # e.g., spectre/dev.md -> spectre:dev.md in ~/.claude/agents/
             # But also create a direct link for convenience
             agent_name = agent_file.stem
             target_link = agents_target / f"{plugin_name}:{agent_name}.md"

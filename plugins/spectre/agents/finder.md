@@ -1,6 +1,6 @@
 ---
-name: codebase-locator
-description: Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" — Use it if you find yourself desiring to use one of these tools more than once.
+name: finder
+description: Locates files, directories, and components relevant to a feature or task. Call `finder` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" — Use it if you find yourself desiring to use one of these tools more than once.
 tools: Grep, Glob, LS
 mode: claude-haiku-4-5-20251001
 ---

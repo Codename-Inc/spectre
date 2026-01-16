@@ -98,7 +98,7 @@ $ARGUMENTS
 
 ---
 
-- **Action** — DispatchAgent: Deploy `@spectre:independent-review-engineer` with prompt above.
+- **Action** — DispatchAgent: Deploy `@spectre:reviewer` with prompt above.
 
 ## Step 3: Process & Present
 

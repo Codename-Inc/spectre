@@ -55,7 +55,7 @@ Check artifacts for: codebase patterns, integration points, technical approach, 
 
 ### 2d. Conduct Research (conditional)
 
-Spawn parallel: @codebase-locator, @codebase-analyzer, @codebase-pattern-finder Review: CLAUDE.md, README.md, architecture.md docs Save to `${TASK_DIR}/task_context.md` under "## Technical Research"
+Spawn parallel: @finder, @analyst, @patterns Review: CLAUDE.md, README.md, architecture.md docs Save to `${TASK_DIR}/task_context.md` under "## Technical Research"
 
 ---
 

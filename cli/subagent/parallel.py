@@ -52,9 +52,9 @@ def cmd_parallel(
 
     Example:
 
-        spectre subagent parallel -j coder "implement feature" -j tdd-agent "write tests"
+        spectre subagent parallel -j dev "implement feature" -j tdd-agent "write tests"
 
-        spectre subagent parallel --job coder "Run /spectre:tdd" --job reviewer "Check code"
+        spectre subagent parallel --job dev "Run /spectre:tdd" --job reviewer "Check code"
     """
     if debug:
         from cli.shared import discovery

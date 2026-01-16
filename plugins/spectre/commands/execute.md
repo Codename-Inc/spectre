@@ -23,7 +23,7 @@ $ARGUMENTS
 
 - **Action** — ExecuteAdaptiveLoop: Until all tasks complete:
 
-  1. **Dispatch Wave**: Launch parallel @coder subagents (1 per parent task)
+  1. **Dispatch Wave**: Launch parallel @dev subagents (1 per parent task)
      - **CRITICAL**: Each subagent MUST read `SCOPE_DOCS` before executing
      - Each receives: task assignment, dependency completion reports, SCOPE_DOCS paths
      - Instruct: "Read scope docs first to understand E2E UX and integration points. Execute via `/spectre:tdd`. Return completion report with **Implementation Insights** + **E2E Completeness Check**."
@@ -53,22 +53,22 @@ $ARGUMENTS
 
 ## Step 2 - Code Review Loop
 
-- **Action** — ExecuteCodeReviewLoop: Until no critical/high feedback:
+- **Action** — ExecutedeveviewLoop: Until no critical/high feedback:
 
-  1. **Spawn Review**: @coder subagent runs `/spectre:code_review`
+  1. **Spawn Review**: @dev subagent runs `/spectre:code_review`
   2. **Analyze**: Identify critical/high items
      - **If** none → exit loop
-  3. **Address**: Parallel @coder subagents fix feedback
+  3. **Address**: Parallel @dev subagents fix feedback
   4. **Re-verify**: Return to step 1
 
 ## Step 3 - Validate Requirements
 
-- **Action** — SpawnValidation: @independent-review-engineer runs `/spectre:validate` with task list
-- **Action** — AddressGaps: If high priority gaps → dispatch @coder subagents to fix
+- **Action** — SpawnValidation: @reviewer runs `/spectre:validate` with task list
+- **Action** — AddressGaps: If high priority gaps → dispatch @dev subagents to fix
 
 ## Step 4 - Prepare for QA
 
-- **Action** — GenerateTestGuide: @coder runs `/spectre:create_test_guide`
+- **Action** — GenerateTestGuide: @dev runs `/spectre:create_test_guide`
   - Save to `{OUT_DIR}/test_guide.md`
 
 ## Step 5 - Report

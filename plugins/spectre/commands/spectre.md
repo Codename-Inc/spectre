@@ -57,7 +57,7 @@ $ARGUMENTS
 
 - **Action** — RunSpectrePlan: Execute `/spectre:spectre_plan` with locked scope
   - Passes: objective, in-scope, out-of-scope, constraints, parent_branch
-  - Handles: deep research (parallel agents), plan creation, @independent-review-engineer review
+  - Handles: deep research (parallel agents), plan creation, @reviewer review
   - **Wait** for `spectre_plan.md` output
 
 ## Step 3 - E: Execute
@@ -74,7 +74,7 @@ $ARGUMENTS
   - **If** issues → fix them
 
 - **Action** — RunTest: Execute `/spectre:test`
-  - Handles: risk assessment, test plan, test writing via @test-lead subagents
+  - Handles: risk assessment, test plan, test writing via @tester subagents
   - **If** failures → fix them
 
 ## Step 5 - R: Release

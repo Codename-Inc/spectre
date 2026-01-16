@@ -31,10 +31,10 @@ $ARGUMENTS
 
 | Agent | Task | Required Output |
 |-------|------|-----------------|
-| @codebase-locator | Find relevant files, entry points, handlers, models | File paths by domain |
-| @codebase-analyzer | Trace data flow, dependencies, behavior, edge cases | file:line refs for ALL findings |
-| @codebase-pattern-finder | Find similar implementations, patterns to follow/avoid | Code examples with file:line |
-| @web-search-researcher | Best practices, similar solutions, pitfalls | Findings WITH LINKS |
+| @finder | Find relevant files, entry points, handlers, models | File paths by domain |
+| @analyst | Trace data flow, dependencies, behavior, edge cases | file:line refs for ALL findings |
+| @patterns | Find similar implementations, patterns to follow/avoid | Code examples with file:line |
+| @researcher | Best practices, similar solutions, pitfalls | Findings WITH LINKS |
 
 **Strategy**: locator → analyzer on findings → parallel for breadth. Spawn follow-ups if shallow. Demand file:line evidence.
 

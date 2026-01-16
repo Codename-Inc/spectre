@@ -5,7 +5,7 @@ description: 👻 | Risk-aware test coverage & commit - primary agent
 # test: Lightweight test coverage with risk-aware focus
 
 ## Description
-- **What** — Analyze current diff, assess risk tiers inline, dispatch @test-lead for coverage, verify, commit
+- **What** — Analyze current diff, assess risk tiers inline, dispatch @tester for coverage, verify, commit
 - **Outcome** — Changed behaviors tested at appropriate depth, lint clean, all tests pass, conventional commits
 
 ## ARGUMENTS Input
@@ -18,8 +18,8 @@ $ARGUMENTS
 
 ## Instructions
 
-- Primary agent plans and verifies; @test-lead subagents write test code
-- Maximize parallelism: dispatch multiple @test-lead agents simultaneously, not sequentially
+- Primary agent plans and verifies; @tester subagents write test code
+- Maximize parallelism: dispatch multiple @tester agents simultaneously, not sequentially
 - Primary agent coordinates; subagents execute test writing in parallel batches
 - No OUT_DIR artifacts — this is a lightweight flow
 - Risk assessment is inline reasoning, not a classification phase
@@ -64,10 +64,10 @@ $ARGUMENTS
 
 ### Step (3/4) - Write Tests & Verify
 
-- **Action** — DispatchTestWriter: Spawn MULTIPLE @test-lead subagents IN PARALLEL
+- **Action** — DispatchTestWriter: Spawn MULTIPLE @tester subagents IN PARALLEL
   - **Parallelization Strategy**:
     - Partition test plan items into independent batches (by file or logical grouping)
-    - Dispatch one @test-lead per batch — aim for 3-5 parallel agents for medium scope, up to 8 for large scope
+    - Dispatch one @tester per batch — aim for 3-5 parallel agents for medium scope, up to 8 for large scope
     - Each agent receives: its batch of test plan items, file paths, risk tier context
     - **Critical**: Use a single message with multiple Task tool calls to launch all agents simultaneously
   - **Batching Heuristics**:
@@ -82,12 +82,12 @@ $ARGUMENTS
   - **Else** → continue
 
 - **Action** — RunTests: Execute full test suite
-  - **If** tests fail → analyze failure, fix via @test-lead or direct edit
+  - **If** tests fail → analyze failure, fix via @tester or direct edit
   - **Else** → continue
 
 - **Action** — VerifyQuality: Spot-check 1-2 tests
   - Confirm: tests assert behaviors, would catch real bugs, survive refactoring
-  - **If** test quality poor → rework via @test-lead
+  - **If** test quality poor → rework via @tester
   - **Else** → continue
 
 ### Step (4/4) - Commit
@@ -118,7 +118,7 @@ See `@skill-spectre:spectre` skill for footer format and command options.
 - [ ] P3 files explicitly marked SKIP
 
 **Step 3 - Write Tests & Verify**:
-- [ ] Multiple @test-lead agents dispatched in parallel (not sequential)
+- [ ] Multiple @tester agents dispatched in parallel (not sequential)
 - [ ] Test plan partitioned into independent batches
 - [ ] All agents launched in single message (parallel tool calls)
 - [ ] P0 files have thorough behavioral coverage

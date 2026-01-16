@@ -33,7 +33,7 @@ $ARGUMENTS
 
 **Dispatch BOTH agents in a single message (parallel).**
 
-- **Action** — DispatchDocumentAgent: Spawn @independent-review-engineer
+- **Action** — DispatchDocumentAgent: Spawn @reviewer
   ```
   Document feature for future reference.
   Feature: {feature_name} | Files: {paths_or_files}
@@ -43,7 +43,7 @@ $ARGUMENTS
   Common Tasks table (task → entry point), Gotchas/Constraints, Related docs
   ```
 
-- **Action** — DispatchReviewAgent: Spawn @independent-review-engineer
+- **Action** — DispatchReviewAgent: Spawn @reviewer
   ```
   Principal architect review of delivered work.
   Feature: {feature_name} | Files: {paths_or_files}

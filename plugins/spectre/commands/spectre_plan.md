@@ -27,9 +27,9 @@ $ARGUMENTS
 - **Action** — DecomposeResearchAreas: Break scope into research areas. Identify components, patterns, architectural implications. Generate research questions.
 
 - **Action** — SpawnResearchAgents: Launch parallel agents:
-  - `@codebase-locator` — find WHERE files/components live (entry points, modules, tests)
-  - `@codebase-analyzer` — understand HOW code works (data flow, state, integration)
-  - `@codebase-pattern-finder` — find similar implementations (patterns, conventions)
+  - `@finder` — find WHERE files/components live (entry points, modules, tests)
+  - `@analyst` — understand HOW code works (data flow, state, integration)
+  - `@patterns` — find similar implementations (patterns, conventions)
   - **No web-search** unless scope explicitly mentions external deps
   - Wait for ALL agents
 
@@ -72,7 +72,7 @@ $ARGUMENTS
 
 ## Step 5: Plan Review
 
-- **Action** — SpawnPlanReview: Dispatch `@independent-review-engineer` to run `/spectre:plan_review`
+- **Action** — SpawnPlanReview: Dispatch `@reviewer` to run `/spectre:plan_review`
   - Focus: simplifications, over-engineering, missed requirements, testing approach
   - Wait for findings
 

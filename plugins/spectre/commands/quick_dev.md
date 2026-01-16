@@ -50,10 +50,10 @@ $ARGUMENTS
 ## Step 3 - Research
 
 - **Action** — SpawnAgents: Launch parallel research agents
-  - `@codebase-locator` — find WHERE files/components live
-  - `@codebase-analyzer` — understand HOW code works
-  - `@codebase-pattern-finder` — find similar implementations
-  - `@web-search-researcher` — external docs (only if user asks)
+  - `@finder` — find WHERE files/components live
+  - `@analyst` — understand HOW code works
+  - `@patterns` — find similar implementations
+  - `@researcher` — external docs (only if user asks)
   - **Wait** for ALL agents to complete
 
 - **Action** — Synthesize: Compile findings with file paths, patterns, architectural decisions

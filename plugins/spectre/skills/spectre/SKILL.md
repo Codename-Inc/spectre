@@ -148,7 +148,7 @@ Research, assessment, and task breakdown.
 Development and verification.
 
 - **/spectre:execute**
-  - Purpose: Adaptive wave-based execution dispatching parallel @coder subagents, with reflection after each wave and code review loop until no critical issues remain.
+  - Purpose: Adaptive wave-based execution dispatching parallel @dev subagents, with reflection after each wave and code review loop until no critical issues remain.
   - When to use: When tasks.md exists and you want coordinated multi-agent parallel execution.
 
 - **/spectre:tdd**

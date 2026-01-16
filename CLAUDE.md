@@ -58,20 +58,20 @@ spectre command list             # List slash commands
 ### Meta-Prompt Orchestration
 Commands are markdown prompts that:
 1. Parse user arguments
-2. Spawn parallel subagents (`@spectre:coder`, `@spectre:codebase-analyzer`, etc.)
+2. Spawn parallel subagents (`@spectre:dev`, `@spectre:analyst`, etc.)
 3. Subagents execute specialized prompts
 4. Main prompt synthesizes findings and produces artifacts
 
 ### Subagents
 | Agent | Purpose |
 |-------|---------|
-| `@spectre:coder` | Implementation with MVP focus |
-| `@spectre:codebase-analyzer` | Understand how code works |
-| `@spectre:codebase-locator` | Find where code lives |
-| `@spectre:codebase-pattern-finder` | Find reusable patterns |
-| `@spectre:web-search-researcher` | Web research |
-| `@spectre:test-lead` | Test automation |
-| `@spectre:independent-review-engineer` | Independent review |
+| `@spectre:dev` | Implementation with MVP focus |
+| `@spectre:analyst` | Understand how code works |
+| `@spectre:finder` | Find where code lives |
+| `@spectre:patterns` | Find reusable patterns |
+| `@spectre:researcher` | Web research |
+| `@spectre:tester` | Test automation |
+| `@spectre:reviewer` | Independent review |
 
 ### Session Memory
 Hooks in `plugins/spectre/hooks/` maintain context across sessions:

@@ -5,7 +5,7 @@ description: 👻 | Complete cleanup flow - clean, inspect, lint, test - primary
 # clean: Dead Code Cleanup with Duplication Detection
 
 ## Description
-- **What** — Analyze for dead code, dispatch @codebase-analyzer subagents to validate, present findings, execute approved removals
+- **What** — Analyze for dead code, dispatch @analyst subagents to validate, present findings, execute approved removals
 - **Outcome** — Clean code with dead artifacts removed, lint clean, tests pass, conventional commits
 
 ## ARGUMENTS Input
@@ -17,7 +17,7 @@ $ARGUMENTS
 </ARGUMENTS>
 
 ## Instructions
-- Primary agent analyzes; @codebase-analyzer subagents validate findings
+- Primary agent analyzes; @analyst subagents validate findings
 - Be conservative: NEEDS_REVIEW when uncertain, not SAFE_TO_REMOVE
 
 ## Step 1 - Determine Scope & Analyze
@@ -44,7 +44,7 @@ $ARGUMENTS
 
 ## Step 2 - Dispatch Validators
 
-- **Action** — SpawnAnalyzers: Launch @codebase-analyzer subagents (up to 3 parallel)
+- **Action** — SpawnAnalyzers: Launch @analyst subagents (up to 3 parallel)
   ```
   Validate dead code findings in {area_name}.
   Files: {file_list} | Findings: {patterns_detected}

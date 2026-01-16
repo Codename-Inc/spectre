@@ -7,7 +7,7 @@ description: 👻 | Comprehensive post implementation requirement validation usi
 ## Description
 
 - **What** — Validate implementation against scope/tasks docs, dispatch parallel subagents per area, produce single actionable gap remediation document.
-- **Approach** — Primary agent chunks work by scope items or parent tasks, dispatches one @codebase-analyzer per area IN PARALLEL. Each subagent validates their area including E2E UX accessibility.
+- **Approach** — Primary agent chunks work by scope items or parent tasks, dispatches one @analyst per area IN PARALLEL. Each subagent validates their area including E2E UX accessibility.
 - **Outcome** — Single `validation_gaps.md` with actionable tasks ready for immediate implementation.
 
 ## ARGUMENTS Input
@@ -59,7 +59,7 @@ description: 👻 | Comprehensive post implementation requirement validation usi
 
 **CRITICAL**: Dispatch ALL validation agents in parallel in a SINGLE message with multiple Task tool calls. Do NOT dispatch sequentially.
 
-- **Action** — DispatchValidators: Launch one @codebase-analyzer per validation area IN PARALLEL.
+- **Action** — DispatchValidators: Launch one @analyst per validation area IN PARALLEL.
 
   **Subagent Prompt Template**:
 

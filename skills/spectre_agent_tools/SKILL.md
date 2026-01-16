@@ -37,8 +37,8 @@ description: "Use this skill when you see @name or /name patterns in user input 
 | Task Type | Timeout | Examples |
 |-----------|---------|----------|
 | **Quick lookup** | 60,000ms (1 min) | `spectre subagent list`, `spectre command get` |
-| **Single agent task** | 300,000ms (5 min) | `spectre subagent run codebase-locator "find auth files"` |
-| **Complex analysis** | 600,000ms (10 min) | `spectre subagent run codebase-analyzer "trace full data flow"` |
+| **Single agent task** | 300,000ms (5 min) | `spectre subagent run finder "find auth files"` |
+| **Complex analysis** | 600,000ms (10 min) | `spectre subagent run analyst "trace full data flow"` |
 | **Parallel agents** | 600,000ms (10 min) | `spectre subagent parallel ...` (multiple agents) |
 
 ### Why This Matters
@@ -83,8 +83,8 @@ Result: Return the agent's response to the user
 </example>
 
 <example>
-User: Can you use @codebase-analyzer to explain how payments work?
-Action: Run `spectre subagent run codebase-analyzer "explain how payments work"`
+User: Can you use @analyst to explain how payments work?
+Action: Run `spectre subagent run analyst "explain how payments work"`
 Result: Return the agent's response to the user
 </example>
 
@@ -107,7 +107,7 @@ spectre subagent run "explain this codebase"
 
 | Trigger | Example |
 |---------|---------|
-| Multiple `@agent` mentions | `@codebase-locator and @codebase-analyzer` |
+| Multiple `@agent` mentions | `@finder and @analyst` |
 | Keywords: "parallel", "concurrently", "simultaneously" | "Launch parallel agents" |
 | Phrases: "at the same time", "spawn agents" | "Run these at the same time" |
 | Research/analysis phases with multiple agents | "Deep parallel research phase" |
@@ -129,7 +129,7 @@ spectre subagent parallel \
 **Or with long form:**
 ```bash
 spectre subagent parallel \
-  --job coder "implement the feature" \
+  --job dev "implement the feature" \
   --job tdd-agent "write tests for auth"
 ```
 
@@ -143,16 +143,16 @@ spectre subagent parallel \
 When a prompt requests multiple research agents like:
 
 > "Launch parallel agents for context gathering:
-> - @codebase-locator: Find relevant files
-> - @codebase-analyzer: Understand how it works
-> - @web-search-researcher: Find best practices"
+> - @finder: Find relevant files
+> - @analyst: Understand how it works
+> - @researcher: Find best practices"
 
 **Translate to:**
 ```bash
 spectre subagent parallel \
-  -j codebase-locator "Find all files related to [topic], return file:line references" \
-  -j codebase-analyzer "Analyze how [topic] works, trace data flow, document behavior" \
-  -j web-search-researcher "Search for [topic] best practices, return links"
+  -j finder "Find all files related to [topic], return file:line references" \
+  -j analyst "Analyze how [topic] works, trace data flow, document behavior" \
+  -j researcher "Search for [topic] best practices, return links"
 ```
 
 ### Scenario: Multi-Agent Code Review
@@ -175,7 +175,7 @@ Tasks can safely include colons, slashes, file paths, and command references:
 
 ```bash
 spectre subagent parallel \
-  -j coder "Run /spectre:tdd on src/auth/login.py" \
+  -j dev "Run /spectre:tdd on src/auth/login.py" \
   -j reviewer "Check file:line references in docs/api.md"
 ```
 

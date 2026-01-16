@@ -41,11 +41,11 @@ $ARGUMENTS
   - Create research plan using TodoWrite to track all subtasks
 - **Action** — SpawnSpecializedAgents: Launch parallel sub-agents for comprehensive research.
   - **Codebase Research**:
-    - **codebase-locator**: Find WHERE files and components live
-    - **codebase-analyzer**: Understand HOW specific code works
-    - **codebase-pattern-finder**: Find examples of similar implementations
+    - **finder**: Find WHERE files and components live
+    - **analyst**: Understand HOW specific code works
+    - **patterns**: Find examples of similar implementations
   - **Web Research** (when task requires 3rd party frameworks/platforms/services/libraries/SDKs):
-    - **web-search-researcher**: External documentation and resources
+    - **researcher**: External documentation and resources
     - **IMPORTANT**: Instruct to return LINKS with findings; include links in final report
   - **3rd Party Libraries** (only if user explicitly asks):
     - Use Context 7 MCP tool to search external documentation
@@ -138,7 +138,7 @@ See `@skill-spectre:spectre` skill for footer format and command options.
 - [ ] Directly mentioned files read FULLY in main context before decomposition
 - [ ] Research question decomposed into composable areas with ultra-thinking about patterns/connections
 - [ ] Research plan created using TodoWrite to track subtasks
-- [ ] Specialized sub-agents spawned in parallel (codebase-locator, codebase-analyzer, codebase-pattern-finder, web-search-researcher as needed, linear agents if relevant)
+- [ ] Specialized sub-agents spawned in parallel (finder, analyst, patterns, researcher as needed, linear agents if relevant)
 - [ ] Agent strategy followed (locator → analyzer → parallel execution)
 - [ ] Web research agents instructed to return LINKS (if used)
 - [ ] ALL sub-agents completed before synthesis

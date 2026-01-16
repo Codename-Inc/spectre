@@ -28,9 +28,9 @@ description: 👻 | Create implementation plan from PRD - primary agent
 
 - **Action** — AutomatedResearch: Spawn parallel agents
 
-  - `@codebase-locator` — find files related to feature
-  - `@codebase-analyzer` — understand implementation patterns, data access
-  - `@web-search-researcher` — understand best practices for similar implementations
+  - `@finder` — find files related to feature
+  - `@analyst` — understand implementation patterns, data access
+  - `@researcher` — understand best practices for similar implementations
   - **Wait** for ALL agents to complete
   - Read ALL identified files into context
 
