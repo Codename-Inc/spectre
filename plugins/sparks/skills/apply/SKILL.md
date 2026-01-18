@@ -20,9 +20,9 @@ Without this, you'd waste time rediscovering what's already known or make decisi
 ## The Rule
 
 <CRITICAL>
-If ANY entry's triggers or description match your current task, you MUST Read the skill FIRST.
+If ANY entry's triggers or description match your current task, you MUST load the skill FIRST using the Skill tool.
 
-The registry tells you exactly where relevant knowledge is. Reading it first makes you faster and more accurate.
+The registry tells you exactly where relevant knowledge is. Loading it first makes you faster and more accurate.
 
 DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge. The knowledge skills tell you WHERE to search and make you more token-efficient.
 </CRITICAL>
@@ -33,7 +33,7 @@ The registry is stored at `{{project_root}}/.claude/skills/apply/references/spar
 
 **Format**: `{skill-name}|{category}|{triggers}|{description}`
 
-Each entry corresponds to a skill at `{{project_root}}/.claude/skills/{skill-name}/SKILL.md`
+Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 
 **Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy
 
@@ -41,9 +41,9 @@ Each entry corresponds to a skill at `{{project_root}}/.claude/skills/{skill-nam
 
 1. **Read the registry** at `{{project_root}}/.claude/skills/apply/references/sparks-registry.toon`
 2. **Scan entries** — match triggers AND description against current task
-3. **For each match**, Read:
+3. **For each match**, load the skill:
    ```
-   {{project_root}}/.claude/skills/{skill-name}/SKILL.md
+   Skill({skill-name})
    ```
 4. **Apply the knowledge** — use it to guide your approach, know where to look
 5. **Then proceed** — now you can search/implement with context
@@ -53,8 +53,8 @@ Each entry corresponds to a skill at `{{project_root}}/.claude/skills/{skill-nam
 
 | Thought | Reality |
 |---------|---------|
-| "Let me search the codebase first" | Knowledge tells you WHERE to search. Read it first. |
-| "I'll dispatch an agent to find this" | The path is in the registry. Just Read. |
+| "Let me search the codebase first" | Knowledge tells you WHERE to search. Load the skill first. |
+| "I'll dispatch an agent to find this" | The skill name is in the registry. Just use `Skill({name})`. |
 | "I need more context first" | The knowledge IS the context. |
 | "This seems simple" | Simple tasks benefit from captured patterns too. |
 
@@ -64,6 +64,6 @@ User: "How does /sparks work?"
 
 Registry entry: `feature-sparks-plugin|feature|sparks, /sparks, knowledge|Use when modifying sparks plugin or debugging hooks`
 
-Action: `Read .claude/skills/feature-sparks-plugin/SKILL.md`
+Action: `Skill(feature-sparks-plugin)`
 
 Then: Use the key files and patterns from that knowledge to guide your work.

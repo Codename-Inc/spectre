@@ -2,11 +2,12 @@
 """
 load-knowledge.py
 
-SessionStart hook that injects the sparks registry and compliance instructions
+SessionStart hook that injects the apply skill and registry
 directly into Claude's context.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,7 +24,13 @@ def main():
     """Main entry point for SessionStart hook."""
     project_dir = Path.cwd()
 
-    # Check if project has the sparks registry
+    # Apply skill is in the plugin directory
+    plugin_root = Path(os.environ.get('CLAUDE_PLUGIN_ROOT', ''))
+    if not plugin_root.exists():
+        sys.exit(0)
+    apply_skill_path = plugin_root / "skills" / "apply" / "SKILL.md"
+
+    # Registry is in the project directory
     registry_path = project_dir / ".claude" / "skills" / "apply" / "references" / "sparks-registry.toon"
 
     if not registry_path.exists():
@@ -39,23 +46,25 @@ def main():
     if entry_count == 0:
         sys.exit(0)
 
-    # Build context with compliance instructions and registry
+    # Read apply skill if it exists, otherwise use minimal fallback
+    if apply_skill_path.exists():
+        apply_skill_content = apply_skill_path.read_text().strip()
+    else:
+        apply_skill_content = """# Apply Knowledge
+
+COMPLIANCE: Before searching codebase or dispatching agents, check if any
+registered knowledge matches your current task. Load matching skills first
+using the Skill tool: `Skill({skill-name})`"""
+
+    # Build context with apply skill and registry
     context = f"""<sparks-knowledge>
 This project has {entry_count} captured knowledge skills.
 
-COMPLIANCE: Before searching codebase or dispatching agents, check if any
-registered knowledge matches your current task. Load matching skills first.
+{apply_skill_content}
 
 ## Registry
 
 {registry_content}
-
-## How to Load
-
-To load a skill: Read `.claude/skills/{{skill-name}}/SKILL.md`
-
-Example: If registry has `feature-auth-flows|feature|auth, JWT|Use when implementing auth`
-Then read: `.claude/skills/feature-auth-flows/SKILL.md`
 </sparks-knowledge>"""
 
     # Visible notice

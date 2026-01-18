@@ -45,9 +45,9 @@ Match the user's query against:
 
 **Single match → Load automatically:**
 
-Read the skill immediately:
+Load the skill using the Skill tool:
 ```
-{{project_root}}/.claude/skills/{skill-name}/SKILL.md
+Skill({skill-name})
 ```
 
 The knowledge is now in your context. Use it to assist with the current task.
@@ -63,7 +63,7 @@ Found {N} relevant entries:
 Which would you like to load? [1/2/all]
 ```
 
-Then read the selected skill(s).
+Then load the selected skill(s) using `Skill({skill-name})`.
 
 **No matches:**
 
@@ -93,10 +93,10 @@ After loading knowledge:
 ## Examples
 
 **User**: `/find hooks` (mid-task)
-**Action**: Search registry, find 1 match for `gotchas-hook-timeout`, load `.claude/skills/gotchas-hook-timeout/SKILL.md`, use to help with current work
+**Action**: Search registry, find 1 match for `gotchas-hook-timeout`, call `Skill(gotchas-hook-timeout)`, use knowledge to help with current work
 
 **User**: `/find sparks` (start of thread)
-**Action**: Search, load match, then ask "I've loaded the sparks plugin knowledge. What would you like to know or do?"
+**Action**: Search, call `Skill(feature-sparks-plugin)`, then ask "I've loaded the sparks plugin knowledge. What would you like to know or do?"
 
 **User**: `/find`
-**Action**: Show category summary with counts
+**Action**: Show summary of all available knowledge by category with counts
