@@ -11,45 +11,43 @@ Search and load relevant knowledge from the project's sparks into your context.
 
 This project uses **sparks** to capture durable knowledge across sessions:
 
-- **Registry**: A list of knowledge entries stored inline in the apply skill
-- **References**: Markdown files containing the actual knowledge (patterns, gotchas, features, etc.)
+- **Registry**: A list of knowledge entries at `.claude/skills/apply/references/sparks-registry.toon`
+- **Skills**: Each learning is its own skill at `.claude/skills/{skill-name}/SKILL.md`
 - **Triggers**: Keywords that indicate when knowledge is relevant
 
-The registry lives at `{{project_root}}/.claude/skills/apply/SKILL.md` under the `## Registry` section. Each entry points to a reference file in `references/{category}/{slug}.md`.
-
-**Registry format**: `{path}|{category}|{triggers}|{description}`
+**Registry format**: `{skill-name}|{category}|{triggers}|{description}`
 
 **Categories**: feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy
 
 ## Path Convention
 
-`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd). Knowledge is stored in `{{project_root}}/.claude/skills/apply/`.
+`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd).
 
 ## Workflow
 
-### 1. Read the Apply Skill
+### 1. Read the Registry
 
 ```
-{{project_root}}/.claude/skills/apply/SKILL.md
+{{project_root}}/.claude/skills/apply/references/sparks-registry.toon
 ```
 
-Parse the `## Registry` section to get all knowledge entries.
+Parse each line to get skill entries. Lines starting with `#` are comments.
 
 ### 2. Search for Matches
 
 Match the user's query against:
+- **Skill name**: The `{skill-name}` portion (e.g., `feature-auth-flows`)
 - **Triggers**: Keywords that indicate when knowledge is relevant
-- **Description**: Short summary of what the knowledge covers
+- **Description**: Short summary of when to use the knowledge
 - **Category**: Type of knowledge (feature, gotchas, patterns, etc.)
-- **Path**: File path (slug may be descriptive)
 
 ### 3. Handle Results
 
 **Single match → Load automatically:**
 
-Read the file immediately:
+Read the skill immediately:
 ```
-{{project_root}}/.claude/skills/apply/{path}
+{{project_root}}/.claude/skills/{skill-name}/SKILL.md
 ```
 
 The knowledge is now in your context. Use it to assist with the current task.
@@ -59,13 +57,13 @@ The knowledge is now in your context. Use it to assist with the current task.
 ```
 Found {N} relevant entries:
 
-1. **{category}/{slug}** - {description}
-2. **{category}/{slug}** - {description}
+1. **{skill-name}** ({category}) - {description}
+2. **{skill-name}** ({category}) - {description}
 
 Which would you like to load? [1/2/all]
 ```
 
-Then read the selected file(s).
+Then read the selected skill(s).
 
 **No matches:**
 
@@ -95,7 +93,7 @@ After loading knowledge:
 ## Examples
 
 **User**: `/find hooks` (mid-task)
-**Action**: Search, find 1 match, load it, use to help with current work
+**Action**: Search registry, find 1 match for `gotchas-hook-timeout`, load `.claude/skills/gotchas-hook-timeout/SKILL.md`, use to help with current work
 
 **User**: `/find sparks` (start of thread)
 **Action**: Search, load match, then ask "I've loaded the sparks plugin knowledge. What would you like to know or do?"

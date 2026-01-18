@@ -2,61 +2,64 @@
 """
 load-knowledge.py
 
-SessionStart hook that injects the apply skill (with inline registry)
+SessionStart hook that injects the sparks registry and compliance instructions
 directly into Claude's context.
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 
 
-def count_registry_entries(content: str) -> int:
-    """Count registry entries in the apply skill content."""
-    # Find the ## Registry section
-    registry_match = re.search(r'## Registry\s*\n(.*)', content, re.DOTALL)
-    if not registry_match:
-        return 0
-
-    registry_section = registry_match.group(1)
-    # Count non-empty lines that look like registry entries (contain |)
-    entries = [
-        line for line in registry_section.strip().split('\n')
+def count_registry_entries(lines: list[str]) -> int:
+    """Count registry entries (lines with | that aren't comments)."""
+    return sum(
+        1 for line in lines
         if line.strip() and '|' in line and not line.startswith('#')
-    ]
-    return len(entries)
+    )
 
 
 def main():
     """Main entry point for SessionStart hook."""
     project_dir = Path.cwd()
 
-    # Check if project has the apply skill with knowledge
-    skill_path = project_dir / ".claude" / "skills" / "apply" / "SKILL.md"
+    # Check if project has the sparks registry
+    registry_path = project_dir / ".claude" / "skills" / "apply" / "references" / "sparks-registry.toon"
 
-    if not skill_path.exists():
+    if not registry_path.exists():
         sys.exit(0)
 
-    # Read apply skill (includes instructions + registry)
-    skill_content = skill_path.read_text().strip()
+    # Read registry
+    registry_content = registry_path.read_text().strip()
+    lines = registry_content.split('\n') if registry_content else []
 
-    # Count registry entries
-    entry_count = count_registry_entries(skill_content)
+    # Count entries
+    entry_count = count_registry_entries(lines)
 
     if entry_count == 0:
         sys.exit(0)
 
-    # Build context with full skill content
-    context = f"""<project-knowledge>
-⚡️ Spark Knowledge Registry has {entry_count} entries.
-{skill_content}
+    # Build context with compliance instructions and registry
+    context = f"""<sparks-knowledge>
+This project has {entry_count} captured knowledge skills.
 
-Check triggers against current task and load relevant knowledge from references/.
-</project-knowledge>"""
+COMPLIANCE: Before searching codebase or dispatching agents, check if any
+registered knowledge matches your current task. Load matching skills first.
+
+## Registry
+
+{registry_content}
+
+## How to Load
+
+To load a skill: Read `.claude/skills/{{skill-name}}/SKILL.md`
+
+Example: If registry has `feature-auth-flows|feature|auth, JWT|Use when implementing auth`
+Then read: `.claude/skills/feature-auth-flows/SKILL.md`
+</sparks-knowledge>"""
 
     # Visible notice
-    visible_notice = f"⚡️ sparks: {entry_count} knowledge entries available"
+    visible_notice = f"sparks: {entry_count} knowledge skills available"
 
     output = {
         "systemMessage": visible_notice,

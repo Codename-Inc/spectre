@@ -9,36 +9,38 @@ You capture durable project knowledge into Skills that Claude Code loads on-dema
 
 ## Path Convention
 
-`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd). Learnings are written to `{{project_root}}/.claude/skills/apply/`.
+`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd).
 
 ## Storage Structure
 
+Each learning becomes its own skill at the project level:
+
 ```
-{{project_root}}/.claude/skills/apply/
-├── SKILL.md              # Router skill with inline registry
-└── references/
-    ├── patterns/
-    │   └── {slug}.md
-    ├── gotchas/
-    │   └── {slug}.md
-    ├── feature/
-    │   └── {slug}.md
-    └── ...
+{{project_root}}/.claude/skills/
+├── apply/
+│   ├── SKILL.md                      # Apply skill (compliance instructions)
+│   └── references/
+│       └── sparks-registry.toon      # Registry of all learnings
+├── {category}-{slug}/                # Learning = Skill
+│   └── SKILL.md
+├── {category}-{slug}/                # Learning = Skill
+│   └── SKILL.md
+└── ...
 ```
 
 ## Registry
 
-The registry is stored inline in the apply skill at `{{project_root}}/.claude/skills/apply/SKILL.md` under the `## Registry` section.
+The registry is stored at `{{project_root}}/.claude/skills/apply/references/sparks-registry.toon`
 
-Before proposing a learning, read the apply skill to check for existing learnings:
+Before proposing a learning, read the registry to check for existing learnings:
 
 ```
-{{project_root}}/.claude/skills/apply/SKILL.md
+{{project_root}}/.claude/skills/apply/references/sparks-registry.toon
 ```
 
-Format: `{path}|{category}|{triggers}|{description}` (one learning per line after ## Registry)
+Format: `{skill-name}|{category}|{triggers}|{description}` (one learning per line)
 
-Example: `references/feature/learn-plugin.md|feature|learn plugin, /learn|How the learn plugin works`
+Example: `feature-sparks-plugin|feature|sparks, /learn, /find|Use when modifying sparks plugin or debugging hooks`
 
 ## Workflow
 
@@ -65,18 +67,18 @@ Must meet **at least 2 of 4**:
 
 **ONLY use these categories.** Do not invent new ones.
 
-| Category        | When to use                                              | Path                    |
-| --------------- | -------------------------------------------------------- | ----------------------- |
-| feature         | How a feature works end-to-end: design, flows, key files | `feature/{slug}.md`     |
-| gotchas         | Hard-won debugging knowledge, non-obvious pitfalls       | `gotchas/{slug}.md`     |
-| patterns        | Repeatable solutions used across the codebase            | `patterns/{slug}.md`    |
-| decisions       | Architectural choices + rationale                        | `decisions/{slug}.md`   |
-| procedures      | Multi-step processes (deploy, release, etc.)             | `procedures/{slug}.md`  |
-| integration     | Third-party APIs, vendor quirks, external systems        | `integration/{slug}.md` |
-| performance     | Optimization learnings, benchmarks, scaling decisions    | `performance/{slug}.md` |
-| testing         | Test strategies, coverage decisions, QA patterns         | `testing/{slug}.md`     |
-| ux              | Design patterns, user research insights, interactions    | `ux/{slug}.md`          |
-| strategy        | Roadmap decisions, prioritization rationale              | `strategy/{slug}.md`    |
+| Category        | When to use                                              |
+| --------------- | -------------------------------------------------------- |
+| feature         | How a feature works end-to-end: design, flows, key files |
+| gotchas         | Hard-won debugging knowledge, non-obvious pitfalls       |
+| patterns        | Repeatable solutions used across the codebase            |
+| decisions       | Architectural choices + rationale                        |
+| procedures      | Multi-step processes (deploy, release, etc.)             |
+| integration     | Third-party APIs, vendor quirks, external systems        |
+| performance     | Optimization learnings, benchmarks, scaling decisions    |
+| testing         | Test strategies, coverage decisions, QA patterns         |
+| ux              | Design patterns, user research insights, interactions    |
+| strategy        | Roadmap decisions, prioritization rationale              |
 
 **Category selection guide:**
 - "How does X feature work?" → `feature`
@@ -85,75 +87,56 @@ Must meet **at least 2 of 4**:
 - "How do we deploy/release/migrate X?" → `procedures`
 - "How do we talk to X API?" → `integration`
 
-**Feature category structure**: Feature learnings are higher-level "dossiers" that help the LLM understand how a feature works end-to-end. Use this structure:
+**Feature category structure**: Feature learnings are higher-level "dossiers" that help the LLM understand how a feature works end-to-end.
 
-```markdown
-### {Feature Name}
+<CRITICAL>
+Feature learnings MUST use this structure. Do not propose sparse summaries.
 
-**Trigger**: {feature name}, {related keywords}
-**Confidence**: {level}
-**Created**: {YYYY-MM-DD}
-**Updated**: {YYYY-MM-DD}
-**Version**: 1
+**Minimum requirements for feature learnings:**
+- Overview (1-2 sentences)
+- User Flows (at least 2 flows)
+- Technical Design (architecture + key patterns)
+- Key Files (at least 3 files with purposes)
+- Common Tasks (at least 2 tasks with how-to)
 
-**Overview**: {1-2 sentences on what this feature does for users}
+**Quality gate before proposing**: Your content must answer:
+1. What does this feature do for users?
+2. How do users interact with it?
+3. What's the technical architecture?
+4. What files matter and why?
+5. What tasks will someone need to do?
 
-**User Flows**:
-- {Primary flow}
-- {Secondary flows}
+If you can't answer all 5, research more before proposing.
+</CRITICAL>
 
-**Technical Design**:
-- {Architecture summary}
-- {Key patterns used}
+### 4. Generate Skill Name
 
-**Key Files**:
-- `path/to/main.ts` - {purpose}
-- `path/to/component.tsx` - {purpose}
+The skill name follows the pattern `{category}-{slug}`:
 
-**Common Tasks**:
-- {Task}: {how to approach it}
-```
-
-Use `feature` when capturing *how something works* holistically. Use other categories for specific insights (a gotcha within a feature, a pattern used by a feature, etc.).
-
-**Writing Effective Metadata**
-
-**Slug naming rules (CRITICAL for discoverability):**
+**Naming rules (CRITICAL for discoverability):**
 
 ```
-VALID:   conversation-restore, pizza-api-timeout, webhook-retry-logic
-INVALID: domain-conversation-restore, conversation-restore:, feature/restore
+VALID:   feature-auth-flows, gotchas-hook-timeout, patterns-retry-logic
+INVALID: auth-flows (no category), feature/auth-flows (no slashes), feature_auth_flows (no underscores)
 ```
 
 Rules:
+- **{category}-{slug}** format: category prefix, then descriptive slug
 - **lowercase-kebab-case ONLY**: letters, numbers, hyphens
-- **NO category prefix**: the folder determines category, not the name
 - **NO special characters**: no colons, slashes, underscores, or parentheses
-- **Descriptive nouns or gerunds**: `session-restore`, `handling-timeouts`
-- **3-5 words max**: enough to be specific, short enough to scan
+- **Descriptive slug**: `session-restore`, `handling-timeouts`
+- **3-5 words max in slug**: enough to be specific, short enough to scan
 
-**Description field** (frontmatter):
-- Start with "Use when..." — focus on triggering conditions
-- Describe WHEN to use, NOT what the skill does (Claude may shortcut to description and skip content)
-- Third person, max 500 characters
-- Example: `Use when tests have race conditions or pass/fail inconsistently`
+### 5. Match, Update, or Create
 
-**Trigger keywords** (per learning):
-- Error messages: `"ENOTEMPTY"`, `"Hook timed out"`
-- Symptoms: `flaky`, `hanging`, `race condition`, `zombie`
-- Synonyms: `timeout/hang/freeze`, `cleanup/teardown/afterEach`
-- Tools: command names, library names, file types
-
-### 4. Match, Update, or Create
-
-Read the apply skill to find candidates, then **read the actual learning file** to compare content.
+Read the registry to find candidates, then **read the actual skill file** to compare content.
 
 **Registry scan** - look for:
-- Same category
+- Same category prefix
 - Overlapping trigger keywords
 - Related topic
 
-**If candidate found**, read `references/{category}/{slug}.md` and check:
+**If candidate found**, read `{{project_root}}/.claude/skills/{skill-name}/SKILL.md` and check:
 
 1. **UPDATE** - New knowledge contradicts, extends, or supersedes an existing learning
    - Same topic but new/better information
@@ -170,13 +153,13 @@ Read the apply skill to find candidates, then **read the actual learning file** 
 
 **Decision priority**: UPDATE > APPEND > CREATE (prefer consolidation over proliferation)
 
-### 5. Propose
+### 6. Propose
 
 Stop and wait for user response. Format depends on action type:
 
 **For UPDATE** (revising existing learning):
 ```
-I'd update the learning: `{category}/{slug}.md`
+I'd update the skill: `{skill-name}`
 
 **Current**: {1-2 sentence summary of existing}
 **Proposed**: {1-2 sentence summary of revision}
@@ -187,9 +170,9 @@ I'd update the learning: `{category}/{slug}.md`
 Update this? [Y/n/edit]
 ```
 
-**For APPEND** (adding to existing file):
+**For APPEND** (adding to existing skill):
 ```
-I'd append to the learning: `{category}/{slug}.md`
+I'd append to the skill: `{skill-name}`
 
 **{Title}**
 
@@ -203,9 +186,9 @@ Confidence: {low|medium|high}
 Save this? [Y/n/edit]
 ```
 
-**For CREATE** (new learning file):
+**For CREATE** (new skill):
 ```
-I'd create a new learning: `{category}/{slug}.md`
+I'd create a new skill: `{skill-name}`
 
 **{Title}**
 
@@ -224,20 +207,26 @@ Create this? [Y/n/edit]
 - medium = repeated or taught
 - high = battle-tested
 
-### 6. Handle Response
+### 7. Handle Response
 
 - `y`/`yes` -> write as proposed
 - `n`/`no` -> cancel
 - `edit` or custom text -> modify first
 - Different skill name -> use that instead
 
-### 7. Write Learning
+### 8. Write Learning
 
-**Location**: `{{project_root}}/.claude/skills/apply/references/{category}/{slug}.md`
+**Location**: `{{project_root}}/.claude/skills/{skill-name}/SKILL.md`
 
-**CREATE** - New learning file:
+**Skill Template**:
 
 ```markdown
+---
+name: {skill-name}
+description: Use when {triggering conditions - MUST start with "Use when"}
+user-invocable: false
+---
+
 # {Title}
 
 **Trigger**: {keywords}
@@ -246,24 +235,22 @@ Create this? [Y/n/edit]
 **Updated**: {YYYY-MM-DD}
 **Version**: 1
 
-{Explanation}
-
-{Code if relevant}
+{Content - follows category-specific structure}
 ```
 
-**UPDATE** - Revise existing learning file:
+**UPDATE** - Revise existing skill:
 
 1. Preserve `**Created**` date
 2. Set `**Updated**` to today
 3. Increment `**Version**` by 1
 4. Update confidence if warranted (e.g., low → medium after verification)
 
-**APPEND** - For files with multiple learnings, add new section:
+**APPEND** - For skills with multiple sections, add new section:
 
 ```markdown
 ---
 
-## {New Learning Title}
+## {New Section Title}
 
 **Trigger**: {keywords}
 **Confidence**: {level}
@@ -274,23 +261,43 @@ Create this? [Y/n/edit]
 {Explanation}
 ```
 
-### 8. Register the Learning
+### 9. Register the Learning
 
-After writing the learning file, register it by calling the register script:
+After writing the skill file, register it by calling the register script:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_spark.py" \
   --project-root "{{project_root}}" \
-  --path "references/{category}/{slug}.md" \
+  --skill-name "{skill-name}" \
   --category "{category}" \
   --triggers "{triggers}" \
   --description "{description}"
 ```
 
-This appends the entry to the `## Registry` section in the apply skill.
+This adds/updates the entry in the registry at `.claude/skills/apply/references/sparks-registry.toon`.
 
-### 9. Confirm
+<CRITICAL>
+**Registry description format:**
+
+The `--description` parameter is used to MATCH knowledge to tasks. It must describe WHEN to use the knowledge, not what it contains.
+
+- MUST start with "Use when..."
+- Describes triggering CONDITIONS
+- Focuses on tasks/scenarios that need this knowledge
+
+**Good descriptions:**
+- `"Use when modifying sparks plugin, debugging hooks, or adding knowledge categories"`
+- `"Use when auth fails silently or tokens expire unexpectedly"`
+- `"Use when adding new API endpoints or modifying request handling"`
+
+**Bad descriptions:**
+- `"Sparks plugin architecture - how knowledge capture works"` (describes content, not when to use)
+- `"Authentication system overview"` (too vague, no triggering conditions)
+- `"API patterns"` (no actionable context)
+</CRITICAL>
+
+### 10. Confirm
 
 ```
-Saved .claude/skills/apply/references/{category}/{slug}.md
+Saved .claude/skills/{skill-name}/SKILL.md
 ```

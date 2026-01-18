@@ -2,16 +2,16 @@
 """
 register_spark.py
 
-Appends a registry entry to the project's apply skill.
+Appends a registry entry to the project's sparks registry.
 Called by the learn skill after writing a learning file.
 
 Usage:
     register_spark.py \
         --project-root "/path/to/project" \
-        --path "references/feature/my-feature.md" \
+        --skill-name "feature-my-feature" \
         --category "feature" \
         --triggers "keyword1, keyword2" \
-        --description "Short description"
+        --description "Use when doing X or Y"
 """
 
 import argparse
@@ -21,7 +21,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Append a registry entry to the project's apply skill"
+        description="Append a registry entry to the project's sparks registry"
     )
     parser.add_argument(
         "--project-root",
@@ -29,9 +29,9 @@ def main():
         help="Root directory of the project"
     )
     parser.add_argument(
-        "--path",
+        "--skill-name",
         required=True,
-        help="Relative path to the learning file (e.g., references/feature/my-feature.md)"
+        help="Name of the skill (e.g., feature-my-feature)"
     )
     parser.add_argument(
         "--category",
@@ -46,51 +46,56 @@ def main():
     parser.add_argument(
         "--description",
         required=True,
-        help="Short description of the learning"
+        help="Short description starting with 'Use when...'"
     )
 
     args = parser.parse_args()
 
     project_root = Path(args.project_root)
-    skill_path = project_root / ".claude" / "skills" / "apply" / "SKILL.md"
+    registry_dir = project_root / ".claude" / "skills" / "apply" / "references"
+    registry_path = registry_dir / "sparks-registry.toon"
 
-    if not skill_path.exists():
-        print(f"Error: Apply skill not found at {skill_path}", file=sys.stderr)
-        sys.exit(1)
-
-    # Read current content
-    content = skill_path.read_text()
+    # Ensure the directory exists
+    registry_dir.mkdir(parents=True, exist_ok=True)
 
     # Build the registry entry
-    entry = f"{args.path}|{args.category}|{args.triggers}|{args.description}"
+    entry = f"{args.skill_name}|{args.category}|{args.triggers}|{args.description}"
 
-    # Find the ## Registry section and append
-    registry_marker = "## Registry"
-    if registry_marker not in content:
-        print(f"Error: No '## Registry' section found in {skill_path}", file=sys.stderr)
-        sys.exit(1)
-
-    # Check if entry already exists (by path)
-    if args.path in content:
-        # Update existing entry - find and replace the line
-        lines = content.split('\n')
-        updated_lines = []
-        for line in lines:
-            if line.startswith(args.path + '|'):
-                updated_lines.append(entry)
-            else:
-                updated_lines.append(line)
-        content = '\n'.join(updated_lines)
+    # Read current content or start fresh
+    if registry_path.exists():
+        content = registry_path.read_text()
+        lines = content.strip().split('\n') if content.strip() else []
     else:
-        # Append new entry after ## Registry
-        # Add entry on a new line after the registry marker
-        content = content.replace(
-            registry_marker,
-            f"{registry_marker}\n\n{entry}"
-        )
+        # Initialize with header
+        lines = [
+            "# Sparks Knowledge Registry",
+            "# Format: skill-name|category|triggers|description",
+            ""
+        ]
+
+    # Check if entry already exists (by skill-name at start of line)
+    entry_prefix = args.skill_name + '|'
+    entry_exists = False
+    updated_lines = []
+
+    for line in lines:
+        if line.startswith(entry_prefix):
+            # Update existing entry
+            updated_lines.append(entry)
+            entry_exists = True
+        else:
+            updated_lines.append(line)
+
+    if not entry_exists:
+        # Append new entry
+        updated_lines.append(entry)
 
     # Write back
-    skill_path.write_text(content)
+    content = '\n'.join(updated_lines)
+    if not content.endswith('\n'):
+        content += '\n'
+    registry_path.write_text(content)
+
     print(f"Registered: {entry}")
 
 
