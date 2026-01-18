@@ -39,6 +39,11 @@ $ARGUMENTS
 - If ARGUMENTS is empty, gather the review scope from the current thread context.
 - If the current thread context is also ambigious, ask the user to clarify the scope of the review.
 
+## Step (1/3) - Review Existing Architecture Documents
+- **Action** - ReviewArchitecture: Find and review existing architecture documents
+  - search for docs/architecture.md and read it if it exists
+  - if not, continue and use general architectural best practices during review
+
 ## Step (1/2) - Explore Implementation
 
 - **Action** — ExploreCode: Thoroughly examine the implementation

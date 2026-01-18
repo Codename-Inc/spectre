@@ -13,51 +13,126 @@ description: 👻 | Create implementation plan from PRD - primary agent
 
 &lt;ARGUMENTS&gt; $ARGUMENTS &lt;/ARGUMENTS&gt;
 
-## Step 1 - Codebase Research
+## Step (1/4) - Codebase Architecture Research
 
-- **Action** — DetermineOutputDir:
-
+- **Action** — CheckExistingResearch: Check if technical research already completed.
+  - Read `TASK_DIR/task_context.md`; look for "## Technical Research" section.
+  - **If** found with comprehensive analysis → use existing research; skip to Step 3.
+  - **Else** → proceed with new research below.
+- **Action** — AutomatedResearch: Spawn parallel research agents for comprehensive analysis.
+  - Use `codebase-locator` to find all files related to feature area.
+  - Dispatch multiple parallel `codebase-analyzer` subagents to understand current implementation patterns. Pay particular attention to how and where data is accessed that will be needed for this feature.
+  - Wait for ALL agents to complete before proceeding.
+  - Read ALL identified files into context.
+- **Action** — DocumentationReview: Review core architecture documentation.
+  - Review `CLAUDE.md` for rules and key patterns.
+  - Review `README.md` for major components.
+  - Cross-reference automated findings with documentation.
+  - Identify architectural patterns, data flow, state management.
+  - Review authentication, routing, API patterns.
+- **Action** — PatternAnalysis: Synthesize findings.
+  - Synthesize agent findings with manual analysis.
+  - Analyze implementation approaches from discovered code.
+  - Identify reusable components and utilities from research.
+  - Note integration patterns with existing systems.
+  - Validate agent discoveries through code inspection.
+- **Action** — TechnicalStackAssessment: Assess current technology stack.
+  - Identify technologies currently in use.
+  - Review build/deployment configurations.
+  - Understand testing frameworks and patterns.
+  - Check dependency management approaches.
+- **Output Location** — DetermineOutputDir: Decide where to save artifacts for this workflow.
   - `branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)`
-  - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified path)
-  - `mkdir -p "${OUT_DIR}/specs" "${OUT_DIR}/clarifications"`
+  - **If** user specifies `target_dir/path` → `OUT_DIR={that value}`
+  - **Else** → `OUT_DIR=docs/active_tasks/{branch_name}`
+  - `mkdir -p "OUT_DIR/specs"` && `mkdir -p "OUT_DIR/clarifications"`
+- **Action** — SaveResearch: Save technical research to task context (if newly completed).
+  - **If** research was just completed → update `{OUT_DIR}/task_context.md` with "## Technical Research" section using template below.
+  - **Else** → skip (existing research already in context).
 
-- **Action** — CheckExistingResearch: Read `{OUT_DIR}/task_context.md` for "## Technical Research"
+**Technical Research Template:**
+```markdown
+## Technical Research
+*Created by: create_plan.md on {timestamp}*
 
-  - **If** comprehensive analysis exists → use it, skip to Step 2
-  - **Else** → proceed with research
+### Architecture Patterns
+- {Key architectural patterns found}
+- {Design patterns in use}
+- {Code organization approach}
 
-- **Action** — AutomatedResearch: Spawn parallel agents
+### Technical Dependencies
+- {Core dependencies identified}
+- {Integration requirements}
+- {External service dependencies}
 
-  - `@finder` — find files related to feature
-  - `@analyst` — understand implementation patterns, data access
-  - `@researcher` — understand best practices for similar implementations
-  - **Wait** for ALL agents to complete
-  - Read ALL identified files into context
+### Implementation Approaches
+- {Similar features analyzed}
+- {Reusable components identified}
+- {Common patterns for this type of feature}
 
-- **Action** — DocumentationReview: Review `CLAUDE.md`, `README.md` for patterns, [architecture.md](http://architecture.md) (if exists), data flow
+### Integration Requirements
+- {API patterns}
+- {Data flow patterns}
+- {Authentication/authorization approach}
+```
 
-- **Action** — SaveResearch: Update `{OUT_DIR}/task_context.md` with "## Technical Research" section:
+## Step (2/4) - Technical Clarifications
 
-  - Architecture Patterns, Technical Dependencies, Implementation Approaches, Integration Requirements
+- **Action** — GenerateClarifications: Create targeted technical questions document.
+  - Create directory if missing: `{OUT_DIR}/clarifications/`
+  - Create file: `{OUT_DIR}/clarifications/plan_clarifications_{YYYY-MM-DD_HHMMSS}.md`
+  - Dynamically generate up to 10 most important technical questions based on research findings.
+  - **IMPORTANT**: Only ask questions that are genuinely not answered in the PRD or that you genuinely cannot answer through code investigation. You can ask for scope clarifications, but never ask questions if the requirements already specify the answer.
+  - Goal: eliminate scope and design ambiguity.
+  - Use Clarifications Document Template below with `<response></response>` blocks for each question.
+  - **If** question involves choosing between approaches → list Options inline beneath that question (≥2 options with Pros/Cons/Trade-offs/Impact) and capture Preferred option in response.
 
-## Step 2 - Technical Clarifications
+**Clarifications Document Template:**
+```markdown
+# Plan Clarifications for {task_name}
+*Created by: create_plan.md on {timestamp}*
 
-- **Action** — GenerateClarifications: Create `{OUT_DIR}/clarifications/plan_clarifications_{timestamp}.md`
+Instructions:
+- Please answer inside each `<response></response>` block.
+- Keep your edits within the tags so I can parse reliably.
+- If a question involves choosing between approaches, list the **Options inline under that question**, then select the **Preferred option** inside the response.
 
-  - Generate up to 10 targeted questions based on research
-  - **Only ask** questions genuinely not answered in PRD or discoverable via code
-  - For choice questions: include Options with Pros/Cons/Trade-offs/Impact
-  - Use `<response></response>` blocks for answers
+## Questions
+1) {question 1}
+Options (if applicable):
+- Option A — {short name}
+  - Pros: {2–4 bullets}
+  - Cons: {2–4 bullets}
+  - Trade-offs: {what you gain vs. lose}
+  - Impact: {performance | maintainability | complexity | UX}
+- Option B — {short name}
+  - Pros: {2–4 bullets}
+  - Cons: {2–4 bullets}
+  - Trade-offs: {what you gain vs. lose}
+  - Impact: {performance | maintainability | complexity | UX}
+<response>
+Preferred option: {Option A|Option B|Other}
+Notes: {Any additional guidance}
+</response>
 
-- **Action** — RequestUserInput:
+2) {question 2}
+<response>
+{Answer here if no options}
+</response>
 
-  > "Clarifications saved to `{path}`. Add answers in `<response>` blocks. Leave empty to proceed with assumptions. Reply 'Read it' when ready."
+{… up to 10 questions}
+```
 
-- **Wait** — User replies "Read it"
+- **Action** — RequestUserInput: Direct user to answer clarifications.
+  - Message: "I saved implementation-planning technical clarifications here: `{clarifications_file_path}`. Please add answers inside `<response></response>` blocks. If you prefer me to proceed with intelligent assumptions, leave blocks empty. When ready, reply 'Read it' and I will re-open the file from disk."
+  - Render ACTION REQUIRED footer (see Next Steps section for format).
+- **Wait** — User replies "Read it" after updating clarifications document.
+- **Action** — ReadClarifications: Re-open clarifications file from disk.
+  - **If** user provides path → use it.
+  - **Else** → open most recent `{OUT_DIR}/clarifications/plan_clarifications_*.md`.
+  - Read entire file; use responses when provided; proceed with assumptions if empty.
 
-- **Action** — ReadClarifications: Re-read file from disk; use responses or proceed with assumptions
-
-## Step 3 - Create Implementation Plan
+## Step (3/4) - Create Implementation Plan
 
 - **Action** — DetermineDepth: Read `--depth` from ARGUMENTS
 
@@ -89,7 +164,7 @@ description: 👻 | Create implementation plan from PRD - primary agent
 
 - **Wait** — User provides feedback or approval
 
-## Step 4 - Finalize
+## Step (4/4) - Finalize and Present Next Steps
 
 - **Action** — ConfirmCompletion:
 
