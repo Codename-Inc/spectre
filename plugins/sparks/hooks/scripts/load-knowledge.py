@@ -2,62 +2,62 @@
 """
 load-knowledge.py
 
-SessionStart hook that injects the apply-knowledge skill and registry
+SessionStart hook that injects the apply skill (with inline registry)
 directly into Claude's context.
 """
 
 import json
-import os
+import re
 import sys
 from pathlib import Path
+
+
+def count_registry_entries(content: str) -> int:
+    """Count registry entries in the apply skill content."""
+    # Find the ## Registry section
+    registry_match = re.search(r'## Registry\s*\n(.*)', content, re.DOTALL)
+    if not registry_match:
+        return 0
+
+    registry_section = registry_match.group(1)
+    # Count non-empty lines that look like registry entries (contain |)
+    entries = [
+        line for line in registry_section.strip().split('\n')
+        if line.strip() and '|' in line and not line.startswith('#')
+    ]
+    return len(entries)
 
 
 def main():
     """Main entry point for SessionStart hook."""
     project_dir = Path.cwd()
 
-    # Check if project has knowledge
-    registry_path = (
-        project_dir / ".claude" / "skills" / "apply-knowledge"
-        / "references" / "knowledge-registry.toon"
-    )
+    # Check if project has the apply skill with knowledge
+    skill_path = project_dir / ".claude" / "skills" / "apply" / "SKILL.md"
 
-    if not registry_path.exists():
+    if not skill_path.exists():
         sys.exit(0)
 
-    # Read registry
-    registry_content = registry_path.read_text().strip()
-    entries = [l for l in registry_content.split('\n') if l.strip() and not l.startswith('#')]
+    # Read apply skill (includes instructions + registry)
+    skill_content = skill_path.read_text().strip()
 
-    if not entries:
+    # Count registry entries
+    entry_count = count_registry_entries(skill_content)
+
+    if entry_count == 0:
         sys.exit(0)
 
-    # Read apply-knowledge skill from plugin
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    skill_path = Path(plugin_root) / "skills" / "apply-knowledge" / "SKILL.md"
-
-    if skill_path.exists():
-        skill_content = skill_path.read_text().strip()
-    else:
-        skill_content = "Apply-knowledge skill not found."
-
-    # Build context with skill + registry injected
+    # Build context with full skill content
     context = f"""<project-knowledge>
-This project has {len(entries)} captured knowledge entries.
-
-## Apply-Knowledge Skill
+This project has {entry_count} captured knowledge entries.
 
 {skill_content}
-
-## Knowledge Registry
-
-{registry_content}
 
 Check triggers against current task and load relevant knowledge from references/.
 </project-knowledge>"""
 
-    # Visible notice for debugging (can remove later)
-    visible_notice = f"sparks: {len(entries)} knowledge entries available"
+    # Visible notice
+    visible_notice = f"sparks: {entry_count} knowledge entries available"
 
     output = {
         "systemMessage": visible_notice,
@@ -67,7 +67,7 @@ Check triggers against current task and load relevant knowledge from references/
         }
     }
 
-    print(json.dumps(output))
+    print(json.dumps(output), flush=True)
     sys.exit(0)
 
 

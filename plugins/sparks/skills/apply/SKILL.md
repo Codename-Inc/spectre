@@ -1,6 +1,7 @@
 ---
-name: apply-knowledge
+name: apply
 description: Use when starting implementation, debugging, or feature work on a project with captured knowledge.
+user-invocable: false
 ---
 
 # Apply Knowledge
@@ -39,7 +40,7 @@ DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge.
 1. **Scan registry** (already in your context) — match triggers AND description against current task
 2. **For each match**, Read:
    ```
-   {{project_root}}/.claude/skills/apply-knowledge/{path}
+   {{project_root}}/.claude/skills/apply/{path}
    ```
 3. **Apply the knowledge** — use it to guide your approach, know where to look
 4. **Then proceed** — now you can search/implement with context
@@ -60,6 +61,9 @@ User: "How does /sparks work?"
 
 Registry: `references/feature/sparks-plugin.md|feature|sparks, /sparks, knowledge|...`
 
-Action: `Read .claude/skills/apply-knowledge/references/feature/sparks-plugin.md`
+Action: `Read .claude/skills/apply/references/feature/sparks-plugin.md`
 
 Then: Use the key files and patterns from that knowledge to guide your work.
+
+## Registry
+

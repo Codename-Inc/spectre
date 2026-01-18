@@ -1,6 +1,6 @@
 {
   "name": "subspace-agent-tools",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
@@ -15,7 +15,7 @@
       "name": "spectre",
       "source": "./plugins/spectre",
       "description": "Slash commands for e2e feature development. SPECTRE (Scope, Plan, Execute, Clean, Test, Release, Evaluate) is a meta-prompting system where prompts invoke subagents that execute specialized prompts. SPECTRE prompts lead from one to the next, so you never have to remember what the next prompt is to run in the system. Start with /spectre:scope.",
-      "version": "1.5.0",
+      "version": "1.5.1",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"

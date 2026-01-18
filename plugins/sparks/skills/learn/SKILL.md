@@ -9,15 +9,14 @@ You capture durable project knowledge into Skills that Claude Code loads on-dema
 
 ## Path Convention
 
-`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd). Learnings are written to `{{project_root}}/.claude/skills/apply-knowledge/`.
+`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd). Learnings are written to `{{project_root}}/.claude/skills/apply/`.
 
 ## Storage Structure
 
 ```
-{{project_root}}/.claude/skills/apply-knowledge/
-├── SKILL.md              # Router skill (bootstrapped on first learning)
+{{project_root}}/.claude/skills/apply/
+├── SKILL.md              # Router skill with inline registry
 └── references/
-    ├── knowledge-registry.toon     # Index of all learnings
     ├── patterns/
     │   └── {slug}.md
     ├── gotchas/
@@ -29,13 +28,15 @@ You capture durable project knowledge into Skills that Claude Code loads on-dema
 
 ## Registry
 
-Before proposing a learning, check for existing learnings:
+The registry is stored inline in the apply skill at `{{project_root}}/.claude/skills/apply/SKILL.md` under the `## Registry` section.
+
+Before proposing a learning, read the apply skill to check for existing learnings:
 
 ```
-{{project_root}}/.claude/skills/apply-knowledge/references/knowledge-registry.toon
+{{project_root}}/.claude/skills/apply/SKILL.md
 ```
 
-Format: `{path}|{category}|{triggers}|{description}` (one learning per line)
+Format: `{path}|{category}|{triggers}|{description}` (one learning per line after ## Registry)
 
 Example: `references/feature/learn-plugin.md|feature|learn plugin, /learn|How the learn plugin works`
 
@@ -145,7 +146,7 @@ Rules:
 
 ### 4. Match, Update, or Create
 
-Read registry to find candidates, then **read the actual learning file** to compare content.
+Read the apply skill to find candidates, then **read the actual learning file** to compare content.
 
 **Registry scan** - look for:
 - Same category
@@ -232,7 +233,7 @@ Create this? [Y/n/edit]
 
 ### 7. Write Learning
 
-**Location**: `{{project_root}}/.claude/skills/apply-knowledge/references/{category}/{slug}.md`
+**Location**: `{{project_root}}/.claude/skills/apply/references/{category}/{slug}.md`
 
 **CREATE** - New learning file:
 
@@ -273,18 +274,23 @@ Create this? [Y/n/edit]
 {Explanation}
 ```
 
-### 8. Update Registry
+### 8. Register the Learning
 
-Add/update entry in `{{project_root}}/.claude/skills/apply-knowledge/references/knowledge-registry.toon`:
+After writing the learning file, register it by calling the register script:
 
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_spark.py" \
+  --project-root "{{project_root}}" \
+  --path "references/{category}/{slug}.md" \
+  --category "{category}" \
+  --triggers "{triggers}" \
+  --description "{description}"
 ```
-references/{category}/{slug}.md|{category}|{trigger,keywords}|{short description}
-```
 
-The path must be relative to `.claude/skills/apply-knowledge/` so the apply-knowledge skill can read it directly.
+This appends the entry to the `## Registry` section in the apply skill.
 
 ### 9. Confirm
 
 ```
-Saved .claude/skills/apply-knowledge/references/{category}/{slug}.md
+Saved .claude/skills/apply/references/{category}/{slug}.md
 ```
