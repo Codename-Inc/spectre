@@ -1,16 +1,17 @@
 ---
 description: 👻 | Complete cleanup flow - clean, inspect, lint, test - primary agent
 ---
-
-# spotless_local: Analyze recent changes for dead code and artifacts from failed branches
+# clean: Analyze recent changes for dead code and artifacts from failed branches
 
 ## Description
+
 - **What** — Analyze a scoped working set (commit range, unstaged changes, or context window) to identify dead code, orphaned artifacts, and remnants from abandoned implementation attempts; dispatch parallel subagents to investigate and validate findings
 - **Outcome** — Clean code with all dead artifacts from recent work removed; validated removal tasks ready for execution
 
 ## Variables
 
 ### Dynamic Variables
+
 - `commit_id`: Optional starting commit - analyzes all changes **from and including this commit** through HEAD plus staged/unstaged/untracked — (via ARGUMENTS: $ARGUMENTS)
   - **INCLUDES** the commit_id commit itself and all subsequent commits through HEAD
   - If commit_id equals HEAD, working set will be staged + unstaged + untracked only
@@ -19,6 +20,7 @@ description: 👻 | Complete cleanup flow - clean, inspect, lint, test - primary
 - `target_out_dir`: Optional OUT_DIR override
 
 ### Static Variables
+
 - `out_dir`: docs/active_tasks/{branch_name}
 - `analysis_dir`: {out_dir}/cleanup_analysis
 - `reports_subdir`: {analysis_dir}/area_reports
@@ -29,13 +31,12 @@ description: 👻 | Complete cleanup flow - clean, inspect, lint, test - primary
 
 Optional scope specification. If ambiguous, ask user to clarify.
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
+&lt;ARGUMENTS&gt; $ARGUMENTS &lt;/ARGUMENTS&gt;
 
 ## Codebase Structure
 
 **Relevant Files**:
+
 - Working set files determined by scope
 - `package.json` — Dependencies context
 - `tsconfig.json` — TypeScript configuration
@@ -50,6 +51,7 @@ $ARGUMENTS
 - All file paths must be absolute from repository root
 - Focus on artifacts likely created during recent work: unused functions, orphaned imports, commented-out code, debug statements
 - **File safety**: Default filenames (`working_set.json`, `initial_findings.md`, `duplication_report.md`, `naming_report.md`, `cleanup_summary.md`) must never overwrite existing files—if a target exists, create a scoped variant (append scope/task/timestamp) and use that path in messaging.
+- when committing, —no-verify and eslint-disable, or committing code with eslint-disable, is expressly forbidden without the user’s explicit permission. 
 
 ## Step (1/8) - Determine Working Set Scope
 
@@ -92,28 +94,28 @@ $ARGUMENTS
 
 - **Action** — IdentifyDeadCodePatterns: Scan working set files for common dead code indicators
   - **Patterns to detect** (ordered by likelihood after failed branches):
-    1. **Orphaned imports** — imports with no usage in the file
-    2. **Unused functions/variables** — declared but never called/referenced
-    3. **Commented-out code blocks** — large blocks of commented code (>5 lines)
-    4. **Debug artifacts** — debugger statements, TODO/FIXME from current work
-    5. **Temporary logging** — development-time logging to remove:
-       - console.log/warn/error without structured context (bare strings, variable dumps)
-       - Logging inside loops or hot paths (per-iteration logging)
-       - Debug prefixes: "DEBUG:", "TODO:", "TEMP:", "XXX:", "HACK:"
-       - Variable dumps: `console.log(varName)`, `console.log({var1, var2})`
-       - Checkpoint logs: "here", "got here", "reached X", "entering/exiting"
-       - Timing logs not part of production observability
-       - Commented-out logging statements
-    6. **Dead branches** — unreachable code paths, always-false conditions
-    7. **Orphaned exports** — exports not imported anywhere in codebase
-    8. **Duplicate implementations** — similar code suggesting abandoned refactor
-    9. **Test artifacts** — `.only`, skipped tests, test data that should be removed
+     1. **Orphaned imports** — imports with no usage in the file
+     2. **Unused functions/variables** — declared but never called/referenced
+     3. **Commented-out code blocks** — large blocks of commented code (&gt;5 lines)
+     4. **Debug artifacts** — debugger statements, TODO/FIXME from current work
+     5. **Temporary logging** — development-time logging to remove:
+        - console.log/warn/error without structured context (bare strings, variable dumps)
+        - Logging inside loops or hot paths (per-iteration logging)
+        - Debug prefixes: "DEBUG:", "TODO:", "TEMP:", "XXX:", "HACK:"
+        - Variable dumps: `console.log(varName)`, `console.log({var1, var2})`
+        - Checkpoint logs: "here", "got here", "reached X", "entering/exiting"
+        - Timing logs not part of production observability
+        - Commented-out logging statements
+     6. **Dead branches** — unreachable code paths, always-false conditions
+     7. **Orphaned exports** — exports not imported anywhere in codebase
+     8. **Duplicate implementations** — similar code suggesting abandoned refactor
+     9. **Test artifacts** — `.only`, skipped tests, test data that should be removed
     10. **AI code slop** — patterns inconsistent with codebase style:
-       - Excessive comments a human wouldn't add or inconsistent with file style
-       - Unnecessary defensive checks/try-catch in trusted codepaths
-       - Casts to `any` to bypass type issues
-       - Over-documentation of obvious code
-       - Verbose patterns where codebase uses concise ones
+    - Excessive comments a human wouldn't add or inconsistent with file style
+    - Unnecessary defensive checks/try-catch in trusted codepaths
+    - Casts to `any` to bypass type issues
+    - Over-documentation of obvious code
+    - Verbose patterns where codebase uses concise ones
   - For each file in working set: identify potential issues with file:line references
 - **Action** — ChunkAnalysis: Group findings by file/module for parallel investigation
   - Create 2-5 investigation chunks based on working set size
@@ -124,8 +126,9 @@ $ARGUMENTS
 ## Step (3/8) - Analyze Duplication & Naming
 
 - **Action** — DetectDuplication: Find repeated code patterns in working set
+
   - **Patterns to detect**:
-    - Copy-pasted logic (>5 similar lines, 2+ instances)
+    - Copy-pasted logic (&gt;5 similar lines, 2+ instances)
     - Nearly-identical functions with cosmetic differences (variable names differ, same logic)
     - Repeated type definitions or interfaces
     - Same validation/transform/fetch patterns across files
@@ -137,15 +140,17 @@ $ARGUMENTS
   - Ignore intentional duplication (test fixtures, generated code)
 
 - **Action** — GenerateDuplicationReport: Write `{analysis_dir}/duplication_report.md` (or a scoped variant if it already exists; do not overwrite)
-  - **Format**:
-    ```
-    ## Duplicate Code Clusters
 
+  - **Format**:
+
+    ```plaintext
+    ## Duplicate Code Clusters
+    
     ### Cluster 1: {pattern_name} ({instance_count} instances)
     - `{file1}:{lines}`
     - `{file2}:{lines}`
     - `{file3}:{lines}`
-
+    
     **Pattern**: {description}
     **Recommendation**: Extract to `{suggested_location}`
     **Effort**: {low|medium|high}
@@ -156,6 +161,7 @@ $ARGUMENTS
 **Purpose**: Systematically eliminate tech debt from eslint-disable comments.
 
 **3a. Collect ESLint Bypasses**:
+
 ```bash
 grep -rn "eslint-disable\|@ts-ignore\|@ts-expect-error" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx"
 ```
@@ -163,7 +169,8 @@ grep -rn "eslint-disable\|@ts-ignore\|@ts-expect-error" --include="*.ts" --inclu
 **3b. Group by Module**: Cluster findings by directory or logical module (files that import each other).
 
 **3c. For each group with ≥2 bypasses**, dispatch @analyst in parallel:
-```
+
+```plaintext
 Analyze ESLint bypasses in: {file_list}
 
 For each bypass:
@@ -182,6 +189,7 @@ Output a refactor plan:
 ```
 
 **3d. Present Refactor Summary**:
+
 - Group by effort level (trivial fixes first)
 - Flag high-risk items for user decision
 - Create actionable items for future cleanup sprints
@@ -193,6 +201,7 @@ Output a refactor plan:
 - **Action** — PrepareSubagentPrompts: Generate investigation prompts for each chunk
 
 **Subagent Investigation Instructions Template**:
+
 ```markdown
 You are investigating recent changes in {area_name} for dead code artifacts.
 
@@ -235,6 +244,7 @@ Save your report to: {reports_subdir}/{area_name}_report.md (if that file exists
 - **Action** — PrepareValidationPrompts: Generate validation prompts for high-risk items
 
 **Subagent Validation Instructions Template**:
+
 ```markdown
 You are validating a finding from dead code analysis.
 
@@ -280,6 +290,7 @@ Save to: {validation_subdir}/{task_id}_validation.md (if that file exists, appen
   - Present summary: X files analyzed, Y items safe to remove, Z need review
 
 ## Step (8/8) - Verify & Commit
+
 - Execute Approved Removals (User-Triggered)
 - Run lint, fix violations
 - Run tests, fix failures or rollback
