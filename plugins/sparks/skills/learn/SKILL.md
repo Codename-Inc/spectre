@@ -7,6 +7,44 @@ description: Use when user invokes /learn or wants to save patterns, decisions, 
 
 You capture durable project knowledge into Skills that Claude Code loads on-demand.
 
+## Goal
+
+**Enable someone with zero context to become productive on this topic.**
+
+Every learning you create should allow a new team member (human or AI) to complete a task without asking follow-up questions. If they'd need to dig further to actually DO something, the learning isn't complete.
+
+## Content Principles
+
+These principles apply to ALL categories. Structure varies by category, but depth is universal.
+
+### 1. Lead with the insight
+What's the ONE thing they must know? Put it first, not buried. Don't make them read 5 paragraphs to find the key point.
+
+### 2. Orient before details
+Why does this exist? What problem does it solve? 2-3 sentences max, then move on. Someone with zero context needs to understand WHY before HOW.
+
+### 3. Make it actionable
+Include something they can DO: commands to run, code to copy, steps to follow. Information without action is trivia. If there's nothing actionable, question whether it's worth capturing.
+
+### 4. Show, don't tell
+Examples > explanations. A code snippet is worth 100 words of description. Every learning should have at least one concrete example.
+
+### 5. Anticipate mistakes
+What will trip them up? Call out pitfalls explicitly. The best learnings prevent errors, not just explain concepts.
+
+### 6. Keep it scannable
+Headers, tables, code blocks. Someone should get 80% of the value in 60 seconds of skimming. Dense paragraphs bury knowledge.
+
+## Quality Test
+
+Before proposing ANY learning, ask yourself:
+
+- **"Could someone complete a task using only this?"** - If they'd need to search elsewhere, add more.
+- **"Does this tell them HOW, not just WHAT?"** - Facts without application aren't useful.
+- **"Would I have saved hours if I'd had this when I started?"** - If the answer is "maybe 10 minutes", it might not be worth capturing.
+
+If any answer is no, add more depth or reconsider capturing it.
+
 ## Path Convention
 
 `{{project_root}}` refers to the root of the current project (typically the git repository root or cwd).
@@ -17,7 +55,7 @@ Each learning becomes its own skill at the project level:
 
 ```
 {{project_root}}/.claude/skills/
-├── find/
+├── sparks-find/
 │   ├── SKILL.md                      # Find skill (discovery + embedded registry)
 │   └── references/
 │       └── registry.toon             # Registry source of truth
@@ -67,18 +105,18 @@ Must meet **at least 2 of 4**:
 
 **ONLY use these categories.** Do not invent new ones.
 
-| Category        | When to use                                              |
-| --------------- | -------------------------------------------------------- |
-| feature         | How a feature works end-to-end: design, flows, key files |
-| gotchas         | Hard-won debugging knowledge, non-obvious pitfalls       |
-| patterns        | Repeatable solutions used across the codebase            |
-| decisions       | Architectural choices + rationale                        |
-| procedures      | Multi-step processes (deploy, release, etc.)             |
-| integration     | Third-party APIs, vendor quirks, external systems        |
-| performance     | Optimization learnings, benchmarks, scaling decisions    |
-| testing         | Test strategies, coverage decisions, QA patterns         |
-| ux              | Design patterns, user research insights, interactions    |
-| strategy        | Roadmap decisions, prioritization rationale              |
+| Category    | When to use                                              |
+| ----------- | -------------------------------------------------------- |
+| feature     | How a feature works end-to-end: design, flows, key files |
+| gotchas     | Hard-won debugging knowledge, non-obvious pitfalls       |
+| patterns    | Repeatable solutions used across the codebase            |
+| decisions   | Architectural choices + rationale                        |
+| procedures  | Multi-step processes (deploy, release, etc.)             |
+| integration | Third-party APIs, vendor quirks, external systems        |
+| performance | Optimization learnings, benchmarks, scaling decisions    |
+| testing     | Test strategies, coverage decisions, QA patterns         |
+| ux          | Design patterns, user research insights, interactions    |
+| strategy    | Roadmap decisions, prioritization rationale              |
 
 **Category selection guide:**
 - "How does X feature work?" → `feature`
@@ -87,29 +125,82 @@ Must meet **at least 2 of 4**:
 - "How do we deploy/release/migrate X?" → `procedures`
 - "How do we talk to X API?" → `integration`
 
-**Feature category structure**: Feature learnings are higher-level "dossiers" that help the LLM understand how a feature works end-to-end.
+### 4. Category-Specific Structure
 
-<CRITICAL>
-Feature learnings MUST use this structure. Do not propose sparse summaries.
+Each category has expected sections. These are minimums - add more depth as needed to meet the Content Principles.
 
-**Minimum requirements for feature learnings:**
-- Overview (1-2 sentences)
-- User Flows (at least 2 flows)
-- Technical Design (architecture + key patterns)
-- Key Files (at least 3 files with purposes)
-- Common Tasks (at least 2 tasks with how-to)
+#### Feature Learnings
 
-**Quality gate before proposing**: Your content must answer:
-1. What does this feature do for users?
-2. How do users interact with it?
-3. What's the technical architecture?
-4. What files matter and why?
-5. What tasks will someone need to do?
+Feature learnings are comprehensive "dossiers" that enable someone to work on a feature without prior context.
 
-If you can't answer all 5, research more before proposing.
-</CRITICAL>
+**Required sections:**
+- **What is {Feature}?** - 2-3 sentences explaining what it is and why it exists
+- **Why Use It? / Use Cases** - Problem/solution pairs or concrete scenarios (at least 3)
+- **User Flows** - How users interact with it (at least 2 flows)
+- **Technical Design** - Architecture, key patterns, how it works
+- **Key Files** - Files that matter with their purposes (at least 3)
+- **Common Tasks** - Things someone will need to do, with how-to (at least 2)
 
-### 4. Generate Skill Name
+#### Gotcha Learnings
+
+Gotchas capture hard-won debugging knowledge.
+
+**Required sections:**
+- **Symptom** - What you observe when you hit this
+- **Root Cause** - Why it happens (the non-obvious part)
+- **Solution** - How to fix it, with code/commands
+- **Prevention** - How to avoid hitting it again (if applicable)
+
+#### Pattern Learnings
+
+Patterns document repeatable solutions.
+
+**Required sections:**
+- **Problem** - What situation calls for this pattern
+- **Solution** - The pattern itself, with code example
+- **When to Use** - Specific scenarios where this applies
+- **Trade-offs** - What you give up by using this pattern
+
+#### Decision Learnings
+
+Decisions preserve architectural choices and rationale.
+
+**Required sections:**
+- **Context** - What situation prompted this decision
+- **Options Considered** - What alternatives existed
+- **Decision** - What we chose
+- **Rationale** - Why we chose it (the important part)
+- **Consequences** - What this decision enables/prevents
+
+#### Procedure Learnings
+
+Procedures document multi-step processes.
+
+**Required sections:**
+- **When to Use** - What triggers this procedure
+- **Prerequisites** - What you need before starting
+- **Steps** - Numbered steps with commands/code
+- **Verification** - How to confirm it worked
+
+#### Integration Learnings
+
+Integrations document external system connections.
+
+**Required sections:**
+- **What it is** - The external system and why we use it
+- **How we connect** - Auth, endpoints, SDK usage
+- **Key Operations** - Common tasks with code examples
+- **Gotchas** - Vendor-specific quirks and workarounds
+
+#### Other Categories (performance, testing, ux, strategy)
+
+Follow the Content Principles. Include:
+- Context (why this matters)
+- The knowledge itself (specific, actionable)
+- Examples (code, commands, or concrete scenarios)
+- Pitfalls (what to watch out for)
+
+### 5. Generate Skill Name
 
 The skill name follows the pattern `{category}-{slug}`:
 
@@ -127,7 +218,7 @@ Rules:
 - **Descriptive slug**: `session-restore`, `handling-timeouts`
 - **3-5 words max in slug**: enough to be specific, short enough to scan
 
-### 5. Match, Update, or Create
+### 6. Match, Update, or Create
 
 Read the registry to find candidates, then **read the actual skill file** to compare content.
 
@@ -153,7 +244,7 @@ Read the registry to find candidates, then **read the actual skill file** to com
 
 **Decision priority**: UPDATE > APPEND > CREATE (prefer consolidation over proliferation)
 
-### 6. Propose
+### 7. Propose
 
 Stop and wait for user response. Format depends on action type:
 
@@ -165,7 +256,7 @@ I'd update the skill: `{skill-name}`
 **Proposed**: {1-2 sentence summary of revision}
 **Reason**: {contradicts|extends|supersedes} - {why}
 
-{Updated content preview}
+{Updated content preview - FULL content, not summary}
 
 Update this? [Y/n/edit]
 ```
@@ -176,9 +267,7 @@ I'd append to the skill: `{skill-name}`
 
 **{Title}**
 
-{1-3 sentence summary}
-
-{Code example if relevant}
+{Full content following category structure}
 
 Trigger: {keywords}
 Confidence: {low|medium|high}
@@ -192,9 +281,7 @@ I'd create a new skill: `{skill-name}`
 
 **{Title}**
 
-{1-3 sentence summary}
-
-{Code example if relevant}
+{Full content following category structure}
 
 Trigger: {keywords}
 Confidence: {low|medium|high}
@@ -207,14 +294,18 @@ Create this? [Y/n/edit]
 - medium = repeated or taught
 - high = battle-tested
 
-### 7. Handle Response
+<CRITICAL>
+Always show FULL proposed content, not summaries. The user needs to see exactly what will be saved to approve it. Sparse proposals lead to sparse learnings.
+</CRITICAL>
+
+### 8. Handle Response
 
 - `y`/`yes` -> write as proposed
 - `n`/`no` -> cancel
 - `edit` or custom text -> modify first
 - Different skill name -> use that instead
 
-### 8. Write Learning
+### 9. Write Learning
 
 **Location**: `{{project_root}}/.claude/skills/{skill-name}/SKILL.md`
 
@@ -235,7 +326,7 @@ user-invocable: false
 **Updated**: {YYYY-MM-DD}
 **Version**: 1
 
-{Content - follows category-specific structure}
+{Content - follows category-specific structure from Section 4}
 ```
 
 **UPDATE** - Revise existing skill:
@@ -261,7 +352,7 @@ user-invocable: false
 {Explanation}
 ```
 
-### 9. Register the Learning
+### 10. Register the Learning
 
 After writing the skill file, register it by calling the register script:
 
@@ -296,7 +387,7 @@ The `--description` parameter is used to MATCH knowledge to tasks. It must descr
 - `"API patterns"` (no actionable context)
 </CRITICAL>
 
-### 10. Confirm
+### 11. Confirm
 
 ```
 Saved .claude/skills/{skill-name}/SKILL.md
