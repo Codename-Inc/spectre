@@ -93,7 +93,7 @@ Each entry corresponds to a skill that can be loaded via `Skill({{skill-name}})`
     context = f"<sparks-knowledge>\n{apply_content}\n</sparks-knowledge>"
 
     # Visible notice
-    visible_notice = f"sparks: {entry_count} knowledge skills available"
+    visible_notice = f"⚡️Sparks: {entry_count} knowledge skills available"
 
     output = {
         "systemMessage": visible_notice,

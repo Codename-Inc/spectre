@@ -382,6 +382,8 @@ def format_context(
     if handoff_path:
         notice_lines.append(f"\n📁 Full details: {handoff_path}")
 
+    notice_lines.append("\n💡 Run /sesh:forget to clear session memory and start fresh.")
+
     visible_notice = "\n".join(notice_lines)
 
     # Build the hidden context sections
