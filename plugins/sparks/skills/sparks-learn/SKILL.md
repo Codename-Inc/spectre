@@ -218,7 +218,7 @@ Must meet **at least 2 of 4**:
 
 **ONLY use these categories.** Do not invent new ones.
 
-| Category    | When to use                                              |
+| Category    | Categorize as this when the knowledge is about...        |
 | ----------- | -------------------------------------------------------- |
 | feature     | How a feature works end-to-end: design, flows, key files |
 | gotchas     | Hard-won debugging knowledge, non-obvious pitfalls       |
