@@ -306,12 +306,21 @@ describe('UserCreated event contract', () => {
 
 ### Step (4/4) - Commit
 
-- **Action** — GroupChanges: Organize changes into logical commits
+- **Action** — CommitPlanningArtifacts: Gather and commit planning/working docs FIRST
+  - Check for uncommitted files in `OUT_DIR/`:
+    - `working_set.json` (scope and risk tier categorization)
+    - Any other `.md` or `.json` artifacts created during this flow
+  - Check for uncommitted docs in `docs/tasks/{branch_name}/` or related planning directories
+  - **If** uncommitted planning artifacts exist:
+    - Stage all: `git add docs/tasks/{branch_name}/ OUT_DIR/`
+    - Commit: `docs(test): add test planning artifacts for {branch_name}`
+
+- **Action** — GroupChanges: Organize code changes into logical commits
 
   - Group by: feat/fix/refactor/test/chore
   - Tests can be bundled with their feature or separate (your judgment)
 
-- **Action** — CommitAll: Create conventional commits
+- **Action** — CommitAll: Create conventional commits for code changes
 
   - Format: `type(scope): description`
   - Each commit answers: What changed and why?

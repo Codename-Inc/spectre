@@ -294,5 +294,15 @@ Save to: {validation_subdir}/{task_id}_validation.md (if that file exists, appen
 - Execute Approved Removals (User-Triggered)
 - Run lint, fix violations
 - Run tests, fix failures or rollback
-- Commit by type (chore/refactor/fix/test), conventional format
+- **Action** — CommitPlanningArtifacts: Gather and commit planning/working docs
+  - Check for uncommitted files in `{out_dir}` and `{analysis_dir}`:
+    - `working_set.json`, `initial_findings.md`, `duplication_report.md`
+    - `naming_report.md`, `cleanup_summary.md`
+    - Area reports in `{reports_subdir}/`
+    - Validation reports in `{validation_subdir}/`
+    - Any other `.md` or `.json` artifacts created during this flow
+  - **If** uncommitted planning artifacts exist:
+    - Stage all: `git add {out_dir}/ {analysis_dir}/`
+    - Commit: `docs(clean): add cleanup analysis artifacts for {branch_name}`
+- Commit code changes by type (chore/refactor/fix/test), conventional format
 - Render Next Steps via `@skill-spectre:spectre`
