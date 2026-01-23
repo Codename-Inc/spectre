@@ -22,6 +22,8 @@ Without this, you'd waste time rediscovering what's already known or make decisi
 <CRITICAL>
 If ANY entry's triggers or description match your current task, you MUST load the skill FIRST using the Skill tool.
 
+**Trigger matches are sufficient.** If a trigger word appears in the user's request, load the skill—you don't need the description to also match. Don't reframe the user's request to avoid triggers.
+
 The registry tells you exactly where relevant knowledge is. Loading it first makes you faster and more accurate.
 
 DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge—even if you think you already have enough context. Partial context from Read results or error messages is not a substitute for the complete picture in the skill.
@@ -40,7 +42,7 @@ Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 ## Workflow
 
 1. **Read the registry** at `{{project_root}}/.claude/skills/sparks-find/references/registry.toon`
-2. **Scan entries** — match triggers AND description against current task
+2. **Scan entries** — if ANY trigger word OR the description matches your task, that's a match
 3. **For each match**, load the skill:
    ```
    Skill({skill-name})
@@ -60,6 +62,7 @@ Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 | "I already have context from a Read/system message" | Partial context is dangerous. The skill has the full picture—including related changes you don't know about yet. |
 | "The error/issue is narrow and specific" | Narrow symptoms often stem from broader changes (like namespace renames) that the skill documents. |
 | "I can figure this out faster by just searching" | You're trading 1 skill load for multiple speculative searches. The skill tells you exactly where to look. |
+| "This is really about X, not Y" | Don't reframe the user's words. If they said "release," match against "release"—not your interpretation of the underlying concern. |
 
 ## Real Failure Example
 
@@ -72,6 +75,18 @@ Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 **What the skill would have provided**: Immediate knowledge that skills were renamed to `sparks-*` namespace, exact file paths in the "Key Files" table, no searching required.
 
 **Cost**: Extra tool calls, wasted tokens, and reinforced bad habits.
+
+## Real Failure Example #2
+
+**Task**: User asks about "npm run release process"
+
+**Rationalization**: "This is really about URL management for updates, not about the release mechanics itself. The procedure-release skill talks about signing and notarization, which isn't what they're asking about."
+
+**What happened**: Skipped loading `procedure-release`. Searched the codebase for update URLs. Missed that the skill documents the entire release infrastructure including how URLs are configured.
+
+**What the skill would have provided**: Complete context on release targets, URL configuration, and how staging vs production channels work.
+
+**The lesson**: Trigger match ("release") was sufficient. The LLM shouldn't have required the description to also match, and shouldn't have reframed the task to avoid the trigger.
 
 ## Example
 
