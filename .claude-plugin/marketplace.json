@@ -1,6 +1,6 @@
 {
   "name": "subspace-agent-tools",
-  "version": "2.4.9",
+  "version": "2.4.10",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
@@ -15,7 +15,7 @@
       "name": "spectre",
       "source": "./plugins/spectre",
       "description": "Slash commands for e2e feature development. SPECTRE (Scope, Plan, Execute, Clean, Test, Release, Evaluate) is a meta-prompting system where prompts invoke subagents that execute specialized prompts. SPECTRE prompts lead from one to the next, so you never have to remember what the next prompt is to run in the system. Start with /spectre:scope.",
-      "version": "1.6.3",
+      "version": "1.6.4",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"
@@ -56,7 +56,7 @@
       "name": "sparks",
       "source": "./plugins/sparks",
       "description": "Build codebase knowledge with /sparks:learn and CC will proactively recall that knowledge when relevant. Sparks (Session Persisted Recursive Knowledge System) is a Skill-based codebase knowledge building system. When you don't want to forget an important lesson, or you build a complex new feature you want to reference later, use /sparks:learn to save that knowledge to your knowledge-registry. At the start of every session, Claude Code will load any relevant learnings from the knowledge registry proactively. Ask CC to load the /sparks:apply-knowledge skill on demand to find relevant learnings. Use /learn to capture procedures, patterns, decisions, gotchas, product strategy, ux styleguides, feature documentation, and more from conversations.",
-      "version": "3.5.9",
+      "version": "3.5.10",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"
