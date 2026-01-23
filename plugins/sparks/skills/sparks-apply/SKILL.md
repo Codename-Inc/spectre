@@ -63,6 +63,8 @@ Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 | "The error/issue is narrow and specific" | Narrow symptoms often stem from broader changes (like namespace renames) that the skill documents. |
 | "I can figure this out faster by just searching" | You're trading 1 skill load for multiple speculative searches. The skill tells you exactly where to look. |
 | "This is really about X, not Y" | Don't reframe the user's words. If they said "release," match against "release"—not your interpretation of the underlying concern. |
+| "I have the exact files I'm editing" | File contents ≠ architectural context. Skills tell you related files, patterns across the codebase, and what you don't know you don't know. |
+| "The edit is surgical/mechanical" | Surgical edits in isolation risk inconsistency. Skills reveal if similar changes are needed elsewhere. |
 
 ## Real Failure Example
 
@@ -87,6 +89,22 @@ Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
 **What the skill would have provided**: Complete context on release targets, URL configuration, and how staging vs production channels work.
 
 **The lesson**: Trigger match ("release") was sufficient. The LLM shouldn't have required the description to also match, and shouldn't have reframed the task to avoid the trigger.
+
+## Real Failure Example #3
+
+**Task**: Add commit message to the commit step in `/spectre:clean` and `/spectre:test` commands
+
+**Rationalization**: "I already have the full contents of both clean.md and test.md from Read results. The task is surgical—I know exactly which lines to edit. I don't need broader context to make this specific change."
+
+**What happened**: Skipped loading `feature-spectre-plugin` despite triggers matching ("spectre", "clean", "test"). Made the edit successfully but without understanding the broader SPECTRE workflow architecture.
+
+**What the skill would have provided**:
+- Knowledge that similar commit patterns exist in other commands that might need the same change
+- Understanding of how commands relate to each other in the workflow
+- Commit message conventions used across SPECTRE
+- Awareness of the artifact system and how commits are structured
+
+**The lesson**: Having file contents is not the same as having architectural context. The skill tells you what you don't know you don't know—related files, patterns across commands, conventions. A "surgical" edit without skill context risks being inconsistent with the broader system.
 
 ## Example
 
