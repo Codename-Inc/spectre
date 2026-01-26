@@ -26,8 +26,8 @@ def get_repo_root() -> Path:
 
 
 def get_plugins_dir() -> Path:
-    """Get the plugins directory in the repo."""
-    return get_repo_root() / "plugins"
+    """Get the plugins directory in the repo (integrations/claude-code)."""
+    return get_repo_root() / "integrations" / "claude-code"
 
 
 def get_skills_dir() -> Path:
@@ -57,7 +57,7 @@ def get_codex_home() -> Path:
 
 
 def link_plugins(force: bool = False) -> list[SetupResult]:
-    """Symlink plugins from repo to ~/.claude/plugins/.
+    """Symlink the spectre plugin from repo to ~/.claude/plugins/.
 
     Args:
         force: If True, remove existing symlinks/dirs before creating new ones.
@@ -66,92 +66,77 @@ def link_plugins(force: bool = False) -> list[SetupResult]:
         List of SetupResult for each plugin.
     """
     results = []
-    plugins_source = get_plugins_dir()
+    plugin_dir = get_plugins_dir()  # integrations/claude-code
     plugins_target = get_claude_home() / "plugins"
 
     # Create plugins directory if needed
     plugins_target.mkdir(parents=True, exist_ok=True)
 
-    # Find all plugins (directories containing plugin.json)
-    if not plugins_source.exists():
+    # Check plugin exists
+    plugin_json = plugin_dir / "plugin.json"
+    if not plugin_json.exists():
         results.append(SetupResult(
             success=False,
-            message="Plugins directory not found in repo",
-            path=str(plugins_source),
+            message="Plugin not found (missing plugin.json)",
+            path=str(plugin_dir),
         ))
         return results
 
-    for plugin_dir in plugins_source.iterdir():
-        if not plugin_dir.is_dir():
-            continue
+    plugin_name = "spectre"
+    target_link = plugins_target / plugin_name
 
-        plugin_json = plugin_dir / "plugin.json"
-        if not plugin_json.exists():
-            # Skip directories without plugin.json (e.g., shared/)
-            continue
-
-        plugin_name = plugin_dir.name
-        target_link = plugins_target / plugin_name
-
-        # Handle existing target
-        if target_link.exists() or target_link.is_symlink():
-            if not force:
-                # Check if it's already pointing to us
-                if target_link.is_symlink():
-                    try:
-                        existing_target = target_link.resolve()
-                        if existing_target == plugin_dir.resolve():
-                            results.append(SetupResult(
-                                success=True,
-                                message=f"Plugin '{plugin_name}' already linked (skipped)",
-                                path=str(target_link),
-                            ))
-                            continue
-                    except OSError:
-                        pass
-
-                results.append(SetupResult(
-                    success=False,
-                    message=f"Plugin '{plugin_name}' already exists (use --force to overwrite)",
-                    path=str(target_link),
-                ))
-                continue
-
-            # Force mode: remove existing
+    # Handle existing target
+    if target_link.exists() or target_link.is_symlink():
+        if not force:
+            # Check if it's already pointing to us
             if target_link.is_symlink():
-                target_link.unlink()
-            elif target_link.is_dir():
-                shutil.rmtree(target_link)
-            else:
-                target_link.unlink()
+                try:
+                    existing_target = target_link.resolve()
+                    if existing_target == plugin_dir.resolve():
+                        results.append(SetupResult(
+                            success=True,
+                            message=f"Plugin '{plugin_name}' already linked (skipped)",
+                            path=str(target_link),
+                        ))
+                        return results
+                except OSError:
+                    pass
 
-        # Create symlink
-        try:
-            target_link.symlink_to(plugin_dir.resolve())
-            results.append(SetupResult(
-                success=True,
-                message=f"Plugin '{plugin_name}' linked",
-                path=str(target_link),
-            ))
-        except OSError as e:
             results.append(SetupResult(
                 success=False,
-                message=f"Failed to link plugin '{plugin_name}': {e}",
+                message=f"Plugin '{plugin_name}' already exists (use --force to overwrite)",
                 path=str(target_link),
             ))
+            return results
 
-    if not results:
+        # Force mode: remove existing
+        if target_link.is_symlink():
+            target_link.unlink()
+        elif target_link.is_dir():
+            shutil.rmtree(target_link)
+        else:
+            target_link.unlink()
+
+    # Create symlink
+    try:
+        target_link.symlink_to(plugin_dir.resolve())
+        results.append(SetupResult(
+            success=True,
+            message=f"Plugin '{plugin_name}' linked",
+            path=str(target_link),
+        ))
+    except OSError as e:
         results.append(SetupResult(
             success=False,
-            message="No plugins found to install",
-            path=str(plugins_source),
+            message=f"Failed to link plugin '{plugin_name}': {e}",
+            path=str(target_link),
         ))
 
     return results
 
 
 def link_agents(force: bool = False) -> list[SetupResult]:
-    """Symlink agents from plugins to ~/.claude/agents/.
+    """Symlink agents from plugin to ~/.claude/agents/.
 
     Agents are symlinked individually (not the whole directory) to allow
     merging with user's existing agents.
@@ -168,69 +153,61 @@ def link_agents(force: bool = False) -> list[SetupResult]:
     # Create agents directory if needed
     agents_target.mkdir(parents=True, exist_ok=True)
 
-    # Find agents in each plugin
-    plugins_source = get_plugins_dir()
-    if not plugins_source.exists():
+    # Find agents in plugin
+    plugin_dir = get_plugins_dir()
+    agents_source = plugin_dir / "agents"
+    if not agents_source.exists():
         return results
 
-    for plugin_dir in plugins_source.iterdir():
-        if not plugin_dir.is_dir():
-            continue
+    plugin_name = "spectre"
 
-        agents_source = plugin_dir / "agents"
-        if not agents_source.exists():
-            continue
+    # Link each agent file
+    for agent_file in agents_source.glob("*.md"):
+        # Use namespaced name: plugin:agent
+        # e.g., spectre/dev.md -> spectre:dev.md in ~/.claude/agents/
+        agent_name = agent_file.stem
+        target_link = agents_target / f"{plugin_name}:{agent_name}.md"
 
-        plugin_name = plugin_dir.name
+        # Handle existing target
+        if target_link.exists() or target_link.is_symlink():
+            if not force:
+                if target_link.is_symlink():
+                    try:
+                        existing_target = target_link.resolve()
+                        if existing_target == agent_file.resolve():
+                            results.append(SetupResult(
+                                success=True,
+                                message=f"Agent '{plugin_name}:{agent_name}' already linked (skipped)",
+                                path=str(target_link),
+                            ))
+                            continue
+                    except OSError:
+                        pass
 
-        # Link each agent file
-        for agent_file in agents_source.glob("*.md"):
-            # Use namespaced name: plugin:agent
-            # e.g., spectre/dev.md -> spectre:dev.md in ~/.claude/agents/
-            # But also create a direct link for convenience
-            agent_name = agent_file.stem
-            target_link = agents_target / f"{plugin_name}:{agent_name}.md"
-
-            # Handle existing target
-            if target_link.exists() or target_link.is_symlink():
-                if not force:
-                    if target_link.is_symlink():
-                        try:
-                            existing_target = target_link.resolve()
-                            if existing_target == agent_file.resolve():
-                                results.append(SetupResult(
-                                    success=True,
-                                    message=f"Agent '{plugin_name}:{agent_name}' already linked (skipped)",
-                                    path=str(target_link),
-                                ))
-                                continue
-                        except OSError:
-                            pass
-
-                    results.append(SetupResult(
-                        success=False,
-                        message=f"Agent '{plugin_name}:{agent_name}' already exists (use --force)",
-                        path=str(target_link),
-                    ))
-                    continue
-
-                # Force mode: remove existing
-                target_link.unlink()
-
-            # Create symlink
-            try:
-                target_link.symlink_to(agent_file.resolve())
-                results.append(SetupResult(
-                    success=True,
-                    message=f"Agent '{plugin_name}:{agent_name}' linked",
-                    path=str(target_link),
-                ))
-            except OSError as e:
                 results.append(SetupResult(
                     success=False,
-                    message=f"Failed to link agent '{plugin_name}:{agent_name}': {e}",
+                    message=f"Agent '{plugin_name}:{agent_name}' already exists (use --force)",
                     path=str(target_link),
                 ))
+                continue
+
+            # Force mode: remove existing
+            target_link.unlink()
+
+        # Create symlink
+        try:
+            target_link.symlink_to(agent_file.resolve())
+            results.append(SetupResult(
+                success=True,
+                message=f"Agent '{plugin_name}:{agent_name}' linked",
+                path=str(target_link),
+            ))
+        except OSError as e:
+            results.append(SetupResult(
+                success=False,
+                message=f"Failed to link agent '{plugin_name}:{agent_name}': {e}",
+                path=str(target_link),
+            ))
 
     return results
 

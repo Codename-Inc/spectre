@@ -4,58 +4,84 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-SPECTRE is a Claude Code plugin system with a Python CLI that implements an agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
+SPECTRE is a universal agentic workflow framework: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
 
-This repo contains **two plugins** (spectre, learn) and a **CLI** for programmatic access.
+Works with Claude Code natively, and other agents via CLI.
 
 ## Repository Structure
 
 ```
-cli/                      # Python CLI (Click-based)
-├── main.py               # Entry point
-├── build/                # Build loop commands
-├── subagent/             # Subagent orchestration
-├── command/              # Slash command retrieval
-└── setup.py              # Plugin/agent installation
-
-plugins/
-├── spectre/              # Core workflow plugin
-│   ├── plugin.json
-│   ├── commands/         # Slash commands (scope.md, plan.md, etc.)
-│   ├── agents/           # Subagent definitions
-│   ├── skills/           # Plugin skills
-│   └── hooks/            # Session memory hooks
-└── learn/                # Knowledge capture plugin
-    ├── plugin.json
-    └── skills/learn/
-
-skills/
-└── spectre_agent_tools/  # Codex-only skill
-
-.claude-plugin/
-└── marketplace.json      # Marketplace registration
+spectre/
+├── core/                         # Agent-agnostic prompts
+│   ├── workflows/                # 7 SPECTRE phase commands
+│   │   └── scope.md, plan.md, execute.md, clean.md, test.md, rebase.md, evaluate.md
+│   ├── commands/                 # Supporting commands
+│   │   └── kickoff.md, research.md, create_plan.md, etc.
+│   ├── agents/                   # Subagent definitions
+│   │   └── dev.md, analyst.md, finder.md, etc.
+│   ├── session/                  # Session memory commands
+│   │   └── handoff.md, forget.md
+│   └── skills/                   # Skills
+│       └── spectre/SKILL.md
+│
+├── integrations/
+│   └── claude-code/              # Claude Code plugin
+│       ├── plugin.json
+│       ├── commands/             # (copies of core for CC discovery)
+│       ├── agents/               # Core agents + sync.md
+│       ├── hooks/                # SessionStart, PreCompact, UserPromptSubmit
+│       └── skills/
+│
+├── cli/                          # Python CLI
+│   ├── main.py                   # Entry point (subagent, command, setup)
+│   ├── subagent/                 # Subagent runner
+│   ├── command/                  # Slash command retrieval
+│   └── setup.py                  # Plugin installation
+│
+├── docs/                         # User documentation
+│   └── getting-started.md, workflow-guide.md, etc.
+│
+└── .claude-plugin/
+    └── marketplace.json          # Marketplace registration
 ```
 
 ## Commands
 
 ```bash
-# Run hook tests
-pytest plugins/spectre/hooks/scripts/ -v
-
 # CLI commands
 spectre --help
-spectre build                    # Automated task loop
 spectre subagent list            # List available agents
+spectre subagent run dev "task"  # Run a subagent
 spectre command list             # List slash commands
+spectre command get /spectre:scope  # Get command prompt
+spectre setup                    # Install to Claude Code
+
+# Run hook tests
+pytest integrations/claude-code/hooks/scripts/ -v
 ```
 
 ## Architecture
 
-### Two Plugins
-- **spectre**: Core workflow (scope → plan → execute → clean → test → rebase → evaluate)
-- **learn**: Capture knowledge from conversations into reusable skills
+### Core Prompts (`core/`)
+
+Agent-agnostic prompts that describe the workflow. These are the source of truth.
+
+### Claude Code Integration (`integrations/claude-code/`)
+
+CC-specific wiring:
+- **plugin.json** — Plugin manifest
+- **hooks/** — Session memory (SessionStart, PreCompact, UserPromptSubmit)
+- **agents/sync.md** — CC-specific session sync agent
+
+### CLI (`cli/`)
+
+Universal access for any agent:
+- `spectre subagent run` — Run subagents
+- `spectre command get` — Retrieve command prompts
+- `spectre setup` — Install CC plugin
 
 ### Meta-Prompt Orchestration
+
 Commands are markdown prompts that:
 1. Parse user arguments
 2. Spawn parallel subagents (`@spectre:dev`, `@spectre:analyst`, etc.)
@@ -63,6 +89,7 @@ Commands are markdown prompts that:
 4. Main prompt synthesizes findings and produces artifacts
 
 ### Subagents
+
 | Agent | Purpose |
 |-------|---------|
 | `@spectre:dev` | Implementation with MVP focus |
@@ -74,47 +101,53 @@ Commands are markdown prompts that:
 | `@spectre:reviewer` | Independent review |
 
 ### Session Memory
-Hooks in `plugins/spectre/hooks/` maintain context across sessions:
+
+Hooks in `integrations/claude-code/hooks/` maintain context across sessions:
 - **SessionStart**: Restores previous session context
 - **UserPromptSubmit**: Captures todos on `/spectre:handoff`
+- **PreCompact**: Warns before compacting
 
 Session state is stored in `.spectre/` (gitignored).
-
-### CLI Build Loop
-The `spectre build` command runs Claude Code in an automated task loop, completing one task per iteration from a task file.
 
 ## Working in This Repo
 
 ### Adding Commands
-Create markdown in `plugins/spectre/commands/` following existing patterns:
-- ARGUMENTS section for input parsing
-- EXECUTION FLOW for step-by-step logic
-- "Next Steps" output for workflow continuity
+
+1. Create markdown in `core/workflows/` or `core/commands/`
+2. Copy to `integrations/claude-code/commands/` for CC discovery
+3. Follow existing patterns:
+   - ARGUMENTS section for input parsing
+   - EXECUTION FLOW for step-by-step logic
+   - "Next Steps" output for workflow continuity
 
 ### Adding Agents
-Create markdown in `plugins/spectre/agents/` with:
-- Role and mission sections
-- Methodology for how the agent works
-- Tool preferences
 
-### Adding Skills
-Create directory in `plugins/spectre/skills/{skill-name}/` with `SKILL.md`.
+1. Create markdown in `core/agents/`
+2. Copy to `integrations/claude-code/agents/`
+3. Include:
+   - Role and mission sections
+   - Methodology for how the agent works
+   - Tool preferences
 
 ### Modifying Hooks
-Update Python scripts in `plugins/spectre/hooks/scripts/`. Hooks must:
+
+Update Python scripts in `integrations/claude-code/hooks/scripts/`. Hooks must:
 - Use `os.fork()` for non-blocking execution
 - Use only Python 3 standard library
 - Return valid JSON to stdout
 
 ### CLI Development
+
 Python CLI uses Click. Entry point is `cli/main.py`.
 
 ## Key Patterns
 
 ### Command Flow
+
 Every command ends with contextual "Next Steps" suggestions grounded in actual codebase state.
 
 ### Hook Non-Blocking Pattern
+
 ```python
 pid = os.fork()
 if pid == 0:
@@ -128,51 +161,37 @@ else:
 
 Claude Code caches plugins by version. There's no hot-reload — **always restart Claude after changes**.
 
-### Local Development (`--plugin-dir`)
-
-The official approach for plugin development:
+### Local Development
 
 ```bash
-claude --plugin-dir /Users/joe/Dev/spectre/plugins/spectre --plugin-dir /Users/joe/Dev/spectre/plugins/learn
+claude --plugin-dir /path/to/spectre/integrations/claude-code
 ```
 
 Workflow:
-1. Edit plugin files
+1. Edit files in `core/` and/or `integrations/claude-code/`
 2. Restart Claude with the same command
 3. Changes are active
 
-No version bumps, no cache, no reinstalls. Create an alias for convenience:
-```bash
-alias claude-dev='claude --plugin-dir /Users/joe/Dev/spectre/plugins/spectre --plugin-dir /Users/joe/Dev/spectre/plugins/learn'
-```
-
 ### Testing Marketplace Distribution
-
-To test what users will experience:
 
 ```bash
 # Add local marketplace
-/plugin marketplace add /Users/joe/Dev/spectre
+/plugin marketplace add /path/to/spectre
 
 # Install from it
 /plugin install spectre@codename
 ```
 
-Since plugins are cached, iterate by either:
-- **Uninstall/reinstall**: `/plugin uninstall spectre@codename` then `/plugin install spectre@codename`
-- **Bump version**: Update version in all 3 files, then `/plugin update spectre@codename`
-
 ### Releasing to Users
 
-1. **Bump version in THREE files**:
-   - `plugins/spectre/plugin.json`
-   - `plugins/learn/plugin.json`
-   - `.claude-plugin/marketplace.json` (has version for each plugin)
+1. **Bump version in TWO files**:
+   - `integrations/claude-code/plugin.json`
+   - `.claude-plugin/marketplace.json`
 2. **Commit and push** to GitHub
 3. **Tag the release** (optional but recommended)
 
 ```bash
-git add -A && git commit -m "release: v1.2.0" && git tag v1.2.0 && git push && git push --tags
+git add -A && git commit -m "release: v2.0.0" && git tag v2.0.0 && git push && git push --tags
 ```
 
 Users update via:
@@ -184,6 +203,11 @@ Users update via:
 ## Important Notes
 
 - Commands use `/spectre:` prefix (e.g., `/spectre:scope`)
+- Session memory commands: `/spectre:handoff`, `/spectre:forget`
 - Session state lives in `.spectre/` (gitignored)
 - `os.fork()` is Unix-only
 - CLI installed via `pipx install -e .` or `pipx install git+https://github.com/Codename-Inc/spectre.git`
+
+## Related Repos
+
+- [spectre-labs](https://github.com/Codename-Inc/spectre-labs) — Experimental features (build loop, sparks)

@@ -2,7 +2,6 @@
 
 This module provides the main entry point for the `spectre` command,
 which unifies all subcommands:
-  - spectre build - run build loop (one task per iteration)
   - spectre subagent - run specialized agents
   - spectre command - manage slash commands
   - spectre setup - install plugins and skills
@@ -10,7 +9,6 @@ which unifies all subcommands:
 Usage:
     spectre --help
     spectre --version
-    spectre build --tasks tasks.md
     spectre subagent run "task"
     spectre command list
     spectre setup
@@ -59,189 +57,18 @@ def cli() -> None:
 
     \b
     COMMANDS:
-      build     - Run build loop, completing one task per iteration
       subagent  - Run specialized agents in isolated sessions
       command   - Retrieve and manage slash commands
       setup     - Install plugins and skills
 
     \b
     EXAMPLES:
-      spectre build --tasks docs/tasks.md --max-iterations 10
       spectre subagent run "explain this codebase"
       spectre subagent run tdd-agent "write tests for auth module"
       spectre command get /spectre:scope
       spectre setup
     """
     pass
-
-
-# Build command group
-@cli.group(invoke_without_command=True)
-@click.option("--tasks", type=click.Path(exists=True), help="Path to tasks.md file")
-@click.option(
-    "--context",
-    multiple=True,
-    type=click.Path(exists=True),
-    help="Additional context files (can specify multiple)",
-)
-@click.option(
-    "--max-iterations",
-    type=int,
-    default=10,
-    show_default=True,
-    help="Maximum number of iterations",
-)
-@click.pass_context
-def build(
-    ctx: click.Context,
-    tasks: str | None,
-    context: tuple[str, ...],
-    max_iterations: int,
-) -> None:
-    """Run build loop, completing one parent task per iteration.
-
-    The build loop invokes Claude Code repeatedly, with each iteration
-    focused on completing exactly one parent task from the tasks file.
-
-    \b
-    COMMANDS:
-      resume    - Resume the last build session
-
-    \b
-    EXAMPLES:
-      # Interactive mode (prompts for inputs)
-      spectre build
-
-      # Flag-based invocation
-      spectre build --tasks docs/tasks.md --context docs/scope.md
-
-      # Multiple context files
-      spectre build --tasks docs/tasks.md --context a.md --context b.md
-
-      # Resume after stopping to edit files
-      spectre build resume
-    """
-    # If a subcommand was invoked, let it handle things
-    if ctx.invoked_subcommand is not None:
-        return
-
-    # Otherwise run the build directly
-    _run_build(tasks, context, max_iterations)
-
-
-def _run_build(
-    tasks: str | None,
-    context: tuple[str, ...],
-    max_iterations: int,
-) -> None:
-    """Internal function to run the build loop."""
-    from cli.build.loop import run_build_loop
-    from cli.build.cli import (
-        prompt_for_tasks_file,
-        prompt_for_context_files,
-        prompt_for_max_iterations,
-        validate_inputs,
-        normalize_path,
-        save_session,
-    )
-
-    # Get tasks file - from args or interactive prompt
-    tasks_file = tasks
-    if not tasks_file:
-        tasks_file = prompt_for_tasks_file()
-
-    # Determine if running in flag mode (--tasks provided) or interactive mode
-    flag_mode = tasks is not None
-
-    # Get context files - from args in flag mode, prompt in interactive mode
-    context_files = list(context) if flag_mode else prompt_for_context_files()
-
-    # Get max iterations - from args or interactive prompt (only if interactive mode)
-    if not flag_mode:
-        max_iterations = prompt_for_max_iterations()
-
-    # Normalize paths (strip @ prefix if present)
-    tasks_file = normalize_path(tasks_file)
-    context_files = [normalize_path(f) for f in context_files]
-
-    # Validate all inputs before proceeding
-    validate_inputs(tasks_file, context_files, max_iterations)
-
-    # Convert to absolute paths for consistency
-    tasks_file = str(Path(tasks_file).resolve())
-    context_files = [str(Path(f).resolve()) for f in context_files]
-
-    # Save session for future resume
-    save_session(tasks_file, context_files, max_iterations)
-
-    # Run the build loop
-    exit_code, _ = run_build_loop(tasks_file, context_files, max_iterations)
-    sys.exit(exit_code)
-
-
-@build.command()
-@click.option(
-    "-y", "--yes",
-    is_flag=True,
-    help="Skip confirmation prompt",
-)
-def resume(yes: bool) -> None:
-    """Resume the last build session.
-
-    Loads the previous session configuration and restarts the build loop.
-    Use this after stopping a build (Ctrl+C) to make edits to your task,
-    plan, or scope files.
-
-    \b
-    EXAMPLES:
-      # Resume with confirmation prompt
-      spectre build resume
-
-      # Resume without confirmation
-      spectre build resume -y
-    """
-    from cli.build.loop import run_build_loop
-    from cli.build.cli import (
-        load_session,
-        save_session,
-        validate_inputs,
-        format_session_summary,
-        get_session_path,
-    )
-
-    session = load_session()
-
-    if not session:
-        click.echo("No previous session found.", err=True)
-        click.echo(f"Session file: {get_session_path()}", err=True)
-        click.echo("\nStart a new build with:", err=True)
-        click.echo("  spectre build --tasks docs/tasks.md --context docs/scope.md", err=True)
-        sys.exit(1)
-
-    # Show session details and confirm
-    click.echo("\n--- Resume Build Session ---")
-    click.echo(format_session_summary(session))
-    click.echo("----------------------------\n")
-
-    if not yes:
-        if not click.confirm("Resume this session?", default=True):
-            click.echo("Cancelled.")
-            sys.exit(0)
-
-    # Extract session values
-    tasks_file = session["tasks_file"]
-    context_files = session.get("context_files", [])
-    max_iterations = session.get("max_iterations", 10)
-
-    # Validate files still exist
-    validate_inputs(tasks_file, context_files, max_iterations)
-
-    # Update session timestamp
-    save_session(tasks_file, context_files, max_iterations)
-
-    # Run the build loop
-    exit_code, _ = run_build_loop(tasks_file, context_files, max_iterations)
-    sys.exit(exit_code)
 
 
 # Setup command - install plugins, agents, and skills
