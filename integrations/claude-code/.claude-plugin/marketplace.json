@@ -1,6 +1,6 @@
 {
   "name": "spectre",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
@@ -12,9 +12,9 @@
   "plugins": [
     {
       "name": "spectre",
-      "source": "..",
+      "source": "./..",
       "description": "Agentic coding workflow with session memory. SPECTRE guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Evaluate phases. Includes cross-session memory via /spectre:handoff. Start with /spectre:scope.",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"
