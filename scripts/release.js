@@ -9,10 +9,9 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
-// New structure: marketplace and plugin are both in integrations/claude-code/
-const CC_INTEGRATION = join(ROOT, 'integrations/claude-code');
-const MARKETPLACE_PATH = join(CC_INTEGRATION, '.claude-plugin/marketplace.json');
-const PLUGIN_PATH = join(CC_INTEGRATION, 'plugin.json');
+// Marketplace at repo root, plugin in integrations/claude-code/
+const MARKETPLACE_PATH = join(ROOT, '.claude-plugin/marketplace.json');
+const PLUGIN_PATH = join(ROOT, 'integrations/claude-code/plugin.json');
 
 const rl = createInterface({
   input: process.stdin,
@@ -101,7 +100,7 @@ async function main() {
     marketplace.plugins[0].version = newVersion;
   }
   writeJSON(MARKETPLACE_PATH, marketplace);
-  console.log(`  ✓ integrations/claude-code/.claude-plugin/marketplace.json → ${newVersion}`);
+  console.log(`  ✓ .claude-plugin/marketplace.json → ${newVersion}`);
 
   // Git operations
   console.log('\nGit operations...');
