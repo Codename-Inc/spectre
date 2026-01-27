@@ -6,7 +6,7 @@ A simple, powerful, and **proven** structured development workflow plugin for Cl
 
 ## Core Principles
 
-- Great Inputs -> Great Outputs
+- Great Inputs -&gt; Great Outputs
 - Ambiguity is Death
 - One Workflow, Every Feature, Any Size
 
@@ -16,14 +16,19 @@ Prompt based workflows are how you get better, higher quality, and more consiste
 
 The better your prompt based workflows, the more AI can take on, the longer AI can work autonomously, the more easily you can multi-task, and suddently you are 100x'ing your output.
 
-I created Spectre because I wanted a repeatable workflow I can use that
+I created Spectre because I wanted:
 
-- works on both tiny and gigantic features without having to remember different prompts
-- delivers robusts engineering plans when needed, otherwise concise sets of tasks if not
-- hands on planning, hands off execution
-- helps guide me to higher quality INPUT so i can ensure the outputs are more aligned with my vision
-- *stupid simple memory* - agent sessions are aware of the ongoing thread of work (/spectre:handoff)
-- doesn't make me have to remember prompts!! it always suggests the next ones.
+- a repeatable daily driver workflow that works on brand new projects, and large existing codebases.
+
+- a single workflow that works on both small & big features without being overwhelmed with process
+
+- a workflow that delivers robusts engineering plans when needed, or a concise set of tasks if not
+
+- hands on planning but hands off execution
+
+- higher quality INPUT with LESS WORK so i can ensure the outputs are more aligned with my vision
+
+- ***stupid. simple. memory.*** agent sessions are aware of the ongoing thread of work (/spectre:handoff)
 
 ## About Spectre
 
@@ -31,7 +36,7 @@ Spectre is the result of over 12 months of daily Claude Code use. I used and ite
 
 These are the *actual* prompts I use non stop every day.
 
-With Spectre, I built an React Native based AI Agent + GPS Rangefinder for Golfers (New June (in Alpha)) and a 250k line Tauri/Rust/React desktop application called Subspace (in open Beta). 
+With Spectre, I built an React Native based AI Agent + GPS Rangefinder for Golfers (New June (in Alpha)) and a 250k line Tauri/Rust/React desktop application called Subspace (in open Beta).
 
 Spectre made products like New June and Subspace possible.
 
@@ -50,6 +55,7 @@ Then start building:
 ```plaintext
 /spectre:scope 
 ```
+
 That's it. You just start with 1 command to build features.
 
 ## The SPECTRE Workflow
@@ -68,17 +74,25 @@ If you start with /scope, your agent will guide you through the rest of the step
 
 Each command ends with "Next Steps" suggestions, so you always know what prompt to run next — you don’t have to remember what the prompts are, which is one thing that kills me about many other Spec Driven Development workflows.
 
-You can use *any* of the commands in any sequence you want - they are good standalone too. More on my typical daily usage below. 
+You can use *any* of the commands in any sequence you want - they are good standalone too. More on my typical daily usage below.
 
-## Session Memory
+## Spectre Session Memory
 
-SPECTRE maintains and accumulates context across sessions. When your session context window is getting close to 160k+ tokens, run /spectre:handoff. 
+SPECTRE can maintain and accumulates context across sessions when you use the /spectre:handoff command. To get the most from Spectre's Session Memory, we recommend that you:
 
-A status report will get generated for that session, and if you already had previous sessions, a subagent will merge the status updates into a single continuous session memory.
+1) turn off auto-compact in Claude Code /config settings, and 
 
-Run /clear or start a new session — you’ll see the topline status update inline. 
+2) run /spectre:handoff liberally when you are switching gears or the context window is getting north of 160k tokens.
 
-If you want to start fresh — /spectre:forget archives the session_logs. 
+### How It Works
+
+When you run /spectre:handoff, a status report will get generated for that session, and automatically loaded into your context window for the next session. You’ll see a nice summary of the status when you run /clear.
+
+If you already had previous sessions, a subagent (spectre:sync) will review the last 3 status updates and merge into a single continuous session memory. 
+
+Voila -- trailing 3 session memory snapshots.
+
+If you want to start fresh — /spectre:forget archives the session_logs.
 
 ```plaintext
 /spectre:handoff   # Save progress before session ends
@@ -113,13 +127,13 @@ Although I do sometimes use @spectre:researcher for web research. Its like mini 
 
 - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we’re working on.
 
-- then run /spectre:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /code_review and /validate.
+- then run /spectre:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /spectre:code_review and /spectre:validate.
 
   - side note /spectre:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
- 
+
 - From here — I do a bunch off manual testing and fixing. If something new comes up, or if the scope is not what I’d hoped, I run a new SPECTRE cycle from within the project.
 
-- Once wrappig up, /spectre:clean helps find dead code, duplicates, verifies, lint, commits any stragglers, etc. /spectre:test then writes tests based on a risk-adjusted framework focusing on behavior not implementation details.
+- Once wrapping up, /spectre:clean helps find dead code, duplicates, verifies, lint, commits any stragglers, etc., then /spectre:test then writes tests based on a risk-adjusted framework focusing on behavior not implementation details.
 
 - /spectre:rebase works great but obviously you do you with your release flow.
 
