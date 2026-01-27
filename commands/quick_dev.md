@@ -98,4 +98,4 @@ $ARGUMENTS
   > **Task Plan Created**: `{path}`
   > ✅ Scope | ✅ Research | ✅ Plan
 
-- **Action** — RenderFooter: Use `@skill-spectre:spectre` skill for Next Steps
+- **Action** — RenderFooter: Use `@skill-spectre:spectre-next-steps` skill for Next Steps

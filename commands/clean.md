@@ -305,4 +305,4 @@ Save to: {validation_subdir}/{task_id}_validation.md (if that file exists, appen
     - Stage all: `git add {out_dir}/ {analysis_dir}/`
     - Commit: `docs(clean): add cleanup analysis artifacts for {branch_name}`
 - Commit code changes by type (chore/refactor/fix/test), conventional format
-- Render Next Steps via `@skill-spectre:spectre`
+- Render Next Steps via `@skill-spectre:spectre-next-steps`

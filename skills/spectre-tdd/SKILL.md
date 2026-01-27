@@ -1,6 +1,6 @@
 ---
-name: tdd
-description: "Load this skill when executing TDD (Test-Driven Development) methodology. Use when /spectre:tdd is invoked, when implementing features via strict RED-GREEN-REFACTOR cycles, or when a prompt instructs execution via TDD."
+name: spectre-tdd
+description: "Load this skill when executing TDD (Test-Driven Development) methodology. Use when implementing features via strict RED-GREEN-REFACTOR cycles, or when a prompt instructs execution via TDD."
 ---
 
 # TDD: Test-Driven Development Methodology

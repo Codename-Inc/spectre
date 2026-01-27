@@ -8,6 +8,7 @@ package-lock.json
 
 ## worktrees
 .codename-grove
+deprecated/
 
 # Python
 __pycache__/

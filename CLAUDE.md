@@ -14,25 +14,18 @@ spectre/
 ├── commands/             # Slash commands (markdown prompts)
 ├── agents/               # Subagent definitions
 ├── hooks/                # SessionStart, PreCompact, UserPromptSubmit
-├── skills/               # Skills (spectre footer rendering)
-├── cli/                  # Python CLI for other agents
-├── .claude-plugin/       # Marketplace registration
-└── deprecated/           # Archived commands
+├── skills/               # Skills (spectre footer rendering, tdd methodology)
+└── .claude-plugin/       # Marketplace registration
 ```
 
 ## Commands
 
 ```bash
-# CLI commands (for non-Claude Code agents)
-spectre --help
-spectre subagent list            # List available agents
-spectre subagent run dev "task"  # Run a subagent
-spectre command list             # List slash commands
-spectre command get /spectre:scope  # Get command prompt
-
 # Run hook tests
 pytest hooks/scripts/ -v
 ```
+
+> **CLI for Other Agents**: See [spectre-labs/cli](https://github.com/Codename-Inc/spectre-labs/tree/main/cli)
 
 ## Architecture
 
@@ -89,10 +82,6 @@ Update Python scripts in `hooks/scripts/`. Hooks must:
 - Use `os.fork()` for non-blocking execution
 - Use only Python 3 standard library
 - Return valid JSON to stdout
-
-### CLI Development
-
-Python CLI uses Click. Entry point is `cli/main.py`.
 
 ## Key Patterns
 
@@ -160,4 +149,3 @@ Users update via:
 - Session memory commands: `/spectre:handoff`, `/spectre:forget`
 - Session state lives in `.spectre/` (gitignored)
 - `os.fork()` is Unix-only
-- CLI installed via `pipx install -e .` or `pipx install git+https://github.com/Codename-Inc/spectre.git`

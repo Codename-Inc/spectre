@@ -422,7 +422,7 @@ We are a startup building an early stage product hoping to find Product Market F
 
 ## Step (4/4) - Handoff
 
-- **Action** — RenderFooter: Render Next Steps using `@skill-spectre:spectre` skill.
+- **Action** — RenderFooter: Render Next Steps using `@skill-spectre:spectre-next-steps` skill.
 
 ## Output Location
 

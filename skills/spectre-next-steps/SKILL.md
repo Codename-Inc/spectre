@@ -1,9 +1,9 @@
 ---
-name: spectre
-description: SPECTRE workflow reference skill. Use when rendering Next Steps footer or selecting contextual navigation options at the end of any SPECTRE command.
+name: spectre-next-steps
+description: Use when rendering the Next Steps footer after any Spectre workflow prompts complete, or selecting contextual navigation options at the end of any SPECTRE command.
 ---
 
-# SPECTRE Skill
+# SPECTRE Next Steps Skill
 
 Provides workflow navigation, command reference, and Next Steps footer rendering for SPECTRE commands.
 
@@ -154,11 +154,6 @@ Development and verification.
 - **/spectre:execute**
   - Purpose: Adaptive wave-based execution dispatching parallel @dev subagents, with reflection after each wave and code review loop until no critical issues remain.
   - When to use: When tasks.md exists and you want coordinated multi-agent parallel execution.
-
-- **/spectre:tdd** (loads `tdd` skill)
-  - Purpose: Strict test-driven development execution—write failing tests first, then minimal implementation, then refactor.
-  - When to use: When implementing features that benefit from TDD methodology.
-  - Note: The command loads the `tdd` skill which contains the full TDD methodology.
 
 - **/spectre:code_review**
   - Purpose: Comprehensive code analysis covering functionality, quality, security, and production readiness with severity-based findings.

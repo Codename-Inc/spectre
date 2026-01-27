@@ -124,11 +124,11 @@ $ARGUMENTS
     - Spawn new sub-agents as needed for additional investigation
     - Continue updating document
  - **Else** → proceed to handoff
-- **Action** — RenderFooter: Render Next Steps footer using `@skill-spectre:spectre` skill (contains format template and SPECTRE command options)
+- **Action** — RenderFooter: Render Next Steps footer using `@skill-spectre:spectre-next-steps` skill (contains format template and SPECTRE command options)
 
 ## Next Steps
 
-See `@skill-spectre:spectre` skill for footer format and command options.
+See `@skill-spectre:spectre-next-steps` skill for footer format and command options.
 
 ## Success Criteria
 

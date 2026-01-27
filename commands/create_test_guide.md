@@ -92,11 +92,11 @@ $ARGUMENTS
   > **Testing Strategy**: {Simple/Medium/Complex} - {brief rationale}
   >
   > The guide is organized by user workflows with actionable checklists ready for execution.
-- **Action** — RenderFooter: Render Next Steps footer using `@skill-spectre:spectre` skill (contains format template and SPECTRE command options)
+- **Action** — RenderFooter: Render Next Steps footer using `@skill-spectre:spectre-next-steps` skill (contains format template and SPECTRE command options)
 
 ## Next Steps
 
-See `@skill-spectre:spectre` skill for footer format and command options.
+See `@skill-spectre:spectre-next-steps` skill for footer format and command options.
 
 ## Success Criteria
 

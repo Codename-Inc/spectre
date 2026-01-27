@@ -170,4 +170,4 @@ Notes: {Any additional guidance}
 
   > "🎯 Implementation Planning Complete. Documents: {plan_path}, task_context.md"
 
-- **Action** — RenderFooter: Use `@skill-spectre:spectre` skill for Next Steps footer
+- **Action** — RenderFooter: Use `@skill-spectre:spectre-next-steps` skill for Next Steps footer

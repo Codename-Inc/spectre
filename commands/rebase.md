@@ -70,4 +70,4 @@ $ARGUMENTS
   >
   > **Safety**: Backup `{branch}` | Restore: `git reset --hard {backup}`
 
-- **Action** — RenderFooter: Use `@skill-spectre:spectre` skill for Next Steps
+- **Action** — RenderFooter: Use `@skill-spectre:spectre-next-steps` skill for Next Steps

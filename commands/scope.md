@@ -111,4 +111,4 @@ Collaborative workflow for structuring unstructured thoughts into clear scope bo
 
 - **Action** — ConfirmCompletion: "Scope complete. Docs: `{OUT_DIR}/concepts/scope.md`, `{OUT_DIR}/clarifications/scope_clarifications_{timestamp}.md`"
 
-- **Action** — RenderFooter: Render Next Steps using `@skill-spectre:spectre` skill.
+- **Action** — RenderFooter: Render Next Steps using `@skill-spectre:spectre-next-steps` skill.
