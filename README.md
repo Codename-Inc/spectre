@@ -186,6 +186,7 @@ Note: I'm hard at work on a major upgrade to the /evaluate prompt, so watch for 
 | `/spectre:code_review` | Independent code review |
 | `/spectre:validate` | Requirements verification |
 | `/spectre:architecture_review` | Principal architect assessment |
+| `/spectre:fix` | Investigate bugs & implement fixes |
 
 ## Repository Structure
 
