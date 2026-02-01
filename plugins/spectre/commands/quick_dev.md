@@ -53,7 +53,7 @@ $ARGUMENTS
   - `@finder` — find WHERE files/components live
   - `@analyst` — understand HOW code works
   - `@patterns` — find similar implementations
-  - `@researcher` — external docs (only if user asks)
+  - `@web-research` — external docs (only if user asks)
   - **Wait** for ALL agents to complete
 
 - **Action** — Synthesize: Compile findings with file paths, patterns, architectural decisions

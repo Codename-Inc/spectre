@@ -51,7 +51,7 @@ Commands are markdown prompts that:
 | `@spectre:analyst` | Understand how code works |
 | `@spectre:finder` | Find where code lives |
 | `@spectre:patterns` | Find reusable patterns |
-| `@spectre:researcher` | Web research |
+| `@spectre:web-research` | Web research |
 | `@spectre:tester` | Test automation |
 | `@spectre:reviewer` | Independent review |
 

@@ -45,7 +45,7 @@ $ARGUMENTS
     - **analyst**: Understand HOW specific code works
     - **patterns**: Find examples of similar implementations
   - **Web Research** (when task requires 3rd party frameworks/platforms/services/libraries/SDKs):
-    - **researcher**: External documentation and resources
+    - **web-research**: External documentation and resources
     - **IMPORTANT**: Instruct to return LINKS with findings; include links in final report
   - **3rd Party Libraries** (only if user explicitly asks):
     - Use Context 7 MCP tool to search external documentation
@@ -138,7 +138,7 @@ See `@skill-spectre:spectre-next-steps` skill for footer format and command opti
 - [ ] Directly mentioned files read FULLY in main context before decomposition
 - [ ] Research question decomposed into composable areas with ultra-thinking about patterns/connections
 - [ ] Research plan created using TodoWrite to track subtasks
-- [ ] Specialized sub-agents spawned in parallel (finder, analyst, patterns, researcher as needed, linear agents if relevant)
+- [ ] Specialized sub-agents spawned in parallel (finder, analyst, patterns, web-research as needed, linear agents if relevant)
 - [ ] Agent strategy followed (locator → analyzer → parallel execution)
 - [ ] Web research agents instructed to return LINKS (if used)
 - [ ] ALL sub-agents completed before synthesis

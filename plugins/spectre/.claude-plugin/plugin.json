@@ -1,5 +1,5 @@
 {
   "name": "spectre",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "description": "Agentic coding workflow with session memory. SPECTRE guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Evaluate phases."
 }

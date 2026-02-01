@@ -34,7 +34,7 @@ $ARGUMENTS
 | @finder | Find relevant files, entry points, handlers, models | File paths by domain |
 | @analyst | Trace data flow, dependencies, behavior, edge cases | file:line refs for ALL findings |
 | @patterns | Find similar implementations, patterns to follow/avoid | Code examples with file:line |
-| @researcher | Best practices, similar solutions, pitfalls | Findings WITH LINKS |
+| @web-research | Best practices, similar solutions, pitfalls | Findings WITH LINKS |
 
 **Strategy**: locator → analyzer on findings → parallel for breadth. Spawn follow-ups if shallow. Demand file:line evidence.
 

@@ -102,10 +102,10 @@ If you want to start fresh — /spectre:forget archives the session_logs.
 
 ## Subagents
 
-SPECTRE dispatches specialized subagents for different tasks:\
-\
-NOTE: You don’t even need to know that these subagents exist. The prompts instruct Claude Code to call them automatically. \
-\
+SPECTRE dispatches specialized subagents for different tasks:
+
+NOTE: You don’t even need to know that these subagents exist. The prompts instruct Claude Code to call them automatically.
+
 Although I do sometimes use @spectre:researcher for web research. Its like mini deep-research.
 
 | Agent | Purpose |
@@ -114,7 +114,7 @@ Although I do sometimes use @spectre:researcher for web research. Its like mini 
 | `@spectre:analyst` | Understand how code works |
 | `@spectre:finder` | Find where code lives |
 | `@spectre:patterns` | Find reusable patterns |
-| `@spectre:researcher` | Web research |
+| `@spectre:web-research` | Web research |
 | `@spectre:tester` | Test automation |
 | `@spectre:reviewer` | Independent code review |
 
@@ -126,19 +126,35 @@ Although I do sometimes use @spectre:researcher for web research. Its like mini 
 
 - /spectre:plan to build out a well researched technical design or set of tasks
 
-- once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we’re working on.
+  - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we’re working on.
 
 - then run /spectre:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /spectre:code_review and /spectre:validate.
 
   - side note /spectre:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
+  - when initial execution is complete, i run another /spectre:handoff to get the context window clean for fixes/touch ups
 
-- From here — I do a bunch off manual testing and fixing. If something new comes up, or if the scope is not what I’d hoped, I run a new SPECTRE cycle from within the project.
+- From here — I do a bunch off manual testing and fixing.
 
-- Once wrapping up, /spectre:clean helps find dead code, duplicates, verifies, lint, commits any stragglers, etc., then /spectre:test then writes tests based on a risk-adjusted framework focusing on behavior not implementation details.
+  - I largely use Claude Code's built in /plan mode for fixes in this phase.
 
-- /spectre:rebase works great but obviously you do you with your release flow.
+  - If there is a bug that can't easily be solved, i use the /spectre:fix prompt for a more strutured debugging approach.
 
-- /spectre:evaluate is a good way to document the work that you can later easily reference with an @, and the architecture review is helpful to think through if what you built ultimately needs some future work. Nothing ever goes as planned after all.
+  - If something new comes up, or if the scope is not what I’d hoped, I run a new /scope cycle from within the project.
+
+- During the process of manual testing/fixing, I typically accumulate uncommitted changes. /spectre:sweep will get your changes committed, while 
+
+  - running and addressing lint
+  - running tests and related tests on touched files
+  - finding obvious dead code/AI slop, and
+  - grouping changes logically with descriptive conventional commits 
+
+- Once wrapping up, /spectre:clean is a much deeper cleanup that disptaches subagents to find dead code, duplicates, verifies, lint, commits any stragglers, etc.
+
+- Then /spectre:test does deep analysis and dispatches subagents to write tests based on a risk-adjusted framework focusing on behavior not implementation details.
+
+- Once cleaned/tested — /spectre:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. 
+
+- Finally before I get fully checked in, I run /spectre:evaluate. Its a good way to document the work that you can later easily reference with an @, and the architecture review is helpful to think through if what you built ultimately needs some future work. Nothing ever goes as planned after all.
 
 Note: I'm hard at work on a major upgrade to the /evaluate prompt, so watch for that. Hint: recursive learning.
 
@@ -178,29 +194,33 @@ Note: I'm hard at work on a major upgrade to the /evaluate prompt, so watch for 
 
 ### Utilities
 
+These are situational commands.
+
+I use /spectre:fix for pretty much all bugs I run into.
+
 | Command | Description |
 | --- | --- |
+| `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits |
 | `/spectre:ux_spec` | UX specification for UI-heavy features |
-| `/spectre:create_plan` | Generate technical design doc |
-| `/spectre:create_tasks` | Detailed task breakdown |
-| `/spectre:code_review` | Independent code review |
-| `/spectre:validate` | Requirements verification |
-| `/spectre:architecture_review` | Principal architect assessment |
 | `/spectre:fix` | Investigate bugs & implement fixes |
 
 ## Repository Structure
 
 ```plaintext
 spectre/
-├── plugin.json       # Plugin manifest
-├── commands/         # Slash commands
-├── agents/           # Subagent definitions
-├── hooks/            # Session memory hooks
-├── skills/           # Skills
-└── .claude-plugin/   # Marketplace registration
+├── .claude-plugin/
+│   └── marketplace.json  # Marketplace registration
+├── plugins/
+│   └── spectre/
+│       ├── .claude-plugin/
+│       │   └── plugin.json   # Plugin manifest
+│       ├── commands/         # Slash commands
+│       ├── agents/           # Subagent definitions
+│       ├── hooks/            # Session memory hooks
+│       └── skills/           # Skills
+├── scripts/              # Release & utility scripts
+└── CLAUDE.md
 ```
-
-> **CLI for Other Agents**: If you need to run SPECTRE from Codex or other AI agents, see [spectre-labs/cli](https://github.com/Codename-Inc/spectre-labs/tree/main/cli)
 
 ## License
 
