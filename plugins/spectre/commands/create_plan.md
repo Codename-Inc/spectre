@@ -88,13 +88,14 @@ Dynamically generate up to 10 technical questions based on research findings. **
 
 - **Action** — DesignTechnicalApproach: Create the implementation plan.
 
-  **STANDARD** depth — Focused plan for contained changes. Include the sections that matter for THIS feature. Typical sections: Overview, Desired End State, Out of Scope, Technical Approach. Keep it concise.
+  **STANDARD** depth — Focused plan for contained changes. Include the sections that matter for THIS feature. Typical sections: Overview, Desired End State, Out of Scope, Technical Approach.
 
   **COMPREHENSIVE** depth — Full technical design for complex/risky changes. Consider all of the following, but only include sections relevant to the feature: Overview, Current State (with file:line refs), Desired End State, Out of Scope, Technical Approach, System Architecture, Implementation Phases, Component/Data Architecture, API Design, Testing Strategy.
 
   Use your judgment — the goal is a plan that gives a developer everything they need to implement, not a template with empty sections.
 
 - **Action** — AppendCriticalFiles: End the plan with a "Critical Files for Implementation" section.
+
   - List 3-7 files most critical for implementing this plan.
   - Format: `path/to/file.ts` — brief reason (e.g., "Core logic to modify", "Pattern to follow", "Interface to implement").
   - These should be specific files discovered during research, not guesses.
