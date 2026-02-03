@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
 const MARKETPLACE_PATH = join(ROOT, '.claude-plugin/marketplace.json');
-const PLUGIN_PATH = join(ROOT, 'plugins/spectre/.claude-plugin/plugin.json');
+const PLUGIN_PATH = join(ROOT, 'plugins/spectrl/.claude-plugin/plugin.json');
 
 const rl = createInterface({
   input: process.stdin,
@@ -45,7 +45,7 @@ const run = (cmd) => {
 };
 
 async function main() {
-  console.log('\n🚀 SPECTRE Release Script\n');
+  console.log('\n🚀 spectrl Release Script\n');
 
   // Read current versions
   const marketplace = readJSON(MARKETPLACE_PATH);
@@ -75,7 +75,7 @@ async function main() {
 
   // Show summary
   console.log('\n--- Release Summary ---');
-  console.log(`  spectre: ${currentVersion} → ${newVersion}`);
+  console.log(`  spectrl: ${currentVersion} → ${newVersion}`);
 
   // Confirm
   const confirm = await ask('\nProceed with release? [Y/n]: ');

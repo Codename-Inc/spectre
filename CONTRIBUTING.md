@@ -1,6 +1,6 @@
-# Contributing to SPECTRE
+# Contributing to spectrl
 
-Thank you for your interest in contributing to SPECTRE.
+Thank you for your interest in contributing to spectrl.
 
 ## How to Contribute
 
@@ -24,7 +24,7 @@ Open an issue describing:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Test with Claude Code (`claude --plugin-dir /path/to/spectre`)
+4. Test with Claude Code (`claude --plugin-dir /path/to/spectrl`)
 5. Commit with clear messages
 6. Push and open a PR
 
@@ -33,19 +33,19 @@ Open an issue describing:
 ### Local Development
 
 ```bash
-git clone https://github.com/Codename-Inc/spectre.git
-cd spectre
+git clone https://github.com/Codename-Inc/spectrl.git
+cd spectrl
 ```
 
 Test the plugin locally:
 ```bash
-claude --plugin-dir /path/to/spectre
+claude --plugin-dir /path/to/spectrl
 ```
 
 ### Structure
 
 ```
-spectre/
+spectrl/
 ├── plugin.json       # Plugin manifest
 ├── commands/         # Slash commands
 ├── agents/           # Subagent definitions

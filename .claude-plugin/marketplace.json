@@ -1,19 +1,19 @@
 {
-  "name": "spectre",
-  "version": "2.2.3",
+  "name": "spectrl",
+  "version": "3.0.0",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
   },
   "metadata": {
-    "description": "SPECTRE - Structured agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, Evaluate. A meta-prompting system where prompts invoke subagents that execute specialized prompts.",
-    "homepage": "https://github.com/Codename-Inc/spectre"
+    "description": "spectrl - Structured agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, Evaluate. A meta-prompting system where prompts invoke subagents that execute specialized prompts.",
+    "homepage": "https://github.com/Codename-Inc/spectrl"
   },
   "plugins": [
     {
-      "name": "spectre",
-      "source": "./plugins/spectre",
-      "description": "Agentic coding workflow with session memory. SPECTRE guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Evaluate phases. Includes cross-session memory via /spectre:handoff. Start with /spectre:scope.",
+      "name": "spectrl",
+      "source": "./plugins/spectrl",
+      "description": "Agentic coding workflow with session memory. spectrl guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Evaluate phases. Includes cross-session memory via /spectrl:handoff. Start with /spectrl:scope.",
       "author": {
         "name": "Joe Fernandez",
         "email": "joe@subspace.build"
@@ -27,7 +27,7 @@
         "memory",
         "handoff"
       ],
-      "version": "2.2.3"
+      "version": "3.0.0"
     }
   ]
 }

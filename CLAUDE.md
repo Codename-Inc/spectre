@@ -4,22 +4,22 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-SPECTRE is a Claude Code plugin providing a structured agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
+spectrl is a Claude Code plugin providing a structured agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
 
 ## Repository Structure
 
 ```
-spectre/
+spectrl/
 ├── .claude-plugin/
 │   └── marketplace.json  # Marketplace registration
 ├── plugins/
-│   └── spectre/
+│   └── spectrl/
 │       ├── .claude-plugin/
 │       │   └── plugin.json   # Plugin manifest
 │       ├── commands/         # Slash commands (markdown prompts)
 │       ├── agents/           # Subagent definitions
 │       ├── hooks/            # SessionStart, PreCompact, UserPromptSubmit
-│       └── skills/           # Skills (spectre footer rendering, tdd methodology)
+│       └── skills/           # Skills (spectrl footer rendering, tdd methodology)
 ├── scripts/              # Release & utility scripts
 └── CLAUDE.md
 ```
@@ -28,10 +28,10 @@ spectre/
 
 ```bash
 # Run hook tests
-pytest plugins/spectre/hooks/scripts/ -v
+pytest plugins/spectrl/hooks/scripts/ -v
 ```
 
-> **CLI for Other Agents**: See [spectre-labs/cli](https://github.com/Codename-Inc/spectre-labs/tree/main/cli)
+> **CLI for Other Agents**: See [spectrl-labs/cli](https://github.com/Codename-Inc/spectrl-labs/tree/main/cli)
 
 ## Architecture
 
@@ -39,7 +39,7 @@ pytest plugins/spectre/hooks/scripts/ -v
 
 Commands are markdown prompts that:
 1. Parse user arguments
-2. Spawn parallel subagents (`@spectre:dev`, `@spectre:analyst`, etc.)
+2. Spawn parallel subagents (`@spectrl:dev`, `@spectrl:analyst`, etc.)
 3. Subagents execute specialized prompts
 4. Main prompt synthesizes findings and produces artifacts
 
@@ -47,28 +47,28 @@ Commands are markdown prompts that:
 
 | Agent | Purpose |
 |-------|---------|
-| `@spectre:dev` | Implementation with MVP focus |
-| `@spectre:analyst` | Understand how code works |
-| `@spectre:finder` | Find where code lives |
-| `@spectre:patterns` | Find reusable patterns |
-| `@spectre:web-research` | Web research |
-| `@spectre:tester` | Test automation |
-| `@spectre:reviewer` | Independent review |
+| `@spectrl:dev` | Implementation with MVP focus |
+| `@spectrl:analyst` | Understand how code works |
+| `@spectrl:finder` | Find where code lives |
+| `@spectrl:patterns` | Find reusable patterns |
+| `@spectrl:web-research` | Web research |
+| `@spectrl:tester` | Test automation |
+| `@spectrl:reviewer` | Independent review |
 
 ### Session Memory
 
-Hooks in `plugins/spectre/hooks/` maintain context across sessions:
+Hooks in `plugins/spectrl/hooks/` maintain context across sessions:
 - **SessionStart**: Restores previous session context
-- **UserPromptSubmit**: Captures todos on `/spectre:handoff`
+- **UserPromptSubmit**: Captures todos on `/spectrl:handoff`
 - **PreCompact**: Warns before compacting
 
-Session state is stored in `.spectre/` (gitignored).
+Session state is stored in `.spectrl/` (gitignored).
 
 ## Working in This Repo
 
 ### Adding Commands
 
-1. Create markdown in `plugins/spectre/commands/`
+1. Create markdown in `plugins/spectrl/commands/`
 2. Follow existing patterns:
    - ARGUMENTS section for input parsing
    - EXECUTION FLOW for step-by-step logic
@@ -76,7 +76,7 @@ Session state is stored in `.spectre/` (gitignored).
 
 ### Adding Agents
 
-1. Create markdown in `plugins/spectre/agents/`
+1. Create markdown in `plugins/spectrl/agents/`
 2. Include:
    - Role and mission sections
    - Methodology for how the agent works
@@ -84,7 +84,7 @@ Session state is stored in `.spectre/` (gitignored).
 
 ### Modifying Hooks
 
-Update Python scripts in `plugins/spectre/hooks/scripts/`. Hooks must:
+Update Python scripts in `plugins/spectrl/hooks/scripts/`. Hooks must:
 - Use `os.fork()` for non-blocking execution
 - Use only Python 3 standard library
 - Return valid JSON to stdout
@@ -113,7 +113,7 @@ Claude Code caches plugins by version. There's no hot-reload — **always restar
 ### Local Development
 
 ```bash
-claude --plugin-dir /path/to/spectre/plugins/spectre
+claude --plugin-dir /path/to/spectrl/plugins/spectrl
 ```
 
 Workflow:
@@ -125,16 +125,16 @@ Workflow:
 
 ```bash
 # Add local marketplace
-/plugin marketplace add /path/to/spectre
+/plugin marketplace add /path/to/spectrl
 
 # Install from it
-/plugin install spectre@codename
+/plugin install spectrl@codename
 ```
 
 ### Releasing to Users
 
 1. **Bump version in TWO files** (or use `npm run release`):
-   - `plugins/spectre/.claude-plugin/plugin.json`
+   - `plugins/spectrl/.claude-plugin/plugin.json`
    - `.claude-plugin/marketplace.json`
 2. **Commit and push** to GitHub
 3. **Tag the release** (optional but recommended)
@@ -146,12 +146,12 @@ git add -A && git commit -m "release: v2.0.0" && git tag v2.0.0 && git push && g
 Users update via:
 ```bash
 /plugin marketplace update codename
-/plugin update spectre@codename
+/plugin update spectrl@codename
 ```
 
 ## Important Notes
 
-- Commands use `/spectre:` prefix (e.g., `/spectre:scope`)
-- Session memory commands: `/spectre:handoff`, `/spectre:forget`
-- Session state lives in `.spectre/` (gitignored)
+- Commands use `/spectrl:` prefix (e.g., `/spectrl:scope`)
+- Session memory commands: `/spectrl:handoff`, `/spectrl:forget`
+- Session state lives in `.spectrl/` (gitignored)
 - `os.fork()` is Unix-only
