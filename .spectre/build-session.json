@@ -1,7 +1,0 @@
-{
-  "tasks_file": "/Users/joe/Dev/spectre/README.md",
-  "context_files": ["/Users/joe/Dev/spectre/CLAUDE.md"],
-  "max_iterations": 5,
-  "started_at": "2025-01-09T10:30:00Z",
-  "cwd": "/Users/joe/Dev/spectre"
-}
