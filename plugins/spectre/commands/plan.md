@@ -40,17 +40,36 @@ description: 👻 | Unified planning entry point - researches, assesses complexi
   - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified)
   - `mkdir -p "${OUT_DIR}"`
 
-- **Action** — CheckExistingResearch: Read `{OUT_DIR}/task_context.md` for "## Technical Research"
+- **Action** — ScanExistingContext: Read all existing artifacts in `{OUT_DIR}/ (if you haven’t already)` and assess coverage across 4 dimensions.
 
-  - **If** comprehensive → use existing, skip research
-  - **Else** → proceed
+  Scan for: `task_context.md`, `specs/plan.md`, `concepts/scope.md`, `research/*.md`
 
-- **Action** — AutomatedResearch: Spawn parallel agents
+  | Dimension | Covered if artifact contains... | Covered by |
+  | --- | --- | --- |
+  | **File locations** | Specific file paths relevant to this feature, entry points, config files | `@finder` |
+  | **Code understanding** | Data flow analysis, dependency tracing, how current code works with file:line refs | `@analyst` |
+  | **Codebase patterns** | Similar implementations found in codebase, reusable components, naming/style conventions | `@patterns` |
+  | **External research** | Best practices, libraries/frameworks, prior art, common pitfalls with source links | `@web-research` |
 
-  - `@finder`, `@analyst`, `@patterns`
-  - **Wait** for all; read identified files
+  For each dimension, assess: **covered** (artifact has substantive findings for this feature) or **gap** (missing, superficial, or about a different feature).
 
-- **Action** — SaveResearch: Update `{OUT_DIR}/task_context.md` with Architecture Patterns, Dependencies, Implementation Approaches, Impact Summary
+- **Action** — DispatchResearch: Spawn agents **only for dimensions marked as gaps**. Skip agents whose dimensions are already covered. Each prompt must include the feature/problem description from ARGUMENTS so the agent has full context.
+
+  - **If all 4 covered** → skip to SaveResearch (merge existing findings into task_context.md if scattered across files)
+
+  - **If gaps exist** → spawn only the needed agents in parallel:
+
+  - `@finder` *(if File locations = gap)* — "Find all files, components, entry points, routes, and configuration related to \[feature/problem\]. Include: (1) files that would need to be modified or extended, (2) entry points where this feature connects to the system (routes, handlers, event listeners, CLI commands), (3) configuration files, schemas, or migrations that may be affected, (4) test files covering the affected areas. Return file paths organized by relevance."
+
+  - `@analyst` *(if Code understanding = gap)* — "Analyze how the code paths related to \[feature/problem\] work end-to-end. Trace: (1) data flow from input through processing to storage and output, (2) key dependencies and how components interact, (3) state management patterns and data access methods in the affected areas, (4) error handling and edge cases in the current implementation. Return findings with specific file:line references."
+
+  - `@patterns` *(if Codebase patterns = gap)* — "Find existing implementations in this codebase that are similar to \[feature/problem\] and could serve as a reference. Look for: (1) analogous features already built — how were they structured?, (2) reusable components, utilities, or abstractions we should leverage, (3) conventions for naming, file organization, and code style in this area, (4) testing patterns used for similar features. Return concrete code examples with file:line references."
+
+  - `@web-research` *(if External research = gap)* — "Research best practices, proven patterns, relevant libraries/frameworks, and how other projects solve \[feature/problem\]. Focus on: (1) industry best practices and common pitfalls, (2) libraries or frameworks that simplify this work, (3) how well-known open-source projects approach similar problems, (4) architectural patterns recommended for this type of feature. Return findings with source links."
+
+  - **Wait** for all dispatched agents; read identified files
+
+- **Action** — SaveResearch: Merge all findings (existing artifacts + new agent results) into `{OUT_DIR}/task_context.md` with sections: Architecture Patterns, Dependencies, Implementation Approaches, Impact Summary, and External Research (best practices, recommended libraries/frameworks, prior art, common pitfalls)
 
 ## Step 2 - Present Architectural Options
 
@@ -74,6 +93,7 @@ Use research findings from Step 1 to determine appropriate planning depth.
   | Components crossed | @analyst | 1 component = Low, 2-3 = Med, 4+ = High |
   | Data model changes | Research findings | None = Low, Modify existing = Med, New models/schema = High |
   | Integration points | Research findings | Internal only = Low, 1-2 external = Med, 3+ external = High |
+  | External complexity | @web-research | Well-documented with libraries = Low, Some prior art = Med, Novel/emerging = High |
 
 - **Action** — CheckHardStops: Any true = automatic COMPREHENSIVE | db_schema_destructive | new_service_or_component | auth_or_pii_change | | payment_billing_logic | public_api_change | caching_consistency | slo_sla_risk |
 
@@ -91,7 +111,7 @@ Use research findings from Step 1 to determine appropriate planning depth.
 
 ### ⛔ MANDATORY SKILL INVOCATION ⛔
 
-```
+```plaintext
 ┌────────────────────────────────────────────────────────────────────────┐
 │  YOU MUST USE THE SKILL TOOL TO INVOKE THESE COMMANDS                  │
 │                                                                        │
