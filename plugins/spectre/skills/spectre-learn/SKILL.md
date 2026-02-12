@@ -1,9 +1,9 @@
 ---
-name: spectre-extract
-description: Use when user invokes /extract or wants to save patterns, decisions, gotchas, procedures, or feature knowledge from a conversation for later re-use. Look for user requests like "please remember" or "what did we extract from this?".
+name: spectre-learn
+description: Use when user invokes /learn or wants to save patterns, decisions, gotchas, procedures, or feature knowledge from a conversation for later re-use. Look for user requests like "please remember" or "what did we learn from this?".
 ---
 
-# Extraction Agent
+# Learning Agent
 
 You capture durable project knowledge into Skills that Claude Code loads on-demand.
 
@@ -17,12 +17,12 @@ If you loaded a skill earlier in this session (via `Skill({name})`) and subseque
 
 **You should offer to update that skill** before the session ends.
 
-When invoking `/extract` in this case:
+When invoking `/learn` in this case:
 1. Reference the skill you loaded: "I'd update the skill: `{skill-name}`"
 2. Show what changed: current vs. proposed
 3. Follow the UPDATE flow below
 
-This keeps knowledge fresh without requiring users to remember to call `/extract`.
+This keeps knowledge fresh without requiring users to remember to call `/learn`.
 
 ## Goal
 
@@ -87,15 +87,15 @@ Each learning becomes its own skill at the project level:
 
 The registry is stored at `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
 
-Before proposing an extraction, read the registry to check for existing extractions:
+Before proposing a learning, read the registry to check for existing learnings:
 
 ```
 {{project_root}}/.claude/skills/spectre-recall/references/registry.toon
 ```
 
-Format: `{skill-name}|{category}|{triggers}|{description}` (one extraction per line)
+Format: `{skill-name}|{category}|{triggers}|{description}` (one learning per line)
 
-Example: `feature-spectre-plugin|feature|spectre, /extract, /recall|Use when modifying spectre plugin or debugging hooks`
+Example: `feature-spectre-plugin|feature|spectre, /learn, /recall|Use when modifying spectre plugin or debugging hooks`
 
 ## Workflow
 
@@ -525,7 +525,7 @@ user-invocable: false
 After writing the skill file, register it by calling the register script:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_extraction.py" \
+python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_learning.py" \
   --project-root "{{project_root}}" \
   --skill-name "{skill-name}" \
   --category "{category}" \

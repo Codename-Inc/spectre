@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-spectre is a Claude Code plugin providing a structured agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**xtract. It's a meta-prompt orchestration system where prompts invoke subagents.
+spectre is a Claude Code plugin providing a structured agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
 
 ## Repository Structure
 

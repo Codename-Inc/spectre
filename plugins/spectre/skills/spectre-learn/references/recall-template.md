@@ -1,11 +1,11 @@
 ---
 name: spectre-recall
-description: Use when user wants to search for existing knowledge, recall a specific extraction, or discover what knowledge is available.
+description: Use when user wants to search for existing knowledge, recall a specific learning, or discover what knowledge is available.
 ---
 
 # Recall Knowledge
 
-Search and load relevant knowledge from the project's spectre extractions into your context.
+Search and load relevant knowledge from the project's spectre learnings into your context.
 
 ## Registry
 
@@ -28,4 +28,4 @@ Search and load relevant knowledge from the project's spectre extractions into y
 
 **Multiple matches** → List options, ask user which to load
 
-**No matches** → Suggest `/extract` to capture new knowledge
+**No matches** → Suggest `/learn` to capture new knowledge

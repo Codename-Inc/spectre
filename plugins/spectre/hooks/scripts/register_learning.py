@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-register_extraction.py
+register_learning.py
 
-Registers a spectre extraction and manages the project-level recall skill.
+Registers a spectre learning and manages the project-level recall skill.
 
 Responsibilities:
 1. Create/update registry at .claude/skills/spectre-recall/references/registry.toon
@@ -10,7 +10,7 @@ Responsibilities:
 3. Generate .claude/skills/spectre-recall/SKILL.md with embedded registry
 
 Usage:
-    register_extraction.py \
+    register_learning.py \
         --project-root "/path/to/project" \
         --skill-name "feature-my-feature" \
         --category "feature" \
@@ -86,7 +86,7 @@ def generate_find_skill(find_skill_path: Path, template_path: Path, registry_con
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Register an extraction and update the project recall skill"
+        description="Register a learning and update the project recall skill"
     )
     parser.add_argument(
         "--project-root",
@@ -126,7 +126,7 @@ def main():
 
     # Template is in the plugin
     plugin_root = Path(os.environ.get('CLAUDE_PLUGIN_ROOT', ''))
-    template_path = plugin_root / "skills" / "spectre-extract" / "references" / "recall-template.md"
+    template_path = plugin_root / "skills" / "spectre-learn" / "references" / "recall-template.md"
 
     # Ensure directories exist
     registry_dir.mkdir(parents=True, exist_ok=True)

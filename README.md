@@ -1,6 +1,6 @@
 # SPECTRE
 
-**S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**xtract
+**S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate
 
 **Get higher quality results from your coding agent, while they working autonomously for much longer, so 10-100x'ing your typical output feels easy.**
 
@@ -58,7 +58,7 @@ The path to 100x output is through **structured workflows**.
 
 ### 💧 So.... Waterfall?
 
-No its not. Its an entirely new way to build products.
+Yeah basically Rapid Waterfall.
 
 Specificity up front forces clarity, reduces ambiguity, and leads to better 1st pass results.
 
@@ -105,7 +105,7 @@ For example:
 - I iterated on /spectre:scope until I felt like the types of questions actually help me get clear on what I'm building, without asking questions that it could easily get from codebase research
 - I iterated on the /spectre:execute workflow until it successfully delivered large tasks in a single context window using subagents that deliver completion reports to handoff to the next subagents, use TDD effectively, and autonomously adapt the tasks based on what was discovered DURING development instead of blindly
 - I iterated on the /spectre:clean and /spectre:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
-- I iterated on the /spectre:extract learnings extraction workflow until 1) the agent automatically reached for the skills generated at the start of every conversation, 2) extracted the *right* details and insights, and 3) proactively updated relevant skills as we make changes and learn more.
+- I iterated on the /spectre:evaluate learning workflow until 1) the agent automatically reached for the skills generated at the start of every conversation, 2) captured the *right* details and insights, and 3) proactively updated relevant skills as we make changes and learn more.
 - I iterated on the /spectre:handoff workflow until the status update had the appropriate detail/context, and worked perfectly if I'm working across MANY sessions or just one.
 
 SPECTRE made products like New June and Subspace possible, and it is making it possible for me, an ex-Meta, ex-Amazon Technical Product Manager to build, ship, and iterate on products 100x the complexity of anything I've ever built in the past.
@@ -122,7 +122,7 @@ If you start with /scope, your agent will guide you through the rest of the step
 | **C**lean | `/spectre:clean` | Remove dead code, lint, format |
 | **T**est | `/spectre:test` | Risk-aware test coverage |
 | **R**ebase | `/spectre:rebase` | Safe merge preparation with conflict handling |
-| **E**xtract | `/spectre:extract` | Capture knowledge for future sessions |
+| **E**valuate | `/spectre:evaluate` | Architecture review + knowledge capture |
 
 Each command ends with "Next Steps" suggestions, so you always know what prompt to run next — you don't have to remember what the prompts are, which is one thing that kills me about many other Spec Driven Development workflows.
 
@@ -151,11 +151,28 @@ If you want to start fresh — /spectre:forget archives the session_logs.
 /spectre:forget    # Clear memory for fresh start
 ```
 
-## 🧬 SPECTRE Extract
+## 🧬 SPECTRE Evaluate
 
-The more I used SPECTRE and the faster I could build, the more frequently I found myself wanting to reference past work. Whether that was a hard-won debugging session, a new architectural pattern, or just documenting a feature and how it worked.
+The more I used SPECTRE and the faster I could build, the more frequently I found myself wanting to reference past work. Debugging sessions, a new architectural pattern, or how a feature works/was built.
 
-SPECTRE Extract solves this by turning your working knowledge into **persistent, auto-loading skills** that Claude reaches for in future sessions without you having to remember or re-explain anything.
+SPECTRE Evaluate combines **architecture review** with **knowledge capture** — reviewing what you built and learning from it in one step.
+
+### How It Works
+
+`/spectre:evaluate` runs two things in parallel:
+
+1. **Architecture review** — dispatches an Opus 4.6 subagent in the background to produce a principal-level architecture review of your completed work
+2. **Learn** — captures durable project knowledge (patterns, gotchas, decisions) into re-usable skills that **auto-load in future sessions**
+
+### The Hook + Skill Loop
+
+What is great about SPECTRE's learning system, is that Claude Code automatically loads skills that are relevant. We do this with a 'coercion' technique I borrowed from Jesse Vincent's great Superpowers skill.
+
+1. **SessionStart hook** — every time you start a conversation, SPECTRE's hook reads your project's knowledge registry and injects it into context. Claude now *knows what it knows* before you type a single word.
+
+2. **Skill auto-loading** — when your task matches a trigger word from the registry (e.g., you mention "auth" and there's a `feature-auth-flows` skill), Claude loads the full skill *before* searching the codebase. No wasted tool calls rediscovering what's already documented.
+
+The result: knowledge compounds across sessions instead of resetting to zero. The more you learn, the faster and more accurate every future session becomes.
 
 ### What Gets Captured
 
@@ -167,24 +184,14 @@ SPECTRE Extract solves this by turning your working knowledge into **persistent,
 | **Patterns** | Reusable solutions established across the codebase |
 | **Procedures** | Multi-step processes like deploy, release, migrate |
 
-### How It Works
-
-Run `/spectre:extract` after any session where you learned something worth keeping. SPECTRE analyzes the conversation, proposes what to capture, and on approval writes it as a project-scoped skill with trigger words.
+You can also run these independently:
 
 ```plaintext
-/spectre:extract     # Capture knowledge from this session
-/spectre:recall auth # Find and load existing knowledge about auth
+/spectre:evaluate              # Architecture review + learn (the full evaluate step)
+/spectre:learn                 # Just capture knowledge from this session
+/spectre:architecture_review   # Just run the architecture review
+/spectre:recall auth           # Find and load existing knowledge about auth
 ```
-
-### The Hook + Skill Loop
-
-What is great about SPECTRE Extract, is that Claude Code automatically loads skills that are relevant. We do this with a 'coercion' technique I borrowed from Jesse Vincent's great Superpowers skill.
-
-1. **SessionStart hook** — every time you start a conversation, SPECTRE's hook reads your project's knowledge registry and injects it into context. Claude now *knows what it knows* before you type a single word.
-
-2. **Skill auto-loading** — when your task matches a trigger word from the registry (e.g., you mention "auth" and there's a `feature-auth-flows` skill), Claude loads the full skill *before* searching the codebase. No wasted tool calls rediscovering what's already documented.
-
-The result: knowledge compounds across sessions instead of resetting to zero. The more you extract, the faster and more accurate every future session becomes.
 
 ## 🤖 Subagents
 
@@ -243,7 +250,7 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
 - Once cleaned/tested — /spectre:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. From here I create PR/merge or directly merge depending on the task.
 
-- Finally, I run /spectre:extract to capture any knowledge worth preserving — patterns, gotchas, decisions. This builds institutional memory that loads automatically in future sessions.
+- Finally, I run /spectre:evaluate to get an architecture review and capture any knowledge worth preserving — patterns, gotchas, decisions. This builds institutional memory that loads automatically in future sessions.
 
 ## 📋 Slash Command Reference
 
@@ -257,7 +264,7 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 | `/spectre:clean` | Code cleanup and quality gates |
 | `/spectre:test` | Risk-aware test coverage |
 | `/spectre:rebase` | Safe rebase with conflict handling |
-| `/spectre:extract` | Capture knowledge for future sessions |
+| `/spectre:evaluate` | Architecture review + knowledge capture |
 
 ### Quick Start
 
@@ -288,6 +295,7 @@ I use /spectre:fix for pretty much all bugs I run into.
 | Command | Description |
 | --- | --- |
 | `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits |
+| `/spectre:learn` | Capture knowledge for future sessions |
 | `/spectre:ux_spec` | UX specification for UI-heavy features |
 | `/spectre:fix` | Investigate bugs & implement fixes |
 

@@ -9,7 +9,7 @@ Provides workflow navigation, command reference, and Next Steps footer rendering
 
 ## When to Load
 
-- After completing any spectre command (scope, plan, execute, clean, test, rebase, extract)
+- After completing any spectre command (scope, plan, execute, clean, test, rebase, evaluate)
 - When rendering the workflow navigation footer
 - When suggesting next actions to the user
 
@@ -99,7 +99,7 @@ Core meta-workflow phases with their primary prompts:
 | **C**lean | `/spectre:clean` | Dead code removal, duplication fixes |
 | **T**est | `/spectre:test` | Risk-aware test coverage |
 | **R**ebase | `/spectre:rebase` | Safe rebase, prepare for merge |
-| **E**xtract | `/spectre:extract` | Capture knowledge for future sessions |
+| **E**valuate | `/spectre:evaluate` | Architecture review + knowledge capture |
 
 ---
 
@@ -199,13 +199,17 @@ Prepare for merge and deployment.
 
 ---
 
-## Phase: Extract
+## Phase: Evaluate
 
-Knowledge capture and architectural assessment.
+Architecture review and knowledge capture.
 
-- **/spectre:extract**
+- **/spectre:evaluate**
+  - Purpose: Meta command that runs architecture review in the background (Opus 4.6 subagent) while you capture learnings from the session. Combines `/spectre:architecture_review` + `/spectre:learn`.
+  - When to use: After completing significant work to get architectural assessment and capture knowledge in one step.
+
+- **/spectre:learn**
   - Purpose: Capture durable project knowledge (patterns, gotchas, decisions, feature context) into skills that load automatically in future sessions.
-  - When to use: After completing significant work, discovering gotchas, or making architectural decisions worth preserving.
+  - When to use: After discovering gotchas, making architectural decisions, or establishing patterns worth preserving.
 
 - **/spectre:architecture_review**
   - Purpose: Principal systems architect review focusing on compounding decisions, architectural debt, missed abstractions, and complexity.
@@ -218,7 +222,7 @@ Knowledge capture and architectural assessment.
 ### Full Workflows
 
 - **/spectre:spectre**
-  - Purpose: Complete spectre workflow from scope through extract—interactive scoping, then independent execution through all phases.
+  - Purpose: Complete spectre workflow from scope through evaluate—interactive scoping, then independent execution through all phases.
   - When to use: For end-to-end feature delivery when you want the full guided workflow.
 
 - **/spectre:quick_dev**
@@ -258,8 +262,8 @@ Knowledge capture and architectural assessment.
 **Ready to merge?**
 → `/spectre:rebase`
 
-**Feature done, capture knowledge?**
-→ `/spectre:extract`
+**Feature done, review & capture knowledge?**
+→ `/spectre:evaluate`
 
 **Ending session?**
 → `/spectre:handoff`
