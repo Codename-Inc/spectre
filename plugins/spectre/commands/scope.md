@@ -94,19 +94,7 @@ Collaborative workflow for structuring unstructured thoughts into clear scope bo
 
   **Sections**: The Problem (pain, impact, current state) → Target Users (primary, secondary, needs) → Success Criteria (outcomes, metrics) → User Experience (journeys, principles, trade-offs) → Scope Boundaries (in/out/maybe/future) → Constraints (platform, perf, a11y, scale) → Integration (touches, avoids, dependencies) → Decisions (from clarifications + rationale) → Risks (UX, scope creep, open questions) → Next Steps (`/spectre:plan` or `/spectre:create_tasks`, complexity S/M/L)
 
-## Step 5: Document Review
-
-- **Action** — PresentDocForReview: Show final boundaries from document.
-
-  > **Final Boundaries**: ✅ **IN**: \[from doc\] ❌ **OUT**: \[from doc\] ⚠️ **Maybe/Future**: \[from doc\]
-  >
-  > Any final adjustments before we finalize? Reply with changes or 'Looks good'.
-
-- **Action** — ApplyFeedback: Update scope doc if user provides changes.
-
-- **Wait** — User confirms
-
-## Step 6: Light Technical Context (Optional)
+## Step 5: Light Technical Context (Optional)
 
 **Only if scope identifies specific technical/architecture integration points.**
 
@@ -114,18 +102,18 @@ Collaborative workflow for structuring unstructured thoughts into clear scope bo
 
 - **Action** — UpdateScopeDoc: Add findings to Integration & Constraints sections if relevant.
 
-## Step 7: Complete & Tee Up Next Steps
+## Step 6: Final Review & Next Steps
 
-- **Action** — PresentFinalScope: Show final scope summary and assumptively present next steps.
+- **Action** — PresentDocForReview: Show final boundaries and next steps together.
 
   > **Scope Complete**: `{OUT_DIR}/concepts/scope.md`
   >
-  > **Final Boundaries**: ✅ **IN**: [from doc] ❌ **OUT**: [from doc]
+  > **Final Boundaries**: ✅ **IN**: \[from doc\] ❌ **OUT**: \[from doc\] ⚠️ **Maybe/Future**: \[from doc\]
   >
   > Docs saved: `{OUT_DIR}/concepts/scope.md`, `{OUT_DIR}/clarifications/scope_clarifications_{timestamp}.md`
   >
-  > Let me know if anything needs adjusting, otherwise here's what's next:
+  > Reply with any edits, updates, or clarifications — otherwise pick a next step:
 
 - **Action** — RenderFooter: Render Next Steps using `@skill-spectre:spectre-next-steps` skill.
 
-  > **NOTE**: Do NOT wait for explicit approval. Present next steps immediately. User can interrupt with corrections if needed.
+  > **NOTE**: Do NOT wait for explicit approval. Present next steps immediately inline with the review. User can reply with scope edits OR jump straight into a next step command. If user replies with edits, apply them to the scope doc and re-present.
