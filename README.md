@@ -2,13 +2,13 @@
 
 **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate
 
-SPECTRE is a slash command based workflow for Claude Code designed to help you do ONE THING faster, and with higher quality.
+SPECTRE is a slash command based workflow for Claude Code designed to help you do ONE THING more, faster, and with higher quality.
 
 **🚀 Ship Product Features**
 
 SPECTRE's workflow covers the complete software development lifecycle - from scoping a feature, finalizing user flows, writing the technical design, generating tasks, executing the tasks, code review, validating the work, cleaning up and testing the work, and finally generating documentation as Skills your agent auto-loads when relevant.
 
-It works and has been tested on brand new codebases, and codebases with hundreds of thousands of lines of code. Its been tested building websites, react native apps, desktop apps, and personal software.
+It has been tested on brand new codebases and codebases with hundreds of thousands of lines of code. Its been tested building websites, react native apps, native desktop apps, and personal software.
 
 **SPECTRE helps you get higher quality and more consistent results from your coding agent, while they work autonomously for much longer, so 10-100x'ing your typical output feels *easy* and more importantly, *repeatable.***
 
