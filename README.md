@@ -1,8 +1,16 @@
-# SPECTRE
+# SPECTRE: A Workflow for Product Builders
 
 **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate
 
-**Get higher quality results from your coding agent, while they working autonomously for much longer, so 10-100x'ing your typical output feels easy.**
+SPECTRE is a slash command based workflow for Claude Code designed to help you do ONE THING faster, and with higher quality.
+
+**🚀 Ship Product Features**
+
+SPECTRE's workflow covers the complete software development lifecycle - from scoping a feature, finalizing user flows, writing the technical design, generating tasks, executing the tasks, code review, validating the work, cleaning up and testing the work, and finally generating documentation as Skills your agent auto-loads when relevant.
+
+It works and has been tested on brand new codebases, and codebases with hundreds of thousands of lines of code. Its been tested building websites, react native apps, desktop apps, and personal software.
+
+**SPECTRE helps you get higher quality and more consistent results from your coding agent, while they work autonomously for much longer, so 10-100x'ing your typical output feels *easy* and more importantly, *repeatable.***
 
 ![SPECTRE hero](./assets/images/spectre-hero.png)
 
@@ -26,9 +34,21 @@ That's it. You just start with 1 command to build features.
 
 ![SPECTRE scope command](./assets/images/spectre-scope.png)
 
+## 🔁 How It Works
+
+- run one of the kickoff prompts in Claude Code - `/spectre:scope` is the main command for building new features, but also `/spectre:kickoff` for high ambiguity new features (includes web research), `/spectre:research` for codebase research "how might we build …” style Qs, or `/spectre:ux_spec` to define user flows, components, and layout for a new feature.
+
+- follow the prompts/instructions to create the related canonical document and Claude Code will suggest the next step in the SPECTRE workflow automatically (e.g., going from `scope` to `plan` to `tasks` and so on)
+
+- turn off auto-compact in Claude Code settings (`/config`) and run `/spectre:handoff` when the context window is getting full, then run `/clear` to start the next session. (`/spectre:forget` when you are switching gears)
+
+- SPECTRE saves canonical docs to a `docs/tasks/{topic}/specs` directory, and status updates from `/spectre:handoff` to `docs/tasks/{topic}/session_logs` directory. We recommend keeping this directory checked into git to be able to reference docs in the future.
+
+- thats it. scope features, plan features, build features, clean up/test features, document features, learn from features, repeat.
+
 ## 🎯 Core SPECTRE Principles
 
-- Great Inputs -&gt; Great Outputs
+- Great Inputs → Great Outputs
 - Ambiguity is Death
 - One Workflow, Every Feature, Any Size, Any Codebase
 - Obvious &gt; Clever
@@ -47,7 +67,7 @@ LLMs need specificity. And typically, providing the right level of specificity i
 
 BUT --- you can use LLMs to make it EASY to provide that specificity. And that is exactly what SPECTRE does.
 
-### ✅ Workflows + Canonical Docs = Easy Button
+### ✅ Workflows = Easy Button
 
 Prompt based workflows that generate canonical docs that you and your Agents are aligned on are how you get the best, highest quality, and most consistent results from AI Coding Agents.
 
@@ -57,17 +77,17 @@ The better your prompt based workflows, the lower the ambiguity, the more AI can
 
 ## 📄 Canonical Docs
 
-As a former PM i've livd the value of [Canonical Docs](https://naomi.com/canonical-everything-c85441a84e70) (shout out Naomi Gleit). The reasons they work for Humans are the same reasons they work with AI Agents (see 💀 Ambiguity is Death)
+As a former PM I've lived the value of [Canonical Docs](https://naomi.com/canonical-everything-c85441a84e70) (shout out Naomi Gleit). The reasons they work for Humans are the same reasons they work with AI Agents (see 💀 Ambiguity is Death)
 
-In SPECTRE, the **structured workflows** generate some combination of the following canonical docs.
+In SPECTRE, the **structured workflows** generate some combination of the following canonical docs stored in `docs/tasks/{topic/feature}/specs`
 
-- scope.md - what are we building and importantly what are we NOT building
-- ux.md - the core user flows and components/layouts/interactions
-- plan.md - high level technical design and phasing
-- tasks.md - specific parent & sub-tasks to execute
-- code_review.md - prioritized code review feedback
-- gaps.md - task list of gaps identified from validation
-- {feature_name}/skill.md - a skill for agents to auto-reference the work
+- `scope.md` - what are we building and importantly what are we NOT building
+- `ux.md` - the core user flows and components/layouts/interactions
+- `plan.md` - high level technical design and phasing
+- `tasks.md `- specific parent & sub-tasks to execute
+- `code_review.md` - prioritized code review feedback
+- `gaps.md` - task list of gaps identified from validation
+- `.claude/skills/{feature_name}/skill.md` - a skill for agents to auto-reference the work
 
 Not all are required. Sometimes I have scope.md and then use Claude Code's plan mode. Sometimes I have a ux.md and a tasks.md. The key thing to remember is that docs are the context in context engineering.
 
@@ -77,9 +97,9 @@ Yeah basically Rapid Waterfall.
 
 Specificity up front forces clarity, reduces ambiguity, and leads to better 1st pass results.
 
-THEN -- you can iterate on the feature set, ux, architecture, etc. at lightning speed. AI coding agents are 10x better at working around *working* existing code. Its why they are so good at refactors. Because they are working with a working established baseline.
+THEN -- you can iterate on the feature set, ux, architecture, etc. at lightning speed. AI coding agents are 10x better at working around *working* existing code. It's why they are so good at refactors. Because they are working with a working established baseline.
 
-**Worflows make it easier and faster to get to working code.**
+**Workflows make it easier and faster to get to working code.**
 
 From there, you can iterate and adapt before you ship.
 
@@ -232,7 +252,7 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
 - start /spectre:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
 
-  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux_spec. Its similar to /specture:scope but focuses on getting clear on the core user flows.
+  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux_spec. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
 
 - /spectre:plan to build out a well researched technical design or set of tasks
 
@@ -340,7 +360,7 @@ spectre/
 
 Skills update automatically when you update the plugin:
 
-/plugin update spectre
+`/plugin update spectre`
 
 ## License
 
@@ -354,6 +374,6 @@ Email: [joe@bycodename.com](mailto:joe@bycodename.com?subject=Spectre%20Feedback
 
 Socials:
 
- - Threads: [@joenandez](https://www.threads.com/joenandez)
- - X: [@joenandez](https://www.x.com/joenandez)
- - LinkedIn: [@joefernandez](https://www.linkedin.com/in/joefernandez/)
+- Threads: [@joenandez](https://www.threads.com/joenandez)
+- X: [@joenandez](https://www.x.com/joenandez)
+- LinkedIn: [@joefernandez](https://www.linkedin.com/in/joefernandez/)
