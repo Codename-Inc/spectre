@@ -31,6 +31,7 @@ That's it. You just start with 1 command to build features.
 - Great Inputs -&gt; Great Outputs
 - Ambiguity is Death
 - One Workflow, Every Feature, Any Size, Any Codebase
+- Obvious &gt; Clever
 
 ## 👻 SPECTRE Purpose
 
@@ -38,7 +39,7 @@ AI coding is changing product development, but why is it that Claude Code can st
 
 Let me introduce you to a very simple concept that you need to drill into your head. With coding agents:
 
-> ### **AMBIGUITY IS DEATH.**
+> ### **💀 AMBIGUITY IS DEATH.**
 
 When the scope, ux, and plan are ambiguous, you must rely on the LLM to fill in the blanks. And while sometimes you can get lucky - especially for smaller features - for any *real* technology or product work, ambiguity is how you end up with spaghetti code, conflicts, and AI slop.
 
@@ -46,15 +47,29 @@ LLMs need specificity. And typically, providing the right level of specificity i
 
 BUT --- you can use LLMs to make it EASY to provide that specificity. And that is exactly what SPECTRE does.
 
-### ✅ Workflows = Easy Button
+### ✅ Workflows + Canonical Docs = Easy Button
 
-Prompt based workflows are how you get the best, highest quality, and most consistent results from AI Coding Agents.
+Prompt based workflows that generate canonical docs that you and your Agents are aligned on are how you get the best, highest quality, and most consistent results from AI Coding Agents.
 
 They provide the necessary context, detail, and structure for the agent to ask the right questions, investigate the right details, and generate the right requirements, plans, tasks, code, tests, and more.
 
 The better your prompt based workflows, the lower the ambiguity, the more AI can take on, the longer AI can work autonomously, the more easily you can multi-task, and suddenly you are 100x'ing your output.
 
-The path to 100x output is through **structured workflows**.
+## 📄 Canonical Docs
+
+As a former PM i've livd the value of [Canonical Docs](https://naomi.com/canonical-everything-c85441a84e70) (shout out Naomi Gleit). The reasons they work for Humans are the same reasons they work with AI Agents (see 💀 Ambiguity is Death)
+
+In SPECTRE, the **structured workflows** generate some combination of the following canonical docs.
+
+- scope.md - what are we building and importantly what are we NOT building
+- ux.md - the core user flows and components/layouts/interactions
+- plan.md - high level technical design and phasing
+- tasks.md - specific parent & sub-tasks to execute
+- code_review.md - prioritized code review feedback
+- gaps.md - task list of gaps identified from validation
+- {feature_name}/skill.md - a skill for agents to auto-reference the work
+
+Not all are required. Sometimes I have scope.md and then use Claude Code's plan mode. Sometimes I have a ux.md and a tasks.md. The key thing to remember is that docs are the context in context engineering.
 
 ### 💧 So.... Waterfall?
 
@@ -217,6 +232,8 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
 - start /spectre:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
 
+  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux_spec. Its similar to /specture:scope but focuses on getting clear on the core user flows.
+
 - /spectre:plan to build out a well researched technical design or set of tasks
 
   - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
@@ -251,6 +268,8 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 - Once cleaned/tested — /spectre:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. From here I create PR/merge or directly merge depending on the task.
 
 - Finally, I run /spectre:evaluate to get an architecture review and capture any knowledge worth preserving — patterns, gotchas, decisions. This builds institutional memory that loads automatically in future sessions.
+
+- From here, merge/PR, address any PR comments, etc. and get the feature checked back in.
 
 ## 📋 Slash Command Reference
 
