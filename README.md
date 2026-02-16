@@ -336,6 +336,24 @@ spectre/
 └── CLAUDE.md
 ```
 
-## 📄 License
+## Updating
 
-MIT
+Skills update automatically when you update the plugin:
+
+/plugin update spectre
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support and/or Feedback
+
+Issues: https://github.com/codename-inc/spectre/issues
+
+Email: [joe@bycodename.com](mailto:joe@bycodename.com?subject=Spectre%20Feedback)
+
+Socials:
+
+ - Threads: [@joenandez](https://www.threads.com/joenandez)
+ - X: [@joenandez](https://www.x.com/joenandez)
+ - LinkedIn: [@joefernandez](https://www.linkedin.com/in/joefernandez/)
