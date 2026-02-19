@@ -89,3 +89,4 @@ logs/
 .env.*.local
 *.local.json
 .spectre/
+.memsearch/
