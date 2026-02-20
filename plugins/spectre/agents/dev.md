@@ -2,7 +2,7 @@
 name: dev
 description: Implementation specialist for writing and refactoring code. Focuses on simplicity, readability, MVP-first delivery. Use when writing new features, refactoring, or implementing tasks.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: inherit
+model: claude-sonnet-4-6
 color: red
 ---
 

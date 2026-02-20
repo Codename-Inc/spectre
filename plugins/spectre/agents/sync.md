@@ -2,7 +2,7 @@
 name: sync
 description: Memory consolidation agent that synthesizes current session context with historical sessions to maintain continuity across handoffs. Called by /sesh:handoff when previous session logs exist.
 tools: Read, Write, Glob, Bash
-model: sonnet
+model: claude-haiku-4-5-20251001
 color: cyan
 ---
 
