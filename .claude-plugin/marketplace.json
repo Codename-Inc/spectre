@@ -1,6 +1,6 @@
 {
   "name": "spectre",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "owner": {
     "name": "Joe Fernandez",
     "email": "joe@subspace.build"
@@ -27,7 +27,7 @@
         "memory",
         "handoff"
       ],
-      "version": "3.5.0"
+      "version": "3.5.1"
     }
   ]
 }
