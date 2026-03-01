@@ -35,6 +35,10 @@ DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge�
 Do NOT wait for the user to say "/learn" or "update the skill." If you changed how something works, the skill that describes it is now stale. Fix it.
 </CRITICAL>
 
+## Path Convention
+
+`{{project_root}}` refers to **the current working directory** (`$PWD`). NEVER traverse up to a parent git root or main worktree. If in a git worktree, `{{project_root}}` is the worktree — not the main repository.
+
 ## Registry Location
 
 The registry is stored at `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
@@ -66,14 +70,14 @@ Loading skills is half the job. The other half is **leaving them better than you
 After completing work, ask yourself:
 
 1. **Did I load a skill that's now outdated?** → Update it immediately
-2. **Did I discover something capture-worthy?** (gotcha, pattern, decision) → Run `/learn`
+2. **Did I discover something capture-worthy?** (gotcha, pattern, decision) → Capture it directly via `Skill(spectre-learn)`
 3. **Did I change key files, flows, or architecture?** → Update the relevant feature skill
 4. **Did I make a decision with non-obvious rationale?** → Capture it before the session ends
 
 ### How to Update
 
 - **Existing skill needs changes**: Read the skill file, Edit it directly, keep the same format
-- **New knowledge worth capturing**: Use `Skill(spectre-learn)` or tell the user you'd like to `/learn`
+- **New knowledge worth capturing**: Use `Skill(spectre-learn)` to capture it directly — don't ask, just do it
 - **Registry entry needs new triggers**: Edit `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
 
 ### The Standard

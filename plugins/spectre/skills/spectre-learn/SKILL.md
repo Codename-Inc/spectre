@@ -15,12 +15,14 @@ If you loaded a skill earlier in this session (via `Skill({name})`) and subseque
 - Found better patterns, files, or approaches than documented
 - Debugged an issue the skill should have warned about
 
-**You should offer to update that skill** before the session ends.
+**You should update that skill directly** before the session ends — do not ask the user for permission. Just do it.
 
-When invoking `/learn` in this case:
-1. Reference the skill you loaded: "I'd update the skill: `{skill-name}`"
-2. Show what changed: current vs. proposed
-3. Follow the UPDATE flow below
+When updating proactively:
+1. Read the existing skill file
+2. Edit it with the new/corrected information
+3. Update the registry if triggers changed
+4. Regenerate the recall skill
+5. Inform the user what you updated (brief summary, not a proposal)
 
 This keeps knowledge fresh without requiring users to remember to call `/learn`.
 
@@ -64,7 +66,17 @@ If any answer is no, add more depth or reconsider capturing it.
 
 ## Path Convention
 
-`{{project_root}}` refers to the root of the current project (typically the git repository root or cwd).
+`{{project_root}}` refers to **the current working directory** (`process.cwd()` / `$PWD`).
+
+<CRITICAL>
+**NEVER traverse up** to find a parent git root, main worktree, or repository root. If the user is working in a git worktree, `{{project_root}}` is the worktree directory — NOT the main repository. Skills must be saved where the user is working, not where the git repo was originally cloned.
+
+Resolution order:
+1. `CLAUDE_PROJECT_DIR` environment variable (if set)
+2. Current working directory (`$PWD`)
+
+Do NOT use `git rev-parse --show-toplevel` or any git command to resolve this path.
+</CRITICAL>
 
 ## Storage Structure
 
