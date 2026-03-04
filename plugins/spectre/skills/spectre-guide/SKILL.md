@@ -127,6 +127,14 @@ For small/medium changes (1-5 tasks):
 ```
 Lightweight scope + plan that gets you to execution fast.
 
+### Autonomous Ship (zero gates)
+
+For low-complexity features/fixes where you trust the agent:
+```plaintext
+/spectre:ship
+```
+Brain dump context, walk away, review the PR. Zero confirmation gates — scope, TDD, sweep, rebase, and PR creation happen autonomously.
+
 ---
 
 ## Command Reference
@@ -194,6 +202,7 @@ Lightweight scope + plan that gets you to execution fast.
 | `/spectre:forget` | Clear memory, archive logs, start fresh |
 | `/spectre:fix` | Structured debugging for tough bugs |
 | `/spectre:quick_dev` | Lightweight scope + plan for small/medium tasks |
+| `/spectre:ship` | Autonomous end-to-end: brain dump → scope → TDD → commit → rebase → PR |
 
 ---
 
@@ -243,6 +252,9 @@ Lightweight scope + plan that gets you to execution fast.
 
 **Small task, skip ceremony?**
 -> `/spectre:quick_dev`
+
+**Low-complexity task, full autonomy?**
+-> `/spectre:ship` (brain dump → PR, zero gates)
 
 ---
 

@@ -264,6 +264,8 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
   - when initial execution is complete, i run another /spectre:handoff to get the context window clean for fixes/touch ups.
 
+- for low-complexity tasks where I trust the agent end-to-end, I use /spectre:ship. Brain dump what I want, walk away, and review the PR. It autonomously scopes, implements with TDD, sweeps, rebases, and opens a PR — zero confirmation gates.
+
 - From here — I do a bunch of manual testing and fixing.
 
   - I largely use Claude Code's built in /plan mode for fixes in this phase.
@@ -310,6 +312,7 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 | Command | Description |
 | --- | --- |
 | `/spectre:quick_dev` | Scope + plan for small/medium tasks |
+| `/spectre:ship` | Autonomous end-to-end: brain dump → scope → TDD → rebase → PR |
 
 ### Discovery & Research
 
