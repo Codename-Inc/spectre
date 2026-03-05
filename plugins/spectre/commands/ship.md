@@ -1,7 +1,6 @@
 ---
-description: "\U0001F47B | Autonomous end-to-end: brain dump \u2192 scope \u2192 TDD \u2192 commit \u2192 rebase \u2192 PR"
+description: 👻 | Autonomous end-to-end: brain dump -> scope -> TDD -> commit -> rebase -> PR
 ---
-
 # ship: Autonomous End-to-End Delivery
 
 Take a brain dump and autonomously produce a reviewable PR. Zero confirmation gates — scope, implement with TDD, sweep, rebase, and open a PR.
@@ -10,7 +9,7 @@ Take a brain dump and autonomously produce a reviewable PR. Zero confirmation ga
 
 ## ARGUMENTS
 
-<ARGUMENTS> $ARGUMENTS </ARGUMENTS>
+&lt;ARGUMENTS&gt; $ARGUMENTS &lt;/ARGUMENTS&gt;
 
 ## Step (1/8) - Parse Context
 
@@ -34,33 +33,35 @@ Take a brain dump and autonomously produce a reviewable PR. Zero confirmation ga
 ## Step (3/8) - Quick Scope
 
 - **Action** — DispatchResearch: Spawn parallel lightweight agents:
+
   - `@spectre:finder` — Locate files related to `RELEVANT_FILES` and `SCOPE_SUMMARY`
   - `@spectre:analyst` — Understand the relevant code area, key interfaces, existing patterns
+
 - **Action** — WriteScopeDoc: Create `docs/tasks/{BRANCH_NAME}/concepts/scope.md`:
 
   ```markdown
   # Scope: {SCOPE_SUMMARY}
-
+  
   ## Objective
   {1-2 sentences from brain dump}
-
+  
   ## Type
   {feat or fix}
-
+  
   ## In Scope
   - {bullet list of what will be done}
-
+  
   ## Out of Scope
   - {what this explicitly won't touch}
-
+  
   ## Target Branch
   {TARGET_BRANCH}
-
+  
   ## Key Files
   {from research — relevant files and their roles}
   ```
 
-  Keep it ~20 lines. This is a lightweight scope, not full `/spectre:scope`.
+  Keep it \~20 lines. This is a lightweight scope, not full `/spectre:scope`.
 
 ## Step (4/8) - Create Tasks
 
@@ -80,6 +81,7 @@ Take a brain dump and autonomously produce a reviewable PR. Zero confirmation ga
   5. `TaskUpdate` → `completed`
 
   **Rules**:
+
   - One commit per task minimum
   - Conventional commit format always
   - TDD methodology for implementation tasks (skip for config/doc-only tasks)
@@ -90,35 +92,42 @@ Take a brain dump and autonomously produce a reviewable PR. Zero confirmation ga
 Inline sweep — same checklist as `/spectre:sweep`, no subagents:
 
 ### 6.1 Diff Sanity Check
+
 - Review full diff for unintentional changes (whitespace-only edits, merge artifacts)
 - Verify no accidentally staged files outside the intended scope
 - Confirm no secrets, API keys, credentials, or sensitive data in diff
 
 ### 6.2 Logging Audit
+
 - Remove temporary/debug logging (console.log, print, debug flags)
 - Preserve intentional logs: errors, critical warnings, key state transitions
 - Verify log levels are appropriate for production context
 
 ### 6.3 Code Hygiene
+
 - Remove commented-out code (it's in git history if needed)
 - Resolve or document any TODO/FIXME/HACK introduced in this session
 - Remove hardcoded test values that should be config/env
 
 ### 6.4 Opportunistic Dead Code Cleanup
+
 - Orphaned imports with no usage in the file
 - Unused variables or functions declared but never referenced
 - Debug artifacts (debugger statements, leftover TODO/FIXME from this work)
 
 ### 6.5 Lint (Strict)
+
 - Run the project linter and **fix all violations** — no skipping, no eslint-disable
 - Address structural lint issues by refactoring, not suppressing
 
 ### 6.6 Test
+
 - Run affected tests + full test suite
 - Fix any failures caused by the changes
 - Do NOT write new tests here — that was done in Step 5
 
 ### 6.7 Commit Sweep Fixes
+
 - If sweep produced changes, commit: `chore({scope}): sweep cleanup`
 
 ## Step (7/8) - Rebase
@@ -136,21 +145,23 @@ Inline sweep — same checklist as `/spectre:sweep`, no subagents:
 ## Step (8/8) - Create PR
 
 - **Action** — PushBranch: `git push -u origin {BRANCH_NAME}`
+
 - **Action** — CreatePR: `gh pr create` with:
 
   **Title**: `{INTENT_TYPE}({scope}): {SCOPE_SUMMARY}` (under 70 chars)
 
   **Body**:
+
   ```markdown
   ## Summary
   {From scope doc — objective and what was done}
-
+  
   ## Changes
   {Bulleted list derived from completed tasks}
-
+  
   ## Test Plan
   {Bulleted checklist — what was tested, what to verify manually}
-
+  
   Shipped autonomously via `/spectre:ship`
   ```
 
