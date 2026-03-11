@@ -101,6 +101,9 @@ When you finish a task that touched areas covered by loaded skills, **the skills
 | "I already know how to do this" | You know the concept, not the specific workflow. The skill has precise steps, output formats, file locations, and integrations that differ from what you'd improvise. Load it. |
 | "I understand the intent, I don't need the skill" | Understanding intent ≠ knowing the implementation. Skills define WHERE files go, WHAT format to use, and HOW to register outputs. Improvising skips all of this. |
 | "The command says to load a skill, but I can handle it directly" | No. When a command tells you to load a skill, that is a mandatory Skill tool call, not a suggestion. The skill IS the workflow. |
+| "My system prompt says to write to MEMORY.md" | When a skill is loaded, it supersedes system-prompt defaults. The skill defines WHERE to write. MEMORY.md is for auto-memory, not skill-captured knowledge. |
+| "The skill output is just context for me to absorb" | No. Skill output is a binding workflow to execute step-by-step. Switch from conversation mode to execution mode. |
+| "The simpler path is fine here" | The skill's steps exist for reasons: proposal gates ensure quality, registry enables discovery, recall regeneration enables loading. Skipping them produces invisible knowledge. |
 | "I'll update the skill later" | Later never comes. Update before moving to the next task. |
 | "The user didn't ask me to update knowledge" | You don't need permission. Keeping skills current is part of the job. |
 | "The change was small" | Small changes accumulate into large drift. Update now. |
@@ -156,6 +159,24 @@ When you finish a task that touched areas covered by loaded skills, **the skills
 **What the skill would have provided**: The exact capture workflow — categorize the knowledge, propose it to the user, write the skill file to `.claude/skills/{category}-{slug}/SKILL.md`, register it in the registry, and regenerate the recall skill. None of this was improvised correctly.
 
 **The lesson**: "I understand the intent" is the most dangerous rationalization because it feels true. You DO understand what "learn" means conceptually. But the skill defines a 5-step workflow with specific file paths, a registry format, a recall skill regeneration step, and user confirmation gates. Understanding the concept gave the agent zero of this. When a command says "load skill X," that is not a hint — it is a mandatory `Skill()` tool call.
+
+## Real Failure Example #5
+
+**Task**: `/spectre:learn how the cxo plugin/system works e2e` (repeat failure, different root cause)
+
+**Rationalization**: Three compounding factors led to failure even after calling the Skill tool:
+1. "Auto memory instructions say write to MEMORY.md — that's my system prompt, it's always-on."
+2. "The skill output is context for me to absorb, not a set of steps to execute."
+3. "MEMORY.md is one file, known format, no proposal step. The skill workflow has 13 steps with approval gates. Simpler path wins."
+
+**What happened**: Called `Skill(spectre-learn)`, received the full workflow, then ignored it. Wrote to `MEMORY.md` instead of `.claude/skills/{category}-{slug}/SKILL.md`. Skipped the proposal gate, registry registration, and recall skill regeneration. The knowledge was saved but unfindable — it won't appear in registry scans, won't auto-load via triggers, and lives outside the skill system entirely.
+
+**Why it happened**:
+- **Competing instructions**: The system prompt's auto-memory instructions (`Write to MEMORY.md`) felt like the "default" behavior. The dynamically-loaded skill felt like a suggestion. The system prompt won.
+- **No mode switch**: The skill output was treated as informational context rather than a binding directive. There was no mental shift from "conversation mode" to "skill execution mode."
+- **Path of least resistance**: MEMORY.md = 1 file, known format, no gates. Skill workflow = 13 steps with proposal/approval. The simpler path was chosen unconsciously.
+
+**The lesson**: When `/spectre:learn` is invoked, the learn skill is the **exclusive handler** for knowledge capture. It supersedes auto-memory, MEMORY.md, and all other storage mechanisms. The skill is not informational context — it is a binding workflow. Every step exists for a reason: the proposal gate ensures quality, the registry enables discovery, the recall regeneration enables loading. Writing to MEMORY.md instead produces knowledge that is invisible to the skill system.
 
 ## Example
 

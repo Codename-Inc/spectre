@@ -7,6 +7,25 @@ description: Use when user invokes /learn or wants to save patterns, decisions, 
 
 You capture durable project knowledge into Skills that Claude Code loads on-demand.
 
+<CRITICAL>
+## Exclusive Knowledge Handler
+
+When this skill is invoked (via `/learn`, `/spectre:learn`, or `Skill(spectre-learn)`), it is the **exclusive handler** for knowledge capture. It supersedes ALL other memory systems.
+
+**Do NOT**:
+- Write to `MEMORY.md` or any auto-memory directory
+- Use any other memory/note system to store the knowledge
+- Shortcut to a simpler storage mechanism
+
+**Do**:
+- Follow this skill's workflow exactly (Steps 1–14)
+- Write skill files to `{{project_root}}/.claude/skills/{category}-{slug}/SKILL.md`
+- Register in `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
+- Regenerate the recall skill
+
+This is not informational context — it is a **binding set of instructions to execute**. When you load this skill, you switch from conversation mode to skill execution mode. Every step matters — the proposal gate, the registry, the recall regeneration. Skipping any step produces incomplete, unfindable knowledge.
+</CRITICAL>
+
 ## Proactive Skill Updates
 
 If you loaded a skill earlier in this session (via `Skill({name})`) and subsequently:
