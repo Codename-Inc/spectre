@@ -1,9 +1,19 @@
 {
   "name": "spectre",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
+  "bin": {
+    "spectre": "./bin/spectre.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "plugins",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "test": "node --test src/**/*.test.js plugins/spectre/hooks/scripts/test_*.cjs",
     "tokens": "node scripts/count-tokens.js",
     "release": "node scripts/release.js"
   },
