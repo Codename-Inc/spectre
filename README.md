@@ -32,6 +32,35 @@ Then start building:
 
 That's it. You just start with 1 command to build features.
 
+### Within Codex
+
+```bash
+npx spectre install codex
+```
+
+When prompted, choose `project` to install into the current repo's `.codex`, or `user` to install into `~/.codex`.
+
+If you choose `project`, run `codex` from that repo.
+
+If you choose `user`, restart or open your normal Codex session.
+
+Then run a Spectre command such as:
+
+```plaintext
+spectre-scope
+```
+
+Current Codex behavior:
+
+- `user` scope installs Spectre workflow skills, runtime, agents, hooks, and shared skills under `~/.codex`
+- `project` scope installs the same Codex home structure inside `./.codex`
+- project installs create `.spectre/manifest.json` and project-local Codex config
+- session continuity uses Codex's official SessionStart hook for the visible status line and keeps the latest handoff in a managed `AGENTS.override.md` block
+- learned project skills still live under `.agents/skills/` and are synced into Codex config
+
+Capability matrix: [`docs/codex-capability-matrix.md`](./docs/codex-capability-matrix.md)
+Session continuity deep dive: [`docs/codex-sessionstart-memory.md`](./docs/codex-sessionstart-memory.md)
+
 ![SPECTRE scope command](./assets/images/spectre-scope.png)
 
 ## 🔁 How It Works
