@@ -1,0 +1,4 @@
+# SPECTRE Knowledge Registry
+# Format: skill-name|category|triggers|description
+
+feature-codex-spectre-implementation|feature|codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor|Use when modifying the Codex SPECTRE install flow, SessionStart continuity, project skill syncing, registry injection, or Codex-specific runtime files.
