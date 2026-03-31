@@ -35,7 +35,7 @@ That's it. You just start with 1 command to build features.
 ### Within Codex
 
 ```bash
-npx spectre install codex
+npx @codename_inc/spectre install codex
 ```
 
 When prompted, choose `project` to install into the current repo's `.codex`, or `user` to install into `~/.codex`.
