@@ -1,6 +1,7 @@
 ---
 name: spectre-learn
 description: Use when user invokes /learn or wants to save patterns, decisions, gotchas, procedures, or feature knowledge from a conversation for later re-use. Look for user requests like "please remember" or "what did we learn from this?".
+user-invocable: true
 ---
 
 # Learning Agent
@@ -514,7 +515,7 @@ Always show FULL proposed content, not summaries. The user needs to see exactly 
 ---
 name: {skill-name}
 description: Use when {triggering conditions - MUST start with "Use when"}
-user-invocable: false
+user-invocable: true
 ---
 
 # {Title}

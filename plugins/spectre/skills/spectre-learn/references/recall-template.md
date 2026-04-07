@@ -1,6 +1,7 @@
 ---
 name: spectre-recall
 description: Use when user wants to search for existing knowledge, recall a specific learning, or discover what knowledge is available.
+user-invocable: false
 ---
 
 # Recall Knowledge

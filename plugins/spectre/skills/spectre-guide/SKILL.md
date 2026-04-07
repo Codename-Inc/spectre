@@ -1,6 +1,7 @@
 ---
 name: spectre-guide
 description: Use when rendering the Next Steps footer after any spectre command, suggesting next actions, or when users need guidance on which SPECTRE command to run.
+user-invocable: false
 ---
 
 # SPECTRE Guide
