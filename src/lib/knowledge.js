@@ -121,34 +121,6 @@ export function readKnowledgeRegistry(projectDir) {
   };
 }
 
-function knowledgeRegistrySection(registryContent, entryCount) {
-  if (entryCount > 0) {
-    return [
-      '## Registry',
-      '',
-      '**Format**: `skill-name|category|triggers|description`',
-      '',
-      '```',
-      registryContent,
-      '```',
-      '',
-      'Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`',
-      '',
-      '**Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy'
-    ].join('\n');
-  }
-
-  return [
-    '## Registry',
-    '',
-    'No knowledge has been captured for this project yet. The behavioral rules in this document still apply.',
-    '',
-    'To capture knowledge from this session, use `spectre-learn` after completing significant work.',
-    '',
-    '**Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy'
-  ].join('\n');
-}
-
 export function generateRecallSkillContent(projectDir) {
   const { registryContent } = readKnowledgeRegistry(projectDir);
   const template = fs.readFileSync(recallTemplatePath(), 'utf8');
@@ -169,10 +141,8 @@ export function ensureKnowledgeFiles(projectDir) {
 
 export function buildKnowledgeOverrideBody(projectDir) {
   ensureKnowledgeFiles(projectDir);
-  const { registryContent, entryCount } = readKnowledgeRegistry(projectDir);
-  const applyContent = stripFrontmatter(rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('spectre-apply')))).replace(
-    /## Registry Location[\s\S]*?(?=## Workflow)/,
-    `${knowledgeRegistrySection(registryContent, entryCount)}\n\n`
+  const applyContent = stripFrontmatter(
+    rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('spectre-apply')))
   );
 
   return normalizeSkillMarkdown(applyContent);

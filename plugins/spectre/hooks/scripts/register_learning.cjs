@@ -80,6 +80,85 @@ function generateFindSkill(findSkillPath, templatePath, registryContent) {
   fs.writeFileSync(findSkillPath, skillContent);
 }
 
+function parseFrontmatter(content) {
+  if (!content.startsWith('---')) return null;
+  const end = content.indexOf('\n---', 3);
+  if (end === -1) return null;
+  return {
+    fmBlock: content.slice(4, end),
+    body: content.slice(end + 4)
+  };
+}
+
+function injectTriggerIntoSkill(skillPath, triggers) {
+  if (!fs.existsSync(skillPath)) return;
+
+  const content = fs.readFileSync(skillPath, 'utf8');
+  const parsed = parseFrontmatter(content);
+  if (!parsed) return;
+
+  const { fmBlock, body } = parsed;
+
+  const lines = fmBlock.split('\n');
+  const descIdx = lines.findIndex(l => /^description:\s*/.test(l));
+  if (descIdx === -1) return;
+
+  const descLine = lines[descIdx];
+  const rawValue = descLine.replace(/^description:\s*/, '').trim();
+
+  // Extract the plain description text and count lines to replace
+  let descText;
+  let linesToRemove = 1;
+
+  if (rawValue === '|' || rawValue === '>') {
+    // Block scalar — collect indented continuation lines
+    const continuationParts = [];
+    for (let i = descIdx + 1; i < lines.length; i++) {
+      if (/^\s+/.test(lines[i])) {
+        continuationParts.push(lines[i].trim());
+        linesToRemove++;
+      } else {
+        break;
+      }
+    }
+    descText = continuationParts.join(' ');
+  } else {
+    descText = rawValue;
+    // Strip surrounding quotes
+    if ((descText.startsWith('"') && descText.endsWith('"')) ||
+        (descText.startsWith("'") && descText.endsWith("'"))) {
+      descText = descText.slice(1, -1);
+    }
+  }
+
+  // Strip any existing TRIGGER clause so we can re-append with fresh triggers
+  descText = descText.replace(/\s*TRIGGER when:.*$/, '').trim();
+
+  // Single-line description with trigger appended
+  const newDesc = `description: ${descText} TRIGGER when: ${triggers}`;
+
+  // Idempotent: if the line is already exactly right, skip the write
+  if (linesToRemove === 1 && lines[descIdx] === newDesc) return;
+
+  lines.splice(descIdx, linesToRemove, newDesc);
+
+  const newFmBlock = lines.join('\n');
+  fs.writeFileSync(skillPath, `---\n${newFmBlock}\n---${body}`);
+}
+
+function migrateAllTriggers(projectRoot, registryContent) {
+  const lines = registryContent.trim().split('\n');
+  for (const line of lines) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const parts = line.split('|');
+    if (parts.length < 3) continue;
+    const skillName = parts[0];
+    const triggers = parts[2];
+    const skillPath = path.join(projectRoot, '.claude', 'skills', skillName, 'SKILL.md');
+    injectTriggerIntoSkill(skillPath, triggers);
+  }
+}
+
 function parseArgs(argv) {
   const args = {};
   const flags = ['--project-root', '--skill-name', '--category', '--triggers', '--description'];
@@ -137,6 +216,9 @@ function main() {
 
   // Generate recall skill with embedded registry
   generateFindSkill(recallSkillPath, templatePath, registryContent);
+
+  // Reconcile triggers into all skill frontmatter descriptions
+  migrateAllTriggers(projectRoot, registryContent);
 
   process.stdout.write(`Registered: ${entry}\n`);
 }

@@ -8,181 +8,79 @@ user-invocable: false
 
 ## Why This Exists
 
-SPECTRE captures knowledge — patterns, gotchas, decisions, and feature context — across sessions. This knowledge:
-
-- **Prevents repeated mistakes** — gotchas you've already debugged
-- **Maintains consistency** — decisions and patterns the team has established
-- **Provides instant context** — feature designs, key files, common tasks
-- **Makes searching efficient** — know WHERE to look before searching
-
-Without this, you'd waste time rediscovering what's already known or make decisions that contradict established patterns.
+SPECTRE captures knowledge — patterns, gotchas, decisions, and feature context — across sessions. Loading it first prevents repeated mistakes, maintains consistency, and tells you WHERE to look before searching.
 
 ## The Rule
 
 <CRITICAL>
-If ANY entry's triggers or description match your current task, you MUST load the skill FIRST using the Skill tool.
+If ANY skill's triggers or description match your current task, you MUST load the skill FIRST using the Skill tool.
 
-**Trigger matches are sufficient.** If a trigger word appears in the user's request, load the skill—you don't need the description to also match. Don't reframe the user's request to avoid triggers.
+**Trigger matches are sufficient.** If a trigger word appears in the user's request, load the skill — you don't need the description to also match. Don't reframe the user's request to avoid triggers.
 
-The registry tells you exactly where relevant knowledge is. Loading it first makes you faster and more accurate.
+DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge — even if you think you already have enough context. Partial context from Read results or error messages is not a substitute for the complete picture in the skill.
 
-DO NOT search the codebase or dispatch agents BEFORE loading relevant knowledge—even if you think you already have enough context. Partial context from Read results or error messages is not a substitute for the complete picture in the skill.
+**When a command explicitly tells you to load a skill, you MUST call the Skill tool to load it.** Do not improvise the workflow based on what you think the skill does. The skill defines a specific workflow with precise steps, output formats, file locations, and integrations. Your improvised version will be wrong.
 
-**When a command explicitly tells you to load a skill, you MUST call the Skill tool to load it.** Do not improvise the workflow based on what you think the skill does. The skill defines a specific workflow with precise steps, output formats, file locations, and integrations. Your improvised version will be wrong — you will miss output paths, registration steps, format requirements, or downstream integrations that only the skill knows about.
-
-**You are also responsible for keeping knowledge current.** After completing significant work — implementing features, fixing bugs, discovering gotchas, making architectural decisions, or changing patterns — you MUST proactively check whether any loaded skills need updating, and whether new skills should be captured.
-
-Do NOT wait for the user to say "/learn" or "update the skill." If you changed how something works, the skill that describes it is now stale. Fix it.
+**You are also responsible for keeping knowledge current.** After completing significant work, proactively check whether loaded skills need updating and whether new skills should be captured via `Skill(spectre-learn)`. Do NOT wait for the user to ask.
 </CRITICAL>
 
 ## Path Convention
 
 `{{project_root}}` refers to **the current working directory** (`$PWD`). NEVER traverse up to a parent git root or main worktree. If in a git worktree, `{{project_root}}` is the worktree — not the main repository.
 
-## Registry Location
+## How to Find Skills
 
-The registry is stored at `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
+Your available skills are listed in context at the start of every session. Each skill's description includes `TRIGGER when:` keywords.
 
-**Format**: `{skill-name}|{category}|{triggers}|{description}`
+Scan the skill list for trigger matches against your current task. Load matches with `Skill({skill-name})`.
 
-Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`
-
-**Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy
+The registry at `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon` remains the source of truth for registration, but you do NOT need to read it for discovery — the skill list already has what you need.
 
 ## Workflow
 
-1. **Read the registry** at `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
-2. **Scan entries** — if ANY trigger word OR the description matches your task, that's a match
-3. **For each match**, load the skill:
-   ```
-   Skill({skill-name})
-   ```
-4. **Apply the knowledge** — use it to guide your approach, know where to look
-5. **Then proceed** — now you can search/implement with context
-6. **No matches?** Proceed normally
+1. **Scan available skills** in your context — match trigger keywords or descriptions to your task
+2. **For each match**, load the skill: `Skill({skill-name})`
+3. **Apply the knowledge** — use it to guide your approach, know where to look
+4. **Then proceed** — now you can search/implement with context
+5. **No matches?** Proceed normally
 
 ## Keeping Knowledge Current
 
-Loading skills is half the job. The other half is **leaving them better than you found them**.
+After completing work, check:
 
-### When to Update (Proactively — Don't Wait to Be Asked)
+1. **Loaded skill now outdated?** → Update it immediately
+2. **Discovered something capture-worthy?** (gotcha, pattern, decision) → Capture via `Skill(spectre-learn)`
+3. **Changed key files, flows, or architecture?** → Update the relevant feature skill
+4. **Made a decision with non-obvious rationale?** → Capture before the session ends
 
-After completing work, ask yourself:
-
-1. **Did I load a skill that's now outdated?** → Update it immediately
-2. **Did I discover something capture-worthy?** (gotcha, pattern, decision) → Capture it directly via `Skill(spectre-learn)`
-3. **Did I change key files, flows, or architecture?** → Update the relevant feature skill
-4. **Did I make a decision with non-obvious rationale?** → Capture it before the session ends
-
-### How to Update
-
-- **Existing skill needs changes**: Read the skill file, Edit it directly, keep the same format
-- **New knowledge worth capturing**: Use `Skill(spectre-learn)` to capture it directly — don't ask, just do it
-- **Registry entry needs new triggers**: Edit `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
-
-### The Standard
-
-When you finish a task that touched areas covered by loaded skills, **the skills should reflect the current state before you move on**. Stale knowledge is worse than no knowledge — it actively misleads future sessions.
+Stale knowledge is worse than no knowledge — it actively misleads future sessions. Update skills before moving to the next task.
 
 ## Red Flags
 
 | Thought | Reality |
 |---------|---------|
 | "Let me search the codebase first" | Knowledge tells you WHERE to search. Load the skill first. |
-| "I'll dispatch an agent to find this" | The skill name is in the registry. Just use `Skill({name})`. |
-| "I need more context first" | The knowledge IS the context. |
-| "This seems simple" | Simple tasks benefit from captured patterns too. |
-| "I already have context from a Read/system message" | Partial context is dangerous. The skill has the full picture—including related changes you don't know about yet. |
-| "The error/issue is narrow and specific" | Narrow symptoms often stem from broader changes (like namespace renames) that the skill documents. |
-| "I can figure this out faster by just searching" | You're trading 1 skill load for multiple speculative searches. The skill tells you exactly where to look. |
-| "This is really about X, not Y" | Don't reframe the user's words. If they said "release," match against "release"—not your interpretation of the underlying concern. |
-| "I have the exact files I'm editing" | File contents ≠ architectural context. Skills tell you related files, patterns across the codebase, and what you don't know you don't know. |
-| "The edit is surgical/mechanical" | Surgical edits in isolation risk inconsistency. Skills reveal if similar changes are needed elsewhere. |
-| "I already know how to do this" | You know the concept, not the specific workflow. The skill has precise steps, output formats, file locations, and integrations that differ from what you'd improvise. Load it. |
-| "I understand the intent, I don't need the skill" | Understanding intent ≠ knowing the implementation. Skills define WHERE files go, WHAT format to use, and HOW to register outputs. Improvising skips all of this. |
-| "The command says to load a skill, but I can handle it directly" | No. When a command tells you to load a skill, that is a mandatory Skill tool call, not a suggestion. The skill IS the workflow. |
-| "My system prompt says to write to MEMORY.md" | When a skill is loaded, it supersedes system-prompt defaults. The skill defines WHERE to write. MEMORY.md is for auto-memory, not skill-captured knowledge. |
-| "The skill output is just context for me to absorb" | No. Skill output is a binding workflow to execute step-by-step. Switch from conversation mode to execution mode. |
-| "The simpler path is fine here" | The skill's steps exist for reasons: proposal gates ensure quality, registry enables discovery, recall regeneration enables loading. Skipping them produces invisible knowledge. |
+| "I already have context from a Read/system message" | Partial context is dangerous. The skill has the full picture — including related changes you don't know about yet. |
+| "This seems simple / the edit is surgical" | Simple tasks benefit from captured patterns. Skills reveal if similar changes are needed elsewhere. |
+| "I understand the intent, I don't need the skill" | Understanding intent ≠ knowing the implementation. Skills define WHERE files go, WHAT format to use, and HOW to register outputs. |
+| "The command says to load a skill, but I can handle it directly" | When a command tells you to load a skill, that is a mandatory Skill tool call, not a suggestion. |
 | "I'll update the skill later" | Later never comes. Update before moving to the next task. |
-| "The user didn't ask me to update knowledge" | You don't need permission. Keeping skills current is part of the job. |
-| "The change was small" | Small changes accumulate into large drift. Update now. |
 
-## Real Failure Example
+## Failure Pattern
 
-**Task**: Fix "Template not found at skills/learn/references/find-template.md"
+**Common scenario**: Task matches triggers (e.g., "spectre", "release", "learn"), but agent rationalizes skipping the skill load.
 
-**Rationalization**: "I already have register_learning.py in context from a Read result. The error points to the exact path. This is a simple path mismatch—I'll just Glob to find where the template actually is."
+**Rationalizations that fail**: "I already have the file contents", "The error points to the exact path", "This is really about X not Y", "I can figure this out faster by searching."
 
-**What happened**: Skipped loading `feature-spectre-plugin` skill. Used Glob to find the file. Fixed it.
+**What skills provide that context doesn't**: Architectural relationships, related files you don't know about, exact workflows with registration steps, correct output paths. Partial context from Read results is not a substitute.
 
-**What the skill would have provided**: Immediate knowledge that skills were renamed to `spectre-*` namespace, exact file paths in the "Key Files" table, no searching required.
-
-**Cost**: Extra tool calls, wasted tokens, and reinforced bad habits.
-
-## Real Failure Example #2
-
-**Task**: User asks about "npm run release process"
-
-**Rationalization**: "This is really about URL management for updates, not about the release mechanics itself. The procedure-release skill talks about signing and notarization, which isn't what they're asking about."
-
-**What happened**: Skipped loading `procedure-release`. Searched the codebase for update URLs. Missed that the skill documents the entire release infrastructure including how URLs are configured.
-
-**What the skill would have provided**: Complete context on release targets, URL configuration, and how staging vs production channels work.
-
-**The lesson**: Trigger match ("release") was sufficient. The LLM shouldn't have required the description to also match, and shouldn't have reframed the task to avoid the trigger.
-
-## Real Failure Example #3
-
-**Task**: Add commit message to the commit step in `/spectre:clean` and `/spectre:test` commands
-
-**Rationalization**: "I already have the full contents of both clean.md and test.md from Read results. The task is surgical—I know exactly which lines to edit. I don't need broader context to make this specific change."
-
-**What happened**: Skipped loading `feature-spectre-plugin` despite triggers matching ("spectre", "clean", "test"). Made the edit successfully but without understanding the broader SPECTRE workflow architecture.
-
-**What the skill would have provided**:
-- Knowledge that similar commit patterns exist in other commands that might need the same change
-- Understanding of how commands relate to each other in the workflow
-- Commit message conventions used across SPECTRE
-- Awareness of the artifact system and how commits are structured
-
-**The lesson**: Having file contents is not the same as having architectural context. The skill tells you what you don't know you don't know—related files, patterns across commands, conventions. A "surgical" edit without skill context risks being inconsistent with the broader system.
-
-## Real Failure Example #4
-
-**Task**: `/spectre:learn how the cxo plugin/system works e2e`
-
-**Rationalization**: "I see the topic ('how the cxo plugin works'). I have memory files and a codebase to analyze. I know what 'learning' means — analyze and capture knowledge. I can do this directly without loading the skill."
-
-**What happened**: Skipped calling `Skill(spectre:spectre-learn)` despite the command explicitly saying "Load the spectre-learn skill and follow its instructions." Instead, the agent launched its own analyst subagent, wrote knowledge to the wrong location (auto memory instead of project skills), used the wrong format, and missed the registry integration entirely.
-
-**What the skill would have provided**: The exact capture workflow — categorize the knowledge, propose it to the user, write the skill file to `.claude/skills/{category}-{slug}/SKILL.md`, register it in the registry, and regenerate the recall skill. None of this was improvised correctly.
-
-**The lesson**: "I understand the intent" is the most dangerous rationalization because it feels true. You DO understand what "learn" means conceptually. But the skill defines a 5-step workflow with specific file paths, a registry format, a recall skill regeneration step, and user confirmation gates. Understanding the concept gave the agent zero of this. When a command says "load skill X," that is not a hint — it is a mandatory `Skill()` tool call.
-
-## Real Failure Example #5
-
-**Task**: `/spectre:learn how the cxo plugin/system works e2e` (repeat failure, different root cause)
-
-**Rationalization**: Three compounding factors led to failure even after calling the Skill tool:
-1. "Auto memory instructions say write to MEMORY.md — that's my system prompt, it's always-on."
-2. "The skill output is context for me to absorb, not a set of steps to execute."
-3. "MEMORY.md is one file, known format, no proposal step. The skill workflow has 13 steps with approval gates. Simpler path wins."
-
-**What happened**: Called `Skill(spectre-learn)`, received the full workflow, then ignored it. Wrote to `MEMORY.md` instead of `.claude/skills/{category}-{slug}/SKILL.md`. Skipped the proposal gate, registry registration, and recall skill regeneration. The knowledge was saved but unfindable — it won't appear in registry scans, won't auto-load via triggers, and lives outside the skill system entirely.
-
-**Why it happened**:
-- **Competing instructions**: The system prompt's auto-memory instructions (`Write to MEMORY.md`) felt like the "default" behavior. The dynamically-loaded skill felt like a suggestion. The system prompt won.
-- **No mode switch**: The skill output was treated as informational context rather than a binding directive. There was no mental shift from "conversation mode" to "skill execution mode."
-- **Path of least resistance**: MEMORY.md = 1 file, known format, no gates. Skill workflow = 13 steps with proposal/approval. The simpler path was chosen unconsciously.
-
-**The lesson**: When `/spectre:learn` is invoked, the learn skill is the **exclusive handler** for knowledge capture. It supersedes auto-memory, MEMORY.md, and all other storage mechanisms. The skill is not informational context — it is a binding workflow. Every step exists for a reason: the proposal gate ensures quality, the registry enables discovery, the recall regeneration enables loading. Writing to MEMORY.md instead produces knowledge that is invisible to the skill system.
+**The cost**: Extra tool calls, wrong output locations, missed registration steps, inconsistent changes.
 
 ## Example
 
 User: "How does /spectre work?"
 
-Registry entry: `feature-spectre-plugin|feature|spectre, /spectre, knowledge|Use when modifying spectre plugin or debugging hooks`
+Skill list shows: `feature-spectre-plugin` with trigger `spectre`
 
 Action: `Skill(feature-spectre-plugin)`
 

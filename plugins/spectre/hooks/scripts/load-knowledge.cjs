@@ -69,31 +69,6 @@ function main() {
   let applyContent = fs.readFileSync(applySkillPath, 'utf8');
   applyContent = stripFrontmatter(applyContent);
 
-  // Replace the Registry Location section with embedded registry or empty notice
-  let registrySection;
-  if (entryCount > 0) {
-    registrySection =
-      '## Registry\n\n' +
-      '**Format**: `skill-name|category|triggers|description`\n\n' +
-      '```\n' +
-      registryContent + '\n' +
-      '```\n\n' +
-      'Each entry corresponds to a skill that can be loaded via `Skill({skill-name})`\n\n' +
-      '**Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy';
-  } else {
-    registrySection =
-      '## Registry\n\n' +
-      'No knowledge has been captured for this project yet. The behavioral rules in this document still apply.\n\n' +
-      'To capture knowledge from this session, use `/spectre:learn` after completing significant work.\n\n' +
-      '**Categories:** feature, gotchas, patterns, decisions, procedures, integration, performance, testing, ux, strategy';
-  }
-
-  // Replace the Registry Location section
-  applyContent = applyContent.replace(
-    /## Registry Location[\s\S]*?(?=## Workflow)/,
-    registrySection + '\n\n'
-  );
-
   // Build final context
   const context = `<spectre-knowledge>\n${applyContent}\n</spectre-knowledge>`;
 

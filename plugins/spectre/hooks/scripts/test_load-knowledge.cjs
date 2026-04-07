@@ -25,7 +25,7 @@ function createApplySkill(pluginDir) {
   fs.mkdirSync(path.dirname(skillPath), { recursive: true });
   fs.writeFileSync(skillPath,
     '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
-    '## Registry Location\n\nThe registry is at somewhere\n\n' +
+    '## How to Find Skills\n\nScan available skills.\n\n' +
     '## Workflow\n\nDo things.\n'
   );
   return skillPath;
@@ -232,7 +232,7 @@ describe('LoadKnowledge - Core behavior', () => {
     }
   });
 
-  it('registry content embedded in context', () => {
+  it('registry content is NOT embedded in context', () => {
     const tmp = createTmpDir();
     const pluginDir = path.join(tmp, 'plugin');
     fs.mkdirSync(pluginDir);
@@ -249,7 +249,10 @@ describe('LoadKnowledge - Core behavior', () => {
       assert.equal(result.exitCode, 0);
       const output = JSON.parse(result.stdout);
       const context = output.hookSpecificOutput.additionalContext;
-      assert.ok(context.includes('embedded-skill|feature|embed|Embedded skill'));
+      assert.ok(!context.includes('embedded-skill|feature|embed|Embedded skill'),
+        'Registry entries should not be embedded in context');
+      assert.ok(context.includes('# Apply Knowledge'),
+        'Scaffold content should still be present');
     } finally {
       cleanup(tmp);
     }

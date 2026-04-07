@@ -144,3 +144,158 @@ describe('register_learning', () => {
     assert.notEqual(result.exitCode, 0);
   });
 });
+
+describe('register_learning - trigger migration', () => {
+  it('injects TRIGGER into single-line description', () => {
+    const tmp = createTmpDir();
+    try {
+      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-auth');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
+        '---\nname: feature-auth\ndescription: Use when working on authentication\nuser-invocable: false\n---\n\n# Auth Knowledge\n'
+      );
+
+      runScript([
+        '--project-root', tmp,
+        '--skill-name', 'feature-auth',
+        '--category', 'feature',
+        '--triggers', 'auth, login',
+        '--description', 'Use when working on authentication'
+      ]);
+
+      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+      assert.ok(content.includes('description: Use when working on authentication TRIGGER when: auth, login'),
+        'Should be single-line with description and trigger');
+      assert.ok(!content.includes('description: |'), 'Should NOT use block scalar');
+      assert.ok(content.includes('# Auth Knowledge'), 'Body should be preserved');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('injects TRIGGER into block scalar description', () => {
+    const tmp = createTmpDir();
+    try {
+      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-release');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
+        '---\nname: feature-release\ndescription: |\n  Use when releasing the plugin or bumping versions.\nuser-invocable: true\n---\n\n# Release\n'
+      );
+
+      runScript([
+        '--project-root', tmp,
+        '--skill-name', 'feature-release',
+        '--category', 'procedures',
+        '--triggers', 'release, version',
+        '--description', 'Use when releasing the plugin or bumping versions.'
+      ]);
+
+      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+      assert.ok(content.includes('description: Use when releasing the plugin or bumping versions. TRIGGER when: release, version'),
+        'Should collapse block scalar to single-line with trigger');
+      assert.ok(!content.includes('description: |'), 'Block scalar should be removed');
+      assert.ok(content.includes('# Release'), 'Body should be preserved');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('trigger injection is idempotent', () => {
+    const tmp = createTmpDir();
+    try {
+      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-auth');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
+        '---\nname: feature-auth\ndescription: Use when working on authentication\nuser-invocable: false\n---\n\n# Auth\n'
+      );
+
+      const args = [
+        '--project-root', tmp,
+        '--skill-name', 'feature-auth',
+        '--category', 'feature',
+        '--triggers', 'auth, login',
+        '--description', 'Use when working on authentication'
+      ];
+
+      runScript(args);
+      runScript(args);
+
+      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+      const matches = content.match(/TRIGGER when:/g);
+      assert.equal(matches.length, 1, 'Should have exactly one TRIGGER line');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('skips missing skill files gracefully', () => {
+    const tmp = createTmpDir();
+    try {
+      // Register a skill with no SKILL.md on disk
+      const result = runScript([
+        '--project-root', tmp,
+        '--skill-name', 'feature-missing',
+        '--category', 'feature',
+        '--triggers', 'missing',
+        '--description', 'Nonexistent skill'
+      ]);
+
+      assert.equal(result.exitCode, 0, 'Should not error on missing skill files');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('migrates all registry entries on any registration', () => {
+    const tmp = createTmpDir();
+    try {
+      // Create two existing skills without triggers
+      for (const name of ['feature-alpha', 'feature-beta']) {
+        const dir = path.join(tmp, '.claude', 'skills', name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'),
+          `---\nname: ${name}\ndescription: Use when working on ${name}\n---\n\n# ${name}\n`
+        );
+      }
+
+      // Seed registry with alpha
+      const registryDir = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'references');
+      fs.mkdirSync(registryDir, { recursive: true });
+      fs.writeFileSync(path.join(registryDir, 'registry.toon'),
+        '# SPECTRE Knowledge Registry\n# Format: skill-name|category|triggers|description\n\n' +
+        'feature-alpha|feature|alpha, first|Use when working on feature-alpha\n' +
+        'feature-beta|feature|beta, second|Use when working on feature-beta\n'
+      );
+
+      // Register a third skill — should trigger migration of alpha and beta too
+      const gammaDir = path.join(tmp, '.claude', 'skills', 'feature-gamma');
+      fs.mkdirSync(gammaDir, { recursive: true });
+      fs.writeFileSync(path.join(gammaDir, 'SKILL.md'),
+        '---\nname: feature-gamma\ndescription: Use when working on gamma\n---\n\n# Gamma\n'
+      );
+
+      runScript([
+        '--project-root', tmp,
+        '--skill-name', 'feature-gamma',
+        '--category', 'feature',
+        '--triggers', 'gamma, third',
+        '--description', 'Use when working on gamma'
+      ]);
+
+      // All three should now have triggers
+      for (const [name, triggers] of [
+        ['feature-alpha', 'alpha, first'],
+        ['feature-beta', 'beta, second'],
+        ['feature-gamma', 'gamma, third']
+      ]) {
+        const content = fs.readFileSync(
+          path.join(tmp, '.claude', 'skills', name, 'SKILL.md'), 'utf8'
+        );
+        assert.ok(content.includes(`TRIGGER when: ${triggers}`),
+          `${name} should have triggers: ${triggers}`);
+      }
+    } finally {
+      cleanup(tmp);
+    }
+  });
+});

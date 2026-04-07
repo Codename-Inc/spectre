@@ -129,6 +129,8 @@ Format: `{skill-name}|{category}|{triggers}|{description}` (one learning per lin
 
 Example: `feature-spectre-plugin|feature|spectre, /learn, /recall|Use when modifying spectre plugin or debugging hooks`
 
+Triggers are also embedded in each skill's frontmatter `description` field as a `TRIGGER when:` line. This makes triggers visible in the session skill list without needing to read the registry file. The `register_learning.cjs` script handles this automatically during registration.
+
 ## Workflow
 
 ### 1. Parse Input
@@ -514,7 +516,7 @@ Always show FULL proposed content, not summaries. The user needs to see exactly 
 ```markdown
 ---
 name: {skill-name}
-description: Use when {triggering conditions - MUST start with "Use when"}
+description: Use when {triggering conditions - MUST start with "Use when"} TRIGGER when: {comma-separated trigger keywords}
 user-invocable: true
 ---
 
@@ -554,7 +556,7 @@ user-invocable: true
 
 ### 13. Register the Learning
 
-After writing the skill file, register it in the project registry and regenerate the recall skill. This is two file operations — no external scripts needed.
+Run `spectre-register` (on PATH via the plugin bin/ directory) to update the registry, regenerate the recall skill, and inject `TRIGGER when:` into all skill frontmatter descriptions.
 
 <CRITICAL>
 **Registry description format:**
@@ -571,62 +573,19 @@ The description is used to MATCH knowledge to tasks. It must describe WHEN to us
 **Bad**: `"Authentication system overview"` (too vague, no triggering conditions)
 </CRITICAL>
 
-#### 13a. Update the Registry
-
-**Path**: `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon`
-
-Create the directory and file if they don't exist. The registry format is one entry per line:
-
-```
-# SPECTRE Knowledge Registry
-# Format: skill-name|category|triggers|description
-
-{skill-name}|{category}|{triggers}|{description}
+```bash
+spectre-register \
+  --project-root "{{project_root}}" \
+  --skill-name "{skill-name}" \
+  --category "{category}" \
+  --triggers "{triggers}" \
+  --description "{description}"
 ```
 
-- If the skill-name already exists on a line, **replace** that line with the updated entry
-- If it's new, **append** the entry
-- Preserve existing entries and comments
-
-#### 13b. Regenerate the Recall Skill
-
-**Path**: `{{project_root}}/.claude/skills/spectre-recall/SKILL.md`
-
-Read the full registry content from `registry.toon`, then write the recall skill with this exact structure:
-
-```markdown
----
-name: spectre-recall
-description: Use when user wants to search for existing knowledge, recall a specific learning, or discover what knowledge is available.
----
-
-# Recall Knowledge
-
-Search and load relevant knowledge from the project's spectre learnings into your context.
-
-## Registry
-
-{full registry content here}
-
-## How to Use
-
-1. **Scan registry above** — match triggers/description against your current task
-2. **Load matching skills**: `Skill({skill-name})`
-3. **Apply knowledge** — use it to guide your approach
-
-## Search Commands
-
-- `/recall {query}` — search registry for matches
-- `/recall` — show all available knowledge by category
-
-## Workflow
-
-**Single match** → Load automatically via `Skill({skill-name})`
-
-**Multiple matches** → List options, ask user which to load
-
-**No matches** → Suggest `/learn` to capture new knowledge
-```
+This single command handles:
+- Creating/updating the registry entry in `registry.toon`
+- Regenerating the `spectre-recall/SKILL.md` skill
+- Injecting `TRIGGER when:` lines into ALL registered skills' frontmatter descriptions (so triggers are visible in the session skill list without reading the registry)
 
 ### 14. Confirm
 
