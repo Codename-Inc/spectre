@@ -198,14 +198,7 @@ function formatContext(data, opts) {
   const checkboxTree = (beadsAvailable && tasks.length) ? buildCheckboxTree(tasks) : '';
 
   // User-visible notice
-  const asciiBanner = [
-    '',
-    '\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2588\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2580\u2591\u2580\u2588\u2580\u2591\u2588\u2580\u2584\u2591\u2588\u2580\u2580',
-    '\u2591\u2580\u2580\u2588\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2580\u2591\u2588\u2591\u2591\u2591\u2591\u2588\u2591\u2591\u2588\u2580\u2584\u2591\u2588\u2580\u2580',
-    '\u2591\u2580\u2580\u2580\u2591\u2580\u2591\u2591\u2591\u2580\u2580\u2580\u2591\u2580\u2580\u2580\u2591\u2591\u2580\u2591\u2591\u2580\u2591\u2580\u2591\u2580\u2580\u2580'
-  ].join('\n');
-
-  const noticeLines = [asciiBanner];
+  const noticeLines = ['\ud83d\udc7b SPECTRE'];
   noticeLines.push(`\n\ud83d\udd04 Session Resumed: ${taskName} | Branch: ${branchName}`);
 
   if (goal) {
@@ -353,12 +346,7 @@ async function main() {
 
   if (!latestHandoff) {
     // No session to resume - show welcome banner with tips
-    const asciiBanner = [
-      '',
-      '\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2588\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2580\u2591\u2580\u2588\u2580\u2591\u2588\u2580\u2584\u2591\u2588\u2580\u2580',
-      '\u2591\u2580\u2580\u2588\u2591\u2588\u2580\u2580\u2591\u2588\u2580\u2580\u2591\u2588\u2591\u2591\u2591\u2591\u2588\u2591\u2591\u2588\u2580\u2584\u2591\u2588\u2580\u2580',
-      '\u2591\u2580\u2580\u2580\u2591\u2580\u2591\u2591\u2591\u2580\u2580\u2580\u2591\u2580\u2580\u2580\u2591\u2591\u2580\u2591\u2591\u2580\u2591\u2580\u2591\u2580\u2580\u2580'
-    ].join('\n');
+    const banner = '\ud83d\udc7b SPECTRE';
     const tips = [
       '',
       'Getting Started with SPECTRE:',
@@ -371,7 +359,7 @@ async function main() {
     ].join('\n');
 
     const welcome = {
-      systemMessage: asciiBanner + '\n' + tips
+      systemMessage: banner + '\n' + tips
     };
     process.stdout.write(JSON.stringify(welcome) + '\n');
     process.exit(0);
