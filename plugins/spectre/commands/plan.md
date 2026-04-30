@@ -71,16 +71,7 @@ description: 👻 | Unified planning entry point - researches, assesses complexi
 
 - **Action** — SaveResearch: Merge all findings (existing artifacts + new agent results) into `{OUT_DIR}/task_context.md` with sections: Architecture Patterns, Dependencies, Implementation Approaches, Impact Summary, and External Research (best practices, recommended libraries/frameworks, prior art, common pitfalls)
 
-## Step 2 - Present Architectural Options
-
-- **Action** — PresentOptions: 2-4 strategies (simplest to most robust)
-  - Each: core approach, trade-offs, when it makes sense
-- **Wait** — User selects strategy
-- **Action** — UpdateContext: Document selection in task_context.md
-
-> **CHECKPOINT**: After architecture discussion, proceed IMMEDIATELY to Step 3. Do NOT end turn without continuing the workflow.
-
-## Step 3 - Assess Complexity
+## Step 2 - Assess Complexity
 
 Use research findings from Step 1 to determine appropriate planning depth.
 
@@ -103,9 +94,50 @@ Use research findings from Step 1 to determine appropriate planning depth.
   - **STANDARD**: Mix of Low/Med signals, multi-file but contained scope, no hard-stops
   - **COMPREHENSIVE**: Any High signal, multiple Med signals, or any hard-stop triggered
 
-- **Action** — LogTier: Note the assessed tier in your response for transparency, then proceed immediately to Step 4. Do NOT ask for confirmation.
+- **Action** — LogTier: Note the assessed tier in your response for transparency, then proceed immediately to the next step. Do NOT ask for confirmation.
 
-> **CHECKPOINT**: After determining tier, proceed IMMEDIATELY to Step 4. The ONLY valid next action is invoking a Skill. Do NOT end turn here. Do NOT ask user to confirm the tier.
+> **CHECKPOINT**: After determining tier, proceed IMMEDIATELY to the next step — Step 3 (High-Level Design) for STANDARD/COMPREHENSIVE, or Step 4 (Route) for LIGHT. Do NOT end turn here. Do NOT ask user to confirm the tier.
+
+## Step 3 - High-Level Design
+
+**SKIP IF LIGHT** — proceed directly to Step 4.
+
+Goal: align on the *shape* of the solution before generating a full plan. This catches misalignments early and gives the user a chance to redirect before reading a long plan doc.
+
+- **Action** — PresentDesign: Synthesize research from Step 1 into a single proposed approach with open questions. Present inline (do not write a separate design file).
+
+  **Format**:
+
+  > Here's the high-level design I'd take. Scan the shape, then resolve any open questions or push back on the approach.
+  >
+  > **Approach**: [1-2 paragraph summary of the solution shape — what changes structurally, not file-by-file]
+  >
+  > **Key components touched**:
+  > - `path/file.ts` — [what shifts and why]
+  > - `path/other.ts` — [what shifts and why]
+  >
+  > **Key decisions**:
+  > - [decision] — [rationale; alternative considered]
+  > - [decision] — [rationale; alternative considered]
+  >
+  > **Open questions** (with default assumption):
+  > 1. [question] — *default: [assumption]*
+  > 2. [question] — *default: [assumption]*
+  >
+  > Reply with answers, edits to the approach, or 'looks good' to continue.
+
+  **CRITICAL**:
+  - **Single proposed approach**, not a menu. If a true fork exists, surface it as an open question with your recommendation — not as parallel options.
+  - Stay at the *shape* level: components, key decisions, structural changes. Defer file-by-file detail to `create_plan`.
+  - Open questions should be specific and answerable; pair each with a default assumption so the user can skip if the default is fine.
+
+- **Action** — IterateDesign: If the user replies with answers, edits, or pushback, update the design and re-present. Loop until user says 'looks good' (or equivalent).
+
+- **Wait** — User signals alignment.
+
+- **Action** — PersistDesign: Append a "Selected Design" section to `{OUT_DIR}/task_context.md` capturing the agreed approach, key decisions, and resolved questions. This is what `create_plan` consumes.
+
+> **CHECKPOINT**: After alignment, proceed IMMEDIATELY to Step 4. The ONLY valid next action is invoking a Skill.
 
 ## Step 4 - Route to Workflow
 
