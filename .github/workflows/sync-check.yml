@@ -1,0 +1,28 @@
+name: Codex Sync Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sync-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate Codex tree
+        run: npm run sync-codex
+
+      - name: Fail on generated drift
+        run: git diff --exit-code plugins/spectre-codex/
