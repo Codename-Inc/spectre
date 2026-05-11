@@ -1,31 +1,20 @@
 {
   "hooks": {
-    "PreCompact": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact-warning.cjs"
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "startup|clear|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bootstrap.cjs"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bootstrap.mjs"
           },
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/handoff-resume.cjs"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/handoff-resume.mjs"
           },
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/load-knowledge.cjs"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/load-knowledge.mjs"
           }
         ]
       }

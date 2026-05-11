@@ -42,18 +42,6 @@ export function codexRuntimeRoot() {
   return path.join(resolveCodexHome(), 'spectre');
 }
 
-export function runtimeSourceRoot() {
-  return path.join(codexRuntimeRoot(), 'source');
-}
-
-export function runtimeSourceCommandsDir() {
-  return path.join(runtimeSourceRoot(), 'commands');
-}
-
-export function runtimeSourceAgentsDir() {
-  return path.join(runtimeSourceRoot(), 'agents');
-}
-
 export function runtimeAgentsDir() {
   return path.join(codexRuntimeRoot(), 'agents');
 }

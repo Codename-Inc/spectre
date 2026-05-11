@@ -1,5 +1,6 @@
-# /recall - Search Project Knowledge
+---
+description: "👻 | Search Project Knowledge"
+---
+Invoke the skill that owns this workflow:
 
-Load the `spectre-recall` skill and follow its instructions.
-
-**Search query**: $ARGUMENTS
+`Skill(spectre-recall)` with args `$ARGUMENTS`.

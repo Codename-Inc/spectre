@@ -9,7 +9,7 @@ user-invocable: false
 **Trigger**: codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor
 **Confidence**: high
 **Created**: 2026-03-30
-**Updated**: 2026-03-30
+**Updated**: 2026-05-01
 **Version**: 1
 
 ## What is Codex SPECTRE?
@@ -53,19 +53,17 @@ This is the key difference between "a skill exists on disk" and "Codex knows wha
    - workflow skills into `CODEX_HOME/skills/`
    - agent TOML configs into `CODEX_HOME/spectre/agents/`
    - runtime scripts into `CODEX_HOME/spectre/hooks/` and `CODEX_HOME/spectre/tools/`
-4. `ensureSpectreHooksConfigured()` in `src/lib/config.js` enables `features.codex_hooks = true`, `features.skills = true`, and `features.multi_agent = true`, and registers the `SessionStart` hook in `hooks.json`.
-5. For project installs, `installProjectFiles()` creates `.spectre/manifest.json`, ensures `.agents/skills/spectre-recall/` exists, and prepares the project for knowledge/session syncing.
+4. `ensureSpectreHooksConfigured()` in `src/lib/config.js` enables `features.hooks = true`, `features.skills = true`, and `features.multi_agent = true`, and registers the `SessionStart` hook in `hooks.json`.
+5. For project installs, `installProjectFiles()` creates `.spectre/manifest.json`, ensures `.agents/skills/spectre-recall/` exists, and prepares the project for persisted knowledge/session syncing.
 6. `syncProjectSkillsConfigured()` adds `[[skills.config]]` entries pointing at project skills under `.agents/skills/`.
+7. For user installs, the generated `SessionStart` hooks are registered globally and must run in any current workspace even when that workspace does not have `.spectre/manifest.json`.
 
 ### Flow 2: Start a new Codex session with SPECTRE installed
 
 1. Codex fires the `SessionStart` hook from `hooks.json`.
-2. `.codex/spectre/hooks/session-start.mjs` imports `buildSessionStartOutput()` from `src/lib/project.js`.
-3. `buildSessionStartOutput()` does two things every time:
-   - `syncSessionOverride()` updates the managed `<!-- spectre-session:start --> ... <!-- spectre-session:end -->` block in `AGENTS.override.md` from the newest handoff JSON.
-   - `syncKnowledgeOverride()` updates the managed `<!-- spectre-knowledge:start --> ... <!-- spectre-knowledge:end -->` block in `AGENTS.override.md`.
-4. The knowledge block is built from the base `spectre-apply` skill plus the project registry contents from `.agents/skills/spectre-recall/references/registry.toon`.
-5. The hook returns a short `systemMessage` only, while Codex reads the full `AGENTS.override.md` content through normal instruction discovery.
+2. Generated hooks under `.codex/spectre/hooks/scripts/` run in order, including `bootstrap.mjs`, `handoff-resume.mjs`, and `load-knowledge.mjs`.
+3. Those hooks compute the plugin root from their installed script path when `CLAUDE_PLUGIN_ROOT` is unset, so npm-packed installs do not depend on a local checkout path.
+4. Generated hooks keep hook output short. The knowledge hook writes the apply scaffold into the managed `AGENTS.override.md` knowledge block when the workspace has a Spectre surface (`.spectre/manifest.json`, a registry, or existing SPECTRE-managed override markers), and it returns only a visible status line plus `hookEventName`.
 
 ### Flow 3: Learn and reuse project knowledge
 
@@ -73,7 +71,7 @@ This is the key difference between "a skill exists on disk" and "Codex knows wha
 2. The learning is registered in `.agents/skills/spectre-recall/references/registry.toon`.
 3. The recall skill is regenerated at `.agents/skills/spectre-recall/SKILL.md`.
 4. `syncProjectSkillsConfigured()` ensures those project skills are configured in Codex `config.toml`.
-5. On the next session start, `syncKnowledgeOverride()` embeds the registry into `AGENTS.override.md`, so Codex sees trigger keywords and descriptions before it starts searching.
+5. On the next session start, the knowledge adapter refreshes `AGENTS.override.md`, so Codex sees the apply coercion/skill instructions through the same managed override channel used for continuity instead of through `additionalContext`.
 
 ## Technical Design
 
@@ -83,15 +81,15 @@ The implementation is split into four layers:
 
 `src/main.js` is the entrypoint. It parses `install`, `uninstall`, `update`, and `doctor`, resolves the project directory, and switches `CODEX_HOME` to `./.codex` for project installs. That means the rest of the code can write to "Codex home" generically without special-casing every path.
 
-### 2. Runtime/code generation
+### 2. Runtime asset installation
 
-`src/lib/install.js` is the asset generator. It:
-- copies source commands/agents into the runtime source tree
-- generates Codex workflow skills from the original SPECTRE command markdown
-- generates Codex agent TOML files from the original SPECTRE agent markdown
-- installs helper scripts like `session-start.mjs`, `refresh-project-context.mjs`, and `sync-session-override.mjs`
+`src/lib/install.js` installs pre-generated Codex assets from `plugins/spectre-codex/`. It:
+- copies workflow skills from `plugins/spectre-codex/skills/`
+- copies Codex agent TOML configs from `plugins/spectre-codex/agents/`
+- copies generated hook scripts and `hooks.json` from `plugins/spectre-codex/hooks/` into `CODEX_HOME/spectre/hooks/`
+- installs only small compatibility tool entrypoints under `CODEX_HOME/spectre/tools/`
 
-The key trade-off is that workflow skills wrap the original SPECTRE command content with a Codex translation layer instead of rewriting the prompts from scratch. That keeps one source of truth.
+The key invariant is that command markdowns are shims; workflow bodies live in skills, and Codex install must copy the generated Codex tree instead of regenerating workflow skills from command files.
 
 ### 3. Codex config and hook wiring
 
@@ -118,7 +116,7 @@ The most important logic is in `buildKnowledgeOverrideBody()`: it starts from th
   Main installer/uninstaller. Generates workflow skills, agent TOML configs, runtime scripts, and invokes project install logic.
 
 - `src/lib/config.js`
-  Owns `config.toml` and `hooks.json` mutation, including `features.codex_hooks`, `multi_agent`, `SessionStart`, and `[[skills.config]]` project-skill syncing.
+  Owns `config.toml` and `hooks.json` mutation, including `features.hooks`, `multi_agent`, `SessionStart`, and `[[skills.config]]` project-skill syncing.
 
 - `src/lib/project.js`
   Owns session continuity and managed `AGENTS.override.md` blocks for both session state and knowledge injection.
@@ -178,8 +176,7 @@ Check, in order:
 1. The skill exists at `.agents/skills/{name}/SKILL.md`.
 2. The registry entry exists in `.agents/skills/spectre-recall/references/registry.toon`.
 3. `config.toml` contains a `[[skills.config]]` entry for the skill path.
-4. `AGENTS.override.md` contains the `<!-- spectre-knowledge:start -->` block with the current registry embedded.
-5. `hooks.json` contains a `SessionStart` hook pointing at `spectre/hooks/session-start.mjs`.
+4. `hooks.json` contains `SessionStart` hooks pointing at `spectre/hooks/scripts/*.mjs`, especially `load-knowledge.mjs`.
 6. Run:
    ```bash
    npx spectre doctor codex --scope project --verify-hooks
@@ -196,7 +193,10 @@ After `npx spectre install codex --scope project`, expect files like:
 .codex/hooks.json
 .codex/skills/spectre-scope/SKILL.md
 .codex/skills/spectre-apply/SKILL.md
-.codex/spectre/hooks/session-start.mjs
+.codex/spectre/hooks/hooks.json
+.codex/spectre/hooks/scripts/bootstrap.mjs
+.codex/spectre/hooks/scripts/handoff-resume.mjs
+.codex/spectre/hooks/scripts/load-knowledge.mjs
 .codex/spectre/tools/sync-session-override.mjs
 .codex/spectre/agents/dev.toml
 .spectre/manifest.json
@@ -211,7 +211,7 @@ If you are tempted to put the full handoff into hook output, don't. The current 
 ## Pitfalls
 
 - `SessionStart` does not fire just because the Codex UI opens. It runs on the first real turn of a new/resumed session.
-- The runtime `session-start.mjs` imports `src/lib/project.js` from the installed repo path. If that repo path disappears, the hook breaks.
-- The standalone `.codex/skills/spectre-apply/SKILL.md` is not the full startup knowledge payload. The live registry injection happens in `AGENTS.override.md` during `SessionStart`.
+- Runtime hooks are copied generated assets. Avoid reintroducing package-cache `file://` imports, local checkout path assumptions, or `.spectre/manifest.json` gates for user-scope startup behavior.
+- The standalone `.codex/skills/spectre-apply/SKILL.md` is the source for the managed startup knowledge block, but Codex should receive that block through `AGENTS.override.md`; do not put the apply coercion into SessionStart `additionalContext`.
 - Project knowledge without a registry entry is incomplete. The skill may exist on disk, but trigger-based discovery will be missing.
-- Project installs are the only mode that create `.spectre/manifest.json` and project-local knowledge/session files. User installs write global Codex assets but do not create project-local continuity state on their own.
+- Project installs are the only mode that create `.spectre/manifest.json` and initial project-local knowledge/session files. User installs write global Codex assets and global hooks that still run in every workspace; those hooks should degrade to a ready banner when no project registry or handoff exists.

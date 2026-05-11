@@ -279,57 +279,103 @@ function writeHooksConfig(hooksPath, config) {
   fs.writeFileSync(hooksPath, `${JSON.stringify(nextConfig, null, 2)}\n`);
 }
 
-function spectreSessionStartCommand(runtimeRoot) {
-  return `node ${shellQuote(path.join(runtimeRoot, 'hooks', 'session-start.mjs'))}`;
-}
-
-function isSpectreSessionStartHook(hook) {
+function isSpectreHook(hook) {
   return hook
     && typeof hook === 'object'
     && hook.type === 'command'
     && typeof hook.command === 'string'
-    && hook.command.includes('spectre/hooks/session-start.mjs');
+    && (
+      hook.command.includes('spectre/hooks/session-start.mjs')
+      || hook.command.includes('spectre/hooks/scripts/')
+    );
 }
 
-function upsertSpectreSessionStartHook(runtimeRoot) {
-  const { hooksPath, config } = readHooksConfig();
-  const hooks = { ...(config.hooks ?? {}) };
-  const groups = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
-  const nextGroups = [];
+function materializeHookCommand(command, runtimeRoot) {
+  return command
+    .replaceAll('${CODEX_HOME}/spectre', runtimeRoot)
+    .replaceAll('${CODEX_HOME}\\spectre', runtimeRoot)
+    .replace(/^node\s+(.+)$/, (_match, scriptPath) => `node ${shellQuote(scriptPath)}`);
+}
 
-  for (const group of groups) {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) {
-      nextGroups.push(group);
+function materializeGeneratedHooks(generatedHooks, runtimeRoot) {
+  const materialized = {};
+
+  for (const [eventName, groups] of Object.entries(generatedHooks ?? {})) {
+    if (!Array.isArray(groups)) {
       continue;
     }
 
-    const hookList = Array.isArray(group.hooks) ? group.hooks.filter(hook => !isSpectreSessionStartHook(hook)) : [];
-    if (hookList.length > 0) {
-      nextGroups.push({
+    materialized[eventName] = groups.map(group => {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) {
+        return group;
+      }
+
+      const hookList = Array.isArray(group.hooks) ? group.hooks.map(hook => {
+        if (!hook || typeof hook !== 'object' || Array.isArray(hook)) {
+          return hook;
+        }
+        if (hook.type !== 'command' || typeof hook.command !== 'string') {
+          return hook;
+        }
+
+        return {
+          ...hook,
+          command: materializeHookCommand(hook.command, runtimeRoot)
+        };
+      }) : group.hooks;
+
+      return {
         ...group,
         hooks: hookList
-      });
+      };
+    });
+  }
+
+  return materialized;
+}
+
+function upsertSpectreHooks(runtimeRoot, generatedHooks) {
+  const { hooksPath, config } = readHooksConfig();
+  const hooks = { ...(config.hooks ?? {}) };
+  const materializedHooks = materializeGeneratedHooks(generatedHooks, runtimeRoot);
+
+  for (const eventName of new Set([...Object.keys(hooks), ...Object.keys(materializedHooks)])) {
+    const groups = Array.isArray(hooks[eventName]) ? hooks[eventName] : [];
+    const nextGroups = [];
+
+    for (const group of groups) {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) {
+        nextGroups.push(group);
+        continue;
+      }
+
+      const hookList = Array.isArray(group.hooks) ? group.hooks.filter(hook => !isSpectreHook(hook)) : [];
+      if (hookList.length > 0) {
+        nextGroups.push({
+          ...group,
+          hooks: hookList
+        });
+      }
+    }
+
+    if (Array.isArray(materializedHooks[eventName])) {
+      nextGroups.push(...materializedHooks[eventName]);
+    }
+
+    if (nextGroups.length > 0) {
+      hooks[eventName] = nextGroups;
+    } else {
+      delete hooks[eventName];
     }
   }
 
-  nextGroups.push({
-    hooks: [
-      {
-        type: 'command',
-        command: spectreSessionStartCommand(runtimeRoot),
-        statusMessage: 'Spectre: loading session context'
-      }
-    ]
-  });
-
-  hooks.SessionStart = nextGroups;
   writeHooksConfig(hooksPath, {
     ...config,
     hooks
   });
 }
 
-function removeSpectreSessionStartHook() {
+function removeSpectreHooks() {
   const hooksPath = codexHooksConfigPath();
   if (!fs.existsSync(hooksPath)) {
     return false;
@@ -337,35 +383,40 @@ function removeSpectreSessionStartHook() {
 
   const { config } = readHooksConfig();
   const hooks = { ...(config.hooks ?? {}) };
-  const groups = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
   let removed = false;
-  const nextGroups = [];
 
-  for (const group of groups) {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) {
-      nextGroups.push(group);
+  for (const [eventName, groups] of Object.entries(hooks)) {
+    if (!Array.isArray(groups)) {
       continue;
     }
 
-    const originalHooks = Array.isArray(group.hooks) ? group.hooks : [];
-    const filteredHooks = originalHooks.filter(hook => {
-      const shouldRemove = isSpectreSessionStartHook(hook);
-      removed ||= shouldRemove;
-      return !shouldRemove;
-    });
+    const nextGroups = [];
+    for (const group of groups) {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) {
+        nextGroups.push(group);
+        continue;
+      }
 
-    if (filteredHooks.length > 0) {
-      nextGroups.push({
-        ...group,
-        hooks: filteredHooks
+      const originalHooks = Array.isArray(group.hooks) ? group.hooks : [];
+      const filteredHooks = originalHooks.filter(hook => {
+        const shouldRemove = isSpectreHook(hook);
+        removed ||= shouldRemove;
+        return !shouldRemove;
       });
-    }
-  }
 
-  if (nextGroups.length > 0) {
-    hooks.SessionStart = nextGroups;
-  } else {
-    delete hooks.SessionStart;
+      if (filteredHooks.length > 0) {
+        nextGroups.push({
+          ...group,
+          hooks: filteredHooks
+        });
+      }
+    }
+
+    if (nextGroups.length > 0) {
+      hooks[eventName] = nextGroups;
+    } else {
+      delete hooks[eventName];
+    }
   }
 
   writeHooksConfig(hooksPath, {
@@ -448,7 +499,7 @@ export function removeProjectSkillsConfigured(projectDir) {
   writeConfig(configPath, content);
 }
 
-export function ensureSpectreHooksConfigured(runtimeRoot, agents) {
+export function ensureSpectreHooksConfigured(runtimeRoot, agents, generatedHooks = {}) {
   const { configPath, content: initialContent } = readConfig();
   let content = initialContent;
 
@@ -457,7 +508,8 @@ export function ensureSpectreHooksConfigured(runtimeRoot, agents) {
   content = removeScalarKey(content, 'hooks', 'session_start');
   content = removeEntryFromArrayLine(content, 'hooks.blocking', 'pre_session_start', preSessionEntry);
   content = upsertRootScalarKey(content, 'suppress_unstable_features_warning', 'true');
-  content = upsertScalarKey(content, 'features', 'codex_hooks', 'true');
+  content = removeScalarKey(content, 'features', 'codex_hooks');
+  content = upsertScalarKey(content, 'features', 'hooks', 'true');
   content = upsertScalarKey(content, 'features', 'skills', 'true');
   content = upsertScalarKey(content, 'features', 'multi_agent', 'true');
   content = removeEmptyTable(content, 'hooks');
@@ -479,7 +531,7 @@ export function ensureSpectreHooksConfigured(runtimeRoot, agents) {
   }
 
   writeConfig(configPath, content);
-  upsertSpectreSessionStartHook(runtimeRoot);
+  upsertSpectreHooks(runtimeRoot, generatedHooks);
 }
 
 export function removeSpectreHooksConfigured(runtimeRoot, agents) {
@@ -491,7 +543,7 @@ export function removeSpectreHooksConfigured(runtimeRoot, agents) {
   let content = fs.readFileSync(configPath, 'utf8');
   const preSessionEntry = `{ command = ["node", "${escapeTomlString(path.join(runtimeRoot, 'hooks', 'pre-session-start.mjs'))}"] }`;
 
-  const removedSessionStartHook = removeSpectreSessionStartHook();
+  const removedSpectreHooks = removeSpectreHooks();
 
   content = removeScalarKey(content, 'hooks', 'session_start');
   content = removeEntryFromArrayLine(content, 'hooks.blocking', 'pre_session_start', preSessionEntry);
@@ -502,7 +554,8 @@ export function removeSpectreHooksConfigured(runtimeRoot, agents) {
     content = removeTable(content, `agents.spectre_${agent.id}`);
   }
 
-  if (removedSessionStartHook && !hasRemainingHookDefinitions()) {
+  if (removedSpectreHooks && !hasRemainingHookDefinitions()) {
+    content = removeScalarKey(content, 'features', 'hooks');
     content = removeScalarKey(content, 'features', 'codex_hooks');
   }
 

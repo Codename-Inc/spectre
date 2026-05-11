@@ -13,7 +13,6 @@ import {
   codexHooksConfigPath,
   codexRuntimeRoot,
   codexSkillsDir,
-  projectPaths,
   resolveCodexHome
 } from './paths.js';
 
@@ -55,7 +54,10 @@ function sessionStartHookConfigured() {
       Array.isArray(group?.hooks) && group.hooks.some(hook =>
         hook?.type === 'command'
         && typeof hook.command === 'string'
-        && hook.command.includes('spectre/hooks/session-start.mjs')
+        && (
+          hook.command.includes('spectre/hooks/session-start.mjs')
+          || hook.command.includes('spectre/hooks/scripts/load-knowledge.mjs')
+        )
       )
     );
 
@@ -68,12 +70,8 @@ function sessionStartHookConfigured() {
   }
 }
 
-function commandSkillPath(projectDir, commandName) {
+function commandSkillPath(commandName) {
   const skillName = codexCommandSkillName(commandName);
-  if (skillName === 'spectre-recall') {
-    return projectPaths(projectDir).recallSkillPath;
-  }
-
   return path.join(codexSkillsDir(), skillName, 'SKILL.md');
 }
 
@@ -98,7 +96,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     hooks: {
       verifyRequested: verifyHooks,
       sessionStartConfigured: false,
-      codexHooksEnabled: false,
+      hooksFeatureEnabled: false,
       hiddenContextInjection: 'unconfigured',
       hooksConfigPath: codexHooksConfigPath(),
       hooksConfigPresent: fs.existsSync(codexHooksConfigPath())
@@ -114,12 +112,12 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
 
   if (fs.existsSync(codexConfigPath())) {
     const config = fs.readFileSync(codexConfigPath(), 'utf8');
-    result.hooks.codexHooksEnabled = config.includes('codex_hooks = true');
+    result.hooks.hooksFeatureEnabled = /^hooks\s*=\s*true\s*$/m.test(config);
     result.hooks.sessionStartConfigured = hookConfigStatus.configured;
     if (hookConfigStatus.error) {
       result.hooks.configError = hookConfigStatus.error;
     }
-    if (result.hooks.sessionStartConfigured && result.hooks.codexHooksEnabled) {
+    if (result.hooks.sessionStartConfigured && result.hooks.hooksFeatureEnabled) {
       result.hooks.hiddenContextInjection = 'agents_override_managed_block';
     } else if (result.hooks.sessionStartConfigured) {
       result.hooks.hiddenContextInjection = 'configured_but_feature_disabled';
@@ -130,7 +128,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     result.capabilities.multiAgentEnabled = config.includes('multi_agent = true');
   }
 
-  const commandSkillFiles = listSpectreCommands().map(name => commandSkillPath(projectDir, name));
+  const commandSkillFiles = listSpectreCommands().map(name => commandSkillPath(name));
   result.capabilities.workflowSkillsInstalled = listCodexWorkflowCommands()
     .some(name => fs.existsSync(path.join(codexSkillsDir(), codexCommandSkillName(name), 'SKILL.md')));
   result.capabilities.exactWorkflowSkillsInstalled = commandSkillFiles.every(filePath => fs.existsSync(filePath));
@@ -154,7 +152,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   process.stdout.write(`Runtime present: ${result.installed.runtimeDir ? 'yes' : 'no'}\n`);
   process.stdout.write(`session_start hook configured: ${result.hooks.sessionStartConfigured ? 'yes' : 'no'}\n`);
   process.stdout.write(`hooks.json present: ${result.hooks.hooksConfigPresent ? 'yes' : 'no'}\n`);
-  process.stdout.write(`Experimental codex_hooks enabled: ${result.hooks.codexHooksEnabled ? 'yes' : 'no'}\n`);
+  process.stdout.write(`Hooks feature enabled: ${result.hooks.hooksFeatureEnabled ? 'yes' : 'no'}\n`);
   process.stdout.write(`Hidden context injection: ${result.hooks.hiddenContextInjection}\n`);
   if (result.hooks.configError) {
     process.stdout.write(`Hook config error: ${result.hooks.configError}\n`);

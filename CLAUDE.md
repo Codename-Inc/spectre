@@ -18,7 +18,7 @@ spectre/
 │       │   └── plugin.json   # Plugin manifest
 │       ├── commands/         # Slash commands (markdown prompts)
 │       ├── agents/           # Subagent definitions
-│       ├── hooks/            # SessionStart, PreCompact, UserPromptSubmit
+│       ├── hooks/            # SessionStart, UserPromptSubmit
 │       └── skills/           # Skills (spectre footer rendering, tdd methodology)
 ├── scripts/              # Release & utility scripts
 └── CLAUDE.md
@@ -60,7 +60,6 @@ Commands are markdown prompts that:
 Hooks in `plugins/spectre/hooks/` maintain context across sessions:
 - **SessionStart**: Restores previous session context
 - **UserPromptSubmit**: Captures todos on `/spectre:handoff`
-- **PreCompact**: Warns before compacting
 
 Session state is stored in `.spectre/` (gitignored).
 

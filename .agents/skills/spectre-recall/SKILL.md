@@ -17,9 +17,11 @@ feature-codex-spectre-implementation|feature|codex, spectre, codex install, sess
 
 ## How to Use
 
-1. **Scan registry above** — match triggers/description against your current task
+1. **Scan available skills** in your context — trigger keywords are visible in each skill's description
 2. **Load matching skills**: `Skill({skill-name})`
 3. **Apply knowledge** — use it to guide your approach
+
+The registry above is a fallback reference. For session-start discovery, triggers are embedded in each skill's frontmatter description.
 
 ## Search Commands
 

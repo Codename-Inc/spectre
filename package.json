@@ -13,7 +13,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test src/**/*.test.js plugins/spectre/hooks/scripts/test_*.cjs",
+    "test": "node --test src/**/*.test.js plugins/spectre/hooks/scripts/test_*.mjs scripts/test_sync-codex.cjs",
+    "sync-codex": "node scripts/sync-codex.cjs",
     "tokens": "node scripts/count-tokens.js",
     "release": "node scripts/release.js"
   },

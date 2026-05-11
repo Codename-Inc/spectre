@@ -1,5 +1,5 @@
 #!/bin/sh
 # Thin wrapper so skills can call `spectre-register` from Bash.
-# Delegates to register_learning.cjs (CommonJS).
+# Delegates to the hook registration runtime.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec node "$SCRIPT_DIR/../hooks/scripts/register_learning.cjs" "$@"
+exec node "$SCRIPT_DIR/../hooks/scripts/register_learning.mjs" "$@"
