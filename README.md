@@ -47,7 +47,7 @@ If you choose `user`, restart or open your normal Codex session.
 Then run a Spectre command such as:
 
 ```plaintext
-spectre-scope
+scope
 ```
 
 Current Codex behavior:
@@ -380,10 +380,9 @@ spectre/
 │   └── spectre/
 │       ├── .claude-plugin/
 │       │   └── plugin.json   # Plugin manifest
-│       ├── commands/         # Slash commands
 │       ├── agents/           # Subagent definitions
 │       ├── hooks/            # Session memory hooks
-│       └── skills/           # Skills
+│       └── skills/           # Slash workflows + knowledge skills
 ├── scripts/              # Release & utility scripts
 └── CLAUDE.md
 ```

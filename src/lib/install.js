@@ -1,9 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import {
-  codexCommandSkillName,
   listSpectreAgents,
-  listSpectreCommands,
+  listSpectreSkills,
   SHARED_SKILLS,
   repoMetadata
 } from './constants.js';
@@ -84,7 +83,7 @@ function listGeneratedCodexSkills({ required = false } = {}) {
 function managedCodexSkillNames({ requireGenerated = false } = {}) {
   return Array.from(new Set([
     ...SHARED_SKILLS,
-    ...listSpectreCommands().map(codexCommandSkillName),
+    ...listSpectreSkills(),
     ...listGeneratedCodexSkills({ required: requireGenerated })
   ])).sort();
 }
@@ -99,10 +98,29 @@ function replaceDirectory(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
+function removeLegacyPrefixedSkillDirs() {
+  const skillsRoot = codexSkillsDir();
+  if (!fs.existsSync(skillsRoot)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('spectre-')) {
+      continue;
+    }
+    const bareName = entry.name.slice('spectre-'.length);
+    if (managedCodexSkillNames().includes(bareName)) {
+      fs.rmSync(path.join(skillsRoot, entry.name), { recursive: true, force: true });
+    }
+  }
+}
+
 function installGeneratedCodexSkills() {
   const sourceRoot = generatedCodexSkillsDir();
   const skillsRoot = codexSkillsDir();
   ensureDir(skillsRoot);
+
+  removeLegacyPrefixedSkillDirs();
 
   for (const skillName of managedCodexSkillNames({ requireGenerated: true })) {
     const skillDir = path.join(skillsRoot, skillName);
@@ -159,8 +177,8 @@ function cleanupLegacyPrompts() {
     return;
   }
 
-  for (const commandName of listSpectreCommands()) {
-    for (const fileName of [`spectre:${commandName}.md`, `spectre-${commandName}.md`]) {
+  for (const skillName of listSpectreSkills()) {
+    for (const fileName of [`spectre:${skillName}.md`, `spectre-${skillName}.md`, `${skillName}.md`]) {
       const filePath = path.join(codexPromptsDir(), fileName);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -230,6 +248,8 @@ export function uninstallCodex({ scope, projectDir }) {
   if (fs.existsSync(codexRuntimeRoot())) {
     fs.rmSync(codexRuntimeRoot(), { recursive: true, force: true });
   }
+
+  removeLegacyPrefixedSkillDirs();
 
   for (const skillName of managedCodexSkillNames()) {
     const skillDir = path.join(codexSkillsDir(), skillName);

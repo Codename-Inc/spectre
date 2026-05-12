@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import {
-  codexCommandSkillName,
-  listCodexWorkflowCommands,
   listSpectreAgents,
-  listSpectreCommands,
-  MIN_CODEX_VERSION
+  listSpectreSkills,
+  MIN_CODEX_VERSION,
+  SHARED_SKILLS,
+  WORKFLOW_PROBE_SKILLS
 } from './constants.js';
 import {
   codexConfigPath,
@@ -70,8 +70,7 @@ function sessionStartHookConfigured() {
   }
 }
 
-function commandSkillPath(commandName) {
-  const skillName = codexCommandSkillName(commandName);
+function skillPath(skillName) {
   return path.join(codexSkillsDir(), skillName, 'SKILL.md');
 }
 
@@ -128,13 +127,13 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     result.capabilities.multiAgentEnabled = config.includes('multi_agent = true');
   }
 
-  const commandSkillFiles = listSpectreCommands().map(name => commandSkillPath(name));
-  result.capabilities.workflowSkillsInstalled = listCodexWorkflowCommands()
-    .some(name => fs.existsSync(path.join(codexSkillsDir(), codexCommandSkillName(name), 'SKILL.md')));
-  result.capabilities.exactWorkflowSkillsInstalled = commandSkillFiles.every(filePath => fs.existsSync(filePath));
+  const expectedSkillFiles = listSpectreSkills().map(name => skillPath(name));
+  result.capabilities.workflowSkillsInstalled = WORKFLOW_PROBE_SKILLS
+    .some(name => fs.existsSync(skillPath(name)));
+  result.capabilities.exactWorkflowSkillsInstalled = expectedSkillFiles.every(filePath => fs.existsSync(filePath));
 
-  result.capabilities.sharedSkillsInstalled = ['spectre-apply', 'spectre-guide', 'spectre-learn', 'spectre-tdd']
-    .every(skill => fs.existsSync(path.join(codexSkillsDir(), skill, 'SKILL.md')));
+  result.capabilities.sharedSkillsInstalled = SHARED_SKILLS
+    .every(skill => fs.existsSync(skillPath(skill)));
 
   if (verifyHooks) {
     result.hooks.manualVerification = 'Use an interactive Codex session to verify SessionStart context injection. `codex exec` is not treated as authoritative for this hook lifecycle.';

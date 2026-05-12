@@ -38,22 +38,22 @@ test('project install writes workflow skills, agent config, and official Session
     await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
 
     const codeHome = path.join(projectDir, '.codex');
-    const scopeSkillPath = path.join(codeHome, 'skills', 'spectre-scope', 'SKILL.md');
+    const scopeSkillPath = path.join(codeHome, 'skills', 'scope', 'SKILL.md');
     assert.ok(fs.existsSync(scopeSkillPath));
     const scopeSkill = fs.readFileSync(scopeSkillPath, 'utf8');
     assert.match(scopeSkill, /# scope: Interactive Feature Scoping/);
     assert.doesNotMatch(scopeSkill, /This is the Codex skill replacement for the deprecated custom prompt \/spectre:scope/);
     assert.doesNotMatch(scopeSkill, /Skill\(spectre-scope\)/);
 
-    const applySkillPath = path.join(codeHome, 'skills', 'spectre-apply', 'SKILL.md');
+    const applySkillPath = path.join(codeHome, 'skills', 'apply', 'SKILL.md');
     assert.ok(fs.existsSync(applySkillPath));
     assert.match(fs.readFileSync(applySkillPath, 'utf8'), /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
 
-    const learnSkillPath = path.join(codeHome, 'skills', 'spectre-learn', 'SKILL.md');
+    const learnSkillPath = path.join(codeHome, 'skills', 'learn', 'SKILL.md');
     assert.ok(fs.existsSync(learnSkillPath));
     assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /### 13\. Register the Learning/);
     assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /\.agents\/skills\/spectre-recall\/references\/registry\.toon/);
-    assert.ok(fs.existsSync(path.join(codeHome, 'skills', 'spectre-learn', 'references', 'recall-template.md')));
+    assert.ok(fs.existsSync(path.join(codeHome, 'skills', 'learn', 'references', 'recall-template.md')));
 
     const agentPath = path.join(codeHome, 'spectre', 'agents', 'dev.toml');
     assert.ok(fs.existsSync(agentPath));
@@ -335,7 +335,7 @@ test('project uninstall removes managed workflow skills, agent config, and proje
 
     const codeHome = path.join(projectDir, '.codex');
 
-    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-scope')));
+    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'scope')));
     assert.ok(!fs.existsSync(path.join(codeHome, 'spectre')));
 
     const config = fs.readFileSync(path.join(codeHome, 'config.toml'), 'utf8');

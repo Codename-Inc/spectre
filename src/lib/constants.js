@@ -12,26 +12,12 @@ export const SESSION_OVERRIDE_END = '<!-- spectre-session:end -->';
 export const KNOWLEDGE_OVERRIDE_START = '<!-- spectre-knowledge:start -->';
 export const KNOWLEDGE_OVERRIDE_END = '<!-- spectre-knowledge:end -->';
 
-export function listSpectreCommands() {
-  const commandsDir = path.join(spectrePluginRoot(), 'commands');
-  return fs.readdirSync(commandsDir)
-    .filter(name => name.endsWith('.md'))
-    .map(name => path.basename(name, '.md'))
+export function listSpectreSkills() {
+  const skillsDir = path.join(spectrePluginRoot(), 'skills');
+  return fs.readdirSync(skillsDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, 'SKILL.md')))
+    .map(entry => entry.name)
     .sort();
-}
-
-export function codexCommandSkillName(commandName) {
-  if (commandName === 'learn') {
-    return 'spectre-learn';
-  }
-  if (commandName === 'recall') {
-    return 'spectre-recall';
-  }
-  return `spectre-${commandName}`;
-}
-
-export function listCodexWorkflowCommands() {
-  return listSpectreCommands().filter(commandName => !['learn', 'recall'].includes(commandName));
 }
 
 export function listSpectreAgents() {
@@ -43,10 +29,18 @@ export function listSpectreAgents() {
 }
 
 export const SHARED_SKILLS = [
-  'spectre-apply',
-  'spectre-guide',
-  'spectre-learn',
-  'spectre-tdd'
+  'apply',
+  'guide',
+  'learn',
+  'tdd'
+];
+
+export const WORKFLOW_PROBE_SKILLS = [
+  'scope',
+  'plan',
+  'execute',
+  'clean',
+  'test'
 ];
 
 export function repoMetadata() {

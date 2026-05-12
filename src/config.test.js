@@ -124,12 +124,12 @@ test('buildSessionStartOutput keeps knowledge active when no handoff exists and 
   const { buildSessionStartOutput } = await import('./lib/project.js');
   const output = buildSessionStartOutput(tmp, { source: 'clear' });
   assert.ok(output);
-  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | 👻 spectre: ready — capture knowledge with spectre-learn');
+  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | 👻 spectre: ready — capture knowledge with /spectre:learn');
   const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
   assert.match(overrideContent, /spectre-knowledge:start/);
   assert.match(overrideContent, /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
-  assert.match(overrideContent, /Capture via `Skill\(spectre-learn\)`/);
+  assert.match(overrideContent, /Capture via `Skill\(learn\)`/);
 });

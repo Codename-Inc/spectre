@@ -228,7 +228,7 @@ function main() {
     // Script is at: <plugin_root>/hooks/scripts/register_learning.mjs
     pluginRoot = path.resolve(__dirname, '..', '..');
   }
-  const templatePath = resolvePluginSkillPath(pluginRoot, 'spectre-learn', 'references', 'recall-template.md');
+  const templatePath = resolvePluginSkillPath(pluginRoot, 'learn', 'references', 'recall-template.md');
 
   // Ensure directories exist
   fs.mkdirSync(registryDir, { recursive: true });

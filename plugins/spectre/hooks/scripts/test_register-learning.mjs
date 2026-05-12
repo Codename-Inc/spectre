@@ -114,7 +114,7 @@ describe('register_learning', () => {
     const pluginRoot = path.join(tmp, 'plugin');
 
     // Create template
-    const templateDir = path.join(pluginRoot, 'skills', 'spectre-learn', 'references');
+    const templateDir = path.join(pluginRoot, 'skills', 'learn', 'references');
     fs.mkdirSync(templateDir, { recursive: true });
     fs.writeFileSync(
       path.join(templateDir, 'recall-template.md'),
@@ -146,7 +146,7 @@ describe('register_learning', () => {
     const codexHome = path.join(tmp, 'codex-home');
     const runtimeRoot = path.join(codexHome, 'spectre');
 
-    const templateDir = path.join(codexHome, 'skills', 'spectre-learn', 'references');
+    const templateDir = path.join(codexHome, 'skills', 'learn', 'references');
     fs.mkdirSync(templateDir, { recursive: true });
     fs.writeFileSync(
       path.join(templateDir, 'recall-template.md'),

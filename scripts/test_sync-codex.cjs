@@ -37,14 +37,14 @@ Write code carefully.
   );
 
   writeFile(
-    path.join(canonicalRoot, 'skills', 'spectre-plan', 'SKILL.md'),
+    path.join(canonicalRoot, 'skills', 'plan', 'SKILL.md'),
     `---
-name: spectre-plan
+name: plan
 description: "\\ud83d\\udc7b | Create: implementation plans."
 ---
 
 Read .claude/skills/example/SKILL.md, then invoke /spectre:create_tasks.
-Load @skill-spectre:spectre-tdd and dispatch @spectre:tester.
+Load @skill-spectre:tdd and dispatch @spectre:tester.
 `,
   );
 
@@ -125,16 +125,16 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
     assert.equal(agentFields.sandbox_mode, 'workspace-write');
 
     const skill = fs.readFileSync(
-      path.join(codexRoot, 'skills', 'spectre-plan', 'SKILL.md'),
+      path.join(codexRoot, 'skills', 'plan', 'SKILL.md'),
       'utf8',
     );
-    const { frontmatter } = skills.parseFrontmatter(skill, 'spectre-plan/SKILL.md');
+    const { frontmatter } = skills.parseFrontmatter(skill, 'plan/SKILL.md');
     assert.equal(frontmatter.description, '👻 | Create: implementation plans.');
     assert.match(skill, /^description: "👻 \| Create: implementation plans\."/m);
     assert.doesNotMatch(skill, /\\ud83d/);
     assert.match(skill, /\.agents\/skills\/example\/SKILL\.md/);
-    assert.match(skill, /spectre-create_tasks/);
-    assert.match(skill, /Skill\(spectre-tdd\)/);
+    assert.match(skill, /invoke create_tasks\./);
+    assert.match(skill, /Skill\(tdd\)/);
     assert.match(skill, /@tester/);
     assert.doesNotMatch(skill, /\.claude\/skills\//);
     assert.doesNotMatch(skill, /\/spectre:create_tasks/);
@@ -172,10 +172,10 @@ test('check mode detects drift and passes after regeneration', () => {
       true,
     );
 
-    fs.appendFileSync(path.join(codexRoot, 'skills', 'spectre-plan', 'SKILL.md'), '\nstale\n');
+    fs.appendFileSync(path.join(codexRoot, 'skills', 'plan', 'SKILL.md'), '\nstale\n');
     const drift = runSync({ repoRoot: root, canonicalRoot, codexRoot, check: true, quiet: true });
     assert.equal(drift.ok, false);
-    assert.match(drift.errors.join('\n'), /changed: plugins\/spectre-codex\/skills\/spectre-plan\/SKILL\.md/);
+    assert.match(drift.errors.join('\n'), /changed: plugins\/spectre-codex\/skills\/plan\/SKILL\.md/);
 
     assert.equal(runSync({ repoRoot: root, canonicalRoot, codexRoot, quiet: true }).ok, true);
     assert.equal(

@@ -64,7 +64,7 @@ test('packed npm artifact installs Codex assets from generated tree', { concurre
     });
 
     const codexHome = path.join(projectDir, '.codex');
-    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'spectre-plan', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'plan', 'SKILL.md')));
     assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'agents', 'dev.toml')));
     assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
     assert.ok(!fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'session-start.mjs')));
