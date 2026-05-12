@@ -7,7 +7,7 @@
  * AGENTS.override.md and returns a short visible status line.
  *
  * Reads:
- * - Apply skill from plugin: skills/spectre-apply/SKILL.md
+ * - Apply skill from plugin: skills/apply/SKILL.md
  * - Registry from project: .agents/skills/spectre-recall/references/registry.toon
  */
 
@@ -119,7 +119,7 @@ function main() {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const pluginRoot = getPluginRoot();
 
-  const applySkillPath = resolvePluginSkillPath(pluginRoot, 'spectre-apply', 'SKILL.md');
+  const applySkillPath = resolvePluginSkillPath(pluginRoot, 'apply', 'SKILL.md');
 
   if (!fs.existsSync(applySkillPath)) {
     process.exit(0);
@@ -146,7 +146,7 @@ function main() {
   // Read apply skill and strip frontmatter
   let applyContent = fs.readFileSync(applySkillPath, 'utf8');
   applyContent = stripFrontmatter(applyContent);
-  applyContent = applyContent.replaceAll('.claude/skills/', '.agents/skills/').replaceAll('/spectre:', 'spectre-');
+  applyContent = applyContent.replaceAll('.claude/skills/', '.agents/skills/').replaceAll('/spectre:', '');
 
   if (hasProjectKnowledgeSurface(projectDir, registryPath)) {
     writeManagedOverride(
