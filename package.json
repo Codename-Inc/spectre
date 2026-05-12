@@ -1,6 +1,6 @@
 {
   "name": "@codename_inc/spectre",
-  "version": "3.7.0",
+  "version": "4.0.0",
   "type": "module",
   "bin": {
     "spectre": "./bin/spectre.js"
