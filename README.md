@@ -65,7 +65,7 @@ Session continuity deep dive: [`docs/codex-sessionstart-memory.md`](./docs/codex
 
 ## 🔁 How It Works
 
-- run one of the kickoff prompts in Claude Code - `/spectre:scope` is the main command for building new features, but also `/spectre:kickoff` for high ambiguity new features (includes web research), `/spectre:research` for codebase research "how might we build …” style Qs, or `/spectre:ux_spec` to define user flows, components, and layout for a new feature.
+- run one of the kickoff prompts in Claude Code - `/spectre:scope` is the main command for building new features, but also `/spectre:kickoff` for high ambiguity new features (includes web research), `/spectre:research` for codebase research "how might we build …” style Qs, or `/spectre:ux` to define user flows, components, and layout for a new feature.
 
 - follow the prompts/instructions to create the related canonical document and Claude Code will suggest the next step in the SPECTRE workflow automatically (e.g., going from `scope` to `plan` to `tasks` and so on)
 
@@ -281,7 +281,7 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
 - start /spectre:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
 
-  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux_spec. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
+  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
 
 - /spectre:plan to build out a well researched technical design or set of tasks
 
@@ -367,7 +367,7 @@ I use /spectre:fix for pretty much all bugs I run into.
 | --- | --- |
 | `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits |
 | `/spectre:learn` | Capture knowledge for future sessions |
-| `/spectre:ux_spec` | UX specification for UI-heavy features |
+| `/spectre:ux` | UX specification for UI-heavy features |
 | `/spectre:fix` | Investigate bugs & implement fixes |
 
 ## 📁 Repository Structure
