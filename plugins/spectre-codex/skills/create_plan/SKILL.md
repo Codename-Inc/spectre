@@ -29,8 +29,9 @@ Treat the current command arguments as this workflow's input. When invoked from 
   - **If** found with comprehensive analysis → use existing research; skip to Step 3.
   - **Else** → proceed with new research below.
 - **Action** — AutomatedResearch: Spawn parallel research agents for comprehensive analysis.
-  - Use `codebase-locator` to find all files related to feature area.
-  - Dispatch multiple parallel `codebase-analyzer` subagents to understand current implementation patterns. Pay particular attention to how and where data is accessed that will be needed for this feature.
+  - Use `@finder` to find all files related to feature area.
+  - Dispatch multiple parallel `@analyst` subagents to understand current implementation patterns. Pay particular attention to how and where data is accessed that will be needed for this feature.
+  - Use `@patterns` to surface canonical reference implementations already in the codebase — these become "follow this file" anchors in the plan.
   - Wait for ALL agents to complete before proceeding.
   - Read ALL identified files into context.
 - **Action** — TraceCodePaths: Trace through relevant execution paths.
@@ -97,17 +98,28 @@ Dynamically generate up to 10 technical questions based on research findings. **
 
 - **Action** — DesignTechnicalApproach: Create the implementation plan.
 
-  **STANDARD** depth — Focused plan for contained changes. Include the sections that matter for THIS feature. Typical sections: Overview, Desired End State, Out of Scope, Technical Approach.
+  Every plan, regardless of depth, MUST include these seven sections. They are the verification spine — without them, downstream agents cannot self-check their work.
 
-  **COMPREHENSIVE** depth — Full technical design for complex/risky changes. Consider all of the following, but only include sections relevant to the feature: Overview, Current State (with file:line refs), Desired End State, Out of Scope, Technical Approach, System Architecture, Implementation Phases, Component/Data Architecture, API Design, Testing Strategy.
+  **Required for both STANDARD and COMPREHENSIVE:**
+  1. **Overview** — 1–2 paragraphs: what problem, what shape the solution takes, why this approach.
+  2. **Technical Approach** — How the change actually lands: components touched, data flow, key decisions with rationale. Reference existing patterns from `@patterns` research by file:line (e.g., "follow the shape of `src/widgets/HotDogWidget.ts:42` for the registration step").
+  3. **Critical Files for Implementation** — 3–7 specific files from research. Format: `path/to/file.ts` — *reason* (Core logic to modify / Pattern to follow / Interface to implement / Test to extend). No guesses — only files surfaced during Step 1 research.
+  4. **External Dependencies — Verify Before Implementation** — Every third-party package required, with exact version and a one-line existence check. Format: `package@1.2.3 — verify: npm view package@1.2.3` (or pip equivalent). Required even if "no new packages" (write that explicitly). This is the slopsquatting fence: ~20% of AI-suggested packages don't exist; we catch that here, not in production.
+  5. **Verification — How We Know This Works** — For each major change in Technical Approach, 1–3 falsifiable signals: a test name, an observable behavior, or a state/file condition. Prose like "the feature works" is not acceptable — it must be checkable. Format: `<change> → verifies by: <test name | observable behavior | state condition>`. These become acceptance criteria in `create_tasks` downstream.
+  6. **Out-of-Bounds — DO NOT add** — 4–8 concrete things the implementation must NOT add, even if "best practice." Examples: rate limiting, retry/backoff, caching layer, optimistic UI, soft-delete, telemetry events, feature flags, admin UI. This is the YAGNI fence against familiar-shape bias (agents reproduce mature-system patterns unprompted). Be specific to this feature, not generic.
+  7. **Risks & Filled Assumptions** — Two short subsections:
+     - *Risks*: what could go wrong (e.g., concurrent write race, migration ordering, third-party rate limit). Each with a one-line mitigation or "accept and monitor."
+     - *Filled Assumptions*: things the plan defaulted because the spec didn't say (e.g., "Assumed Postgres; spec didn't specify DB." "Assumed retry count = 0; spec didn't mention failure modes."). Reviewer-visible by design — these are the silent decisions that bite at execution.
 
-  Use your judgment — the goal is a plan that gives a developer everything they need to implement, not a template with empty sections.
+  **COMPREHENSIVE additionally requires:**
+  8. **Current State** — How the affected code path works today, with file:line refs. Anchored to research findings.
+  9. **Implementation Phases** — Ordered phases, each with its own Verification subsection (Phase N succeeds when …). Phases must be sequenced by dependency, not by file. Migration phases come before consumer phases.
+  10. **Component / Data Architecture** — Where data is created, mutated, and read. Schema deltas if any.
+  11. **API Design** — Endpoint signatures, request/response shapes, error contracts. Required if any external or internal API surface changes.
+  12. **Migration Plan** — Required if any data-layer change. Up + down migration sketch, backfill strategy, rollback plan.
+  13. **Testing Strategy** — What test types cover what (unit / integration / e2e), where new tests live, what's deferred to the post-feature coverage task.
 
-- **Action** — AppendCriticalFiles: End the plan with a "Critical Files for Implementation" section.
-
-  - List 3-7 files most critical for implementing this plan.
-  - Format: `path/to/file.ts` — brief reason (e.g., "Core logic to modify", "Pattern to follow", "Interface to implement").
-  - These should be specific files discovered during research, not guesses.
+  Use your judgment on section length, not on inclusion. If a required section is genuinely N/A for this feature, write the section header followed by *"N/A — <one-line reason>"*. Empty section headers are not acceptable; absent section headers are not acceptable.
 
 - **Action** — DocumentPlan: Save to `{OUT_DIR}/specs/plan.md` (use scoped name if exists)
 
