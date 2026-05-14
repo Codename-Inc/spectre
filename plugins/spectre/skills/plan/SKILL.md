@@ -49,9 +49,11 @@ Treat the current command arguments as this workflow's input. When invoked from 
   - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified)
   - `mkdir -p "${OUT_DIR}"`
 
-- **Action** — ScanExistingContext: Read all existing artifacts in `{OUT_DIR}/ (if you haven’t already)` and assess coverage across 4 dimensions.
+- **Action** — ScanExistingContext: Read all existing artifacts in `{OUT_DIR}/ (if you haven't already)` and assess coverage across 4 dimensions.
 
-  Scan for: `task_context.md`, `specs/plan.md`, `concepts/scope.md`, `research/*.md`
+  Scan for: `task_context.md`, `specs/plan.md`, `concepts/scope.md`, `specs/ux.md`, `research/*.md`
+
+  While scanning `concepts/scope.md` and `specs/ux.md`, extract any **filled assumptions** — places where the upstream artifact defaulted a value because the user didn't specify (e.g., DB choice, retry policy, copy variants, segment fallbacks). Carry these forward to Step 3's design surface so they're reviewer-visible before plan generation.
 
   | Dimension | Covered if artifact contains... | Covered by |
   | --- | --- | --- |
@@ -95,13 +97,26 @@ Use research findings from Step 1 to determine appropriate planning depth.
   | Integration points | Research findings | Internal only = Low, 1-2 external = Med, 3+ external = High |
   | External complexity | @web-research | Well-documented with libraries = Low, Some prior art = Med, Novel/emerging = High |
 
-- **Action** — CheckHardStops: Any true = automatic COMPREHENSIVE | db_schema_destructive | new_service_or_component | auth_or_pii_change | | payment_billing_logic | public_api_change | caching_consistency | slo_sla_risk |
+- **Action** — CheckHardStops: Any true = automatic COMPREHENSIVE.
+  - `db_schema_destructive` — drops, renames, or non-additive column changes
+  - `data_migration_required` — backfill, transform, or row-by-row data change
+  - `new_service_or_component` — net-new service, daemon, or top-level component
+  - `auth_or_pii_change` — authn/authz flow, session handling, PII storage/exposure
+  - `secrets_or_credentials_handling` — new secret introduced, rotation, or boundary change
+  - `payment_billing_logic` — money flow, invoicing, charge logic
+  - `public_api_change` — externally-consumed API surface modified
+  - `concurrent_writes_or_locking` — concurrency, locking, or distributed coordination
+  - `caching_consistency` — cache invalidation, staleness windows, multi-tier caching
+  - `cross_service_or_cross_workspace_change` — coordinated change across services or workspaces
+  - `slo_sla_risk` — latency, throughput, or availability budget at stake
 
-- **Action** — DetermineTier:
+- **Action** — DetermineTier (decisive rules, not point-scoring):
 
-  - **LIGHT**: All/most Low signals, single component, clear pattern match, no hard-stops
-  - **STANDARD**: Mix of Low/Med signals, multi-file but contained scope, no hard-stops
-  - **COMPREHENSIVE**: Any High signal, multiple Med signals, or any hard-stop triggered
+  - **COMPREHENSIVE** — if ANY hard-stop is triggered OR any signal scores High OR two or more signals score Medium
+  - **STANDARD** — if no hard-stops AND no High signals AND at most one Medium signal
+  - **LIGHT** — only if every signal scores Low AND no hard-stops AND the change is plausibly a single-file diff
+
+  When in doubt between two tiers, choose the higher. The cost of over-planning a small change is hours; the cost of under-planning a large one is weeks.
 
 - **Action** — LogTier: Note the assessed tier in your response for transparency, then proceed immediately to the next step. Do NOT ask for confirmation.
 
@@ -129,6 +144,14 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   > - [decision] — [rationale; alternative considered]
   > - [decision] — [rationale; alternative considered]
   >
+  > **How we'll know it works** (verification spine):
+  > - [change] → [test name | observable behavior | state condition]
+  > - [change] → [test name | observable behavior | state condition]
+  >
+  > **Filled assumptions** (surfaced from scope.md / ux.md / inferred):
+  > - [assumption] — *source: [scope.md / ux.md / default]*
+  > - [assumption] — *source: [scope.md / ux.md / default]*
+  >
   > **Open questions** (with default assumption):
   > 1. [question] — *default: [assumption]*
   > 2. [question] — *default: [assumption]*
@@ -138,6 +161,8 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   **CRITICAL**:
   - **Single proposed approach**, not a menu. If a true fork exists, surface it as an open question with your recommendation — not as parallel options.
   - Stay at the *shape* level: components, key decisions, structural changes. Defer file-by-file detail to `create_plan`.
+  - **Verification is mandatory.** Every major change in the approach must declare how it will be checked — falsifiable signal, not prose. This becomes the spine that `create_plan` and `create_tasks` build on.
+  - **Filled assumptions are mandatory.** If scope.md or ux.md left something silent and you defaulted it, surface the default here. Reviewer-visible by design — these are the silent decisions that bite at execution.
   - Open questions should be specific and answerable; pair each with a default assumption so the user can skip if the default is fine.
 
 - **Action** — IterateDesign: If the user replies with answers, edits, or pushback, update the design and re-present. Loop until user says 'looks good' (or equivalent).
@@ -205,6 +230,26 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   - **Wait** — User approval
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
   - **Wait** — Returns task breakdown
+
+---
+
+### Post-Tasks Tier Re-check
+
+After tasks return, do a fast self-check against tier signals:
+
+- Count parent tasks, sub-tasks, files touched (sum of unique paths in Context blocks), and Phase 0 dep count.
+- **Escalation triggers** (any true → recommend re-running at a higher tier):
+  - Tier was LIGHT but tasks touch >3 files OR have >2 parent tasks
+  - Tier was STANDARD but tasks reveal a hard-stop signal not caught earlier (e.g., a migration sub-task appeared)
+  - Tasks contain any Out-of-Bounds violation
+- **Downgrade triggers** (rare; only suggest if confident):
+  - Tier was COMPREHENSIVE but tasks collapsed to a single parent with no migrations, no new components, and no API change
+
+If an escalation/downgrade is triggered, surface it as a recommendation — do NOT silently re-run. Format:
+
+> Tier reassessment: I planned this as {original tier}, but tasks revealed {signal}. Recommend re-running as {new tier}. Reply 'rerun' to regenerate or 'keep' to proceed as-is.
+
+Only proceed past this checkpoint when the user confirms.
 
 ---
 

@@ -129,12 +129,46 @@ Read completely (no limits):
   - This section helps the user understand how the work integrates with the product before diving into tasks
 
 ### Task Hierarchy (4 Levels)
-- **📦 Phase**: Organizational header (no checkbox) — groups related parent tasks
-- **📋 Parent Task**: Cohesive deliverable (small-medium scope) — one component/file
-- **✓ Sub-task**: Atomic work (single focused change) — single action, 2-3 acceptance criteria
-- **✓ Acceptance Criteria**: Verifiable outcomes (not implementation steps)
+- **Phase**: Organizational header (no checkbox) — groups related parent tasks
+- **Parent Task**: Cohesive deliverable (small-medium scope) — one component/file
+- **Sub-task**: Atomic work (single focused change) — single action, 2-3 acceptance criteria
+- **Acceptance Criteria**: Executable, verifiable outcomes (see Acceptance Criteria Types below)
 
-**Numbering**: Phase 1 → Parent 1.1, 1.2 → Sub-tasks 1.1.1, 1.1.2 → Criteria ✓
+**Numbering**: Phase 1 → Parent 1.1, 1.2 → Sub-tasks 1.1.1, 1.1.2 → Criteria
+
+### Right-Sized for AI Execution
+
+Published data on AI agent execution (Cognition's Devin reviews, Anthropic's Claude Code guidance) converges on a bounded sweet spot: each sub-task should be completable in roughly the time a junior would take in a 4–8 hour window — not a multi-day epic, not a 10-line tweak.
+
+**Hard size cap — split a sub-task if ANY of these is true:**
+- Touches more than 3 files
+- Has more than 5 acceptance criteria
+- Would require more than ~200 lines of diff
+- Requires a mid-execution judgment call about scope (split the judgment into its own predecessor task)
+- Spans more than one concern (e.g., schema + UI in one sub-task)
+
+When splitting, keep the integration-aware principle intact: each split task still names its Producer / Consumer / Replaces.
+
+### Acceptance Criteria Types
+
+Every acceptance criterion MUST be one of three executable types. Prose criteria like "feature works correctly" or "behavior is consistent" are forbidden — an executor cannot self-check them.
+
+1. **Test passes** — `Test \`<test_name>\` passes` (or `tests in <file_path> pass`)
+2. **Observable behavior** — A specific, checkable runtime signal: `GET /api/x returns 200 with field \`y\``, `Console logs \`event=loaded params={...}\``, `Button click triggers <handler> within 100ms`
+3. **State / file condition** — `File \`<path>\` exists and contains <pattern>`, `Migration \`<id>\` applied`, `Env var \`X\` is read at startup`
+
+Mixing types within a sub-task is fine. What's not fine: criteria the agent cannot verify without asking the user.
+
+### Test-First Task Pairing
+
+For any sub-task that changes observable behavior (not pure refactors or cleanup), pair it with a preceding RED task. Pattern:
+
+- **N.M.k RED**: Write failing test `<test_name>` asserting `<behavior>`. Acceptance: test exists and fails for the documented reason.
+- **N.M.(k+1) Build**: Implement `<change>`. Acceptance: the RED test passes; no other tests regress.
+
+This is the TDAD pattern (test-driven agentic development): the failing test is the executor's self-correction signal. Without it, the executor is guessing whether the implementation is right.
+
+Pure refactors, cleanups, and config-only tasks don't require RED pairing — but if behavior changes, the RED comes first.
 
 ### Integration-Aware Task Principle
 
@@ -153,11 +187,23 @@ Tasks without consumers are incomplete. Tasks that don't address old code paths 
 - **Cleanup tasks**: Remove/redirect old code paths (MANDATORY when replacing patterns)
 
 ### 4b. Create Parent Tasks
-- **Action** — CreateParentTasks: Draft as many phases as needed to logically organize work, each with as many parent tasks (📋) as required to cover complete scope.
+- **Action** — CreateParentTasks: Draft as many phases as needed to logically organize work, each with as many parent tasks as required to cover complete scope.
   - Each parent task = single cohesive deliverable (small-medium scope)
   - Cover ALL extracted requirements with no gaps
   - Group related work into phases for clarity
   - Align with technical approach (from research or existing docs)
+  - Every parent task carries explicit sequencing in its body:
+    - **Predecessor**: parent task IDs that must complete first (or "none")
+    - **Unblocks**: parent task IDs this unblocks (or "terminal")
+  - The first phase is always **Phase 0 — Dependency Verification** (see 4a-Phase0 below). Other phases start at Phase 1.
+
+### 4a-Phase0. Phase 0 — Dependency Verification (always present)
+
+Before any implementation, generate a Phase 0 containing one sub-task per external dependency listed in `plan.md`'s "External Dependencies — Verify Before Implementation" section. Each sub-task verifies the package exists at the named version and exposes the API the plan assumed.
+
+- Acceptance type: state condition (`npm view <pkg>@<ver>` returns valid metadata) and/or test passes (a minimal import-and-call smoke test).
+- If `plan.md` declared "no new packages," Phase 0 is a single sub-task that confirms no new dependencies were silently introduced during implementation (cross-check `package.json` diff at end).
+- Phase 0 unblocks Phase 1; it cannot be skipped or run in parallel with Phase 1.
 
 ### 4c. Break Down Sub-tasks
 - **Action** — BreakdownSubTasks: For each parent, generate as many detailed sub-tasks as needed to complete the parent.
@@ -171,14 +217,19 @@ Tasks without consumers are incomplete. Tasks that don't address old code paths 
     - Completable as a single focused change
 
   - **What to INCLUDE in sub-tasks:**
-    - ✅ Technical terms (JWT, REST, WebSocket, React hooks, SQL queries)
-    - ✅ Architecture patterns (middleware, pub/sub, observer, factory)
-    - ✅ Integration points (which components connect, API contracts)
-    - ✅ File/component names (UserProfileComponent, authMiddleware.ts)
-    - ✅ Technical constraints (max file size, timeout duration, data format)
-    - ✅ **Produces**: What output this creates (variable name, return value, prop)
-    - ✅ **Consumed by**: What uses this output (component, hook, render path)
-    - ✅ **Replaces**: What old code path this supersedes (if any)
+    - Technical terms (JWT, REST, WebSocket, React hooks, SQL queries)
+    - Architecture patterns (middleware, pub/sub, observer, factory)
+    - Integration points (which components connect, API contracts)
+    - File/component names (UserProfileComponent, authMiddleware.ts)
+    - Technical constraints (max file size, timeout duration, data format)
+    - **Produces**: What output this creates (variable name, return value, prop)
+    - **Consumed by**: What uses this output (component, hook, render path)
+    - **Replaces**: What old code path this supersedes (if any)
+    - **Context** (required): a self-contained payload an executor can use without re-reading the full plan. Include:
+      - 2–4 file:line refs pulled from research (the exact code being modified or extended)
+      - 1 canonical reference pointer (a file:line from `@patterns` research that shows the shape to follow)
+      - 1 link/anchor into `plan.md` for the relevant section
+    - **Predecessor** (sub-task level, optional): a sub-task ID this depends on. Only when intra-parent ordering is non-obvious.
 
   - **What to AVOID in sub-tasks:**
     - ❌ Code snippets or pseudo-code
@@ -187,12 +238,11 @@ Tasks without consumers are incomplete. Tasks that don't address old code paths 
     - ❌ Specific library API calls (unless architecturally significant)
 
   - **Acceptance criteria**:
-    - Describe technical behaviors and observable outcomes
-    - Include integration expectations and error handling
-    - 2-3 verifiable outcomes per sub-task
-    - Be specific about technical requirements
+    - Every criterion MUST be one of the three executable types (see "Acceptance Criteria Types" above): test passes / observable behavior / state condition.
+    - 2–3 criteria per sub-task. If a sub-task needs more than 3 to be checkable, split it.
+    - Prose criteria ("works correctly", "is consistent", "user-friendly") are forbidden — they're not self-checkable.
 
-  - **Decomposition**: Split if 5+ criteria or multiple concerns
+  - **Decomposition (hard size cap)**: Split if ANY of: >3 files touched, >5 criteria, >~200 LOC, mid-task scope judgment required, or more than one concern.
 
 ### 4d. Validate Task Structure
 - **Action** — VerifyCoverage: Cross-reference tasks against extracted requirements.
@@ -204,13 +254,19 @@ Tasks without consumers are incomplete. Tasks that don't address old code paths 
   - **Coverage Validation**:
     - [ ] All extracted requirements from Step 3 addressed by tasks?
     - [ ] No gaps in requirement coverage?
+    - [ ] Every "Verification" entry from `plan.md` mapped to at least one acceptance criterion?
   - **Exclusion Validation**:
-    - [ ] Adding anything beyond explicit requests?
-    - [ ] Avoiding "nice-to-have" additions not requested?
+    - [ ] No additions beyond explicit requests?
+    - [ ] `plan.md`'s "Out-of-Bounds — DO NOT add" list carried forward verbatim into tasks.md banner?
+    - [ ] No task implements anything in the Out-of-Bounds list?
   - **Structure Validation**:
     - [ ] Parent tasks are small-medium scope, sub-tasks are atomic?
-    - [ ] Each sub-task has 2-3 acceptance criteria?
-    - [ ] Acceptance criteria verifiable (not implementation steps)?
+    - [ ] Each sub-task has 2-3 acceptance criteria, each one of the three executable types?
+    - [ ] No sub-task exceeds the size cap (>3 files / >5 criteria / >~200 LOC / multi-concern / mid-task scope judgment)?
+    - [ ] Every behavior-changing sub-task is preceded by a RED test sub-task?
+    - [ ] Every sub-task has a Context payload (2–4 file:line refs, 1 canonical reference, 1 plan.md anchor)?
+    - [ ] Every parent task has Predecessor and Unblocks declared?
+    - [ ] Phase 0 — Dependency Verification is present and unblocks Phase 1?
 
 - **Action** — ValidateIntegration: Verify every build task is wired to consumers.
   - **Consumer Specified**:
@@ -288,6 +344,13 @@ Save to `${TASKS_FILE}`:
 - **In Scope**: {bullet list}
 - **Out of Scope**: {bullet list}
 
+## Out-of-Bounds — DO NOT add
+*Carried forward verbatim from plan.md. Executors: if a task tempts you to add any of these, stop and ask.*
+- {Forbidden addition 1, e.g. "rate limiting"}
+- {Forbidden addition 2, e.g. "retry/backoff"}
+- {Forbidden addition 3, e.g. "telemetry events"}
+- {Forbidden addition 4, e.g. "admin UI"}
+
 ## Requirements Traced
 | ID | Description | Source | Tasks |
 |----|-------------|--------|-------|
@@ -315,30 +378,66 @@ Save to `${TASKS_FILE}`:
 
 ## Tasks
 
+### Phase 0: Dependency Verification
+*Confirms every external dependency in plan.md exists at the declared version before any implementation begins.*
+
+#### [0.1] Verify external dependencies
+- **Predecessor**: none
+- **Unblocks**: 1.1
+- [ ] **0.1.1** Verify each package@version from plan.md "External Dependencies" section exists
+  - **Produces**: confirmation log of resolved package metadata
+  - **Consumed by**: Phase 1 implementation tasks
+  - **Context**:
+    - plan.md anchor: `## External Dependencies — Verify Before Implementation`
+    - check commands listed in plan section
+  - [ ] State condition: `npm view <pkg>@<ver>` returns valid metadata for every package
+  - [ ] State condition: no package in the list is flagged as deprecated or security-advised
+  - [ ] Test passes: minimal import-and-call smoke for each new package
+
 ### Phase 1: {Phase Name}
 
 #### [1.1] {Parent Task Title}
-- [ ] **1.1.1** {Sub-task with technical specifics}
+- **Predecessor**: 0.1
+- **Unblocks**: 1.2
+
+- [ ] **1.1.1 RED** Write failing test `{test_name}` asserting `{behavior}`
+  - **Produces**: a failing test that pins the desired behavior
+  - **Consumed by**: 1.1.2 (turns this red to green)
+  - **Replaces**: N/A
+  - **Context**:
+    - `path/to/existing/code.ts:42` — current behavior being changed
+    - `path/to/similar/test.ts:18` — canonical test shape to follow
+    - plan.md anchor: `### Verification — How We Know This Works`
+  - [ ] State condition: file `path/to/test.ts` exists and contains test `{test_name}`
+  - [ ] Test passes: the new test fails, with failure message referencing the unimplemented behavior
+
+- [ ] **1.1.2 Build** {Implement the change}
   - **Produces**: {output variable/value/prop}
   - **Consumed by**: {component/hook that uses this}
   - **Replaces**: {old code path, or "N/A" if new}
-  - [ ] {Technical outcome 1}
-  - [ ] {Technical outcome 2}
-  - [ ] {Technical outcome 3}
-
-- [ ] **1.1.2** {Sub-task with technical specifics}
-  - **Produces**: {output variable/value/prop}
-  - **Consumed by**: {component/hook that uses this}
-  - [ ] {Technical outcome 1}
-  - [ ] {Technical outcome 2}
+  - **Context**:
+    - `path/to/file.ts:120` — code to modify
+    - `path/to/file.ts:180` — adjacent code that must not regress
+    - `path/to/canonical/example.ts:55` — pattern to follow (from @patterns research)
+    - plan.md anchor: `## Technical Approach`
+  - [ ] Test passes: `{test_name}` (from 1.1.1) now passes
+  - [ ] Test passes: existing tests in `path/to/related.test.ts` still pass
+  - [ ] Observable behavior: `{specific runtime signal, e.g. log line, HTTP response shape}`
 
 #### [1.2] {Parent Task Title} — Integration
-*This task wires outputs from 1.1 to consumers*
-- [ ] **1.2.1** {Wire X to Y}
-  - **Wires**: {1.1.1 output} → {consumer component/render}
+- **Predecessor**: 1.1
+- **Unblocks**: {next parent or "terminal"}
+
+- [ ] **1.2.1** Wire {1.1.2 output} to {consumer}
+  - **Wires**: {1.1.2 output} → {consumer component/render}
   - **Removes**: {old code path being replaced}
-  - [ ] {Consumer uses new data source}
-  - [ ] {Old data source removed/redirected}
+  - **Context**:
+    - `path/to/consumer.tsx:30` — where the wire lands
+    - `path/to/old/path.ts:12` — old code path to remove
+    - plan.md anchor: `### Technical Approach`
+  - [ ] Test passes: integration test asserting consumer renders new data source
+  - [ ] State condition: old code path file `path/to/old/path.ts` deleted or import removed
+  - [ ] Observable behavior: data flows from producer to rendered output (with `{specific assertion}`)
 
 ### Phase 2: {Phase Name}
 ...
