@@ -171,6 +171,8 @@ Optional user input to seed this workflow.
 - **MEDIUM**: Quality improvements, test coverage, configuration, performance (non-critical)
 - **LOW**: Documentation, polish, cleanup
 
+**Evidence rule:** Every CRITICAL or HIGH finding MUST include (1) `file:line` and (2) a reproducible failure scenario or exploit path describing observable behavior. Findings without an evidence chain are auto-downgraded one severity level. "Could potentially" is not evidence.
+
 **Perform comprehensive analysis covering all aspects:**
 
 ### 🔧 Foundation & Correctness
