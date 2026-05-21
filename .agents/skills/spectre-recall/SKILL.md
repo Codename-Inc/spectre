@@ -14,6 +14,7 @@ Search and load relevant knowledge from the project's spectre learnings into you
 # Format: skill-name|category|triggers|description
 
 feature-codex-spectre-implementation|feature|codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor|Use when modifying the Codex SPECTRE install flow, SessionStart continuity, project skill syncing, registry injection, or Codex-specific runtime files.
+release|workflow|release, version bump, changelog, github release, npm publish, codex sync, local codex install|Run the SPECTRE release workflow, including version bumps, Codex sync, local Codex install verification, GitHub release, and npm publish.
 
 ## How to Use
 
