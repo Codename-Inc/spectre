@@ -27,6 +27,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 - **Action** — CheckExistingResearch: Check if technical research already completed.
   - Read `TASK_DIR/task_context.md`; look for "## Technical Research" section.
   - **If** found with comprehensive analysis → use existing research; skip to Step 3.
+  - **If** ARGUMENTS contains `--depth light` and `TASK_DIR/task_context.md` already contains substantive router research (file locations, code understanding, codebase patterns, and impact summary) → use existing research; skip to Step 3.
   - **Else** → proceed with new research below.
 - **Action** — AutomatedResearch: Spawn parallel research agents for comprehensive analysis.
   - Use `@finder` to find all files related to feature area.
@@ -61,6 +62,8 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 Dynamically generate up to 10 technical questions based on research findings. **IMPORTANT**: Only ask questions genuinely not answered in the PRD or discoverable through code investigation. Goal: eliminate scope and design ambiguity. If a question involves choosing between approaches, present options with Pros/Cons/Trade-offs.
 
+- **Action** — LightModeClarifications: If ARGUMENTS contains `--depth light`, do NOT stop for user clarifications. Use conservative, codebase-consistent defaults and record them in the plan's **Filled Assumptions** section, then skip to Step 3. If an unresolved question would affect canonical scope, security/privacy, data correctness, or public API behavior, return control to `plan` with a tier reassessment recommendation instead of guessing.
+
 - **Action** — DetectClarificationMethod: Check if `AskUserQuestion` tool is available.
   - **If available** → use inline clarification flow (Path A).
   - **If not available** → use file-based clarification flow (Path B).
@@ -94,22 +97,29 @@ Dynamically generate up to 10 technical questions based on research findings. **
 - **Action** — DetermineDepth: Read `--depth` from ARGUMENTS
 
   - Default: `standard` if not specified
-  - Options: `standard`, `comprehensive`
+  - Options: `light`, `standard`, `comprehensive`
+- **Action** — DetectOrchestratedMode: If ARGUMENTS contains `--no-review`, this workflow is being invoked by `plan` as part of the meta-flow. Generate and save the plan, then return control to `plan` without asking for standalone user review.
 
 - **Action** — DesignTechnicalApproach: Create the implementation plan.
 
-  Every plan, regardless of depth, MUST include these seven sections. They are the verification spine — without them, downstream agents cannot self-check their work.
+  Every plan, regardless of depth, MUST include the verification spine. LIGHT is concise, not shallow: keep it brief and decisive, but still explain the solution shape, codebase pattern to follow, risks/assumptions, and how the work will be verified.
 
-  **Required for both STANDARD and COMPREHENSIVE:**
+  **Required for LIGHT, STANDARD, and COMPREHENSIVE:**
   1. **Overview** — 1–2 paragraphs: what problem, what shape the solution takes, why this approach.
   2. **Technical Approach** — How the change actually lands: components touched, data flow, key decisions with rationale. Reference existing patterns from `@patterns` research by file:line (e.g., "follow the shape of `src/widgets/HotDogWidget.ts:42` for the registration step").
-  3. **Critical Files for Implementation** — 3–7 specific files from research. Format: `path/to/file.ts` — *reason* (Core logic to modify / Pattern to follow / Interface to implement / Test to extend). No guesses — only files surfaced during Step 1 research.
+  3. **Critical Files for Implementation** — 1–7 specific files from research. Format: `path/to/file.ts` — *reason* (Core logic to modify / Pattern to follow / Interface to implement / Test to extend). No guesses — only files surfaced during Step 1 research.
   4. **External Dependencies — Verify Before Implementation** — Every third-party package required, with exact version and a one-line existence check. Format: `package@1.2.3 — verify: npm view package@1.2.3` (or pip equivalent). Required even if "no new packages" (write that explicitly). This is the slopsquatting fence: ~20% of AI-suggested packages don't exist; we catch that here, not in production.
   5. **Verification — How We Know This Works** — For each major change in Technical Approach, 1–3 falsifiable signals: a test name, an observable behavior, or a state/file condition. Prose like "the feature works" is not acceptable — it must be checkable. Format: `<change> → verifies by: <test name | observable behavior | state condition>`. These become acceptance criteria in `create_tasks` downstream.
   6. **Out-of-Bounds — DO NOT add** — 4–8 concrete things the implementation must NOT add, even if "best practice." Examples: rate limiting, retry/backoff, caching layer, optimistic UI, soft-delete, telemetry events, feature flags, admin UI. This is the YAGNI fence against familiar-shape bias (agents reproduce mature-system patterns unprompted). Be specific to this feature, not generic.
   7. **Risks & Filled Assumptions** — Two short subsections:
      - *Risks*: what could go wrong (e.g., concurrent write race, migration ordering, third-party rate limit). Each with a one-line mitigation or "accept and monitor."
      - *Filled Assumptions*: things the plan defaulted because the spec didn't say (e.g., "Assumed Postgres; spec didn't specify DB." "Assumed retry count = 0; spec didn't mention failure modes."). Reviewer-visible by design — these are the silent decisions that bite at execution.
+
+  **LIGHT constraints:**
+  - Keep the seven required sections compact: usually 1 short paragraph or 3–5 bullets per section.
+  - Prefer one clear implementation path that follows existing codebase patterns; do not enumerate broad alternatives.
+  - Do not add standalone clarification gates, review gates, plan_review, or expanded architecture sections.
+  - If the plan needs more than 3 critical files, a new abstraction, data migration, public API change, or unresolved scope/security/data correctness decision, stop and return a tier reassessment recommendation to `plan`.
 
   **COMPREHENSIVE additionally requires:**
   8. **Current State** — How the affected code path works today, with file:line refs. Anchored to research findings.
@@ -125,13 +135,27 @@ Dynamically generate up to 10 technical questions based on research findings. **
 
 - **Action** — RequestReview:
 
-  > "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed."
+  - **If `--no-review` is present**:
 
-- **Wait** — User provides feedback or approval
+    > "Draft implementation plan saved to `{path}`. Returning to `plan` for the next routed step."
+
+    Do NOT wait for user approval. Return control to the invoking `plan` workflow.
+
+  - **Else**:
+
+    > "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed."
+
+- **Wait** — User provides feedback or approval, unless `--no-review` is present.
 
 ## Step (4/4) - Finalize and Present Next Steps
 
 - **Action** — ConfirmCompletion:
+
+  - **If `--no-review` is present**:
+
+    > "Draft implementation plan saved to `{plan_path}`. Returning to `plan`."
+
+    Stop here. Do not render the standalone Next Steps footer.
 
   > "🎯 Implementation Planning Complete. Documents: {plan_path}, task_context.md"
 

@@ -16,7 +16,14 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 - **What** — Independent review of any available planning artifacts (`plan.md`, `tasks.md`, and optional `task_context.md`) from four specialized lenses, dispatched in parallel
 - **Outcome** — Structured findings with concrete edit suggestions; optional write-back to update the available artifacts
+- **Artifact** — Always save a Markdown review report before any write-back so pre-integration findings are auditable
 - **Role** — Senior staff engineer + reviewer panel; bias toward pragmatic problem-solving, YAGNI enforcement, and verifiability
+
+## Canonical Scope Invariant
+
+`concepts/scope.md` is canonical when present. If absent, use `specs/prd.md`, `specs/ux.md`, and explicit requirements in `task_context.md` as the scope source, in that order.
+
+Reviewers may recommend deleting unrequested implementation details, unnecessary abstractions, weak verification, hallucinated references, bad dependencies, or task sequencing problems. They MUST NOT cut, narrow, expand, or reinterpret agreed scope. If a reviewer believes the agreed scope itself is too large, internally inconsistent, or missing a requirement, phrase that as a **Scope Change Required** recommendation for the user. Do not apply it to `plan.md` or `tasks.md` during write-back.
 
 ## ARGUMENTS Input
 
@@ -46,12 +53,15 @@ A single reviewer biases toward the issues it notices first. Published practice 
   - `PLAN=${TASK_DIR}/specs/plan.md` (or scoped name)
   - `TASKS=${TASK_DIR}/specs/tasks.md` (or scoped name)
   - `CONTEXT=${TASK_DIR}/task_context.md`
+  - `SCOPE=${TASK_DIR}/concepts/scope.md` when present; otherwise use `specs/prd.md` / `specs/ux.md` as available
+  - `REVIEWS_DIR=${TASK_DIR}/reviews`
+  - `REVIEW_REPORT=${REVIEWS_DIR}/plan_review.md`; if that exists, use `plan_review_{YYYY-MM-DD_HHMMSS}.md` to avoid overwriting prior review evidence.
   - `plan.md` and `tasks.md` are independently reviewable. It is valid to review only `plan.md`, only `tasks.md`, or both.
   - `task_context.md` is helpful context but is not required. If it is missing, continue and note that requirements traceability is limited.
   - If both `plan.md` and `tasks.md` are missing, stop and suggest the user run `/spectre:plan` or `/spectre:create_tasks` first.
   - If exactly one of `plan.md` or `tasks.md` is missing, list it as absent context and continue. Do not decline, stop, or ask the user to create the missing artifact.
 
-- **Action** — ReadAvailable: Read each available file completely into context before dispatching reviewers. Reviewers receive curated excerpts plus an artifact manifest that says which files are present and absent. Every reviewer must review the artifacts that exist and must not treat absent artifacts as a blocker.
+- **Action** — ReadAvailable: Read each available file completely into context before dispatching reviewers. Reviewers receive curated excerpts plus an artifact manifest that says which files are present and absent. Every reviewer must review the artifacts that exist and must not treat absent artifacts as a blocker. The manifest must label the canonical scope source and state that review findings may not remove or narrow scope.
 
 ## Step 2 — Dispatch Four Parallel Reviewers
 
@@ -64,13 +74,15 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 > Review the available plan and/or task list for unrequested complexity. Agents have a documented "familiar-shape bias": shown a feature, they reproduce the mature-system shape from their training data (auth → adds rate-limiting; CRUD → adds soft-delete; form → adds optimistic UI; service → adds telemetry; module → adds feature flags). Your job is to find that bias here.
 >
 > Find:
-> 1. When `plan.md` is present: anything in Technical Approach that isn't traceable to a requirement in available context (`task_context.md` / scope / PRD). If context is absent, use the plan's own requirements and boundaries.
+> 1. When `plan.md` is present: anything in Technical Approach that isn't traceable to a requirement in available context (`scope.md` / `task_context.md` / PRD / UX). If context is absent, use the plan's own requirements and boundaries.
 > 2. When `tasks.md` is present: tasks that implement something the available requirements don't ask for. If requirements context is absent, use the task list's stated goals and boundaries.
 > 3. Abstractions, interfaces, or layers introduced for a single concrete caller.
 > 4. Generality (config files, plugin points, factories) where the actual need is one specific behavior.
 > 5. Overlap with the `Out-of-Bounds — DO NOT add` list (if anything violates that list, it's a hard fail).
 >
-> Required output: nominate the SINGLE highest-leverage thing to delete and justify it. You must pick one. Then list other simplifications ranked by impact. For each finding, cite the exact file:line or section header it lives in.
+> Scope guard: you may nominate implementation detail to delete only when it is not required by canonical scope. Do not nominate an agreed requirement, user-approved behavior, or required task as the thing to delete. If the best "cut" would change canonical scope, label it **Scope Change Required** and do not include it as an auto-applicable deletion.
+>
+> Required output: nominate the SINGLE highest-leverage implementation detail to delete and justify it. You must pick one unless every possible deletion would change canonical scope; in that case, say "No scope-safe deletion found" and provide the nearest Scope Change Required recommendation separately. Then list other simplifications ranked by impact. For each finding, cite the exact file:line or section header it lives in.
 
 ### Lens 2 — Verifiability (`@analyst`)
 
@@ -118,6 +130,7 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
   - **High** — meaningfully reduces output quality (missing RED test, weak canonical reference, prose criterion)
   - **Medium** — overengineering or reuse miss without functional blast radius
   - **Low** — stylistic or nice-to-have
+  - **Scope Change Required** — may be valid feedback, but would cut, expand, or reinterpret canonical scope and therefore needs explicit user approval before any artifact edit
 
 - **Action** — RenderFindingsTable: Output a single structured table. Schema is fixed.
 
@@ -143,11 +156,24 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
   - Low: {N}
   ```
 
+- **Action** — SaveReviewArtifact: Before applying any edits to `plan.md` or `tasks.md`, save the pre-integration review findings as a Markdown report.
+  - Create `${REVIEWS_DIR}` if missing.
+  - Write `${REVIEW_REPORT}` using the RenderFindingsTable content plus:
+    - Reviewed artifacts: exact plan/tasks/context/scope paths present and absent.
+    - Canonical scope source used.
+    - Auto-apply mode: enabled/disabled.
+    - Timestamp.
+    - Explicit note: "This report captures plan_review findings before any write-back to plan.md or tasks.md."
+  - Do not overwrite an existing report. Use the timestamped filename if the default already exists.
+  - Include the saved report path in all subsequent summaries and in `ReportApplied`.
+
 ## Step 4 — Surface Findings & Apply Edits
 
-- **Action** — PresentFindings: Render the findings table inline.
+- **Action** — PresentFindings: Render the findings table inline and include `Review report saved: {REVIEW_REPORT}`.
 
-- **Action** — OfferWriteBack: After the table, prompt:
+- **Action** — DetectAutoApplyMode: If ARGUMENTS contains `--auto-apply scope-safe`, skip the user selection prompt and apply all scope-safe Blocker and High findings, plus Medium/Low findings only when the Suggested Edit is unambiguous and cannot change canonical scope. Do not apply findings marked Scope Change Required. Continue to ApplyEdits and SelfCheck, then return the applied/skipped summary to the invoking workflow.
+
+- **Action** — OfferWriteBack: Unless `--auto-apply scope-safe` is present, after the table prompt:
 
   > Reply with which findings to apply:
   > - `all` — apply every suggested edit
@@ -163,17 +189,21 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
   - Open the named artifact (`plan.md` or `tasks.md`)
   - Apply the Suggested Edit verbatim where possible; if the edit needs adaptation, make the minimum change consistent with the finding's intent
   - Track which findings were applied
+  - Before writing, confirm the edit preserves every requirement and boundary in the canonical scope source. If it would remove, narrow, expand, or reinterpret scope, skip it and record it as "skipped: requires scope change."
 
 - **Action** — SelfCheck: After edits, run a fast pass over the modified sections:
   - Re-verify any file:line refs touched
   - Re-verify acceptance criteria are still executable
   - Confirm no edit introduced a new Out-of-Bounds violation
+  - Confirm canonical scope is still fully represented by the resulting plan/tasks
   - If any check fails, surface it and ask the user before continuing
 
 - **Action** — ReportApplied:
 
   > Applied: {list of finding numbers}. Skipped: {list}.
+  > Review report: {REVIEW_REPORT}.
   > {Path to updated artifact(s)}.
+  > Scope-change recommendations not applied: {list or "none"}.
 
 ## Step 5 — Next Steps
 

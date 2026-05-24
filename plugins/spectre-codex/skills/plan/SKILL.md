@@ -15,7 +15,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 ## Description
 
 - **What** — Research codebase, assess complexity, route to appropriate workflow (direct tasks or plan-first)
-- **Outcome** — Detailed task breakdown ready for execution
+- **Outcome** — A right-sized `plan.md` + `tasks.md`; STANDARD/COMPREHENSIVE include review and a final execution gate, while LIGHT stays non-blocking.
 
 ## ARGUMENTS Input
 
@@ -23,7 +23,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## MANDATORY COMPLIANCE RULES
 
-> **⚠️ NON-NEGOTIABLE**: This workflow MUST invoke nested workflows via the Skill tool. Failure to invoke `Skill(create_plan)` and `Skill(create_tasks)` (Claude slash route: `create_plan` and `create_tasks`) is a critical error. Do NOT summarize, describe, or skip these workflows. INVOKE THEM.
+> **⚠️ NON-NEGOTIABLE**: After tier routing, this workflow MUST invoke nested workflows via the Skill tool. LIGHT must invoke `Skill(create_plan)` and `Skill(create_tasks)`; STANDARD/COMPREHENSIVE must invoke `Skill(create_plan)`, `Skill(create_tasks)`, and `Skill(plan_review)` (Claude slash route: `create_plan`, `create_tasks`, and `plan_review`). Failure to invoke the required skills is a critical error. Do NOT summarize, describe, or skip these workflows. INVOKE THEM.
 
 **After ANY user conversation or questions:**
 
@@ -33,14 +33,16 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 **You MUST call these skills (not describe them):**
 
-- Use the **Skill** tool with `skill: "spectre-create_plan"` and `args: "{path} --depth {tier}"` — generates plan.md
+- Use the **Skill** tool with `skill: "spectre-create_plan"` and `args: "{path} --depth {tier}"` — generates plan.md, including LIGHT
 - Use the **Skill** tool with `skill: "spectre-create_tasks"` and `args: "{path}"` — generates tasks.md
+- Use the **Skill** tool with `skill: "spectre-plan_review"` and `args: "{OUT_DIR} --auto-apply scope-safe"` — reviews and integrates scope-safe feedback for STANDARD/COMPREHENSIVE
 
 ## Instructions
 
 - Research before routing; present architectural options for user buy-in
 - Route based on hard-stops and clarity, not point-scoring
 - Never overwrite existing `tasks.md` or `plan.md` — use scoped names
+- Treat `concepts/scope.md` (then `specs/prd.md` / `specs/ux.md` when present) as canonical. Plan generation, task generation, review, and feedback integration may change implementation approach, sequencing, verification, references, and YAGNI fences, but MUST NOT cut, narrow, expand, or reinterpret the agreed scope without an explicit user scope-change gate.
 
 ## Step 1 - Research Codebase
 
@@ -124,7 +126,7 @@ Use research findings from Step 1 to determine appropriate planning depth.
 
 ## Step 3 - High-Level Design
 
-**SKIP IF LIGHT** — proceed directly to Step 4.
+**SKIP IF LIGHT** — proceed directly to Step 4. LIGHT still generates a real plan in Step 4; it only skips this human alignment gate.
 
 Goal: align on the *shape* of the solution before generating a full plan. This catches misalignments early and gives the user a chance to redirect before reading a long plan doc.
 
@@ -171,7 +173,7 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
 - **Action** — PersistDesign: Append a "Selected Design" section to `{OUT_DIR}/task_context.md` capturing the agreed approach, key decisions, and resolved questions. This is what `create_plan` consumes.
 
-> **CHECKPOINT**: After alignment, proceed IMMEDIATELY to Step 4. The ONLY valid next action is invoking a Skill.
+> **CHECKPOINT**: After alignment, proceed IMMEDIATELY to Step 4. This is the early gate. The next valid actions are Skill invocations that generate the draft plan, generate tasks, run plan_review, integrate scope-safe feedback, and then present the final plan/tasks for the user's final gate.
 
 ## Step 4 - Route to Workflow
 
@@ -187,6 +189,7 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 │                                                                        │
 │  ✅ CORRECT: Skill tool with skill: "spectre-create_plan", args: "..." │
 │  ✅ CORRECT: Skill tool with skill: "spectre-create_tasks", args: "..."│
+│  ✅ CORRECT: Skill tool with skill: "spectre-plan_review", args: "..." │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -202,6 +205,7 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
 - Use the Skill tool: `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth {tier}"`
 - Use the Skill tool: `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
+- For STANDARD/COMPREHENSIVE, use the Skill tool: `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
 
 ---
 
@@ -209,27 +213,34 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
 - **If LIGHT**:
 
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth light --no-review"`
+  - **Wait** — Returns concise plan with solution shape, patterns, risks, and verification approach
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth light"`
-  - **Wait** — Returns task breakdown with brief implementation approach
+  - **Wait** — Returns task breakdown grounded in the light plan
+  - **Action** — PresentLightArtifacts: Summarize `{OUT_DIR}/specs/plan.md` and `{OUT_DIR}/specs/tasks.md`. State that LIGHT skipped `plan_review` and the human execution gate by design.
   - Skip to footer
 
 - **ElseIf STANDARD**:
 
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth standard"`
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth standard --no-review"`
   - **Wait** — Returns focused plan (Overview, Approach, Out of Scope)
-  - **Action** — PromptUser: "Review plan. Reply 'Approved' or provide feedback."
-  - **Wait** — User approval
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
   - **Wait** — Returns task breakdown
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
+  - **Wait** — Returns findings, applied edits, skipped scope-changing recommendations, and updated artifacts
+  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
+  - Continue to Final Gate
 
 - **ElseIf COMPREHENSIVE**:
 
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth comprehensive"`
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth comprehensive --no-review"`
   - **Wait** — Returns full plan (all sections: Architecture, Phases, API Design, Testing Strategy, etc.)
-  - **Action** — PromptUser: "Review plan. Reply 'Approved' or provide feedback."
-  - **Wait** — User approval
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
   - **Wait** — Returns task breakdown
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
+  - **Wait** — Returns findings, applied edits, skipped scope-changing recommendations, and updated artifacts
+  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
+  - Continue to Final Gate
 
 ---
 
@@ -250,6 +261,21 @@ If an escalation/downgrade is triggered, surface it as a recommendation — do N
 > Tier reassessment: I planned this as {original tier}, but tasks revealed {signal}. Recommend re-running as {new tier}. Reply 'rerun' to regenerate or 'keep' to proceed as-is.
 
 Only proceed past this checkpoint when the user confirms.
+
+---
+
+### Final Gate
+
+- **Action** — PresentFinalArtifacts:
+  - Summarize final artifact paths: `{OUT_DIR}/specs/plan.md`, `{OUT_DIR}/specs/tasks.md`, and the saved plan_review report under `{OUT_DIR}/reviews/`.
+  - Summarize review integration: findings applied by `plan_review`, any additional plan-orchestrator edits applied to integrate feedback, skipped edits, and any recommendations that were blocked because they would change canonical scope.
+  - If plan_review surfaced a scope-changing recommendation, state: "This requires a scope change; I did not apply it." Ask the user whether to reopen scope or approve the current canonical-scope-preserving plan/tasks.
+  - Otherwise prompt: "Final reviewed plan/tasks are ready. Reply `Approved` to proceed to execution, or provide final feedback."
+
+- **Wait** — User final approval or feedback.
+
+- **If feedback preserves canonical scope** — apply the smallest edits to `plan.md`/`tasks.md`, re-run `plan_review {OUT_DIR} --auto-apply scope-safe` if the feedback changes implementation approach, verification, dependencies, task sequencing, or references, then present the Final Gate again.
+- **If feedback changes canonical scope** — stop and route back to `scope` (or explicitly update the canonical scope artifact if the user directs it). Do not silently update plan/tasks against stale scope.
 
 ---
 
