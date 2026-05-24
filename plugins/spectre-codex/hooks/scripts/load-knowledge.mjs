@@ -7,7 +7,7 @@
  * AGENTS.override.md and returns a short visible status line.
  *
  * Reads:
- * - Apply skill from plugin: skills/apply/SKILL.md
+ * - Apply skill from plugin: skills/spectre-apply/SKILL.md
  * - Registry from project: .agents/skills/spectre-recall/references/registry.toon
  */
 
@@ -27,6 +27,13 @@ function resolvePluginSkillPath(pluginRoot, skillName, ...parts) {
     path.join(pluginRoot, 'skills', skillName, ...parts),
     path.join(pluginRoot, '..', 'skills', skillName, ...parts),
   ];
+  const legacyBareName = skillName.startsWith('spectre-') ? skillName.slice('spectre-'.length) : null;
+  if (legacyBareName) {
+    candidates.push(
+      path.join(pluginRoot, 'skills', legacyBareName, ...parts),
+      path.join(pluginRoot, '..', 'skills', legacyBareName, ...parts)
+    );
+  }
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -119,7 +126,7 @@ function main() {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const pluginRoot = getPluginRoot();
 
-  const applySkillPath = resolvePluginSkillPath(pluginRoot, 'apply', 'SKILL.md');
+  const applySkillPath = resolvePluginSkillPath(pluginRoot, 'spectre-apply', 'SKILL.md');
 
   if (!fs.existsSync(applySkillPath)) {
     process.exit(0);
@@ -146,7 +153,11 @@ function main() {
   // Read apply skill and strip frontmatter
   let applyContent = fs.readFileSync(applySkillPath, 'utf8');
   applyContent = stripFrontmatter(applyContent);
-  applyContent = applyContent.replaceAll('.claude/skills/', '.agents/skills/').replaceAll('/spectre:', '');
+  applyContent = applyContent
+    .replaceAll('.claude/skills/', '.agents/skills/')
+    .replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+      return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
+    });
 
   if (hasProjectKnowledgeSurface(projectDir, registryPath)) {
     writeManagedOverride(

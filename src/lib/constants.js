@@ -29,18 +29,18 @@ export function listSpectreAgents() {
 }
 
 export const SHARED_SKILLS = [
-  'apply',
-  'guide',
-  'learn',
-  'tdd'
+  'spectre-apply',
+  'spectre-guide',
+  'spectre-learn',
+  'spectre-tdd'
 ];
 
 export const WORKFLOW_PROBE_SKILLS = [
-  'scope',
-  'plan',
-  'execute',
-  'clean',
-  'test'
+  'spectre-scope',
+  'spectre-plan',
+  'spectre-execute',
+  'spectre-clean',
+  'spectre-test'
 ];
 
 export function repoMetadata() {

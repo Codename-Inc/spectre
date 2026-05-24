@@ -23,10 +23,10 @@ function createTmpDir() {
 }
 
 function createApplySkill(pluginDir) {
-  const skillPath = path.join(pluginDir, 'skills', 'apply', 'SKILL.md');
+  const skillPath = path.join(pluginDir, 'skills', 'spectre-apply', 'SKILL.md');
   fs.mkdirSync(path.dirname(skillPath), { recursive: true });
   fs.writeFileSync(skillPath,
-    '---\nname: apply\n---\n\n# Apply Knowledge\n\n' +
+    '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
     '## How to Find Skills\n\nScan available skills.\n\n' +
     '## Workflow\n\nDo things.\n'
   );
@@ -34,10 +34,10 @@ function createApplySkill(pluginDir) {
 }
 
 function createCodexApplySkill(codexHome) {
-  const skillPath = path.join(codexHome, 'skills', 'apply', 'SKILL.md');
+  const skillPath = path.join(codexHome, 'skills', 'spectre-apply', 'SKILL.md');
   fs.mkdirSync(path.dirname(skillPath), { recursive: true });
   fs.writeFileSync(skillPath,
-    '---\nname: apply\n---\n\n# Apply Knowledge\n\n' +
+    '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
     '## How to Find Skills\n\nScan available skills.\n\n' +
     '## Workflow\n\nDo things.\n'
   );

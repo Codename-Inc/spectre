@@ -131,5 +131,5 @@ test('buildSessionStartOutput keeps knowledge active when no handoff exists and 
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
   assert.match(overrideContent, /spectre-knowledge:start/);
   assert.match(overrideContent, /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
-  assert.match(overrideContent, /Capture via `Skill\(learn\)`/);
+  assert.match(overrideContent, /Capture via `Skill\(spectre-learn\)`/);
 });

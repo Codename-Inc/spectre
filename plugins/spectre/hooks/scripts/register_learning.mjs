@@ -174,6 +174,13 @@ function resolvePluginSkillPath(pluginRoot, skillName, ...parts) {
     path.join(pluginRoot, 'skills', skillName, ...parts),
     path.join(pluginRoot, '..', 'skills', skillName, ...parts),
   ];
+  const legacyBareName = skillName.startsWith('spectre-') ? skillName.slice('spectre-'.length) : null;
+  if (legacyBareName) {
+    candidates.push(
+      path.join(pluginRoot, 'skills', legacyBareName, ...parts),
+      path.join(pluginRoot, '..', 'skills', legacyBareName, ...parts)
+    );
+  }
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -228,7 +235,7 @@ function main() {
     // Script is at: <plugin_root>/hooks/scripts/register_learning.mjs
     pluginRoot = path.resolve(__dirname, '..', '..');
   }
-  const templatePath = resolvePluginSkillPath(pluginRoot, 'learn', 'references', 'recall-template.md');
+  const templatePath = resolvePluginSkillPath(pluginRoot, 'spectre-learn', 'references', 'recall-template.md');
 
   // Ensure directories exist
   fs.mkdirSync(registryDir, { recursive: true });

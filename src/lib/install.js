@@ -88,6 +88,10 @@ function managedCodexSkillNames({ requireGenerated = false } = {}) {
   ])).sort();
 }
 
+function legacyBareSkillName(skillName) {
+  return skillName.startsWith('spectre-') ? skillName.slice('spectre-'.length) : null;
+}
+
 function replaceDirectory(sourceDir, targetDir) {
   if (!fs.existsSync(sourceDir)) {
     throw new Error(`Missing generated Codex asset directory: ${sourceDir}. Run npm run sync-codex first.`);
@@ -104,12 +108,34 @@ function removeLegacyPrefixedSkillDirs() {
     return;
   }
 
+  const managedNames = managedCodexSkillNames();
+
   for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || !entry.name.startsWith('spectre-')) {
       continue;
     }
     const bareName = entry.name.slice('spectre-'.length);
-    if (managedCodexSkillNames().includes(bareName)) {
+    if (managedNames.includes(bareName)) {
+      fs.rmSync(path.join(skillsRoot, entry.name), { recursive: true, force: true });
+    }
+  }
+}
+
+function removeLegacyBareSkillDirs() {
+  const skillsRoot = codexSkillsDir();
+  if (!fs.existsSync(skillsRoot)) {
+    return;
+  }
+
+  const legacyNames = new Set(managedCodexSkillNames().map(legacyBareSkillName).filter(Boolean));
+
+  for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !legacyNames.has(entry.name)) {
+      continue;
+    }
+
+    const skillPath = path.join(skillsRoot, entry.name, 'SKILL.md');
+    if (fs.existsSync(skillPath)) {
       fs.rmSync(path.join(skillsRoot, entry.name), { recursive: true, force: true });
     }
   }
@@ -121,6 +147,7 @@ function installGeneratedCodexSkills() {
   ensureDir(skillsRoot);
 
   removeLegacyPrefixedSkillDirs();
+  removeLegacyBareSkillDirs();
 
   for (const skillName of managedCodexSkillNames({ requireGenerated: true })) {
     const skillDir = path.join(skillsRoot, skillName);
@@ -250,6 +277,7 @@ export function uninstallCodex({ scope, projectDir }) {
   }
 
   removeLegacyPrefixedSkillDirs();
+  removeLegacyBareSkillDirs();
 
   for (const skillName of managedCodexSkillNames()) {
     const skillDir = path.join(codexSkillsDir(), skillName);

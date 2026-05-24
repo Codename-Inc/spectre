@@ -67,7 +67,7 @@ function rewriteCodexCommandRefs(source) {
     .replace(/@@spectre:([A-Za-z0-9_-]+)/g, '@$1')
     .replace(/@spectre:([A-Za-z0-9_-]+)/g, '@$1')
     .replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
-      return skillName;
+      return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
     });
 }
 

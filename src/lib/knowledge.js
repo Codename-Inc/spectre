@@ -20,7 +20,9 @@ function rewriteProjectSkillPaths(content) {
 }
 
 function rewriteCodexCommandRefs(content) {
-  return content.replaceAll('/spectre:', '');
+  return content.replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+    return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
+  });
 }
 
 function markUserInvocable(content, value = true) {
@@ -70,7 +72,7 @@ function pluginSkillPath(skillName) {
 }
 
 function recallTemplatePath() {
-  return path.join(spectrePluginRoot(), 'skills', 'learn', 'references', 'recall-template.md');
+  return path.join(spectrePluginRoot(), 'skills', 'spectre-learn', 'references', 'recall-template.md');
 }
 
 function pluginSkillContent(skillName) {
@@ -78,11 +80,11 @@ function pluginSkillContent(skillName) {
 }
 
 export function codexSharedSkillContent(skillName) {
-  if (skillName === 'apply') {
+  if (skillName === 'spectre-apply') {
     return `${normalizeSkillMarkdown(rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent(skillName))))}\n`;
   }
 
-  if (skillName === 'learn') {
+  if (skillName === 'spectre-learn') {
     return `${normalizeSkillMarkdown(markUserInvocable(rewriteCodexCommandRefs(codexPathConvention(codexLearnIntro(rewriteProjectSkillPaths(pluginSkillContent(skillName)))))))}\n`;
   }
 
@@ -142,7 +144,7 @@ export function ensureKnowledgeFiles(projectDir) {
 export function buildKnowledgeOverrideBody(projectDir) {
   ensureKnowledgeFiles(projectDir);
   const applyContent = stripFrontmatter(
-    rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('apply')))
+    rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('spectre-apply')))
   );
 
   return normalizeSkillMarkdown(applyContent);
