@@ -3,7 +3,7 @@
   "version": "5.2.2",
   "type": "module",
   "bin": {
-    "spectre": "./bin/spectre.js"
+    "spectre": "bin/spectre.js"
   },
   "files": [
     "bin",
