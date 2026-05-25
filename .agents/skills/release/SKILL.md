@@ -1,6 +1,6 @@
 ---
 name: release
-description: Run the SPECTRE release workflow, including version bumps, Codex sync, local Codex install verification, GitHub release, and npm publish.
+description: Run the SPECTRE release workflow, including version bumps, Codex sync, global Codex install verification, GitHub release, manual npm publish handoff, npm verification, and final global Codex refresh.
 user-invocable: true
 ---
 
@@ -85,24 +85,24 @@ Do not bump versions until the sync check passes.
    git commit -m "release: vX.Y.Z"
    ```
 
-### Step 5: Refresh Local Codex Install
+### Step 5: Refresh Global Codex Install Before Shipping
 
-Before changelog, tag, push, or npm publish, make sure the local project Codex install is running the exact generated assets and project skills from this checkout.
+Before changelog, tag, push, or npm publish, make sure the global Codex install is running the exact generated assets from this checkout.
 
-1. Run the source-local project update:
+1. Run the source-local user-scope update:
 
    ```bash
-   node bin/spectre.js update codex --scope project --project-dir "$PWD"
+   node bin/spectre.js update codex --scope user --project-dir "$PWD"
    ```
 
 2. Verify the installed Codex runtime and hook wiring:
 
    ```bash
-   node bin/spectre.js doctor codex --scope project --project-dir "$PWD" --verify-hooks
+   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
    ```
 
 3. If the update or doctor command fails, stop and fix it before shipping.
-4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, or `AGENTS.override.md` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
+4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
 
 ### Step 6: Build Changelog
 
@@ -138,20 +138,52 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog>"
 
 Use a heredoc for the notes body to preserve formatting.
 
-### Step 9: Publish to npm
+### Step 9: Manual npm Publish Handoff
 
 Codex users install via `npx @codename_inc/spectre install codex`, so the npm package must be published for them to pick up the new version. The marketplace alone is not enough.
 
-1. Confirm npm auth: `npm whoami`. If unauthenticated, ask the user to run `! npm login` themselves because the interactive flow requires their credentials.
-2. Publish: `npm publish --access public`.
-3. If npm requires an OTP (`EOTP` error), ask the user to re-run with `--otp=<code>`. You cannot read their authenticator.
-4. Verify the new version is live:
+Do not run `npm login` or `npm publish` for the user. npm auth, OTP, and publish confirmation are user-owned interactive steps. This is the final manual publish step.
+
+Ask the user to run these commands themselves:
+
+```bash
+npm login
+npm publish --access public
+```
+
+If they are already logged in, they can skip `npm login`. If npm requires an OTP, they should rerun publish with:
+
+```bash
+npm publish --access public --otp=<code>
+```
+
+Wait for the user to confirm the package is published before proceeding.
+
+### Step 10: Verify npm and Refresh Global Codex Install
+
+After the user confirms npm publish completed:
+
+1. Verify the new version is live:
 
    ```bash
    npm view @codename_inc/spectre versions --json
    ```
 
-### Step 10: Done
+2. Refresh the global Codex install one final time from this checkout:
+
+   ```bash
+   node bin/spectre.js update codex --scope user --project-dir "$PWD"
+   ```
+
+3. Verify the installed Codex runtime and hook wiring:
+
+   ```bash
+   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
+   ```
+
+4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks.
+
+### Step 11: Done
 
 Print a summary:
 

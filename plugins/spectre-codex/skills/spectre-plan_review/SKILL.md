@@ -14,9 +14,9 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## Description
 
-- **What** — Independent review of any available planning artifacts (`plan.md`, `tasks.md`, and optional `task_context.md`) from four specialized lenses, dispatched in parallel
-- **Outcome** — Structured findings with concrete edit suggestions; optional write-back to update the available artifacts
-- **Artifact** — Always save a Markdown review report before any write-back so pre-integration findings are auditable
+- **What** — Four independent review lenses write tmp reports; a fifth compiler subagent writes the final review
+- **Outcome** — Compiled findings with concrete edit suggestions; optional write-back to update the available artifacts
+- **Artifact** — Always save the final Markdown review report before any write-back so pre-integration findings are auditable
 - **Role** — Senior staff engineer + reviewer panel; bias toward pragmatic problem-solving, YAGNI enforcement, and verifiability
 
 ## Canonical Scope Invariant
@@ -46,6 +46,7 @@ A single reviewer biases toward the issues it notices first. Published practice 
 
 - **Action** — DetermineTaskDir:
   - `branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)`
+  - `safe_branch={branch_name with path separators replaced by _}`
   - **If** user specifies path in ARGUMENTS → `TASK_DIR={that value}`
   - **Else** → `TASK_DIR=docs/tasks/{branch_name}`
 
@@ -56,6 +57,7 @@ A single reviewer biases toward the issues it notices first. Published practice 
   - `SCOPE=${TASK_DIR}/concepts/scope.md` when present; otherwise use `specs/prd.md` / `specs/ux.md` as available
   - `REVIEWS_DIR=${TASK_DIR}/reviews`
   - `REVIEW_REPORT=${REVIEWS_DIR}/plan_review.md`; if that exists, use `plan_review_{YYYY-MM-DD_HHMMSS}.md` to avoid overwriting prior review evidence.
+  - `TMP_REVIEW_DIR=${TMPDIR:-/tmp}/spectre-plan-review/{safe_branch}/{YYYY-MM-DD_HHMMSS}`; create it outside the repo for non-canonical lens reports.
   - `plan.md` and `tasks.md` are independently reviewable. It is valid to review only `plan.md`, only `tasks.md`, or both.
   - `task_context.md` is helpful context but is not required. If it is missing, continue and note that requirements traceability is limited.
   - If both `plan.md` and `tasks.md` are missing, stop and suggest the user run `spectre-plan` or `spectre-create_tasks` first.
@@ -65,7 +67,10 @@ A single reviewer biases toward the issues it notices first. Published practice 
 
 ## Step 2 — Dispatch Four Parallel Reviewers
 
-Spawn all four subagents in a single message (parallel). Each receives the same available artifact excerpts, the artifact manifest, and a different review brief.
+Spawn all four subagents in one parallel dispatch. Each receives the same artifact excerpts/manifest, one review brief, and one assigned output path:
+`01-yagni.md`, `02-verifiability.md`, `03-existence.md`, `04-references.md` under `${TMP_REVIEW_DIR}`.
+
+Each reviewer MUST write its findings to its assigned tmp path and return only status + path. The primary agent must not synthesize reviewer messages; tmp reports are compiler inputs.
 
 Missing-artifact rule for every lens: review what exists. If a finding depends on a missing artifact, phrase it as "not reviewable because `<artifact>` is absent" only when that context is necessary; do not fail the review or ask for the missing artifact.
 
@@ -121,18 +126,16 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 >
 > Required output: for each weak/missing reference, propose a specific file:line that should be the anchor. For each missed reuse, cite the existing utility and which task should use it.
 
-## Step 3 — Synthesize Findings
+## Step 3 — Compile Final Review
 
-- **Action** — CollectFindings: Wait for all four reviewers to return. Read every finding.
+- **Action** — DispatchCompiler: Wait for all four reviewers to write tmp reports, then spawn a fifth subagent. Pass only: artifact manifest, canonical scope source, `${REVIEW_REPORT}`, `${TMP_REVIEW_DIR}`, and the four tmp report paths. The primary agent must not read or merge the tmp reports.
 
-- **Action** — DeduplicateAndPrioritize: Merge findings that overlap (e.g., a missing canonical reference may surface from both Lens 4 and Lens 2). Assign severity:
-  - **Blocker** — would cause execution to fail or produce wrong output (hallucinated file path, criterion the executor can't check, Out-of-Bounds violation)
-  - **High** — meaningfully reduces output quality (missing RED test, weak canonical reference, prose criterion)
-  - **Medium** — overengineering or reuse miss without functional blast radius
+- **Compiler contract** — Read all four tmp reports, dedupe overlaps, assign severity, create `${REVIEWS_DIR}`, and write `${REVIEW_REPORT}` before any write-back. Do not overwrite an existing report:
+  - **Blocker** — execution fails or wrong output
+  - **High** — meaningfully reduces output quality
+  - **Medium** — overengineering/reuse miss without functional blast radius
   - **Low** — stylistic or nice-to-have
-  - **Scope Change Required** — may be valid feedback, but would cut, expand, or reinterpret canonical scope and therefore needs explicit user approval before any artifact edit
-
-- **Action** — RenderFindingsTable: Output a single structured table. Schema is fixed.
+  - **Scope Change Required** — valid only with explicit user scope approval
 
   ```markdown
   ## Review Findings — {feature name}
@@ -154,22 +157,21 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
   - High: {N}
   - Medium: {N}
   - Low: {N}
+
+  ### Review Metadata
+  - Reviewed artifacts: {present/absent exact paths}
+  - Canonical scope source: {path}
+  - Auto-apply mode: {enabled/disabled}
+  - Timestamp: {ISO8601}
+  - Tmp reports: {4 paths}
+  - Note: This report captures plan_review findings before any write-back to plan.md or tasks.md.
   ```
 
-- **Action** — SaveReviewArtifact: Before applying any edits to `plan.md` or `tasks.md`, save the pre-integration review findings as a Markdown report.
-  - Create `${REVIEWS_DIR}` if missing.
-  - Write `${REVIEW_REPORT}` using the RenderFindingsTable content plus:
-    - Reviewed artifacts: exact plan/tasks/context/scope paths present and absent.
-    - Canonical scope source used.
-    - Auto-apply mode: enabled/disabled.
-    - Timestamp.
-    - Explicit note: "This report captures plan_review findings before any write-back to plan.md or tasks.md."
-  - Do not overwrite an existing report. Use the timestamped filename if the default already exists.
-  - Include the saved report path in all subsequent summaries and in `ReportApplied`.
+- **Action** — ConfirmCompiledReport: Confirm `${REVIEW_REPORT}` exists. Include the saved report path in all subsequent summaries and in `ReportApplied`.
 
 ## Step 4 — Surface Findings & Apply Edits
 
-- **Action** — PresentFindings: Render the findings table inline and include `Review report saved: {REVIEW_REPORT}`.
+- **Action** — PresentFindings: Read only `${REVIEW_REPORT}` (not tmp reports), render the findings table inline, and include `Review report saved: {REVIEW_REPORT}`.
 
 - **Action** — DetectAutoApplyMode: If ARGUMENTS contains `--auto-apply scope-safe`, skip the user selection prompt and apply all scope-safe Blocker and High findings, plus Medium/Low findings only when the Suggested Edit is unambiguous and cannot change canonical scope. Do not apply findings marked Scope Change Required. Continue to ApplyEdits and SelfCheck, then return the applied/skipped summary to the invoking workflow.
 
