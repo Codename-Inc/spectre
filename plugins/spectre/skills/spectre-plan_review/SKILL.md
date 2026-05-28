@@ -10,11 +10,11 @@ user-invocable: true
 
 Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
 
-# plan_review: Multi-Lens Review of Plan and/or Tasks
+# plan_review: Adversarial or Multi-Lens Review of Plan and/or Tasks
 
 ## Description
 
-- **What** — Four independent review lenses write tmp reports; a fifth compiler subagent writes the final review
+- **What** — `--mode adversarial` runs a fast execution-readiness attack; `--mode full` runs four independent review lenses plus compiler
 - **Outcome** — Compiled findings with concrete edit suggestions; optional write-back to update the available artifacts
 - **Artifact** — Always save the final Markdown review report before any write-back so pre-integration findings are auditable
 - **Role** — Senior staff engineer + reviewer panel; bias toward pragmatic problem-solving, YAGNI enforcement, and verifiability
@@ -31,9 +31,15 @@ Reviewers may recommend deleting unrequested implementation details, unnecessary
 $ARGUMENTS
 </ARGUMENTS>
 
+## Review Mode
+
+- Default: `full` unless ARGUMENTS contains `--mode adversarial`.
+- **adversarial** — STANDARD planning path. One reviewer attacks likely execution failure: unrequested complexity, fake refs/deps, non-executable verification, and task gaps. It does not critique architectural optimality.
+- **full** — COMPREHENSIVE/manual path. Four lenses plus compiler, including canonical reference quality and missed reuse.
+
 ## Why Four Lenses
 
-A single reviewer biases toward the issues it notices first. Published practice (Cognition, Anthropic, Osmani) converges on four high-yield review angles for AI-agent-authored plans. We dispatch each as a parallel subagent so coverage is structurally guaranteed, not dependent on a single reviewer remembering everything.
+Full mode uses four lenses because a single reviewer biases toward the issues it notices first. Published practice (Cognition, Anthropic, Osmani) converges on four high-yield review angles for AI-agent-authored plans.
 
 | Lens | Subagent | Finds |
 |------|----------|-------|
@@ -65,7 +71,26 @@ A single reviewer biases toward the issues it notices first. Published practice 
 
 - **Action** — ReadAvailable: Read each available file completely into context before dispatching reviewers. Reviewers receive curated excerpts plus an artifact manifest that says which files are present and absent. Every reviewer must review the artifacts that exist and must not treat absent artifacts as a blocker. The manifest must label the canonical scope source and state that review findings may not remove or narrow scope.
 
-## Step 2 — Dispatch Four Parallel Reviewers
+## Step 2 — Dispatch Reviewers
+
+### Adversarial Mode
+
+If ARGUMENTS contains `--mode adversarial`, spawn one `@reviewer` subagent with write access to `${REVIEW_REPORT}`. Pass the artifact manifest, canonical scope source, and available artifact excerpts. The reviewer must write `${REVIEW_REPORT}` before returning.
+
+Brief:
+> Attack this plan/tasks only for execution readiness. Find: (1) what will make implementation fail or produce wrong output, (2) unrequested overbuild or out-of-bounds work, (3) hallucinated files/packages/symbols/endpoints/env vars/CLI flags, (4) non-executable verification or missing acceptance criteria, (5) task gaps that leave producer output unwired to a consumer. Do not critique whether the architecture is optimal unless it creates one of those failures. Preserve canonical scope.
+>
+> Output:
+> `## Review Findings — {feature}`
+> `### Findings`
+> table columns: `# | Severity | Location | Finding | Suggested Edit`
+> `### Summary` with counts
+> `### Review Metadata` with reviewed artifacts, canonical scope source, auto-apply mode, timestamp, and `Mode: adversarial`.
+> Use severities Blocker/High/Medium/Low/Scope Change Required. Include concrete suggested edits. If no findings, say so explicitly.
+
+Then skip Step 3 and continue to Step 4.
+
+### Full Mode
 
 Spawn all four subagents in one parallel dispatch. Each receives the same artifact excerpts/manifest, one review brief, and one assigned output path:
 `01-yagni.md`, `02-verifiability.md`, `03-existence.md`, `04-references.md` under `${TMP_REVIEW_DIR}`.
@@ -128,7 +153,9 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 
 ## Step 3 — Compile Final Review
 
-- **Action** — DispatchCompiler: Wait for all four reviewers to write tmp reports, then spawn a fifth subagent. Pass only: artifact manifest, canonical scope source, `${REVIEW_REPORT}`, `${TMP_REVIEW_DIR}`, and the four tmp report paths. The primary agent must not read or merge the tmp reports.
+Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` directly.
+
+- **Action** — DispatchCompiler: Wait for all four reviewers to write tmp reports, then spawn a fifth subagent (`@reviewer`, which has scoped write access). Pass only: artifact manifest, canonical scope source, `${REVIEW_REPORT}`, `${TMP_REVIEW_DIR}`, and the four tmp report paths. The primary agent must not read or merge the tmp reports.
 
 - **Compiler contract** — Read all four tmp reports, dedupe overlaps, assign severity, create `${REVIEWS_DIR}`, and write `${REVIEW_REPORT}` before any write-back. Do not overwrite an existing report:
   - **Blocker** — execution fails or wrong output

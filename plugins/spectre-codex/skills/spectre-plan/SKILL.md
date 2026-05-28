@@ -14,8 +14,8 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## Description
 
-- **What** — Research codebase, assess complexity, route to appropriate workflow (direct tasks or plan-first)
-- **Outcome** — A right-sized `plan.md` + `tasks.md`; STANDARD/COMPREHENSIVE include review and a final execution gate, while LIGHT stays non-blocking.
+- **What** — Classify scope cheaply, run only needed research, route to the smallest safe workflow
+- **Outcome** — MICRO uses a checklist; LIGHT writes concise `plan.md` + `tasks.md`; STANDARD adds adversarial review; COMPREHENSIVE adds full research, design gate, and full review.
 
 ## ARGUMENTS Input
 
@@ -23,7 +23,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## MANDATORY COMPLIANCE RULES
 
-> **⚠️ NON-NEGOTIABLE**: After tier routing, this workflow MUST invoke nested workflows via the Skill tool. LIGHT must invoke `Skill(spectre-create_plan)` and `Skill(spectre-create_tasks)`; STANDARD/COMPREHENSIVE must invoke `Skill(spectre-create_plan)`, `Skill(spectre-create_tasks)`, and `Skill(spectre-plan_review)` (Claude slash route: `spectre-create_plan`, `spectre-create_tasks`, and `spectre-plan_review`). Failure to invoke the required skills is a critical error. Do NOT summarize, describe, or skip these workflows. INVOKE THEM.
+> **⚠️ NON-NEGOTIABLE**: After tier routing, MICRO must produce an inline checklist; LIGHT must invoke `Skill(spectre-create_plan)` and `Skill(spectre-create_tasks)`; STANDARD/COMPREHENSIVE must invoke `Skill(spectre-create_plan)`, `Skill(spectre-create_tasks)`, and `Skill(spectre-plan_review)` (Claude slash route: `spectre-create_plan`, `spectre-create_tasks`, and `spectre-plan_review`). Failure to invoke the required routed action is a critical error. Do NOT summarize, describe, or skip these workflows. INVOKE THEM.
 
 **After ANY user conversation or questions:**
 
@@ -34,70 +34,26 @@ Treat the current command arguments as this workflow's input. When invoked from 
 **You MUST call these skills (not describe them):**
 
 - Use the **Skill** tool with `skill: "spectre-create_plan"` and `args: "{path} --depth {tier}"` — generates plan.md, including LIGHT
-- Use the **Skill** tool with `skill: "spectre-create_tasks"` and `args: "{path}"` — generates tasks.md
-- Use the **Skill** tool with `skill: "spectre-plan_review"` and `args: "{OUT_DIR} --auto-apply scope-safe"` — reviews and integrates scope-safe feedback for STANDARD/COMPREHENSIVE
+- Use the **Skill** tool with `skill: "spectre-create_tasks"` and `args: "{path} --depth {tier}"` — generates tasks.md
+- Use the **Skill** tool with `skill: "spectre-plan_review"` and `args: "{OUT_DIR} --mode {adversarial|full} --auto-apply scope-safe"` — reviews and integrates scope-safe feedback for STANDARD/COMPREHENSIVE
 
 ## Instructions
 
-- Research before routing; present architectural options for user buy-in
+- Classify before research; do not spawn subagents until the tier and research budget are known
 - Route based on hard-stops and clarity, not point-scoring
 - Never overwrite existing `tasks.md` or `plan.md` — use scoped names
 - Treat `concepts/scope.md` (then `specs/prd.md` / `specs/ux.md` when present) as canonical. Plan generation, task generation, review, and feedback integration may change implementation approach, sequencing, verification, references, and YAGNI fences, but MUST NOT cut, narrow, expand, or reinterpret the agreed scope without an explicit user scope-change gate.
 
-## Step 1 - Research Codebase
+## Step 1 - Preflight Route
 
 - **Action** — DetermineOutputDir:
 
   - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified)
   - `mkdir -p "${OUT_DIR}"`
 
-- **Action** — ScanExistingContext: Read all existing artifacts in `{OUT_DIR}/ (if you haven't already)` and assess coverage across 4 dimensions.
+- **Action** — ScanExistingContext: Read existing artifacts in `{OUT_DIR}/` if present: `task_context.md`, `specs/plan.md`, `specs/tasks.md`, `concepts/scope.md`, `specs/ux.md`, `research/*.md`. Extract filled assumptions from scope/UX for later design review.
 
-  Scan for: `task_context.md`, `specs/plan.md`, `concepts/scope.md`, `specs/ux.md`, `research/*.md`
-
-  While scanning `concepts/scope.md` and `specs/ux.md`, extract any **filled assumptions** — places where the upstream artifact defaulted a value because the user didn't specify (e.g., DB choice, retry policy, copy variants, segment fallbacks). Carry these forward to Step 3's design surface so they're reviewer-visible before plan generation.
-
-  | Dimension | Covered if artifact contains... | Covered by |
-  | --- | --- | --- |
-  | **File locations** | Specific file paths relevant to this feature, entry points, config files | `@finder` |
-  | **Code understanding** | Data flow analysis, dependency tracing, how current code works with file:line refs | `@analyst` |
-  | **Codebase patterns** | Similar implementations found in codebase, reusable components, naming/style conventions | `@patterns` |
-  | **External research** | Best practices, libraries/frameworks, prior art, common pitfalls with source links | `@web-research` |
-
-  For each dimension, assess: **covered** (artifact has substantive findings for this feature) or **gap** (missing, superficial, or about a different feature).
-
-- **Action** — DispatchResearch: Spawn agents **only for dimensions marked as gaps**. Skip agents whose dimensions are already covered. Each prompt must include the feature/problem description from ARGUMENTS so the agent has full context.
-
-  - **If all 4 covered** → skip to SaveResearch (merge existing findings into task_context.md if scattered across files)
-
-  - **If gaps exist** → spawn only the needed agents in parallel:
-
-  - `@finder` *(if File locations = gap)* — "Find all files, components, entry points, routes, and configuration related to \[feature/problem\]. Include: (1) files that would need to be modified or extended, (2) entry points where this feature connects to the system (routes, handlers, event listeners, CLI commands), (3) configuration files, schemas, or migrations that may be affected, (4) test files covering the affected areas. Return file paths organized by relevance."
-
-  - `@analyst` *(if Code understanding = gap)* — "Analyze how the code paths related to \[feature/problem\] work end-to-end. Trace: (1) data flow from input through processing to storage and output, (2) key dependencies and how components interact, (3) state management patterns and data access methods in the affected areas, (4) error handling and edge cases in the current implementation. Return findings with specific file:line references."
-
-  - `@patterns` *(if Codebase patterns = gap)* — "Find existing implementations in this codebase that are similar to \[feature/problem\] and could serve as a reference. Look for: (1) analogous features already built — how were they structured?, (2) reusable components, utilities, or abstractions we should leverage, (3) conventions for naming, file organization, and code style in this area, (4) testing patterns used for similar features. Return concrete code examples with file:line references."
-
-  - `@web-research` *(if External research = gap)* — "Research best practices, proven patterns, relevant libraries/frameworks, and how other projects solve \[feature/problem\]. Focus on: (1) industry best practices and common pitfalls, (2) libraries or frameworks that simplify this work, (3) how well-known open-source projects approach similar problems, (4) architectural patterns recommended for this type of feature. Return findings with source links."
-
-  - **Wait** for all dispatched agents; read identified files
-
-- **Action** — SaveResearch: Merge all findings (existing artifacts + new agent results) into `{OUT_DIR}/task_context.md` with sections: Architecture Patterns, Dependencies, Implementation Approaches, Impact Summary, and External Research (best practices, recommended libraries/frameworks, prior art, common pitfalls)
-
-## Step 2 - Assess Complexity
-
-Use research findings from Step 1 to determine appropriate planning depth.
-
-- **Action** — AssessFromResearch: Score complexity signals from research:
-
-  | Signal | Source | Assessment |
-  | --- | --- | --- |
-  | Files impacted | @finder | 1-3 files = Low, 4-8 = Med, 9+ = High |
-  | Pattern match | @patterns | Clear existing pattern = Low, Adapt pattern = Med, New pattern = High |
-  | Components crossed | @analyst | 1 component = Low, 2-3 = Med, 4+ = High |
-  | Data model changes | Research findings | None = Low, Modify existing = Med, New models/schema = High |
-  | Integration points | Research findings | Internal only = Low, 1-2 external = Med, 3+ external = High |
-  | External complexity | @web-research | Well-documented with libraries = Low, Some prior art = Med, Novel/emerging = High |
+- **Action** — CheapLocalScan: Use only thread context, provided files, existing artifacts, and cheap local search (`rg`, filenames, package manifests). Do not spawn subagents.
 
 - **Action** — CheckHardStops: Any true = automatic COMPREHENSIVE.
   - `db_schema_destructive` — drops, renames, or non-additive column changes
@@ -112,25 +68,41 @@ Use research findings from Step 1 to determine appropriate planning depth.
   - `cross_service_or_cross_workspace_change` — coordinated change across services or workspaces
   - `slo_sla_risk` — latency, throughput, or availability budget at stake
 
-- **Action** — DetermineTier (decisive rules, not point-scoring):
+- **Action** — DetermineTier:
 
-  - **COMPREHENSIVE** — if ANY hard-stop is triggered OR any signal scores High OR two or more signals score Medium
-  - **STANDARD** — if no hard-stops AND no High signals AND at most one Medium signal
-  - **LIGHT** — only if every signal scores Low AND no hard-stops AND the change is plausibly a single-file diff
+  | Tier | Use when |
+  | --- | --- |
+  | **MICRO** | Obvious <=1 file change, no artifact needed, no hard-stop. |
+  | **LIGHT** | Clear internal change, known pattern, roughly <=5 files / 1-2 components, no hard-stop. |
+  | **STANDARD** | Multi-file or moderate ambiguity, no hard-stop, needs adversarial execution-readiness review. |
+  | **COMPREHENSIVE** | Any hard-stop, new architecture/service/component, high ambiguity, or broad blast radius. |
 
-  When in doubt between two tiers, choose the higher. The cost of over-planning a small change is hours; the cost of under-planning a large one is weeks.
+  When unsure between adjacent tiers, prefer the lower tier if the missing information can be checked during execution; prefer the higher tier if the uncertainty affects scope, security/privacy, data correctness, public API behavior, or rollback safety.
 
 - **Action** — LogTier: Note the assessed tier in your response for transparency, then proceed immediately to the next step. Do NOT ask for confirmation.
 
-> **CHECKPOINT**: After determining tier, proceed IMMEDIATELY to the next step — Step 3 (High-Level Design) for STANDARD/COMPREHENSIVE, or Step 4 (Route) for LIGHT. Do NOT end turn here. Do NOT ask user to confirm the tier.
+## Step 2 - Targeted Research
+
+- **Action** — ResearchByTier:
+
+  | Tier | Research budget |
+  | --- | --- |
+  | **MICRO** | None. Use cheap scan only. |
+  | **LIGHT** | None by default; dispatch `@finder` only if files are unclear. |
+  | **STANDARD** | Dispatch only missing dimensions, max two of `@finder`, `@analyst`, `@patterns`. No `@web-research` unless new external dependency/API/framework is likely. |
+  | **COMPREHENSIVE** | Dispatch all needed dimensions: `@finder`, `@analyst`, `@patterns`, and `@web-research` only when external choices matter. |
+
+- **Action** — SaveResearch: For MICRO, skip artifacts. Otherwise write `{OUT_DIR}/task_context.md` with `## Technical Research` plus any filled assumptions. Keep it concise; downstream skills must consume this instead of repeating research.
+
+> **CHECKPOINT**: After determining tier and completing its research budget, proceed IMMEDIATELY to Step 3 for STANDARD/COMPREHENSIVE, or Step 4 for MICRO/LIGHT. Do NOT end turn here. Do NOT ask user to confirm the tier.
 
 ## Step 3 - High-Level Design
 
-**SKIP IF LIGHT** — proceed directly to Step 4. LIGHT still generates a real plan in Step 4; it only skips this human alignment gate.
+**SKIP IF MICRO/LIGHT** — proceed directly to Step 4. LIGHT still generates a real plan; it skips the human alignment gate.
 
 Goal: align on the *shape* of the solution before generating a full plan. This catches misalignments early and gives the user a chance to redirect before reading a long plan doc.
 
-- **Action** — PresentDesign: Synthesize research from Step 1 into a single proposed approach with open questions. Present inline (do not write a separate design file).
+- **Action** — PresentDesign: Synthesize research from Step 2 into a single proposed approach with open questions. Present inline (do not write a separate design file).
 
   **Format**:
 
@@ -187,6 +159,7 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 │  ❌ WRONG: "The next step would be to run spectre-create_plan"        │
 │  ❌ WRONG: Ending turn without invoking Skill tool                     │
 │                                                                        │
+│  ✅ CORRECT: MICRO inline checklist OR required Skill invocations       │
 │  ✅ CORRECT: Skill tool with skill: "spectre-create_plan", args: "..." │
 │  ✅ CORRECT: Skill tool with skill: "spectre-create_tasks", args: "..."│
 │  ✅ CORRECT: Skill tool with skill: "spectre-plan_review", args: "..." │
@@ -203,15 +176,22 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
 **YOU MUST:**
 
+- MICRO: write an inline checklist, no artifacts.
 - Use the Skill tool: `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth {tier}"`
-- Use the Skill tool: `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
-- For STANDARD/COMPREHENSIVE, use the Skill tool: `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
+- Use the Skill tool: `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth {tier}"`
+- For STANDARD: use `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode adversarial --auto-apply scope-safe"`
+- For COMPREHENSIVE: use `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode full --auto-apply scope-safe"`
 
 ---
 
 ### Routing Logic
 
-- **If LIGHT**:
+- **If MICRO**:
+
+  - **Action** — PresentMicroChecklist: Summarize the intended change in 3-5 checkboxes with one verification signal. State that MICRO skipped artifacts and review by design.
+  - Skip to footer
+
+- **ElseIf LIGHT**:
 
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth light --no-review"`
   - **Wait** — Returns concise plan with solution shape, patterns, risks, and verification approach
@@ -224,10 +204,10 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth standard --no-review"`
   - **Wait** — Returns focused plan (Overview, Approach, Out of Scope)
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth standard"`
   - **Wait** — Returns task breakdown
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
-  - **Wait** — Returns findings, applied edits, skipped scope-changing recommendations, and updated artifacts
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode adversarial --auto-apply scope-safe"`
+  - **Wait** — Returns adversarial findings, applied edits, skipped scope-changing recommendations, and updated artifacts
   - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
   - Continue to Final Gate
 
@@ -235,10 +215,10 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_plan"`, `args: "{OUT_DIR}/task_context.md --depth comprehensive --no-review"`
   - **Wait** — Returns full plan (all sections: Architecture, Phases, API Design, Testing Strategy, etc.)
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md"`
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth comprehensive"`
   - **Wait** — Returns task breakdown
-  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --auto-apply scope-safe"`
-  - **Wait** — Returns findings, applied edits, skipped scope-changing recommendations, and updated artifacts
+  - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode full --auto-apply scope-safe"`
+  - **Wait** — Returns full-lens findings, applied edits, skipped scope-changing recommendations, and updated artifacts
   - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
   - Continue to Final Gate
 

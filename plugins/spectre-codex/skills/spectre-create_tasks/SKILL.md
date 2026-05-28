@@ -29,6 +29,12 @@ $ARGUMENTS
 
 ## Step 1 - Establish Context
 
+### 1z. Determine Depth
+- Read `--depth` from ARGUMENTS. Default: `standard`.
+- **LIGHT**: compact execution list; 1-3 parent tasks; Phase 0 only for new deps; RED tasks only for risky behavior changes; dependency waves only if useful.
+- **STANDARD**: normal task list; RED tasks for behavior changes; concise sequencing; adversarial-review ready.
+- **COMPREHENSIVE**: full task artifact; Phase 0, context payloads, RED pairing, coverage matrix, and parallel waves required.
+
 ### 1a. Determine Output Location
 - `branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)`
 - **If** user specifies path → `TASK_DIR={that value}`
@@ -48,7 +54,7 @@ Also note: thread context, user-provided docs, ARGUMENTS content.
 
 ### 1c. Assess Complexity
 **Simple task** (research likely unnecessary):
-- Single file/component change
+- MICRO/LIGHT depth or single file/component change
 - Clear pattern already exists in codebase
 - Scope explicitly stated, no ambiguity
 
@@ -63,6 +69,7 @@ Also note: thread context, user-provided docs, ARGUMENTS content.
 
 ### 2a. Do We NEED Research?
 Based on complexity assessment from 1c:
+- **If** depth is `light` and `plan.md`/`task_context.md` names target files → `NEED_RESEARCH=false`
 - **If** simple task with clear scope → `NEED_RESEARCH=false`
 - **If** complex task or unclear approach → `NEED_RESEARCH=true`
 
@@ -161,7 +168,7 @@ Mixing types within a sub-task is fine. What's not fine: criteria the agent cann
 
 ### Test-First Task Pairing
 
-For any sub-task that changes observable behavior (not pure refactors or cleanup), pair it with a preceding RED task. Pattern:
+For STANDARD/COMPREHENSIVE sub-tasks that change observable behavior (not pure refactors or cleanup), pair with a preceding RED task. For LIGHT, add a RED task only when the behavior is risky, ambiguous, or regression-prone. Pattern:
 
 - **N.M.k RED**: Write failing test `<test_name>` asserting `<behavior>`. Acceptance: test exists and fails for the documented reason.
 - **N.M.(k+1) Build**: Implement `<change>`. Acceptance: the RED test passes; no other tests regress.
@@ -192,17 +199,18 @@ Tasks without consumers are incomplete. Tasks that don't address old code paths 
   - Cover ALL extracted requirements with no gaps
   - Group related work into phases for clarity
   - Align with technical approach (from research or existing docs)
+  - LIGHT cap: 1-3 parent tasks unless tier reassessment is required.
   - Every parent task carries explicit sequencing in its body:
     - **Predecessor**: parent task IDs that must complete first (or "none")
     - **Unblocks**: parent task IDs this unblocks (or "terminal")
-  - The first phase is always **Phase 0 — Dependency Verification** (see 4a-Phase0 below). Other phases start at Phase 1.
+  - Phase 0 rules are depth-aware (see below). Other phases start at Phase 1.
 
-### 4a-Phase0. Phase 0 — Dependency Verification (always present)
+### 4a-Phase0. Phase 0 — Dependency Verification
 
-Before any implementation, generate a Phase 0 containing one sub-task per external dependency listed in `plan.md`'s "External Dependencies — Verify Before Implementation" section. Each sub-task verifies the package exists at the named version and exposes the API the plan assumed.
+Generate Phase 0 only when the plan introduces external dependencies, except COMPREHENSIVE where Phase 0 is always present. Each dependency sub-task verifies the package exists at the named version and exposes the API the plan assumed.
 
 - Acceptance type: state condition (`npm view <pkg>@<ver>` returns valid metadata) and/or test passes (a minimal import-and-call smoke test).
-- If `plan.md` declared "no new packages," Phase 0 is a single sub-task that confirms no new dependencies were silently introduced during implementation (cross-check `package.json` diff at end).
+- If COMPREHENSIVE and `plan.md` declared "no new packages," Phase 0 is a single sub-task that confirms no new dependencies were silently introduced during implementation (cross-check `package.json` diff at end). For LIGHT/STANDARD, put that check in the final implementation task instead.
 - Phase 0 unblocks Phase 1; it cannot be skipped or run in parallel with Phase 1.
 
 ### 4c. Break Down Sub-tasks
@@ -225,7 +233,7 @@ Before any implementation, generate a Phase 0 containing one sub-task per extern
     - **Produces**: What output this creates (variable name, return value, prop)
     - **Consumed by**: What uses this output (component, hook, render path)
     - **Replaces**: What old code path this supersedes (if any)
-    - **Context** (required): a self-contained payload an executor can use without re-reading the full plan. Include:
+    - **Context**: a self-contained payload an executor can use without re-reading the full plan. LIGHT may use 1-2 refs and a plan anchor; STANDARD/COMPREHENSIVE include:
       - 2–4 file:line refs pulled from research (the exact code being modified or extended)
       - 1 canonical reference pointer (a file:line from `@patterns` research that shows the shape to follow)
       - 1 link/anchor into `plan.md` for the relevant section
@@ -263,10 +271,10 @@ Before any implementation, generate a Phase 0 containing one sub-task per extern
     - [ ] Parent tasks are small-medium scope, sub-tasks are atomic?
     - [ ] Each sub-task has 2-3 acceptance criteria, each one of the three executable types?
     - [ ] No sub-task exceeds the size cap (>3 files / >5 criteria / >~200 LOC / multi-concern / mid-task scope judgment)?
-    - [ ] Every behavior-changing sub-task is preceded by a RED test sub-task?
-    - [ ] Every sub-task has a Context payload (2–4 file:line refs, 1 canonical reference, 1 plan.md anchor)?
+    - [ ] RED pairing follows the selected depth contract?
+    - [ ] Context payloads follow the selected depth contract?
     - [ ] Every parent task has Predecessor and Unblocks declared?
-    - [ ] Phase 0 — Dependency Verification is present and unblocks Phase 1?
+    - [ ] Phase 0 follows the selected depth contract?
 
 - **Action** — ValidateIntegration: Verify every build task is wired to consumers.
   - **Consumer Specified**:
@@ -295,7 +303,7 @@ Before any implementation, generate a Phase 0 containing one sub-task per extern
   - Setup/configuration tasks complete before dependent work
 
 ### 5b. Generate Sequential Execution Order
-Define step-by-step execution order based on dependencies:
+Define step-by-step execution order based on dependencies. For LIGHT, keep this to one compact ordered list:
 ```markdown
 ## Sequential Execution
 1. 1.1 - [Name] (no dependencies)
@@ -306,7 +314,7 @@ Define step-by-step execution order based on dependencies:
 ```
 
 ### 5c. Generate Parallel Execution Waves
-Group independent parent tasks into waves for parallel execution:
+Group independent parent tasks into waves for parallel execution. Skip this section for LIGHT unless two or more parent tasks can truly run concurrently:
 ```markdown
 ## Parallel Execution
 
@@ -332,6 +340,8 @@ Group independent parent tasks into waves for parallel execution:
 ### 6a. Write tasks.md
 - Determine `TASKS_FILE` (default `${TASK_DIR}/specs/tasks.md`; if it already exists, create a scoped name like `${TASK_DIR}/specs/{task_name}_tasks.md` or `tasks_{timestamp}.md` to avoid overwriting).
 Save to `${TASKS_FILE}`:
+
+For LIGHT, keep the template compact: Objective, Scope, Out-of-Bounds, Architecture Context, Tasks, and a short Execution Order. Omit Requirements Traced, Coverage Summary, and Parallel Execution unless needed. STANDARD/COMPREHENSIVE use the fuller structure below.
 
 ```markdown
 # Tasks — {feature name}

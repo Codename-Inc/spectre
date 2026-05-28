@@ -1,7 +1,8 @@
 ---
 name: analyst
 description: Analyzes codebase implementation details. Call the analyst agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
-tools: Read, Grep, Glob, LS
+tools: Read, Grep, Glob, LS, Write
+codex_sandbox_mode: workspace-write
 color: white
 model: claude-sonnet-4-6
 ---
