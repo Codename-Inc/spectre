@@ -37,9 +37,11 @@ Adversarial review of planning artifacts - **clear on WHAT, silent on HOW.** Pre
 **External reviewer command shape:**
 
 - Claude Code reviewer:
-  `claude -p --permission-mode dontAsk --output-format text "$REVIEW_PROMPT"`
+  `claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write" --output-format text "$REVIEW_PROMPT"`
 - Codex reviewer:
   `codex exec -C "$PWD" --sandbox workspace-write --ask-for-approval never "$REVIEW_PROMPT"`
+
+Both commands must run with filesystem write capability for the final review document: Claude via the explicit `Write` tool and Codex via `--sandbox workspace-write`. The reviewer prompt limits that write capability to `REVIEW_REPORT`.
 
 `REVIEW_PROMPT` must include: `TASK_DIR`, `REVIEW_REPORT`, mode, present/absent artifact manifest, canonical scope source, the Canonical Scope Invariant, write permission limited to `REVIEW_REPORT`, and the required report sections below. The external reviewer may write only `REVIEW_REPORT` and may not edit `plan.md`, `execute.md`, `tasks.json`, scope, PRD, UX, or context files.
 
