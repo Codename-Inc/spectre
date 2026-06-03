@@ -38,8 +38,8 @@ function collectFiles(root) {
 
 test('packed npm artifact installs Codex assets from generated tree', { concurrency: false }, () => {
   const repoRoot = path.resolve('.');
-  const packDir = makeTempDir('spectre-pack-');
-  const projectDir = makeTempDir('spectre-pack-install-');
+  const packDir = makeTempDir('caspar-pack-');
+  const projectDir = makeTempDir('caspar-pack-install-');
 
   try {
     const packOutput = exec('npm', ['pack', '--pack-destination', packDir], { cwd: repoRoot }).trim();
@@ -52,29 +52,26 @@ test('packed npm artifact installs Codex assets from generated tree', { concurre
     const env = { ...process.env };
     delete env.CODEX_HOME;
 
-    const unscopedHelp = exec('npx', ['spectre', 'help'], {
+    const unscopedHelp = exec('npx', ['caspar', 'help'], {
       cwd: projectDir,
       env
     });
-    assert.match(unscopedHelp, /spectre install codex/);
+    assert.match(unscopedHelp, /caspar install codex/);
 
-    exec('npx', ['@codename_inc/spectre', 'install', 'codex', '--scope', 'project', '--project-dir', projectDir], {
+    exec('npx', ['@codename_inc/caspar', 'install', 'codex', '--scope', 'project', '--project-dir', projectDir], {
       cwd: projectDir,
       env
     });
 
     const codexHome = path.join(projectDir, '.codex');
-    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'spectre-plan', 'SKILL.md')));
-    assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'agents', 'dev.toml')));
-    assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
-    assert.ok(!fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'session-start.mjs')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'caspar-plan', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'caspar', 'agents', 'dev.toml')));
+    assert.ok(!fs.existsSync(path.join(codexHome, 'caspar', 'hooks', 'scripts', 'load-knowledge.mjs')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'caspar', 'hooks', 'scripts', 'register_learning.mjs')));
+    assert.ok(!fs.existsSync(path.join(codexHome, 'caspar', 'hooks', 'session-start.mjs')));
+    assert.ok(!fs.existsSync(path.join(codexHome, 'hooks.json')));
 
-    const hooksConfig = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf8'));
-    assert.ok(hooksConfig.hooks.SessionStart.some(group =>
-      Array.isArray(group.hooks) && group.hooks.some(hook => hook.command.includes('spectre/hooks/scripts/load-knowledge.mjs'))
-    ));
-
-    const runtimeFiles = collectFiles(path.join(codexHome, 'spectre'));
+    const runtimeFiles = collectFiles(path.join(codexHome, 'caspar'));
     for (const filePath of runtimeFiles) {
       const content = fs.readFileSync(filePath, 'utf8');
       assert.doesNotMatch(content, /file:\/\//, `${filePath} should not contain package-cache file:// imports`);

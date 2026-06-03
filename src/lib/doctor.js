@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import {
-  listSpectreAgents,
-  listSpectreSkills,
+  listCasparAgents,
+  listCasparSkills,
   MIN_CODEX_VERSION,
   SHARED_SKILLS,
   WORKFLOW_PROBE_SKILLS
@@ -41,7 +41,7 @@ export function codexVersion() {
   return versionMatch[1];
 }
 
-function sessionStartHookConfigured() {
+function staleCasparHookConfigured() {
   const hooksPath = codexHooksConfigPath();
   if (!fs.existsSync(hooksPath)) {
     return { configured: false, error: null };
@@ -49,14 +49,15 @@ function sessionStartHookConfigured() {
 
   try {
     const parsed = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
-    const groups = Array.isArray(parsed?.hooks?.SessionStart) ? parsed.hooks.SessionStart : [];
-    const configured = groups.some(group =>
-      Array.isArray(group?.hooks) && group.hooks.some(hook =>
-        hook?.type === 'command'
-        && typeof hook.command === 'string'
-        && (
-          hook.command.includes('spectre/hooks/session-start.mjs')
-          || hook.command.includes('spectre/hooks/scripts/load-knowledge.mjs')
+    const configured = Object.values(parsed?.hooks ?? {}).some(groups =>
+      Array.isArray(groups) && groups.some(group =>
+        Array.isArray(group?.hooks) && group.hooks.some(hook =>
+          hook?.type === 'command'
+          && typeof hook.command === 'string'
+          && (
+            hook.command.includes('caspar/hooks/session-start.mjs')
+            || hook.command.includes('caspar/hooks/scripts/')
+          )
         )
       )
     );
@@ -77,7 +78,7 @@ function skillPath(skillName) {
 export function runDoctor({ verifyHooks = false, json = false, projectDir = process.cwd() } = {}) {
   const home = resolveCodexHome();
   const version = codexVersion();
-  const hookConfigStatus = sessionStartHookConfigured();
+  const hookConfigStatus = staleCasparHookConfigured();
   const result = {
     codexHome: home,
     codexVersion: version,
@@ -94,9 +95,9 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     },
     hooks: {
       verifyRequested: verifyHooks,
-      sessionStartConfigured: false,
+      staleCasparHooksConfigured: false,
       hooksFeatureEnabled: false,
-      hiddenContextInjection: 'unconfigured',
+      hiddenContextInjection: 'none',
       hooksConfigPath: codexHooksConfigPath(),
       hooksConfigPresent: fs.existsSync(codexHooksConfigPath())
     },
@@ -112,22 +113,18 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   if (fs.existsSync(codexConfigPath())) {
     const config = fs.readFileSync(codexConfigPath(), 'utf8');
     result.hooks.hooksFeatureEnabled = /^hooks\s*=\s*true\s*$/m.test(config);
-    result.hooks.sessionStartConfigured = hookConfigStatus.configured;
+    result.hooks.staleCasparHooksConfigured = hookConfigStatus.configured;
     if (hookConfigStatus.error) {
       result.hooks.configError = hookConfigStatus.error;
     }
-    if (result.hooks.sessionStartConfigured && result.hooks.hooksFeatureEnabled) {
-      result.hooks.hiddenContextInjection = 'agents_override_managed_block';
-    } else if (result.hooks.sessionStartConfigured) {
-      result.hooks.hiddenContextInjection = 'configured_but_feature_disabled';
-    } else if (hookConfigStatus.error) {
+    if (hookConfigStatus.error) {
       result.hooks.hiddenContextInjection = 'malformed_hooks_json';
     }
-    result.capabilities.subagentsInstalled = listSpectreAgents().every(agent => config.includes(`[agents.spectre_${agent.replace(/-/g, '_')}]`));
+    result.capabilities.subagentsInstalled = listCasparAgents().every(agent => config.includes(`[agents.caspar_${agent.replace(/-/g, '_')}]`));
     result.capabilities.multiAgentEnabled = config.includes('multi_agent = true');
   }
 
-  const expectedSkillFiles = listSpectreSkills().map(name => skillPath(name));
+  const expectedSkillFiles = listCasparSkills().map(name => skillPath(name));
   result.capabilities.workflowSkillsInstalled = WORKFLOW_PROBE_SKILLS
     .some(name => fs.existsSync(skillPath(name)));
   result.capabilities.exactWorkflowSkillsInstalled = expectedSkillFiles.every(filePath => fs.existsSync(filePath));
@@ -136,7 +133,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     .every(skill => fs.existsSync(skillPath(skill)));
 
   if (verifyHooks) {
-    result.hooks.manualVerification = 'Use an interactive Codex session to verify SessionStart context injection. `codex exec` is not treated as authoritative for this hook lifecycle.';
+    result.hooks.manualVerification = 'Caspar no longer installs startup hooks or hidden context injection; no interactive hook verification is required.';
   }
 
   if (json) {
@@ -149,7 +146,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   process.stdout.write(`Supported: ${result.supported ? 'yes' : 'no'} (requires >= ${result.minVersion})\n`);
   process.stdout.write(`Config present: ${result.installed.config ? 'yes' : 'no'}\n`);
   process.stdout.write(`Runtime present: ${result.installed.runtimeDir ? 'yes' : 'no'}\n`);
-  process.stdout.write(`session_start hook configured: ${result.hooks.sessionStartConfigured ? 'yes' : 'no'}\n`);
+  process.stdout.write(`Stale Caspar hooks configured: ${result.hooks.staleCasparHooksConfigured ? 'yes' : 'no'}\n`);
   process.stdout.write(`hooks.json present: ${result.hooks.hooksConfigPresent ? 'yes' : 'no'}\n`);
   process.stdout.write(`Hooks feature enabled: ${result.hooks.hooksFeatureEnabled ? 'yes' : 'no'}\n`);
   process.stdout.write(`Hidden context injection: ${result.hooks.hiddenContextInjection}\n`);
@@ -159,7 +156,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   if (result.hooks.manualVerification) {
     process.stdout.write(`Hook verification: ${result.hooks.manualVerification}\n`);
   }
-  process.stdout.write(`Exact Spectre workflow skills installed: ${result.capabilities.exactWorkflowSkillsInstalled ? 'yes' : 'no'}\n`);
-  process.stdout.write(`Spectre subagents installed: ${result.capabilities.subagentsInstalled ? 'yes' : 'no'}\n`);
+  process.stdout.write(`Exact Caspar workflow skills installed: ${result.capabilities.exactWorkflowSkillsInstalled ? 'yes' : 'no'}\n`);
+  process.stdout.write(`Caspar subagents installed: ${result.capabilities.subagentsInstalled ? 'yes' : 'no'}\n`);
   process.stdout.write(`Multi-agent enabled: ${result.capabilities.multiAgentEnabled ? 'yes' : 'no'}\n`);
 }

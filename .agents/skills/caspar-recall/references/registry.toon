@@ -1,0 +1,5 @@
+# Caspar Knowledge Registry
+# Format: skill-name|category|triggers|description
+
+feature-codex-caspar-implementation|feature|codex, caspar, codex install, project skills, registry, caspar-learn, caspar-recall, config.toml, doctor|Use when modifying the Codex CASPAR install flow, project skill syncing, learn/recall registry files, or Codex-specific runtime files.
+release|workflow|release, version bump, changelog, github release, npm publish, codex sync, local codex install|Run the Caspar release workflow, including version bumps, Codex sync, local Codex install verification, GitHub release, and npm publish.

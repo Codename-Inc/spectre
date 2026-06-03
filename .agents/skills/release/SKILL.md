@@ -1,12 +1,12 @@
 ---
 name: release
-description: Run the SPECTRE release workflow, including version bumps, Codex sync, global Codex install verification, GitHub release, manual npm publish handoff, npm verification, and final global Codex refresh.
+description: Run the Caspar release workflow, including version bumps, Codex sync, global Codex install verification, GitHub release, manual npm publish handoff, npm verification, and final global Codex refresh.
 user-invocable: true
 ---
 
 # Release
 
-You are running the SPECTRE release workflow. Follow each step precisely.
+You are running the Caspar release workflow. Follow each step precisely.
 
 ## Input Handling
 
@@ -20,9 +20,9 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 All three files must be bumped in sync:
 
-- `plugins/spectre/.claude-plugin/plugin.json` -> `version` field (Claude Code plugin manifest)
+- `plugins/caspar/.claude-plugin/plugin.json` -> `version` field (Claude Code plugin manifest)
 - `.claude-plugin/marketplace.json` -> top-level `version` and `plugins[0].version` (Claude Code marketplace)
-- `package.json` -> `version` field (npm package `@codename_inc/spectre`, used by Codex `npx` installs)
+- `package.json` -> `version` field (npm package `@codename_inc/caspar`, used by Codex `npx` installs)
 
 Skipping `package.json` strands Codex users on the previous version even though the marketplace is current.
 
@@ -61,11 +61,11 @@ Run the Codex author-time sync before any version files are updated:
 
 1. Run `npm run sync-codex`.
 2. Run `npm run sync-codex -- --check`.
-3. Run `git diff -- plugins/spectre-codex/` and inspect any generated changes.
-4. If `plugins/spectre-codex/` changed, stage only the generated tree and commit it separately:
+3. Run `git diff -- plugins/caspar-codex/` and inspect any generated changes.
+4. If `plugins/caspar-codex/` changed, stage only the generated tree and commit it separately:
 
    ```bash
-   git add plugins/spectre-codex
+   git add plugins/caspar-codex
    git commit -m "release: sync codex tree"
    ```
 
@@ -75,13 +75,13 @@ Do not bump versions until the sync check passes.
 
 ### Step 4: Bump Versions
 
-1. Update `plugins/spectre/.claude-plugin/plugin.json` with the new version.
+1. Update `plugins/caspar/.claude-plugin/plugin.json` with the new version.
 2. Update `.claude-plugin/marketplace.json`: both `version` (top-level) and `plugins[0].version`.
 3. Update `package.json` `version`.
 4. Commit these version bumps:
 
    ```bash
-   git add plugins/spectre/.claude-plugin/plugin.json .claude-plugin/marketplace.json package.json
+   git add plugins/caspar/.claude-plugin/plugin.json .claude-plugin/marketplace.json package.json
    git commit -m "release: vX.Y.Z"
    ```
 
@@ -92,17 +92,17 @@ Before changelog, tag, push, or npm publish, make sure the global Codex install 
 1. Run the source-local user-scope update:
 
    ```bash
-   node bin/spectre.js update codex --scope user --project-dir "$PWD"
+   node bin/caspar.js update codex --scope user --project-dir "$PWD"
    ```
 
 2. Verify the installed Codex runtime and hook wiring:
 
    ```bash
-   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
+   node bin/caspar.js doctor codex --scope user --project-dir "$PWD"
    ```
 
 3. If the update or doctor command fails, stop and fix it before shipping.
-4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
+4. Do not stage ignored local runtime state such as `.codex/`, `.caspar/`, or `~/.codex/` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
 
 ### Step 6: Build Changelog
 
@@ -140,7 +140,7 @@ Use a heredoc for the notes body to preserve formatting.
 
 ### Step 9: Manual npm Publish Handoff
 
-Codex users install via `npx @codename_inc/spectre install codex`, so the npm package must be published for them to pick up the new version. The marketplace alone is not enough.
+Codex users install via `npx @codename_inc/caspar install codex`, so the npm package must be published for them to pick up the new version. The marketplace alone is not enough.
 
 Do not run `npm login` or `npm publish` for the user. npm auth, OTP, and publish confirmation are user-owned interactive steps. This is the final manual publish step.
 
@@ -166,22 +166,22 @@ After the user confirms npm publish completed:
 1. Verify the new version is live:
 
    ```bash
-   npm view @codename_inc/spectre versions --json
+   npm view @codename_inc/caspar versions --json
    ```
 
 2. Refresh the global Codex install one final time from this checkout:
 
    ```bash
-   node bin/spectre.js update codex --scope user --project-dir "$PWD"
+   node bin/caspar.js update codex --scope user --project-dir "$PWD"
    ```
 
 3. Verify the installed Codex runtime and hook wiring:
 
    ```bash
-   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
+   node bin/caspar.js doctor codex --scope user --project-dir "$PWD"
    ```
 
-4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks.
+4. Do not stage ignored local runtime state such as `.codex/`, `.caspar/`, or `~/.codex/` unless the user explicitly asks.
 
 ### Step 11: Done
 
@@ -192,5 +192,5 @@ Release complete: vX.Y.Z
 - Commit: <short sha>
 - Tag: vX.Y.Z
 - GitHub release: <url>
-- npm: @codename_inc/spectre@X.Y.Z
+- npm: @codename_inc/caspar@X.Y.Z
 ```

@@ -30,10 +30,10 @@ function parseArgs(argv) {
 
 function usage() {
   return `Usage:
-  spectre install codex [--scope user|project] [--project-dir <path>]
-  spectre uninstall codex [--scope user|project] [--project-dir <path>]
-  spectre update codex [--scope user|project] [--project-dir <path>]
-  spectre doctor codex [--scope user|project] [--project-dir <path>] [--verify-hooks] [--json]
+  caspar install codex [--scope user|project] [--project-dir <path>]
+  caspar uninstall codex [--scope user|project] [--project-dir <path>]
+  caspar update codex [--scope user|project] [--project-dir <path>]
+  caspar doctor codex [--scope user|project] [--project-dir <path>] [--json]
 `;
 }
 
@@ -43,7 +43,7 @@ function resolveProjectDir(flags) {
 }
 
 function detectInstalledScope(projectDir) {
-  const manifestPath = path.join(projectDir, '.spectre', 'manifest.json');
+  const manifestPath = path.join(projectDir, '.caspar', 'manifest.json');
   if (fs.existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));

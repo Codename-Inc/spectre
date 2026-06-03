@@ -1,27 +1,27 @@
 import fs from 'fs';
 import path from 'path';
-import { repoRoot, spectrePluginRoot } from './paths.js';
+import { repoRoot, casparPluginRoot } from './paths.js';
 
 export const MANIFEST_VERSION = 1;
 export const MIN_CODEX_VERSION = '0.110.0';
-export const MANAGED_CONFIG_MARKER = 'spectre-codex-managed';
-export const AGENTS_BRIDGE_START = '<!-- spectre-codex:start -->';
-export const AGENTS_BRIDGE_END = '<!-- spectre-codex:end -->';
-export const SESSION_OVERRIDE_START = '<!-- spectre-session:start -->';
-export const SESSION_OVERRIDE_END = '<!-- spectre-session:end -->';
-export const KNOWLEDGE_OVERRIDE_START = '<!-- spectre-knowledge:start -->';
-export const KNOWLEDGE_OVERRIDE_END = '<!-- spectre-knowledge:end -->';
+export const MANAGED_CONFIG_MARKER = 'caspar-codex-managed';
+export const AGENTS_BRIDGE_START = '<!-- caspar-codex:start -->';
+export const AGENTS_BRIDGE_END = '<!-- caspar-codex:end -->';
+export const SESSION_OVERRIDE_START = '<!-- caspar-session:start -->';
+export const SESSION_OVERRIDE_END = '<!-- caspar-session:end -->';
+export const KNOWLEDGE_OVERRIDE_START = '<!-- caspar-knowledge:start -->';
+export const KNOWLEDGE_OVERRIDE_END = '<!-- caspar-knowledge:end -->';
 
-export function listSpectreSkills() {
-  const skillsDir = path.join(spectrePluginRoot(), 'skills');
+export function listCasparSkills() {
+  const skillsDir = path.join(casparPluginRoot(), 'skills');
   return fs.readdirSync(skillsDir, { withFileTypes: true })
     .filter(entry => entry.isDirectory() && fs.existsSync(path.join(skillsDir, entry.name, 'SKILL.md')))
     .map(entry => entry.name)
     .sort();
 }
 
-export function listSpectreAgents() {
-  const agentsDir = path.join(spectrePluginRoot(), 'agents');
+export function listCasparAgents() {
+  const agentsDir = path.join(casparPluginRoot(), 'agents');
   return fs.readdirSync(agentsDir)
     .filter(name => name.endsWith('.md'))
     .map(name => path.basename(name, '.md'))
@@ -29,18 +29,17 @@ export function listSpectreAgents() {
 }
 
 export const SHARED_SKILLS = [
-  'spectre-apply',
-  'spectre-guide',
-  'spectre-learn',
-  'spectre-tdd'
+  'caspar-guide',
+  'caspar-learn',
+  'caspar-tdd'
 ];
 
 export const WORKFLOW_PROBE_SKILLS = [
-  'spectre-scope',
-  'spectre-plan',
-  'spectre-execute',
-  'spectre-clean',
-  'spectre-test'
+  'caspar-scope',
+  'caspar-plan',
+  'caspar-execute',
+  'caspar-clean',
+  'caspar-test'
 ];
 
 export function repoMetadata() {

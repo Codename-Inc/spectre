@@ -4,22 +4,21 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-spectre is a Claude Code plugin providing a structured agentic workflow: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate. It's a meta-prompt orchestration system where prompts invoke subagents.
+caspar is a Claude Code and Codex plugin providing a structured agentic workflow: Scope → Plan → Execute → Clean → Test → Rebase. It's a meta-prompt orchestration system where prompts invoke subagents.
 
 ## Repository Structure
 
 ```
-spectre/
+caspar/
 ├── .claude-plugin/
 │   └── marketplace.json  # Marketplace registration
 ├── plugins/
-│   └── spectre/
+│   └── caspar/
 │       ├── .claude-plugin/
 │       │   └── plugin.json   # Plugin manifest
-│       ├── commands/         # Slash commands (markdown prompts)
 │       ├── agents/           # Subagent definitions
-│       ├── hooks/            # SessionStart, UserPromptSubmit
-│       └── skills/           # Skills (spectre footer rendering, tdd methodology)
+│       ├── hooks/            # Learning registration helpers
+│       └── skills/           # Workflow and knowledge skills
 ├── scripts/              # Release & utility scripts
 └── CLAUDE.md
 ```
@@ -27,19 +26,20 @@ spectre/
 ## Commands
 
 ```bash
-# Run hook tests
-node --test plugins/spectre/hooks/scripts/test_*.cjs
+npm test
+npm run sync-codex -- --check --quiet
+python3 /Users/joe/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/caspar
 ```
 
-> **CLI for Other Agents**: See [spectre-labs/cli](https://github.com/Codename-Inc/spectre-labs/tree/main/cli)
+> **CLI for Other Agents**: See [caspar-labs/cli](https://github.com/Codename-Inc/caspar-labs/tree/main/cli)
 
 ## Architecture
 
 ### Meta-Prompt Orchestration
 
-Commands are markdown prompts that:
+Skills are contract-form workflow prompts that:
 1. Parse user arguments
-2. Spawn parallel subagents (`@spectre:dev`, `@spectre:analyst`, etc.)
+2. Spawn parallel subagents (`@caspar:dev`, `@caspar:analyst`, etc.)
 3. Subagents execute specialized prompts
 4. Main prompt synthesizes findings and produces artifacts
 
@@ -47,64 +47,46 @@ Commands are markdown prompts that:
 
 | Agent | Purpose |
 |-------|---------|
-| `@spectre:dev` | Implementation with MVP focus |
-| `@spectre:analyst` | Understand how code works |
-| `@spectre:finder` | Find where code lives |
-| `@spectre:patterns` | Find reusable patterns |
-| `@spectre:web-research` | Web research |
-| `@spectre:tester` | Test automation |
-| `@spectre:reviewer` | Independent review |
+| `@caspar:dev` | Implementation with MVP focus |
+| `@caspar:analyst` | Understand how code works |
+| `@caspar:finder` | Find where code lives |
+| `@caspar:patterns` | Find reusable patterns |
+| `@caspar:web-research` | Web research |
+| `@caspar:tester` | Test automation |
+| `@caspar:reviewer` | Independent review |
 
-### Session Memory
+### Knowledge Skills
 
-Hooks in `plugins/spectre/hooks/` maintain context across sessions:
-- **SessionStart**: Restores previous session context
-- **UserPromptSubmit**: Captures todos on `/spectre:handoff`
-
-Session state is stored in `.spectre/` (gitignored).
+`/caspar:learn` writes reusable project skills under `.agents/skills/`. Codex project installs sync those skill paths into config, and agents discover them from their descriptions. Caspar does not inject startup memory.
 
 ## Working in This Repo
 
-### Adding Commands
+### Adding Workflow Skills
 
-1. Create markdown in `plugins/spectre/commands/`
+1. Create or update a skill in `plugins/caspar/skills/`
 2. Follow existing patterns:
    - ARGUMENTS section for input parsing
    - EXECUTION FLOW for step-by-step logic
    - "Next Steps" output for workflow continuity
+3. Run `npm run sync-codex -- --quiet` to regenerate `plugins/caspar-codex/`
 
 ### Adding Agents
 
-1. Create markdown in `plugins/spectre/agents/`
+1. Create markdown in `plugins/caspar/agents/`
 2. Include:
    - Role and mission sections
    - Methodology for how the agent works
    - Tool preferences
 
-### Modifying Hooks
+### Modifying Learning Helpers
 
-Update Node.js scripts (`.cjs`) in `plugins/spectre/hooks/scripts/`. Hooks must:
-- Use `child_process.fork()` with `{detached: true, stdio: 'ignore'}` + `.unref()` for non-blocking execution
-- Use only Node.js built-in modules (no external dependencies)
-- Return valid JSON to stdout
+Update Node.js scripts in `plugins/caspar/hooks/scripts/`. They are helper scripts invoked by Caspar commands, not Codex/Claude startup hooks.
 
 ## Key Patterns
 
 ### Command Flow
 
 Every command ends with contextual "Next Steps" suggestions grounded in actual codebase state.
-
-### Hook Non-Blocking Pattern
-
-```javascript
-const { fork } = require('child_process');
-const child = fork(__filename, ['--bg-taskname', ...args], {
-  detached: true,
-  stdio: 'ignore'
-});
-child.unref();
-process.exit(0);
-```
 
 ## Plugin Development & Release
 
@@ -113,7 +95,7 @@ Claude Code caches plugins by version. There's no hot-reload — **always restar
 ### Local Development
 
 ```bash
-claude --plugin-dir /path/to/spectre/plugins/spectre
+claude --plugin-dir /path/to/caspar/plugins/caspar
 ```
 
 Workflow:
@@ -125,10 +107,10 @@ Workflow:
 
 ```bash
 # Add local marketplace
-/plugin marketplace add /path/to/spectre
+/plugin marketplace add /path/to/caspar
 
 # Install from it
-/plugin install spectre@codename
+/plugin install caspar@codename
 ```
 
 ### Releasing to Users
@@ -142,7 +124,7 @@ Run the LLM-led release command:
 
 This handles the full flow:
 1. Commits any dirty working tree changes with a descriptive message
-2. Bumps version in both `plugins/spectre/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+2. Bumps version in both `plugins/caspar/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 3. Commits the version bump as `release: vX.Y.Z`
 4. Generates a changelog from commits since the last tag
 5. Tags, pushes, and creates a GitHub release with the changelog
@@ -152,12 +134,11 @@ The release command is defined in `.claude/commands/release.md`.
 Users update via:
 ```bash
 /plugin marketplace update codename
-/plugin update spectre@codename
+/plugin update caspar@codename
 ```
 
 ## Important Notes
 
-- Commands use `/spectre:` prefix (e.g., `/spectre:scope`)
-- Session memory commands: `/spectre:handoff`, `/spectre:forget`
-- Session state lives in `.spectre/` (gitignored)
-- Hook scripts use `.cjs` extension (CommonJS) since root `package.json` has `"type": "module"`
+- Commands use `/caspar:` prefix (e.g., `/caspar:scope`)
+- Project install metadata lives in `.caspar/`
+- Caspar no longer installs startup hooks or managed memory injection

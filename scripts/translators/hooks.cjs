@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CODEX_PLUGIN_ROOT = '${CODEX_HOME}/spectre';
+const CODEX_PLUGIN_ROOT = '${CODEX_HOME}/caspar';
 
 function writeIfChanged(filePath, content) {
   const existed = fs.existsSync(filePath);
@@ -115,7 +115,7 @@ function commandScriptPaths(hooksConfig) {
       for (const hook of matcher.hooks || []) {
         if (hook.type !== 'command' || typeof hook.command !== 'string') continue;
 
-        const match = hook.command.match(/\$\{CODEX_HOME\}\/spectre\/([^\s'"]+)/);
+        const match = hook.command.match(/\$\{CODEX_HOME\}\/caspar\/([^\s'"]+)/);
         if (match) paths.push(match[1]);
       }
     }

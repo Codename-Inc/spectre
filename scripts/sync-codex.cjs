@@ -35,7 +35,7 @@ function usage() {
   return [
     'Usage: node scripts/sync-codex.cjs [--check] [--quiet]',
     '',
-    '  --check   Generate to a temporary tree and fail if plugins/spectre-codex is stale.',
+    '  --check   Generate to a temporary tree and fail if plugins/caspar-codex is stale.',
     '  --quiet   Suppress per-file generation logs.',
   ].join('\n');
 }
@@ -103,14 +103,14 @@ function printTranslationResults(options, root, translatorName, results) {
 
 function runSync({
   repoRoot = path.resolve(__dirname, '..'),
-  canonicalRoot = path.join(repoRoot, 'plugins', 'spectre'),
-  codexRoot = path.join(repoRoot, 'plugins', 'spectre-codex'),
+  canonicalRoot = path.join(repoRoot, 'plugins', 'caspar'),
+  codexRoot = path.join(repoRoot, 'plugins', 'caspar-codex'),
   check = false,
   quiet = false,
 } = {}) {
   const options = { check, quiet };
   const outputRoot = check
-    ? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-sync-'))
+    ? fs.mkdtempSync(path.join(os.tmpdir(), 'caspar-codex-sync-'))
     : codexRoot;
   const translationResults = [];
   const verificationResults = [];
@@ -147,7 +147,7 @@ function runSync({
           translationResults,
           verificationResults,
           diffs,
-          errors: diffs.map((diff) => `${diff.status}: ${path.join('plugins/spectre-codex', diff.path)}`),
+          errors: diffs.map((diff) => `${diff.status}: ${path.join('plugins/caspar-codex', diff.path)}`),
         };
       }
     }

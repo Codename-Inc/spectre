@@ -12,7 +12,7 @@ const skills = require('./translators/skills.cjs');
 const { runSync } = require('./sync-codex.cjs');
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-sync-test-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'caspar-sync-test-'));
 }
 
 function writeFile(filePath, content) {
@@ -21,8 +21,8 @@ function writeFile(filePath, content) {
 }
 
 function createFixture(root) {
-  const canonicalRoot = path.join(root, 'plugins', 'spectre');
-  const codexRoot = path.join(root, 'plugins', 'spectre-codex');
+  const canonicalRoot = path.join(root, 'plugins', 'caspar');
+  const codexRoot = path.join(root, 'plugins', 'caspar-codex');
 
   writeFile(
     path.join(canonicalRoot, 'agents', 'dev.md'),
@@ -37,45 +37,22 @@ Write code carefully.
   );
 
   writeFile(
-    path.join(canonicalRoot, 'skills', 'spectre-plan', 'SKILL.md'),
+    path.join(canonicalRoot, 'skills', 'caspar-plan', 'SKILL.md'),
     `---
-name: spectre-plan
+name: caspar-plan
 description: "\\ud83d\\udc7b | Create: implementation plans."
 ---
 
-Read .claude/skills/example/SKILL.md, then invoke /spectre:create_tasks.
-Load @skill-spectre:spectre-tdd and dispatch @spectre:tester.
+Read .claude/skills/example/SKILL.md, then invoke /caspar:create_tasks.
+Load @skill-caspar:caspar-tdd and dispatch @caspar:tester.
 `,
   );
 
   writeFile(
-    path.join(canonicalRoot, 'hooks', 'scripts', 'bootstrap.mjs'),
+    path.join(canonicalRoot, 'hooks', 'scripts', 'register_learning.mjs'),
     `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({}) + '\\n');
 `,
-  );
-
-  writeFile(
-    path.join(canonicalRoot, 'hooks', 'hooks.json'),
-    JSON.stringify(
-      {
-        hooks: {
-          SessionStart: [
-            {
-              matcher: 'startup',
-              hooks: [
-                {
-                  type: 'command',
-                  command: 'node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bootstrap.mjs',
-                },
-              ],
-            },
-          ],
-        },
-      },
-      null,
-      2,
-    ),
   );
 
   return { canonicalRoot, codexRoot };
@@ -125,31 +102,27 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
     assert.equal(agentFields.sandbox_mode, 'workspace-write');
 
     const skill = fs.readFileSync(
-      path.join(codexRoot, 'skills', 'spectre-plan', 'SKILL.md'),
+      path.join(codexRoot, 'skills', 'caspar-plan', 'SKILL.md'),
       'utf8',
     );
-    const { frontmatter } = skills.parseFrontmatter(skill, 'spectre-plan/SKILL.md');
+    const { frontmatter } = skills.parseFrontmatter(skill, 'caspar-plan/SKILL.md');
     assert.equal(frontmatter.description, '👻 | Create: implementation plans.');
     assert.match(skill, /^description: "👻 \| Create: implementation plans\."/m);
     assert.doesNotMatch(skill, /\\ud83d/);
     assert.match(skill, /\.agents\/skills\/example\/SKILL\.md/);
-    assert.match(skill, /invoke spectre-create_tasks\./);
-    assert.match(skill, /Skill\(spectre-tdd\)/);
+    assert.match(skill, /invoke caspar-create_tasks\./);
+    assert.match(skill, /Skill\(caspar-tdd\)/);
     assert.match(skill, /@tester/);
     assert.doesNotMatch(skill, /\.claude\/skills\//);
-    assert.doesNotMatch(skill, /\/spectre:create_tasks/);
-    assert.doesNotMatch(skill, /@skill-spectre:/);
-    assert.doesNotMatch(skill, /@spectre:/);
+    assert.doesNotMatch(skill, /\/caspar:create_tasks/);
+    assert.doesNotMatch(skill, /@skill-caspar:/);
+    assert.doesNotMatch(skill, /@caspar:/);
 
-    const hooksConfig = JSON.parse(
-      fs.readFileSync(path.join(codexRoot, 'hooks', 'hooks.json'), 'utf8'),
-    );
-    const command = hooksConfig.hooks.SessionStart[0].hooks[0].command;
-    assert.equal(command, 'node ${CODEX_HOME}/spectre/hooks/scripts/bootstrap.mjs');
     assert.equal(
-      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'bootstrap.mjs')),
+      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'register_learning.mjs')),
       true,
     );
+    assert.equal(fs.existsSync(path.join(codexRoot, 'hooks', 'hooks.json')), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -157,8 +130,8 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
 
 test('hooks translator rewrites legacy command extensions to Codex mjs paths', () => {
   assert.equal(
-    hooks.rewriteHookCommand('node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/load-knowledge.cjs'),
-    'node ${CODEX_HOME}/spectre/hooks/scripts/load-knowledge.mjs',
+    hooks.rewriteHookCommand('node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_learning.cjs'),
+    'node ${CODEX_HOME}/caspar/hooks/scripts/register_learning.mjs',
   );
 });
 
@@ -172,10 +145,10 @@ test('check mode detects drift and passes after regeneration', () => {
       true,
     );
 
-    fs.appendFileSync(path.join(codexRoot, 'skills', 'spectre-plan', 'SKILL.md'), '\nstale\n');
+    fs.appendFileSync(path.join(codexRoot, 'skills', 'caspar-plan', 'SKILL.md'), '\nstale\n');
     const drift = runSync({ repoRoot: root, canonicalRoot, codexRoot, check: true, quiet: true });
     assert.equal(drift.ok, false);
-    assert.match(drift.errors.join('\n'), /changed: plugins\/spectre-codex\/skills\/spectre-plan\/SKILL\.md/);
+    assert.match(drift.errors.join('\n'), /changed: plugins\/caspar-codex\/skills\/caspar-plan\/SKILL\.md/);
 
     assert.equal(runSync({ repoRoot: root, canonicalRoot, codexRoot, quiet: true }).ok, true);
     assert.equal(

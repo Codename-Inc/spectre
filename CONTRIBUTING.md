@@ -1,6 +1,6 @@
-# Contributing to spectre
+# Contributing to caspar
 
-Thank you for your interest in contributing to spectre.
+Thank you for your interest in contributing to caspar.
 
 ## How to Contribute
 
@@ -24,7 +24,7 @@ Open an issue describing:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Test with Claude Code (`claude --plugin-dir /path/to/spectre`)
+4. Test with Claude Code (`claude --plugin-dir /path/to/caspar`)
 5. Commit with clear messages
 6. Push and open a PR
 
@@ -33,33 +33,31 @@ Open an issue describing:
 ### Local Development
 
 ```bash
-git clone https://github.com/Codename-Inc/spectre.git
-cd spectre
+git clone https://github.com/Codename-Inc/caspar.git
+cd caspar
 ```
 
 Test the plugin locally:
 ```bash
-claude --plugin-dir /path/to/spectre
+claude --plugin-dir /path/to/caspar
 ```
 
 ### Structure
 
 ```
-spectre/
-├── plugin.json       # Plugin manifest
-├── commands/         # Slash commands
-├── agents/           # Subagent definitions
-├── hooks/            # Session memory hooks
-├── skills/           # Skills
-├── cli/              # Python CLI for other agents
-└── .claude-plugin/   # Marketplace registration
+caspar/
+├── .claude-plugin/   # Marketplace registration
+├── plugins/caspar/   # Canonical plugin source
+├── plugins/caspar-codex/ # Generated Codex bundle
+├── scripts/          # Translation and validation scripts
+└── src/              # npm CLI installer
 ```
 
-### Adding Commands
+### Adding Workflow Skills
 
-1. Create a markdown file in `commands/`
-2. Follow existing command patterns
-3. Test with Claude Code
+1. Create or update a skill in `plugins/caspar/skills/`
+2. Follow existing skill patterns
+3. Run `npm run sync-codex -- --quiet`
 4. Update docs if needed
 
 ### Adding Agents
@@ -70,8 +68,8 @@ spectre/
 
 ## Code Style
 
-- Commands/agents are markdown with YAML frontmatter
-- CLI is Python with Click
+- Skills/agents are markdown with YAML frontmatter
+- The installer CLI is Node.js
 - Keep prompts clear and actionable
 
 ## Questions?

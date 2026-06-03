@@ -1,27 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import { projectPaths, spectrePluginRoot, ensureDir } from './paths.js';
-
-function stripFrontmatter(content) {
-  if (!content.startsWith('---\n')) {
-    return content.trim();
-  }
-
-  const end = content.indexOf('\n---\n', 4);
-  if (end === -1) {
-    return content.trim();
-  }
-
-  return content.slice(end + 5).trim();
-}
+import { projectPaths, casparPluginRoot, ensureDir } from './paths.js';
 
 function rewriteProjectSkillPaths(content) {
   return content.replaceAll('.claude/skills/', '.agents/skills/');
 }
 
 function rewriteCodexCommandRefs(content) {
-  return content.replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
-    return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
+  return content.replace(/\/caspar:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+    return skillName.startsWith('caspar-') ? skillName : `caspar-${skillName}`;
   });
 }
 
@@ -68,11 +55,11 @@ function normalizeSkillMarkdown(content) {
 }
 
 function pluginSkillPath(skillName) {
-  return path.join(spectrePluginRoot(), 'skills', skillName, 'SKILL.md');
+  return path.join(casparPluginRoot(), 'skills', skillName, 'SKILL.md');
 }
 
 function recallTemplatePath() {
-  return path.join(spectrePluginRoot(), 'skills', 'spectre-learn', 'references', 'recall-template.md');
+  return path.join(casparPluginRoot(), 'skills', 'caspar-learn', 'references', 'recall-template.md');
 }
 
 function pluginSkillContent(skillName) {
@@ -80,11 +67,7 @@ function pluginSkillContent(skillName) {
 }
 
 export function codexSharedSkillContent(skillName) {
-  if (skillName === 'spectre-apply') {
-    return `${normalizeSkillMarkdown(rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent(skillName))))}\n`;
-  }
-
-  if (skillName === 'spectre-learn') {
+  if (skillName === 'caspar-learn') {
     return `${normalizeSkillMarkdown(markUserInvocable(rewriteCodexCommandRefs(codexPathConvention(codexLearnIntro(rewriteProjectSkillPaths(pluginSkillContent(skillName)))))))}\n`;
   }
 
@@ -93,7 +76,7 @@ export function codexSharedSkillContent(skillName) {
 
 export function knowledgeRegistryHeader() {
   return [
-    '# SPECTRE Knowledge Registry',
+    '# CASPAR Knowledge Registry',
     '# Format: skill-name|category|triggers|description',
     ''
   ].join('\n');
@@ -141,15 +124,6 @@ export function ensureKnowledgeFiles(projectDir) {
   fs.writeFileSync(paths.recallSkillPath, generateRecallSkillContent(projectDir));
 }
 
-export function buildKnowledgeOverrideBody(projectDir) {
-  ensureKnowledgeFiles(projectDir);
-  const applyContent = stripFrontmatter(
-    rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('spectre-apply')))
-  );
-
-  return normalizeSkillMarkdown(applyContent);
-}
-
 export function updateKnowledgeRegistry(projectDir, { skillName, category, triggers, description }) {
   ensureKnowledgeFiles(projectDir);
   const paths = projectPaths(projectDir);
@@ -175,15 +149,4 @@ export function updateKnowledgeRegistry(projectDir, { skillName, category, trigg
 
   fs.writeFileSync(paths.knowledgeRegistryPath, `${updatedLines.join('\n').trimEnd()}\n`);
   fs.writeFileSync(paths.recallSkillPath, generateRecallSkillContent(projectDir));
-}
-
-export function knowledgeStatusMessage(projectDir) {
-  ensureKnowledgeFiles(projectDir);
-  const { entryCount } = readKnowledgeRegistry(projectDir);
-
-  if (entryCount === 0) {
-    return '👻 spectre: ready — capture knowledge with /spectre:learn';
-  }
-
-  return `👻 spectre: ${entryCount} knowledge skills available`;
 }

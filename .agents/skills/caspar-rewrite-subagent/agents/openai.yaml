@@ -1,0 +1,4 @@
+interface:
+  display_name: "Caspar Subagent Rewrite"
+  short_description: "Rewrite Caspar subagents into compact contracts"
+  default_prompt: "Use $caspar-rewrite-subagent to rewrite the Caspar finder subagent definition."

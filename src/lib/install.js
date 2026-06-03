@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import {
-  listSpectreAgents,
-  listSpectreSkills,
+  listCasparAgents,
+  listCasparSkills,
   SHARED_SKILLS,
   repoMetadata
 } from './constants.js';
 import {
-  ensureSpectreHooksConfigured,
+  ensureCasparHooksConfigured,
   removeProjectSkillsConfigured,
-  removeSpectreHooksConfigured,
+  removeCasparHooksConfigured,
   syncProjectSkillsConfigured
 } from './config.js';
 import { installProjectFiles, uninstallProjectFiles } from './project.js';
@@ -33,7 +33,7 @@ function writeFile(targetPath, content, mode) {
 }
 
 function generatedCodexRoot() {
-  return path.join(repoRoot(), 'plugins', 'spectre-codex');
+  return path.join(repoRoot(), 'plugins', 'caspar-codex');
 }
 
 function generatedCodexSkillsDir() {
@@ -46,23 +46,6 @@ function generatedCodexAgentsDir() {
 
 function generatedCodexHooksDir() {
   return path.join(generatedCodexRoot(), 'hooks');
-}
-
-function generatedCodexHooksConfigPath() {
-  return path.join(generatedCodexHooksDir(), 'hooks.json');
-}
-
-function generatedCodexHooksConfig() {
-  const hooksPath = generatedCodexHooksConfigPath();
-  if (!fs.existsSync(hooksPath)) {
-    throw new Error(`Missing generated Codex hooks config: ${hooksPath}. Run npm run sync-codex first.`);
-  }
-
-  const parsed = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed.hooks) {
-    throw new Error(`Malformed generated Codex hooks config: ${hooksPath}`);
-  }
-  return parsed.hooks;
 }
 
 function listGeneratedCodexSkills({ required = false } = {}) {
@@ -83,13 +66,13 @@ function listGeneratedCodexSkills({ required = false } = {}) {
 function managedCodexSkillNames({ requireGenerated = false } = {}) {
   return Array.from(new Set([
     ...SHARED_SKILLS,
-    ...listSpectreSkills(),
+    ...listCasparSkills(),
     ...listGeneratedCodexSkills({ required: requireGenerated })
   ])).sort();
 }
 
 function legacyBareSkillName(skillName) {
-  return skillName.startsWith('spectre-') ? skillName.slice('spectre-'.length) : null;
+  return skillName.startsWith('caspar-') ? skillName.slice('caspar-'.length) : null;
 }
 
 function replaceDirectory(sourceDir, targetDir) {
@@ -102,6 +85,13 @@ function replaceDirectory(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
+function removeLegacySpectreRuntime(runtimeRoot) {
+  const legacyRoot = path.join(path.dirname(runtimeRoot), 'spectre');
+  if (fs.existsSync(legacyRoot)) {
+    fs.rmSync(legacyRoot, { recursive: true, force: true });
+  }
+}
+
 function removeLegacyPrefixedSkillDirs() {
   const skillsRoot = codexSkillsDir();
   if (!fs.existsSync(skillsRoot)) {
@@ -111,10 +101,10 @@ function removeLegacyPrefixedSkillDirs() {
   const managedNames = managedCodexSkillNames();
 
   for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith('spectre-')) {
+    if (!entry.isDirectory() || !entry.name.startsWith('caspar-')) {
       continue;
     }
-    const bareName = entry.name.slice('spectre-'.length);
+    const bareName = entry.name.slice('caspar-'.length);
     if (managedNames.includes(bareName)) {
       fs.rmSync(path.join(skillsRoot, entry.name), { recursive: true, force: true });
     }
@@ -164,9 +154,9 @@ function installGeneratedCodexSkills() {
 function agentNicknames(agentName) {
   return Array.from(new Set([
     agentName,
-    `spectre-${agentName}`,
-    `spectre ${agentName}`,
-    `spectre_${agentName.replace(/-/g, '_')}`
+    `caspar-${agentName}`,
+    `caspar ${agentName}`,
+    `caspar_${agentName.replace(/-/g, '_')}`
   ]));
 }
 
@@ -204,8 +194,8 @@ function cleanupLegacyPrompts() {
     return;
   }
 
-  for (const skillName of listSpectreSkills()) {
-    for (const fileName of [`spectre:${skillName}.md`, `spectre-${skillName}.md`, `${skillName}.md`]) {
+  for (const skillName of listCasparSkills()) {
+    for (const fileName of [`caspar:${skillName}.md`, `caspar-${skillName}.md`, `${skillName}.md`]) {
       const filePath = path.join(codexPromptsDir(), fileName);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -216,14 +206,7 @@ function cleanupLegacyPrompts() {
 
 function refreshProjectTool() {
   return `#!/usr/bin/env node
-process.stderr.write('refresh-project-context is no longer installed as a package-cache wrapper. Run "npx @codename_inc/spectre update codex --scope project --project-dir <path>" to refresh SPECTRE assets.\\n');
-process.exit(1);
-`;
-}
-
-function syncSessionOverrideTool() {
-  return `#!/usr/bin/env node
-process.stderr.write('sync-session-override is no longer installed as a package-cache wrapper. Session context is refreshed by SPECTRE SessionStart hooks.\\n');
+process.stderr.write('refresh-project-context is no longer installed as a package-cache wrapper. Run "npx @codename_inc/caspar update codex --scope project --project-dir <path>" to refresh CASPAR assets.\\n');
 process.exit(1);
 `;
 }
@@ -236,7 +219,8 @@ function installRuntimeScripts() {
   for (const stalePath of [
     path.join(runtimeHooksDir(), 'pre-session-start.mjs'),
     path.join(runtimeHooksDir(), 'session-start.mjs'),
-    path.join(toolsDir, 'forget-project-context.mjs')
+    path.join(toolsDir, 'forget-project-context.mjs'),
+    path.join(toolsDir, 'sync-session-override.mjs')
   ]) {
     if (fs.existsSync(stalePath)) {
       fs.unlinkSync(stalePath);
@@ -244,17 +228,17 @@ function installRuntimeScripts() {
   }
 
   writeFile(path.join(toolsDir, 'refresh-project-context.mjs'), refreshProjectTool(), 0o755);
-  writeFile(path.join(toolsDir, 'sync-session-override.mjs'), syncSessionOverrideTool(), 0o755);
 }
 
 export function installCodex({ scope, projectDir }) {
   const runtimeRoot = codexRuntimeRoot();
   ensureDir(runtimeRoot);
+  removeLegacySpectreRuntime(runtimeRoot);
   installRuntimeScripts();
   cleanupLegacyPrompts();
   installGeneratedCodexSkills();
   const agents = installAgentConfigs();
-  ensureSpectreHooksConfigured(runtimeRoot, agents, generatedCodexHooksConfig());
+  ensureCasparHooksConfigured(runtimeRoot, agents);
 
   if (scope === 'project') {
     installProjectFiles(projectDir, scope);
@@ -262,14 +246,14 @@ export function installCodex({ scope, projectDir }) {
   }
 
   const metadata = repoMetadata();
-  process.stdout.write(`Installed Spectre ${metadata.version} for Codex (${scope} scope).\n`);
+  process.stdout.write(`Installed Caspar ${metadata.version} for Codex (${scope} scope).\n`);
 }
 
 export function uninstallCodex({ scope, projectDir }) {
-  const agents = listSpectreAgents().map(agentName => ({
+  const agents = listCasparAgents().map(agentName => ({
     id: agentName.replace(/-/g, '_')
   }));
-  removeSpectreHooksConfigured(codexRuntimeRoot(), agents);
+  removeCasparHooksConfigured(codexRuntimeRoot(), agents);
   cleanupLegacyPrompts();
 
   if (fs.existsSync(codexRuntimeRoot())) {
@@ -291,5 +275,5 @@ export function uninstallCodex({ scope, projectDir }) {
     uninstallProjectFiles(projectDir);
   }
 
-  process.stdout.write(`Uninstalled Spectre for Codex (${scope} scope).\n`);
+  process.stdout.write(`Uninstalled Caspar for Codex (${scope} scope).\n`);
 }

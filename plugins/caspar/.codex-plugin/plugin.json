@@ -1,0 +1,37 @@
+{
+  "name": "caspar",
+  "version": "5.4.0",
+  "description": "Compact contract-driven agentic workflow prompts for AI coding.",
+  "author": {
+    "name": "Joe Fernandez",
+    "email": "joe@subspace.build"
+  },
+  "homepage": "https://github.com/Codename-Inc/caspar",
+  "repository": "https://github.com/Codename-Inc/caspar",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "planning",
+    "tdd",
+    "code-review",
+    "skills",
+    "knowledge"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Caspar",
+    "shortDescription": "Contract-driven workflow prompts for coding agents",
+    "longDescription": "Caspar provides compact workflow skills for scoping, planning, execution, review, validation, cleanup, testing, rebasing, and project knowledge capture.",
+    "developerName": "Joe Fernandez",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Codename-Inc/caspar",
+    "defaultPrompt": [
+      "Use caspar-scope to define a new feature, then continue through the Caspar workflow."
+    ],
+    "brandColor": "#2F5D50"
+  }
+}

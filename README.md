@@ -1,18 +1,18 @@
-# SPECTRE: A Workflow for Product Builders
+# CASPAR: A Workflow for Product Builders
 
-**S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase → **E**valuate
+Scope → Plan → Execute → Clean → Test → Rebase
 
-SPECTRE is a slash command based workflow for Claude Code designed to help you do ONE THING more, faster, and with higher quality.
+CASPAR is a slash command based workflow for Claude Code designed to help you do ONE THING more, faster, and with higher quality.
 
 **🚀 Ship Product Features**
 
-SPECTRE's workflow covers the complete software development lifecycle - from scoping a feature, finalizing user flows, writing the technical design, generating tasks, executing the tasks, code review, validating the work, cleaning up and testing the work, and finally generating documentation as Skills your agent auto-loads when relevant.
+CASPAR's workflow covers the core software development lifecycle - from scoping a feature, finalizing user flows, writing the technical design, generating tasks, executing the tasks, code review, validating the work, cleaning up and testing the work, and capturing reusable knowledge as Skills your agent can find when relevant.
 
 It has been tested on brand new codebases and codebases with hundreds of thousands of lines of code. Its been tested building websites, react native apps, native desktop apps, and personal software.
 
-**SPECTRE helps you get higher quality and more consistent results from your coding agent, while they work autonomously for much longer, so 10-100x'ing your typical output feels *easy* and more importantly, *repeatable.***
+**CASPAR helps you get higher quality and more consistent results from your coding agent, while they work autonomously for much longer, so 10-100x'ing your typical output feels *easy* and more importantly, *repeatable.***
 
-![SPECTRE hero](./assets/images/spectre-hero.png)
+![CASPAR hero](./assets/images/caspar-hero.png)
 
 ## ⚡ Quick Start
 
@@ -20,14 +20,14 @@ It has been tested on brand new codebases and codebases with hundreds of thousan
 
 ```bash
 # Add marketplace and install
-/plugin marketplace add Codename-Inc/spectre
-/plugin install spectre@codename
+/plugin marketplace add Codename-Inc/caspar
+/plugin install caspar@codename
 ```
 
 Then start building:
 
 ```plaintext
-/spectre:scope
+/caspar:scope
 ```
 
 That's it. You just start with 1 command to build features.
@@ -35,7 +35,7 @@ That's it. You just start with 1 command to build features.
 ### Within Codex
 
 ```bash
-npx @codename_inc/spectre install codex
+npx @codename_inc/caspar install codex
 ```
 
 When prompted, choose `project` to install into the current repo's `.codex`, or `user` to install into `~/.codex`.
@@ -44,7 +44,7 @@ If you choose `project`, run `codex` from that repo.
 
 If you choose `user`, restart or open your normal Codex session.
 
-Then run a Spectre command such as:
+Then run a Caspar command such as:
 
 ```plaintext
 scope
@@ -52,37 +52,33 @@ scope
 
 Current Codex behavior:
 
-- `user` scope installs Spectre workflow skills, runtime, agents, hooks, and shared skills under `~/.codex`
+- `user` scope installs Caspar workflow skills, runtime helpers, agents, and shared skills under `~/.codex`
 - `project` scope installs the same Codex home structure inside `./.codex`
-- project installs create `.spectre/manifest.json` and project-local Codex config
-- session continuity uses Codex's official SessionStart hook for the visible status line and keeps the latest handoff in a managed `AGENTS.override.md` block
-- learned project skills still live under `.agents/skills/` and are synced into Codex config
+- project installs create `.caspar/manifest.json` and project-local Codex config
+- learned project skills live under `.agents/skills/` and are synced into Codex config; agents discover them from skill descriptions
 
 Capability matrix: [`docs/codex-capability-matrix.md`](./docs/codex-capability-matrix.md)
-Session continuity deep dive: [`docs/codex-sessionstart-memory.md`](./docs/codex-sessionstart-memory.md)
 
-![SPECTRE scope command](./assets/images/spectre-scope.png)
+![CASPAR scope command](./assets/images/caspar-scope.png)
 
 ## 🔁 How It Works
 
-- run one of the kickoff prompts in Claude Code - `/spectre:scope` is the main command for building new features, but also `/spectre:kickoff` for high ambiguity new features (includes web research), `/spectre:research` for codebase research "how might we build …” style Qs, or `/spectre:ux` to define user flows, components, and layout for a new feature.
+- run one of the kickoff prompts in Claude Code - `/caspar:scope` is the main command for building new features, but also `/caspar:kickoff` for high ambiguity new features (includes web research), `/caspar:research` for codebase research "how might we build …” style Qs, or `/caspar:ux` to define user flows, components, and layout for a new feature.
 
-- follow the prompts/instructions to create the related canonical document and Claude Code will suggest the next step in the SPECTRE workflow automatically (e.g., going from `scope` to `plan` to `tasks` and so on)
+- follow the prompts/instructions to create the related canonical document and Claude Code will suggest the next step in the CASPAR workflow automatically (e.g., going from `scope` to `plan` to `tasks` and so on)
 
-- turn off auto-compact in Claude Code settings (`/config`) and run `/spectre:handoff` when the context window is getting full, then run `/clear` to start the next session. (`/spectre:forget` when you are switching gears)
-
-- SPECTRE saves canonical docs to a `docs/tasks/{topic}/specs` directory, and status updates from `/spectre:handoff` to `docs/tasks/{topic}/session_logs` directory. We recommend keeping this directory checked into git to be able to reference docs in the future.
+- CASPAR saves canonical docs to a `docs/tasks/{topic}/specs` directory. We recommend keeping this directory checked into git so agents and teammates can reference docs in the future.
 
 - thats it. scope features, plan features, build features, clean up/test features, document features, learn from features, repeat.
 
-## 🎯 Core SPECTRE Principles
+## 🎯 Core CASPAR Principles
 
 - Great Inputs → Great Outputs
 - Ambiguity is Death
 - One Workflow, Every Feature, Any Size, Any Codebase
 - Obvious &gt; Clever
 
-## 👻 SPECTRE Purpose
+## 👻 CASPAR Purpose
 
 AI coding is changing product development, but why is it that Claude Code can still go off the rails? Why is it that some developers claim AI has 100x'd their output, while others still complain about the quality of the code it generates?
 
@@ -94,7 +90,7 @@ When the scope, ux, and plan are ambiguous, you must rely on the LLM to fill in 
 
 LLMs need specificity. And typically, providing the right level of specificity is a lot of work. Just think about the most detailed spec or technical design you’ve ever written. Takes days and sometimes weeks.
 
-BUT --- you can use LLMs to make it EASY to provide that specificity. And that is exactly what SPECTRE does.
+BUT --- you can use LLMs to make it EASY to provide that specificity. And that is exactly what CASPAR does.
 
 ### ✅ Workflows = Easy Button
 
@@ -108,7 +104,7 @@ The better your prompt based workflows, the lower the ambiguity, the more AI can
 
 As a former PM I've lived the value of [Canonical Docs](https://naomi.com/canonical-everything-c85441a84e70) (shout out Naomi Gleit). The reasons they work for Humans are the same reasons they work with AI Agents (see 💀 Ambiguity is Death)
 
-In SPECTRE, the **structured workflows** generate some combination of the following canonical docs stored in `docs/tasks/{topic/feature}/specs`
+In CASPAR, the **structured workflows** generate some combination of the following canonical docs stored in `docs/tasks/{topic/feature}/specs`
 
 - `scope.md` - what are we building and importantly what are we NOT building
 - `ux.md` - the core user flows and components/layouts/interactions
@@ -136,15 +132,15 @@ From there, you can iterate and adapt before you ship.
 
 ## About
 
-SPECTRE is the result of over 12 months of daily Claude Code use.
+CASPAR is the result of over 12 months of daily Claude Code use.
 
 These are the *actual* prompts I use and iterate upon non stop every day to build products.
 
-With SPECTRE, I built a React Native based AI Agent + GPS Rangefinder for Golfers (New June (in closed Alpha)) and a 250k line Tauri/Rust/React desktop application called Subspace (in open Beta - https://www.subspace.build).
+With CASPAR, I built a React Native based AI Agent + GPS Rangefinder for Golfers (New June (in closed Alpha)) and a 250k line Tauri/Rust/React desktop application called Subspace (in open Beta - https://www.subspace.build).
 
 ## 💡 Why
 
-I created SPECTRE because I wanted:
+I created CASPAR because I wanted:
 
 - a repeatable daily driver workflow that works on brand new projects, and large existing codebases.
 
@@ -156,9 +152,7 @@ I created SPECTRE because I wanted:
 
 - higher quality INPUT with LESS WORK so i can ensure the outputs are more aligned with my vision
 
-- a workflow that lets Agents learn my codebase, features, patterns, bugs, so I don't have to remember everything
-
-- ***stupid. simple. memory.*** agent sessions are aware of the ongoing thread of work (/spectre:handoff)
+- a workflow that lets Agents capture codebase features, patterns, bugs, and decisions as reusable skills
 
 ### My Workflow Iteration Process
 
@@ -166,75 +160,39 @@ I improve these prompts daily, and I didn't just prompt Claude Code to generate 
 
 For example:
 
-- I iterated on /spectre:scope until I felt like the types of questions actually help me get clear on what I'm building, without asking questions that it could easily get from codebase research
-- I iterated on the /spectre:execute workflow until it successfully delivered large tasks in a single context window using subagents that deliver completion reports to handoff to the next subagents, use TDD effectively, and autonomously adapt the tasks based on what was discovered DURING development instead of blindly
-- I iterated on the /spectre:clean and /spectre:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
-- I iterated on the /spectre:evaluate learning workflow until 1) the agent automatically reached for the skills generated at the start of every conversation, 2) captured the *right* details and insights, and 3) proactively updated relevant skills as we make changes and learn more.
-- I iterated on the /spectre:handoff workflow until the status update had the appropriate detail/context, and worked perfectly if I'm working across MANY sessions or just one.
+- I iterated on /caspar:scope until I felt like the types of questions actually help me get clear on what I'm building, without asking questions that it could easily get from codebase research
+- I iterated on the /caspar:execute workflow until it successfully delivered large tasks in a single context window using subagents that deliver completion reports to brief the next subagents, use TDD effectively, and autonomously adapt the tasks based on what was discovered DURING development instead of blindly
+- I iterated on the /caspar:clean and /caspar:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
+- I iterated on the /caspar:learn and /caspar:recall workflows until captured project knowledge was easy to reuse without a startup injection layer.
 
-SPECTRE made products like New June and Subspace possible, and it is making it possible for me, an ex-Meta, ex-Amazon Technical Product Manager to build, ship, and iterate on products 100x the complexity of anything I've ever built in the past.
+CASPAR made products like New June and Subspace possible, and it is making it possible for me, an ex-Meta, ex-Amazon Technical Product Manager to build, ship, and iterate on products 100x the complexity of anything I've ever built in the past.
 
-## 🔄 The SPECTRE Workflow
+## 🔄 The CASPAR Workflow
 
 If you start with /scope, your agent will guide you through the rest of the steps automatically.
 
 | Phase | Command | What It Does |
 | --- | --- | --- |
-| **S**cope | `/spectre:scope` | Define requirements, constraints, success criteria |
-| **P**lan | `/spectre:plan` | Research codebase, create implementation plan |
-| **E**xecute | `/spectre:execute` | Parallel implementation with wave-based delivery |
-| **C**lean | `/spectre:clean` | Remove dead code, lint, format |
-| **T**est | `/spectre:test` | Risk-aware test coverage |
-| **R**ebase | `/spectre:rebase` | Safe merge preparation with conflict handling |
-| **E**valuate | `/spectre:evaluate` | Architecture review + knowledge capture |
+| **S**cope | `/caspar:scope` | Define requirements, constraints, success criteria |
+| **P**lan | `/caspar:plan` | Research codebase, create implementation plan |
+| **E**xecute | `/caspar:execute` | Parallel implementation with wave-based delivery |
+| **C**lean | `/caspar:clean` | Remove dead code, lint, format |
+| **T**est | `/caspar:test` | Risk-aware test coverage |
+| **R**ebase | `/caspar:rebase` | Safe merge preparation with conflict handling |
 
 Each command ends with "Next Steps" suggestions, so you always know what prompt to run next — you don't have to remember what the prompts are, which is one thing that kills me about many other Spec Driven Development workflows.
 
 You can use *any* of the commands in any sequence you want - they are good standalone too. More on my typical daily usage below.
 
-## 🧠 SPECTRE Session Memory
+## 🧬 CASPAR Learn And Recall
 
-SPECTRE maintains and accumulates context across sessions when you use the /spectre:handoff command. To get the most from SPECTRE's Session Memory, we recommend that you:
+The more I used CASPAR and the faster I could build, the more frequently I found myself wanting to reference past work. Debugging sessions, a new architectural pattern, or how a feature works/was built.
 
-1. turn off auto-compact in Claude Code /config settings, and
-
-2. run /spectre:handoff liberally when you are switching gears or the context window is getting north of 160k tokens.
+CASPAR keeps this explicit: use `/caspar:learn` to capture durable project knowledge, and `/caspar:recall` to find it later.
 
 ### How It Works
 
-When you run /spectre:handoff, a status report will get generated for that session, and automatically loaded into your context window for the next session. You'll see a nice summary of the status when you run /clear.
-
-If you already had previous sessions, a subagent (@spectre:sync) will review the last 3 status updates and merge into a single continuous session memory.
-
-Voila -- trailing 3 session memory snapshots.
-
-If you want to start fresh — /spectre:forget archives the session_logs.
-
-```plaintext
-/spectre:handoff   # Save progress before session ends
-/spectre:forget    # Clear memory for fresh start
-```
-
-## 🧬 SPECTRE Evaluate
-
-The more I used SPECTRE and the faster I could build, the more frequently I found myself wanting to reference past work. Debugging sessions, a new architectural pattern, or how a feature works/was built.
-
-SPECTRE Evaluate combines **architecture review** with **knowledge capture** — reviewing what you built and learning from it in one step.
-
-### How It Works
-
-`/spectre:evaluate` runs two things in parallel:
-
-1. **Architecture review** — dispatches an Opus 4.6 subagent in the background to produce a principal-level architecture review of your completed work
-2. **Learn** — captures durable project knowledge (patterns, gotchas, decisions) into re-usable skills that **auto-load in future sessions**
-
-### The Hook + Skill Loop
-
-What is great about SPECTRE's learning system, is that Claude Code automatically loads skills that are relevant. We do this with a 'coercion' technique I borrowed from Jesse Vincent's great Superpowers skill.
-
-1. **SessionStart hook** — every time you start a conversation, SPECTRE's hook reads your project's knowledge registry and injects it into context. Claude now *knows what it knows* before you type a single word.
-
-2. **Skill auto-loading** — when your task matches a trigger word from the registry (e.g., you mention "auth" and there's a `feature-auth-flows` skill), Claude loads the full skill *before* searching the codebase. No wasted tool calls rediscovering what's already documented.
+`/caspar:learn` captures durable project knowledge (patterns, gotchas, decisions) into reusable skills under `.agents/skills/`. Codex project installs sync those skills into `config.toml`; Claude Code and Codex can then find and load them from their skill descriptions. `/caspar:recall auth` is available when you want to search explicitly.
 
 The result: knowledge compounds across sessions instead of resetting to zero. The more you learn, the faster and more accurate every future session becomes.
 
@@ -251,74 +209,66 @@ The result: knowledge compounds across sessions instead of resetting to zero. Th
 You can also run these independently:
 
 ```plaintext
-/spectre:evaluate              # Architecture review + learn (the full evaluate step)
-/spectre:learn                 # Just capture knowledge from this session
-/spectre:architecture_review   # Just run the architecture review
-/spectre:recall auth           # Find and load existing knowledge about auth
+/caspar:learn                 # Just capture knowledge from this session
+/caspar:recall auth           # Find and load existing knowledge about auth
 ```
 
 ## 🤖 Subagents
 
-SPECTRE dispatches specialized subagents for different tasks:
+CASPAR dispatches specialized subagents for different tasks:
 
 NOTE: You don't even need to know that these subagents exist. The prompts instruct Claude Code to call them automatically.
 
-Although I do sometimes use @spectre:web-research for web research. It's like mini deep-research.
+Although I do sometimes use @caspar:web-research for web research. It's like mini deep-research.
 
 | Agent | Purpose |
 | --- | --- |
-| `@spectre:dev` | Implementation with MVP focus |
-| `@spectre:analyst` | Understand how code works |
-| `@spectre:finder` | Find where code lives |
-| `@spectre:patterns` | Find reusable patterns |
-| `@spectre:web-research` | Web research |
-| `@spectre:tester` | Test automation |
-| `@spectre:reviewer` | Independent code review |
+| `@caspar:dev` | Implementation with MVP focus |
+| `@caspar:analyst` | Understand how code works |
+| `@caspar:finder` | Find where code lives |
+| `@caspar:patterns` | Find reusable patterns |
+| `@caspar:web-research` | Web research |
+| `@caspar:tester` | Test automation |
+| `@caspar:reviewer` | Independent code review |
 
-## 🛠️ How I Typically use SPECTRE
+## 🛠️ How I Typically use CASPAR
 
-99.9% of my day is spent using SPECTRE exactly like this.
+99.9% of my day is spent using CASPAR exactly like this.
 
-- start /spectre:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
+- start /caspar:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
 
-  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
+  - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /caspar:ux. Its similar to /caspar:scope but focuses on getting clear on the core user flows.
 
-- /spectre:plan to build out a well researched technical design or set of tasks
+- /caspar:plan to build out a well researched technical design or set of tasks
 
-  - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
+- then run /caspar:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /caspar:code_review and /caspar:validate.
 
-- then run /spectre:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /spectre:code_review and /spectre:validate.
+  - side note /caspar:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
 
-  - side note /spectre:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
-
-  - when initial execution is complete, i run another /spectre:handoff to get the context window clean for fixes/touch ups.
-
-- for low-complexity tasks where I trust the agent end-to-end, I use /spectre:ship. Brain dump what I want, walk away, and review the PR. It autonomously scopes, implements with TDD, sweeps, rebases, and opens a PR — zero confirmation gates.
+- for low-complexity tasks where I trust the agent end-to-end, I use /caspar:ship. Brain dump what I want, walk away, and review the PR. It autonomously scopes, implements with TDD, sweeps, rebases, and opens a PR — zero confirmation gates.
 
 - From here — I do a bunch of manual testing and fixing.
 
   - I largely use Claude Code's built in /plan mode for fixes in this phase.
 
-  - If there is a bug that can't easily be solved, i use the /spectre:fix prompt for a more structured debugging approach.
+  - If there is a bug that can't easily be solved, i use the /caspar:fix prompt for a more structured debugging approach.
 
   - If something new comes up, or if the scope is not what I'd hoped, I run a new /scope cycle from within the project.
 
-  - I liberally use /spectre:handoff here to keep context windows clean as I work through issues, and keep the sessions on track with the progress we're making.
-
-- During the process of manual testing/fixing, I typically accumulate uncommitted changes. /spectre:sweep will get your changes committed, while
+- During the process of manual testing/fixing, I typically accumulate uncommitted changes. /caspar:sweep will get your changes committed, while
 
   - running and addressing lint
   - running tests and related tests on touched files
   - finding obvious dead code/AI slop, and
   - grouping changes logically with descriptive conventional commits
 
-- Once wrapping up, /spectre:clean is a much deeper cleanup that dispatches subagents to find dead code, duplicates, verifies, lint, commits any stragglers, etc.
+- Once wrapping up, /caspar:clean is a much deeper cleanup that dispatches subagents to find dead code, duplicates, verifies, lint, commits any stragglers, etc.
 
-- Then /spectre:test does deep analysis and dispatches subagents to write tests based on a risk-adjusted framework focusing on behavior not implementation details.
+- Then /caspar:test does deep analysis and dispatches subagents to write tests based on a risk-adjusted framework focusing on behavior not implementation details.
 
-- Once cleaned/tested — /spectre:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. From here I create PR/merge or directly merge depending on the task.
+- Once cleaned/tested — /caspar:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. From here I create PR/merge or directly merge depending on the task.
 
-- Finally, I run /spectre:evaluate to get an architecture review and capture any knowledge worth preserving — patterns, gotchas, decisions. This builds institutional memory that loads automatically in future sessions.
+- Finally, I run /caspar:learn to capture any knowledge worth preserving — patterns, gotchas, decisions. This builds institutional memory that agents can find in future sessions.
 
 - From here, merge/PR, address any PR comments, etc. and get the feature checked back in.
 
@@ -328,60 +278,53 @@ Although I do sometimes use @spectre:web-research for web research. It's like mi
 
 | Command | Description |
 | --- | --- |
-| `/spectre:scope` | Interactive feature scoping |
-| `/spectre:plan` | Research codebase, create implementation plan |
-| `/spectre:execute` | Wave-based parallel execution with code review |
-| `/spectre:clean` | Code cleanup and quality gates |
-| `/spectre:test` | Risk-aware test coverage |
-| `/spectre:rebase` | Safe rebase with conflict handling |
-| `/spectre:evaluate` | Architecture review + knowledge capture |
+| `/caspar:scope` | Interactive feature scoping |
+| `/caspar:plan` | Research codebase, create implementation plan |
+| `/caspar:execute` | Wave-based parallel execution with code review |
+| `/caspar:clean` | Code cleanup and quality gates |
+| `/caspar:test` | Risk-aware test coverage |
+| `/caspar:rebase` | Safe rebase with conflict handling |
 
 ### Quick Start
 
 | Command | Description |
 | --- | --- |
-| `/spectre:quick_dev` | Scope + plan for small/medium tasks |
-| `/spectre:ship` | Autonomous end-to-end: brain dump → scope → TDD → rebase → PR |
+| `/caspar:quick_dev` | Scope + plan for small/medium tasks |
+| `/caspar:ship` | Autonomous end-to-end: brain dump → scope → TDD → rebase → PR |
 
 ### Discovery & Research
 
 | Command | Description |
 | --- | --- |
-| `/spectre:kickoff` | Deep research for high-ambiguity features |
-| `/spectre:research` | Parallel codebase research |
-
-### Session Memory
-
-| Command | Description |
-| --- | --- |
-| `/spectre:handoff` | Save session state snapshot |
-| `/spectre:forget` | Clear memory, archive logs |
+| `/caspar:kickoff` | Deep research for high-ambiguity features |
+| `/caspar:research` | Parallel codebase research |
 
 ### Utilities
 
 These are situational commands.
 
-I use /spectre:fix for pretty much all bugs I run into.
+I use /caspar:fix for pretty much all bugs I run into.
 
 | Command | Description |
 | --- | --- |
-| `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits |
-| `/spectre:learn` | Capture knowledge for future sessions |
-| `/spectre:ux` | UX specification for UI-heavy features |
-| `/spectre:fix` | Investigate bugs & implement fixes |
+| `/caspar:sweep` | Light cleanup pass — lint, test, descriptive commits |
+| `/caspar:learn` | Capture knowledge for future sessions |
+| `/caspar:recall` | Search and load project knowledge |
+| `/caspar:ux` | UX specification for UI-heavy features |
+| `/caspar:fix` | Investigate bugs & implement fixes |
 
 ## 📁 Repository Structure
 
 ```plaintext
-spectre/
+caspar/
 ├── .claude-plugin/
 │   └── marketplace.json  # Marketplace registration
 ├── plugins/
-│   └── spectre/
+│   └── caspar/
 │       ├── .claude-plugin/
 │       │   └── plugin.json   # Plugin manifest
 │       ├── agents/           # Subagent definitions
-│       ├── hooks/            # Session memory hooks
+│       ├── hooks/            # Learning registration helper scripts
 │       └── skills/           # Slash workflows + knowledge skills
 ├── scripts/              # Release & utility scripts
 └── CLAUDE.md
@@ -391,7 +334,7 @@ spectre/
 
 Skills update automatically when you update the plugin:
 
-`/plugin update spectre`
+`/plugin update caspar`
 
 ## License
 
@@ -399,9 +342,9 @@ MIT License - see LICENSE file for details
 
 ## Support and/or Feedback
 
-Issues: https://github.com/codename-inc/spectre/issues
+Issues: https://github.com/codename-inc/caspar/issues
 
-Email: [joe@bycodename.com](mailto:joe@bycodename.com?subject=Spectre%20Feedback)
+Email: [joe@bycodename.com](mailto:joe@bycodename.com?subject=Caspar%20Feedback)
 
 Socials:
 

@@ -25,4 +25,4 @@ jobs:
         run: npm run sync-codex
 
       - name: Fail on generated drift
-        run: git diff --exit-code plugins/spectre-codex/
+        run: git diff --exit-code plugins/caspar-codex/

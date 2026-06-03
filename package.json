@@ -1,9 +1,9 @@
 {
-  "name": "@codename_inc/spectre",
+  "name": "@codename_inc/caspar",
   "version": "5.3.2",
   "type": "module",
   "bin": {
-    "spectre": "bin/spectre.js"
+    "caspar": "bin/caspar.js"
   },
   "files": [
     "bin",
@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test src/**/*.test.js plugins/spectre/hooks/scripts/test_*.mjs scripts/test_sync-codex.cjs",
+    "test": "node --test src/**/*.test.js plugins/caspar/hooks/scripts/test_*.mjs scripts/test_sync-codex.cjs",
     "sync-codex": "node scripts/sync-codex.cjs",
     "tokens": "node scripts/count-tokens.js",
     "release": "node scripts/release.js"

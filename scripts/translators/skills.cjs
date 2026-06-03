@@ -58,16 +58,16 @@ function rewriteProjectSkillPaths(source) {
 
 function rewriteCodexCommandRefs(source) {
   return source
-    .replace(/@skill-spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+    .replace(/@skill-caspar:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
       return `Skill(${skillName})`;
     })
-    .replace(/\/skill-spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+    .replace(/\/skill-caspar:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
       return `Skill(${skillName})`;
     })
-    .replace(/@@spectre:([A-Za-z0-9_-]+)/g, '@$1')
-    .replace(/@spectre:([A-Za-z0-9_-]+)/g, '@$1')
-    .replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
-      return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
+    .replace(/@@caspar:([A-Za-z0-9_-]+)/g, '@$1')
+    .replace(/@caspar:([A-Za-z0-9_-]+)/g, '@$1')
+    .replace(/\/caspar:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
+      return skillName.startsWith('caspar-') ? skillName : `caspar-${skillName}`;
     });
 }
 

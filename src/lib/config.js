@@ -214,11 +214,13 @@ function renderSkillsConfigEntries(entries) {
 }
 
 function removeLegacyProjectSkillTables(content) {
-  return content.replace(/\n*\[skills\.config\.spectre_[^\]]+\]\n[\s\S]*?(?=^\[\[skills\.config\]\]\n|^\[(?!\[)|(?![\s\S]))/gm, '\n');
+  return content.replace(/\n*\[skills\.config\.caspar_[^\]]+\]\n[\s\S]*?(?=^\[\[skills\.config\]\]\n|^\[(?!\[)|(?![\s\S]))/gm, '\n');
 }
 
-function shellQuote(value) {
-  return `'${value.replaceAll('\'', `'\\''`)}'`;
+function removeLegacySpectreAgentTables(content) {
+  return content
+    .replace(/\n*# spectre-codex-managed\n?/g, '\n')
+    .replace(/\n*\[agents\.spectre_[^\]]+\]\n[\s\S]*?(?=^\[|(?![\s\S]))/gm, '\n');
 }
 
 function readHooksConfig() {
@@ -279,103 +281,18 @@ function writeHooksConfig(hooksPath, config) {
   fs.writeFileSync(hooksPath, `${JSON.stringify(nextConfig, null, 2)}\n`);
 }
 
-function isSpectreHook(hook) {
+function isCasparHook(hook) {
   return hook
     && typeof hook === 'object'
     && hook.type === 'command'
     && typeof hook.command === 'string'
     && (
-      hook.command.includes('spectre/hooks/session-start.mjs')
-      || hook.command.includes('spectre/hooks/scripts/')
+      hook.command.includes('caspar/hooks/session-start.mjs')
+      || hook.command.includes('caspar/hooks/scripts/')
     );
 }
 
-function materializeHookCommand(command, runtimeRoot) {
-  return command
-    .replaceAll('${CODEX_HOME}/spectre', runtimeRoot)
-    .replaceAll('${CODEX_HOME}\\spectre', runtimeRoot)
-    .replace(/^node\s+(.+)$/, (_match, scriptPath) => `node ${shellQuote(scriptPath)}`);
-}
-
-function materializeGeneratedHooks(generatedHooks, runtimeRoot) {
-  const materialized = {};
-
-  for (const [eventName, groups] of Object.entries(generatedHooks ?? {})) {
-    if (!Array.isArray(groups)) {
-      continue;
-    }
-
-    materialized[eventName] = groups.map(group => {
-      if (!group || typeof group !== 'object' || Array.isArray(group)) {
-        return group;
-      }
-
-      const hookList = Array.isArray(group.hooks) ? group.hooks.map(hook => {
-        if (!hook || typeof hook !== 'object' || Array.isArray(hook)) {
-          return hook;
-        }
-        if (hook.type !== 'command' || typeof hook.command !== 'string') {
-          return hook;
-        }
-
-        return {
-          ...hook,
-          command: materializeHookCommand(hook.command, runtimeRoot)
-        };
-      }) : group.hooks;
-
-      return {
-        ...group,
-        hooks: hookList
-      };
-    });
-  }
-
-  return materialized;
-}
-
-function upsertSpectreHooks(runtimeRoot, generatedHooks) {
-  const { hooksPath, config } = readHooksConfig();
-  const hooks = { ...(config.hooks ?? {}) };
-  const materializedHooks = materializeGeneratedHooks(generatedHooks, runtimeRoot);
-
-  for (const eventName of new Set([...Object.keys(hooks), ...Object.keys(materializedHooks)])) {
-    const groups = Array.isArray(hooks[eventName]) ? hooks[eventName] : [];
-    const nextGroups = [];
-
-    for (const group of groups) {
-      if (!group || typeof group !== 'object' || Array.isArray(group)) {
-        nextGroups.push(group);
-        continue;
-      }
-
-      const hookList = Array.isArray(group.hooks) ? group.hooks.filter(hook => !isSpectreHook(hook)) : [];
-      if (hookList.length > 0) {
-        nextGroups.push({
-          ...group,
-          hooks: hookList
-        });
-      }
-    }
-
-    if (Array.isArray(materializedHooks[eventName])) {
-      nextGroups.push(...materializedHooks[eventName]);
-    }
-
-    if (nextGroups.length > 0) {
-      hooks[eventName] = nextGroups;
-    } else {
-      delete hooks[eventName];
-    }
-  }
-
-  writeHooksConfig(hooksPath, {
-    ...config,
-    hooks
-  });
-}
-
-function removeSpectreHooks() {
+function removeCasparHooks() {
   const hooksPath = codexHooksConfigPath();
   if (!fs.existsSync(hooksPath)) {
     return false;
@@ -399,7 +316,7 @@ function removeSpectreHooks() {
 
       const originalHooks = Array.isArray(group.hooks) ? group.hooks : [];
       const filteredHooks = originalHooks.filter(hook => {
-        const shouldRemove = isSpectreHook(hook);
+        const shouldRemove = isCasparHook(hook);
         removed ||= shouldRemove;
         return !shouldRemove;
       });
@@ -499,24 +416,29 @@ export function removeProjectSkillsConfigured(projectDir) {
   writeConfig(configPath, content);
 }
 
-export function ensureSpectreHooksConfigured(runtimeRoot, agents, generatedHooks = {}) {
+export function ensureCasparHooksConfigured(runtimeRoot, agents) {
   const { configPath, content: initialContent } = readConfig();
-  let content = initialContent;
+  let content = removeLegacySpectreAgentTables(initialContent);
 
   const preSessionEntry = `{ command = ["node", "${escapeTomlString(path.join(runtimeRoot, 'hooks', 'pre-session-start.mjs'))}"] }`;
+  const removedCasparHooks = removeCasparHooks();
 
   content = removeScalarKey(content, 'hooks', 'session_start');
   content = removeEntryFromArrayLine(content, 'hooks.blocking', 'pre_session_start', preSessionEntry);
   content = upsertRootScalarKey(content, 'suppress_unstable_features_warning', 'true');
   content = removeScalarKey(content, 'features', 'codex_hooks');
-  content = upsertScalarKey(content, 'features', 'hooks', 'true');
   content = upsertScalarKey(content, 'features', 'skills', 'true');
   content = upsertScalarKey(content, 'features', 'multi_agent', 'true');
   content = removeEmptyTable(content, 'hooks');
   content = removeEmptyTable(content, 'hooks.blocking');
 
+  if (removedCasparHooks && !hasRemainingHookDefinitions()) {
+    content = removeScalarKey(content, 'features', 'hooks');
+    content = removeScalarKey(content, 'features', 'codex_hooks');
+  }
+
   for (const agent of agents) {
-    const tableName = `agents.spectre_${agent.id}`;
+    const tableName = `agents.caspar_${agent.id}`;
     const nicknames = agent.nicknames.map(name => `"${escapeTomlString(name)}"`).join(', ');
     content = removeTable(content, tableName);
     content = replaceTable(
@@ -531,10 +453,9 @@ export function ensureSpectreHooksConfigured(runtimeRoot, agents, generatedHooks
   }
 
   writeConfig(configPath, content);
-  upsertSpectreHooks(runtimeRoot, generatedHooks);
 }
 
-export function removeSpectreHooksConfigured(runtimeRoot, agents) {
+export function removeCasparHooksConfigured(runtimeRoot, agents) {
   const configPath = codexConfigPath();
   if (!fs.existsSync(configPath)) {
     return;
@@ -543,7 +464,7 @@ export function removeSpectreHooksConfigured(runtimeRoot, agents) {
   let content = fs.readFileSync(configPath, 'utf8');
   const preSessionEntry = `{ command = ["node", "${escapeTomlString(path.join(runtimeRoot, 'hooks', 'pre-session-start.mjs'))}"] }`;
 
-  const removedSpectreHooks = removeSpectreHooks();
+  const removedCasparHooks = removeCasparHooks();
 
   content = removeScalarKey(content, 'hooks', 'session_start');
   content = removeEntryFromArrayLine(content, 'hooks.blocking', 'pre_session_start', preSessionEntry);
@@ -551,10 +472,10 @@ export function removeSpectreHooksConfigured(runtimeRoot, agents) {
   content = removeEmptyTable(content, 'hooks.blocking');
 
   for (const agent of agents) {
-    content = removeTable(content, `agents.spectre_${agent.id}`);
+    content = removeTable(content, `agents.caspar_${agent.id}`);
   }
 
-  if (removedSpectreHooks && !hasRemainingHookDefinitions()) {
+  if (removedCasparHooks && !hasRemainingHookDefinitions()) {
     content = removeScalarKey(content, 'features', 'hooks');
     content = removeScalarKey(content, 'features', 'codex_hooks');
   }
