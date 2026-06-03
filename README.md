@@ -61,6 +61,15 @@ Capability matrix: [`docs/codex-capability-matrix.md`](./docs/codex-capability-m
 
 ![CASPAR scope command](./assets/images/caspar-scope.png)
 
+## 🆕 Recent Changes
+
+Caspar now supports both Claude Code and Codex from the same source plugin, with generated Codex assets kept in sync from the canonical Caspar workflows.
+
+- **Adversarial plan review:** STANDARD and COMPREHENSIVE planning now require an independent plan review. When possible, Caspar uses the opposite runtime (`codex` reviewing Claude Code work, or `claude` reviewing Codex work) before the planner applies only scope-safe changes.
+- **Compact execution artifacts:** `caspar:create_tasks` now emits `specs/execute.md` as the execution index and `specs/tasks.json` as the canonical task detail. Execute and validation workflows slice `tasks.json` into narrow task assignments instead of loading a large monolithic task file.
+- **Codex install flow:** `npx @codename_inc/caspar install codex` installs Caspar workflows, agents, runtime helpers, and project skills into either user or project scope.
+- **Caspar rename:** package, plugin, generated Codex assets, repo ignores, and sync checks have been cut over from Spectre naming to Caspar naming.
+
 ## 🔁 How It Works
 
 - run one of the kickoff prompts in Claude Code - `/caspar:scope` is the main command for building new features, but also `/caspar:kickoff` for high ambiguity new features (includes web research), `/caspar:research` for codebase research "how might we build …” style Qs, or `/caspar:ux` to define user flows, components, and layout for a new feature.
@@ -109,12 +118,14 @@ In CASPAR, the **structured workflows** generate some combination of the followi
 - `scope.md` - what are we building and importantly what are we NOT building
 - `ux.md` - the core user flows and components/layouts/interactions
 - `plan.md` - high level technical design and phasing
-- `tasks.md `- specific parent & sub-tasks to execute
+- `execute.md` - compact execution index for wave-based delivery
+- `tasks.json` - canonical task detail used for slicing focused agent assignments
+- `reviews/plan_review.md` - independent adversarial plan review for STANDARD/COMPREHENSIVE planning
 - `code_review.md` - prioritized code review feedback
 - `gaps.md` - task list of gaps identified from validation
 - `.claude/skills/{feature_name}/skill.md` - a skill for agents to auto-reference the work
 
-Not all are required. Sometimes I have scope.md and then use Claude Code's plan mode. Sometimes I have a ux.md and a tasks.md. The key thing to remember is that docs are the context in context engineering.
+Not all are required. Sometimes I have scope.md and then use Claude Code's plan mode. Sometimes I have a ux.md and a generated `execute.md`/`tasks.json` pair. The key thing to remember is that docs are the context in context engineering.
 
 ### 💧 So.... Waterfall?
 
@@ -241,7 +252,11 @@ Although I do sometimes use @caspar:web-research for web research. It's like min
 
 - /caspar:plan to build out a well researched technical design or set of tasks
 
+  - for STANDARD and COMPREHENSIVE plans, Caspar runs an independent adversarial plan review before finalizing the plan. The primary agent reads the saved review report and applies only scope-safe fixes.
+
 - then run /caspar:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /caspar:code_review and /caspar:validate.
+
+  - execute reads the compact `execute.md` index, slices `tasks.json` into focused `<task_assignment>` payloads, and updates task status in JSON as work lands.
 
   - side note /caspar:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
 
