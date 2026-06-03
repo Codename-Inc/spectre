@@ -28,7 +28,6 @@ caspar/
 ```bash
 npm test
 npm run sync-codex -- --check --quiet
-python3 /Users/joe/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/caspar
 ```
 
 > **CLI for Other Agents**: See [caspar-labs/cli](https://github.com/Codename-Inc/caspar-labs/tree/main/cli)

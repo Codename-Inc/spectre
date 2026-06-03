@@ -3,10 +3,10 @@
   "version": "5.4.0",
   "owner": {
     "name": "Joe Fernandez",
-    "email": "joe@subspace.build"
+    "email": "joe@bycodename.com"
   },
   "metadata": {
-    "description": "caspar - Structured agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, Extract. A meta-prompting system where prompts invoke subagents that execute specialized prompts.",
+    "description": "caspar - Contract-driven agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, and Learn with Claude Code and Codex.",
     "homepage": "https://github.com/Codename-Inc/caspar"
   },
   "plugins": [
@@ -16,7 +16,7 @@
       "description": "Contract-driven agentic coding workflow. caspar guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Learn flows. Start with /caspar:scope.",
       "author": {
         "name": "Joe Fernandez",
-        "email": "joe@subspace.build"
+        "email": "joe@bycodename.com"
       },
       "keywords": [
         "workflow",

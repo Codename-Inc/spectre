@@ -1,16 +1,16 @@
-# CASPAR: A Workflow for Product Builders
+# CASPAR
+
+Contract-driven agentic coding workflows for Claude Code and Codex.
 
 Scope → Plan → Execute → Clean → Test → Rebase
 
-CASPAR is a slash command based workflow for Claude Code designed to help you do ONE THING more, faster, and with higher quality.
+CASPAR helps product builders and engineering teams turn ambiguous feature requests into explicit artifacts, executable implementation plans, focused agent assignments, code review, validation, tests, and reusable project knowledge.
 
-**🚀 Ship Product Features**
+It works as a Claude Code plugin and as a Codex installable workflow bundle.
 
-CASPAR's workflow covers the core software development lifecycle - from scoping a feature, finalizing user flows, writing the technical design, generating tasks, executing the tasks, code review, validating the work, cleaning up and testing the work, and capturing reusable knowledge as Skills your agent can find when relevant.
+**Ship product features with less ambiguity and more repeatable agent behavior.**
 
-It has been tested on brand new codebases and codebases with hundreds of thousands of lines of code. Its been tested building websites, react native apps, native desktop apps, and personal software.
-
-**CASPAR helps you get higher quality and more consistent results from your coding agent, while they work autonomously for much longer, so 10-100x'ing your typical output feels *easy* and more importantly, *repeatable.***
+CASPAR covers the core software development lifecycle: scoping a feature, defining user flows, writing a technical plan, generating executable tasks, implementing in waves, reviewing code, validating requirements, cleaning up, testing, rebasing, and capturing reusable knowledge as skills your agent can find later.
 
 ![CASPAR hero](./assets/images/caspar-hero.png)
 
@@ -61,14 +61,14 @@ Capability matrix: [`docs/codex-capability-matrix.md`](./docs/codex-capability-m
 
 ![CASPAR scope command](./assets/images/caspar-scope.png)
 
-## 🆕 Recent Changes
+## Why CASPAR
 
-Caspar now supports both Claude Code and Codex from the same source plugin, with generated Codex assets kept in sync from the canonical Caspar workflows.
+CASPAR is built around explicit artifacts and narrow agent contracts. The goal is not more process for its own sake; it is to give coding agents the right context, constraints, and review surfaces so they can work longer without drifting.
 
-- **Adversarial plan review:** STANDARD and COMPREHENSIVE planning now require an independent plan review. When possible, Caspar uses the opposite runtime (`codex` reviewing Claude Code work, or `claude` reviewing Codex work) before the planner applies only scope-safe changes.
-- **Compact execution artifacts:** `caspar:create_tasks` now emits `specs/execute.md` as the execution index and `specs/tasks.json` as the canonical task detail. Execute and validation workflows slice `tasks.json` into narrow task assignments instead of loading a large monolithic task file.
-- **Codex install flow:** `npx @codename_inc/caspar install codex` installs Caspar workflows, agents, runtime helpers, and project skills into either user or project scope.
-- **Caspar rename:** package, plugin, generated Codex assets, repo ignores, and sync checks have been cut over from Spectre naming to Caspar naming.
+- **Adversarial plan review:** STANDARD and COMPREHENSIVE planning require an independent plan review. When possible, CASPAR uses the opposite runtime (`codex` reviewing Claude Code work, or `claude` reviewing Codex work) before the planner applies only scope-safe changes.
+- **Compact execution artifacts:** `caspar:create_tasks` emits `specs/execute.md` as the execution index and `specs/tasks.json` as canonical task detail. Execute and validation workflows slice `tasks.json` into narrow task assignments instead of loading a large monolithic task file.
+- **Parallel specialist agents:** finder, analyst, patterns, reviewer, tester, web-research, and dev agents handle focused parts of the workflow.
+- **Durable project knowledge:** `/caspar:learn` captures patterns, gotchas, procedures, and decisions into project skills that future agents can discover.
 
 ## 🔁 How It Works
 
@@ -87,7 +87,7 @@ Caspar now supports both Claude Code and Codex from the same source plugin, with
 - One Workflow, Every Feature, Any Size, Any Codebase
 - Obvious &gt; Clever
 
-## 👻 CASPAR Purpose
+## CASPAR Purpose
 
 AI coding is changing product development, but why is it that Claude Code can still go off the rails? Why is it that some developers claim AI has 100x'd their output, while others still complain about the quality of the code it generates?
 
@@ -143,11 +143,9 @@ From there, you can iterate and adapt before you ship.
 
 ## About
 
-CASPAR is the result of over 12 months of daily Claude Code use.
+CASPAR is the result of daily production use of agentic coding tools across new codebases, large existing applications, native apps, web apps, desktop apps, and developer tooling.
 
-These are the *actual* prompts I use and iterate upon non stop every day to build products.
-
-With CASPAR, I built a React Native based AI Agent + GPS Rangefinder for Golfers (New June (in closed Alpha)) and a 250k line Tauri/Rust/React desktop application called Subspace (in open Beta - https://www.subspace.build).
+These are practical workflow prompts refined through repeated product development work, with an emphasis on clear inputs, bounded execution, independent review, and durable knowledge capture.
 
 ## 💡 Why
 
@@ -176,7 +174,7 @@ For example:
 - I iterated on the /caspar:clean and /caspar:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
 - I iterated on the /caspar:learn and /caspar:recall workflows until captured project knowledge was easy to reuse without a startup injection layer.
 
-CASPAR made products like New June and Subspace possible, and it is making it possible for me, an ex-Meta, ex-Amazon Technical Product Manager to build, ship, and iterate on products 100x the complexity of anything I've ever built in the past.
+CASPAR is designed for builders who want hands-on control over scope and planning, then hands-off execution with stronger review and validation loops.
 
 ## 🔄 The CASPAR Workflow
 

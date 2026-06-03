@@ -10,7 +10,7 @@ Open an issue with:
 - Description of the bug
 - Steps to reproduce
 - Expected vs actual behavior
-- Claude Code version
+- Claude Code or Codex version
 
 ### Feature Requests
 
@@ -24,7 +24,7 @@ Open an issue describing:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Test with Claude Code (`claude --plugin-dir /path/to/caspar`)
+4. Test with Claude Code and/or Codex
 5. Commit with clear messages
 6. Push and open a PR
 
@@ -40,6 +40,8 @@ cd caspar
 Test the plugin locally:
 ```bash
 claude --plugin-dir /path/to/caspar
+npm run sync-codex -- --check --quiet
+npm test
 ```
 
 ### Structure
@@ -64,7 +66,8 @@ caspar/
 
 1. Create a markdown file in `agents/`
 2. Define name, description, and methodology
-3. Test subagent dispatch
+3. Run `npm run sync-codex -- --quiet`
+4. Test subagent dispatch
 
 ## Code Style
 
