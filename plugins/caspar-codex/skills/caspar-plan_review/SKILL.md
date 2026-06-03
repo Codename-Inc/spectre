@@ -37,24 +37,26 @@ Adversarial review of planning artifacts - **clear on WHAT, silent on HOW.** Pre
 **External reviewer command shape:**
 
 - Claude Code reviewer:
-  `claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write" --output-format text "$REVIEW_PROMPT"`
+  `claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"`
 - Codex reviewer:
   `codex exec -C "$PWD" --sandbox workspace-write --ask-for-approval never "$REVIEW_PROMPT"`
 
-Both commands must run with filesystem write capability for the final review document: Claude via the explicit `Write` tool and Codex via `--sandbox workspace-write`. The reviewer prompt limits that write capability to `REVIEW_REPORT`.
+Both commands must run with filesystem write capability for the final review document: Claude via the explicit `Write` tool and Codex via `--sandbox workspace-write`. Claude must also allow `Task` so it can dispatch lens subagents. The reviewer prompt limits write capability to `REVIEW_REPORT`.
 
-`REVIEW_PROMPT` must include: `TASK_DIR`, `REVIEW_REPORT`, mode, present/absent artifact manifest, canonical scope source, the Canonical Scope Invariant, write permission limited to `REVIEW_REPORT`, and the required report sections below. The external reviewer may write only `REVIEW_REPORT` and may not edit `plan.md`, `execute.md`, `tasks.json`, scope, PRD, UX, or context files.
+Allow the external reviewer run to take at least 20 minutes before treating it as hung or failed; if the invoking tool supports an explicit timeout, set it to at least 1200000 ms. Full mode deliberately fans out independent lens reviews and may take that long.
+
+`REVIEW_PROMPT` must include: `TASK_DIR`, `REVIEW_REPORT`, mode, present/absent artifact manifest, canonical scope source, the Canonical Scope Invariant, write permission limited to `REVIEW_REPORT`, the required report sections below, and this runtime instruction: "This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens, tell each lens worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself. In adversarial mode, use a single clean-context reviewer pass unless the artifact set is large enough to benefit from subagents." The external reviewer may write only `REVIEW_REPORT` and may not edit `plan.md`, `execute.md`, `tasks.json`, scope, PRD, UX, or context files.
 
 **External review method:**
 
 - **Mode - adversarial (default):** one opposite-runtime reviewer attacks execution readiness: likely wrong output, unrequested overbuild/out-of-bounds work, hallucinated refs, non-executable verification/missing ACs, producer output left unwired, stale execute index entries, and missing canonical pattern anchors. Ignore architectural taste unless it causes those. The reviewer writes `REVIEW_REPORT` directly.
-- **Mode - full:** one opposite-runtime reviewer writes `REVIEW_REPORT` using the four lenses below. It may perform its own local reads/searches, but must not edit anything except `REVIEW_REPORT`; the fallback-agent column names who owns that lens only when fallback is used.
+- **Mode - full:** one opposite-runtime reviewer orchestrates the **four lenses below as independent subagents**, waits for all lens returns, then writes `REVIEW_REPORT`. Each lens subagent receives the same manifest/scope invariant, reviews only its lens, and is told its review may take at least 20 minutes. The orchestrating reviewer may perform its own local reads/searches and synthesize findings, but must not edit anything except `REVIEW_REPORT`; the fallback-agent column also names the lens role for external subagent dispatch.
 - After the command returns, verify the report exists, contains all required sections, names reviewed artifacts, and includes `Reviewer Runtime:` plus `Mode:` metadata. If invalid, retry once with a repair prompt to the same external CLI. If still invalid, fall back.
 
 **Fallback subagent method (only after an explicit fallback reason):**
 
 - **Mode - adversarial:** one `@reviewer` attacks execution readiness and returns compressed in-thread findings; primary compiles and writes `REVIEW_REPORT`.
-- **Mode - full:** dispatch the **four lenses below in parallel** with the same excerpts/manifest. Each returns compressed in-thread findings (no files); primary compiles and writes `REVIEW_REPORT`.
+- **Mode - full:** dispatch the **four lenses below in parallel** with the same excerpts/manifest and a note that each lens review may take at least 20 minutes. Each returns compressed in-thread findings (no files); primary compiles and writes `REVIEW_REPORT`.
 - Missing-artifact rule: review what exists; mark "not reviewable because `<artifact>` absent" only when necessary.
 
 | Lens | Fallback agent | Finds |
