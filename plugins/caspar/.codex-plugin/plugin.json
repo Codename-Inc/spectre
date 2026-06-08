@@ -1,6 +1,6 @@
 {
   "name": "caspar",
-  "version": "5.4.2",
+  "version": "5.4.4",
   "description": "Compact contract-driven agentic workflow prompts for AI coding.",
   "author": {
     "name": "Joe Fernandez",
