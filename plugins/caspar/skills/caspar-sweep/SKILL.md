@@ -1,6 +1,6 @@
 ---
 name: "caspar-sweep"
-description: "Light pre-commit cleanup pass — diff sanity, log/dead-code hygiene on changed files, strict lint, run related + broad tests, then conventional-commit. Use when wrapping up uncommitted or just-finished work before check-in (\"sweep\", \"clean up and commit\", \"tidy this diff\"). Do NOT use for forensic dead-code removal across the codebase (use clean), for authoring new tests (use test), or as a full validation gate — this is a fast hygiene+commit pass, not deep review."
+description: "Light pre-commit cleanup pass — diff sanity, log/dead-code hygiene on changed files, strict lint, run related + broad tests, then conventional-commit. Use when wrapping up uncommitted or just-finished work before check-in (\"sweep\", \"clean up and commit\", \"tidy this diff\"), standalone or as the final phase of caspar-clean. Do NOT use for forensic dead-code removal across the codebase (use caspar-prune), for authoring new tests (use caspar-test), or as a full validation gate — this is a fast hygiene+commit pass, not deep review."
 user-invocable: true
 ---
 

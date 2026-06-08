@@ -2,7 +2,7 @@
 
 Contract-driven agentic coding workflows for Claude Code and Codex.
 
-Scope → Plan → Execute → Clean → Test → Rebase
+Scope → Plan → Execute → Clean → Rebase
 
 CASPAR helps product builders and engineering teams turn ambiguous feature requests into explicit artifacts, executable implementation plans, focused agent assignments, code review, validation, tests, and reusable project knowledge.
 
@@ -171,7 +171,7 @@ For example:
 
 - I iterated on /caspar:scope until I felt like the types of questions actually help me get clear on what I'm building, without asking questions that it could easily get from codebase research
 - I iterated on the /caspar:execute workflow until it successfully delivered large tasks in a single context window using subagents that deliver completion reports to brief the next subagents, use TDD effectively, and autonomously adapt the tasks based on what was discovered DURING development instead of blindly
-- I iterated on the /caspar:clean and /caspar:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
+- I iterated on the /caspar:clean, /caspar:prune, /caspar:test, and /caspar:sweep workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, and the commits were grouped logically with the appropriate amount of detail.
 - I iterated on the /caspar:learn and /caspar:recall workflows until captured project knowledge was easy to reuse without a startup injection layer.
 
 CASPAR is designed for builders who want hands-on control over scope and planning, then hands-off execution with stronger review and validation loops.
@@ -185,8 +185,8 @@ If you start with /scope, your agent will guide you through the rest of the step
 | **S**cope | `/caspar:scope` | Define requirements, constraints, success criteria |
 | **P**lan | `/caspar:plan` | Research codebase, create implementation plan |
 | **E**xecute | `/caspar:execute` | Parallel implementation with wave-based delivery |
-| **C**lean | `/caspar:clean` | Remove dead code, lint, format |
-| **T**est | `/caspar:test` | Risk-aware test coverage |
+| **C**lean | `/caspar:clean` | Meta closeout: prune, risk-based tests, sweep/commit |
+| **T**est | `/caspar:test` | Standalone risk-aware test coverage |
 | **R**ebase | `/caspar:rebase` | Safe merge preparation with conflict handling |
 
 Each command ends with "Next Steps" suggestions, so you always know what prompt to run next — you don't have to remember what the prompts are, which is one thing that kills me about many other Spec Driven Development workflows.
@@ -275,9 +275,9 @@ Although I do sometimes use @caspar:web-research for web research. It's like min
   - finding obvious dead code/AI slop, and
   - grouping changes logically with descriptive conventional commits
 
-- Once wrapping up, /caspar:clean is a much deeper cleanup that dispatches subagents to find dead code, duplicates, verifies, lint, commits any stragglers, etc.
+- Once wrapping up, /caspar:clean is the end-to-end closeout: it dispatches subagents for prune, test, and sweep so dead code is removed, risk-based tests are handled, and the final diff is committed.
 
-- Then /caspar:test does deep analysis and dispatches subagents to write tests based on a risk-adjusted framework focusing on behavior not implementation details.
+- If I only need one phase, /caspar:prune handles dead-code/artifact cleanup, /caspar:test handles risk-adjusted behavioral tests, and /caspar:sweep handles final hygiene plus commits.
 
 - Once cleaned/tested — /caspar:rebase works great to rebase onto your parent branch, but obviously you do you with your release flow. From here I create PR/merge or directly merge depending on the task.
 
@@ -294,8 +294,9 @@ Although I do sometimes use @caspar:web-research for web research. It's like min
 | `/caspar:scope` | Interactive feature scoping |
 | `/caspar:plan` | Research codebase, create implementation plan |
 | `/caspar:execute` | Wave-based parallel execution with code review |
-| `/caspar:clean` | Code cleanup and quality gates |
-| `/caspar:test` | Risk-aware test coverage |
+| `/caspar:clean` | Meta closeout: prune, risk-based tests, sweep/commit |
+| `/caspar:prune` | Dead-code and artifact cleanup only |
+| `/caspar:test` | Standalone risk-aware test coverage |
 | `/caspar:rebase` | Safe rebase with conflict handling |
 
 ### Quick Start

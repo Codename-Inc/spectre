@@ -1,6 +1,6 @@
 ---
 name: "caspar-code_review"
-description: "Run an independent, severity-ranked code review of completed work — scopes to the modified files + their related deps, dispatches a clean-room @caspar:reviewer, and writes a report with CRITICAL/HIGH/MEDIUM/LOW findings and a prioritized action plan. Trigger after a unit of work is implemented and you want a second-pass quality/security/correctness check before clean/test/ship. Do NOT trigger to perform the fixes (review only — it never edits code), to run tests (caspar-test), or to do dead-code removal (caspar-clean)."
+description: "Run an independent, severity-ranked code review of completed work — scopes to the modified files + their related deps, dispatches a clean-room @caspar:reviewer, and writes a report with CRITICAL/HIGH/MEDIUM/LOW findings and a prioritized action plan. Trigger after a unit of work is implemented and you want a second-pass quality/security/correctness check before clean/test/ship. Do NOT trigger to perform the fixes (review only — it never edits code), to run tests (caspar-test), or to do dead-code removal (caspar-prune)."
 user-invocable: true
 ---
 

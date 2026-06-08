@@ -43,7 +43,7 @@ Rules (load-bearing):
 - Slash commands use the full **`/caspar:`** prefix; manual actions carry no prefix.
 - **Never invent a command** — suggest only roster entries. Only suggest commands that fit the current stage.
 
-Command roster (S→P→E→C→T→R + utilities):
+Command roster (S→P→E→C→R + standalone utilities):
 
 | Command | When |
 |---|---|
@@ -57,12 +57,13 @@ Command roster (S→P→E→C→T→R + utilities):
 | `/caspar:code_review` | implementation complete — in-depth review |
 | `/caspar:validate` | verify implementation against scope |
 | `/caspar:create_test_guide` | manual QA checklist |
-| `/caspar:clean` | deep cleanup — dead code, duplication |
+| `/caspar:clean` | meta cleanup — prune, test, sweep |
+| `/caspar:prune` | dead-code/artifact cleanup only |
 | `/caspar:test` | risk-aware test coverage (P0–P3) |
 | `/caspar:rebase` | rebase onto target, prep merge |
 | `/caspar:fix` | structured debugging for tough bugs |
 
-Workflow shorthand: **S**cope → **P**lan → **E**xecute → **C**lean → **T**est → **R**ebase. Commands run standalone; order is a default, not a requirement.
+Workflow shorthand: **S**cope → **P**lan → **E**xecute → **C**lean → **R**ebase. `prune`, `test`, and `sweep` also run standalone; order is a default, not a requirement.
 
 ## Handoff
 

@@ -1,6 +1,6 @@
 ---
 name: "caspar-validate"
-description: "Validate that completed implementation actually delivers the scope/tasks requirements — chunks the work into areas, dispatches parallel @caspar:analyst validators that trace each requirement from user action to render, and writes one actionable validation_gaps.md ranking what's Delivered / Partial / Dead Code / Missing. Trigger after execute (or any build) when you need to confirm requirements are met before clean/test/ship. Do NOT trigger to fix the gaps (caspar-fix), to run the test suite (caspar-test), or to remove dead code (caspar-clean)."
+description: "Validate that completed implementation actually delivers the scope/tasks requirements — chunks the work into areas, dispatches parallel @caspar:analyst validators that trace each requirement from user action to render, and writes one actionable validation_gaps.md ranking what's Delivered / Partial / Dead Code / Missing. Trigger after execute (or any build) when you need to confirm requirements are met before clean/test/ship. Do NOT trigger to fix the gaps (caspar-fix), to run the test suite (caspar-test), or to remove dead code (caspar-prune)."
 user-invocable: true
 ---
 

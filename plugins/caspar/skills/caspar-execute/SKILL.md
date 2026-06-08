@@ -1,6 +1,6 @@
 ---
 name: "caspar-execute"
-description: "Build the planned feature from a compact execute.md index and sliceable tasks.json detail, dispatching parallel task waves through deterministic checks and clean-room review before advancing. Trigger after execute.md/tasks.json exist or to resume a partially-built wave plan. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup."
+description: "Build the planned feature from a compact execute.md index and sliceable tasks.json detail, dispatching parallel task waves through deterministic checks and clean-room review before advancing. Trigger after execute.md/tasks.json exist or to resume a partially-built wave plan. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (caspar-prune)."
 user-invocable: true
 ---
 
@@ -68,7 +68,7 @@ Execute tasks in parallel waves without loading the full task graph into primary
 
 Report the summary inline (counts, fix-loop iterations, unresolved findings, test-guide path), then suggest next:
 
-- `/caspar:clean` — remove dead code/artifacts left by the build
+- `/caspar:clean` — run prune + risk-based tests + sweep/commit
 - `/caspar:test` — strengthen automated tests
 - `/caspar:rebase` — tidy history before merge
 

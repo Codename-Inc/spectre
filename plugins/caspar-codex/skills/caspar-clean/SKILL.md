@@ -1,53 +1,60 @@
 ---
 name: "caspar-clean"
-description: "Analyze a scoped working set (a commit range, unstaged changes, or session files) for dead code and artifacts left by recent or abandoned work — orphaned imports/exports, unused code, commented-out blocks, debug/temp logging, duplication, AI slop — then conservatively validate and remove the safe ones with a lint+test gate. Trigger after finishing a feature/branch, after a failed implementation attempt, or when asked to clean up / remove dead code. Do NOT trigger for adding tests (caspar-test), bug fixes (caspar-fix), or broad refactors that change behavior."
+description: "Meta cleanup workflow: orchestrate prune, risk-based automated tests, and sweep/commit through focused subagents. Use after execute/validate or when asked to clean up a finished branch end-to-end. Do NOT trigger for dead-code-only cleanup (caspar-prune), test-only work (caspar-test), commit-only hygiene (caspar-sweep), bug fixes (caspar-fix), or scoping/planning."
 user-invocable: true
 ---
 
 # clean
 
-Find and remove dead code and artifacts from recent work — **clear on WHAT, silent on HOW.** Conservative by default: investigate and validate before deleting; production code is never removed unsigned. Findings flow in-thread (no intermediate report files); only the final code changes and summary persist.
+End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test risk assessment, and final synthesis. Phase work runs in subagents using the existing focused skills: `caspar-prune`, `caspar-test`, and `caspar-sweep`.
 
 ## Inputs
 
-- `$ARGUMENTS` — optional scope. A `commit_id`/SHA, the word `unstaged`/`staged`, or `context`/session. If ambiguous → ask which scope mode (commit / unstaged / session files). If a given `commit_id` is invalid or not in history → **STOP and ask** for a valid ref.
+- `$ARGUMENTS` — optional scope hint: commit/SHA, `unstaged`/`staged`, `context`/session, task dir, or files.
 - `target_out_dir` — optional OUT_DIR override.
 
-## Working Set (late-bound — read at run-time, never inline)
+## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = target_out_dir || docs/tasks/{branch}`
-- Resolve the working set from `scope_mode`:
-  - **commit_range** (`commit_id` given): UNION of committed `git log --name-only --pretty=format: {commit_id}^..HEAD | sort -u` (the `^..` **includes** the commit_id commit itself), staged `git diff --cached --name-only`, unstaged `git diff --name-only`, untracked `git ls-files --others --exclude-standard`. If `commit_id == HEAD`, working set = staged + unstaged + untracked.
-  - **unstaged**: UNION of staged + unstaged + untracked (the three commands above).
-  - **context**: ask the user which session files; **WAIT** for the list.
-- Respect `.gitignore`; honor `package.json`/`tsconfig.json` context. All paths absolute from repo root.
-
-## Method / guardrails
-
-- **Detect → investigate → validate → remove.** Scan the working set for dead-code signals, then confirm each before deleting. Be conservative: when in doubt, downgrade, don't delete.
-- **Dead-code signals** (ordered by likelihood after a failed branch): orphaned imports · unused functions/vars · large commented-out blocks (>5 lines) · debug artifacts (debugger, current-work TODO/FIXME) · **temp/dev logging** (bare `console.log`/dumps, per-iteration logs in loops/hot paths, DEBUG/TEMP/XXX/HACK prefixes, checkpoint "got here" logs, commented-out logs) · dead/unreachable branches · orphaned exports · duplicate implementations (abandoned refactor) · test artifacts (`.only`, skipped tests) · AI slop (over-commenting, defensive try/catch in trusted paths, `any` casts to dodge types, verbose where the codebase is concise).
-- **Duplication:** flag copy-pasted logic (>5 lines, 2+ instances), near-identical functions, repeated types/validate/transform/fetch patterns — with locations, a consolidation target, low/med/high effort. Ignore intentional duplication (fixtures, generated code).
-- **Parallel investigation (read-only).** For a non-trivial working set, dispatch up to **4** `@analyst` agents over file/module chunks. Each verifies per finding: actually unused (imports/calls/refs)? a failed-approach remnant (git history)? safe to remove (dependencies)? and returns a **compressed in-thread** verdict per item — `SAFE_TO_REMOVE` / `NEEDS_VALIDATION` / `KEEP` — with evidence. **No report files written.** When in doubt → `NEEDS_VALIDATION`.
-- **Validate high-risk before removal.** Every function/file/export deletion gets a second read-only `@analyst` pass searching for ANY usage (dynamic imports, string refs, reflection, tests) → `CONFIRMED_SAFE` / `UNSAFE` / `UNCERTAIN`. Only `CONFIRMED_SAFE` is removable; `UNCERTAIN` → manual-review list.
-- **Approval gate.** Present the summary (files analyzed · safe removals · manual-review · excluded-with-reason) and **WAIT** for the user to approve specific items or all `CONFIRMED_SAFE`. Remove only what's approved, sequentially.
-- **Commit gate.** After removals, run lint (fix violations) and tests for affected areas. **If tests fail → roll back that change** and document it; only commit on green. `--no-verify`, `eslint-disable`, and `@ts-ignore`/`@ts-expect-error` to force a commit are **forbidden without the user's explicit permission.**
-- **ESLint-debt scan (diagnostic only).** `grep -rn "eslint-disable\|@ts-ignore\|@ts-expect-error"` the working set, group by module, and for any group with ≥2 bypasses dispatch `@analyst` to produce a refactor plan (rule · reason · fix · effort · risk). Report it for future tasks — do **not** refactor during clean.
+- Late-bind at runtime: `branch = git rev-parse --abbrev-ref HEAD`; `OUT_DIR = target_out_dir || docs/tasks/{branch}`.
+- Resolve the same full working set used by prune/test/sweep from committed changes, staged, unstaged, and untracked files. If a provided ref/scope is invalid or ambiguous, stop and ask.
+- Write/update `{OUT_DIR}/working_set.json` with scope, files, and the primary's P0-P3 risk tiers before dispatching test work.
 
 ## Outputs + DONE
 
-- Removed dead code (commit by type: chore/refactor/fix/test, conventional format).
-- `{OUT_DIR}/cleanup_summary.md` (scoped filename if one exists — never overwrite): Executive Summary · Safe Removals (file:line · what · why safe) · Manual Review Required · Excluded Items (kept + why) · Estimated Impact.
-- **DONE when:** every removal was validated `CONFIRMED_SAFE` and user-approved; lint + affected tests pass (failures rolled back); no `--no-verify`/`eslint-disable` introduced; summary written; uncertain items handed to manual review.
+- `caspar-prune` cleanup completed by a subagent; manual-review items preserved.
+- Primary-authored P0-P3 risk assessment and test plan recorded in `working_set.json`.
+- `caspar-test` work completed by `@tester` test-lead subagents using the primary's risk plan.
+- `caspar-sweep` completed by a subagent, including final hygiene, verification, and conventional commits.
+- Final report includes: prune summary path, manual-review items, risk-tier counts, tests added/verified, lint/test status, sweep commit list, and any blockers.
+- **DONE when:** each phase skill actually ran in a subagent; primary did the test risk assessment itself; no phase rules were duplicated or hand-written in place of loading the focused skill; manual-review items are surfaced; sweep either committed cleanly or stopped on an explicit blocker.
+
+## Method / guardrails
+
+1. **Resolve scope once.** Establish files, task dir, and OUT_DIR. Keep dynamic details out of the prompt body; read them live.
+2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(caspar-prune)` for the resolved scope. It returns cleanup edits, summary path, validation status, and manual-review items.
+3. **Primary risk assessment.** After prune returns, the primary classifies every changed file P0-P3:
+   - **P0 Critical:** auth/payment/security/crypto/session/token, PII, permissions, user-data mutation, external API handlers, DB migrations, `@critical`.
+   - **P1 Core:** feature components, API handlers, state/business logic, fetch/cache, user-visible error paths.
+   - **P2 Supporting:** exported utilities, validators, transformers, adapters, hooks with real logic.
+   - **P3 Skip:** docs, styles, config, types, constants/enums, re-export barrels, pass-through wrappers, generated files.
+   Write a compact plan: `- [P{tier}] {file}: {behavior or SKIP reason}`.
+4. **Test phase.** Dispatch `@tester` test-lead subagents in parallel. Each subagent loads `Skill(caspar-test)`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
+5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(caspar-sweep)` on the resulting diff. Sweep owns final hygiene, verification, and commits.
+6. **Synthesize.** Read phase returns and git state; report only the final state and blockers.
+
+Guardrails:
+- Do not inline the bodies of prune/test/sweep; call the skills.
+- Do not let the primary perform prune edits, test authoring, or sweep commits except to recover from a surfaced blocker with user approval.
+- `CONFIRMED_SAFE` cleanup may be applied; `UNCERTAIN`/`UNSAFE` cleanup stays untouched and appears in final manual review.
+- `--no-verify`, lint/type suppressions, and forced green are forbidden unless the user explicitly permits them.
 
 ## Handoff
 
-Report inline: counts analyzed/removed/excluded, the manual-review list, and the ESLint-debt plan, with the summary path. Then suggest the next command (no wait):
-
-- `caspar-test` — add/strengthen tests for the cleaned areas
-- `caspar-rebase` — tidy history before merge
+If sweep committed successfully, report commit hashes/messages and suggest `caspar-rebase` or push/PR. If blocked, report the exact phase and blocker, plus the manual-review list.
 
 ## Escalate-If
 
-- A `commit_id` is invalid or scope is ambiguous → stop and ask before scanning.
-- A finding sits at `UNCERTAIN`/`UNSAFE`, or removal touches production code without a clean signal → leave it in, flag for manual review, don't force it.
-- Lint/tests fail after a removal → roll back and surface it; never commit red or reach for `--no-verify`.
+- Scope is ambiguous, a ref is invalid, or no meaningful working set exists.
+- A phase skill conflicts with this orchestration contract; surface the conflict instead of improvising.
+- P0 coverage cannot be made behavioral and mutation-resistant.
+- Sweep finds secrets/PII or cannot commit without bypassing verification.
