@@ -61,6 +61,7 @@ Command roster (S→P→E→C→R + standalone utilities):
 | `caspar-prune` | dead-code/artifact cleanup only |
 | `caspar-test` | risk-aware test coverage (P0–P3) |
 | `caspar-rebase` | rebase onto target, prep merge |
+| `caspar-release` | bump/push a Caspar version and refresh local Codex install |
 | `caspar-fix` | structured debugging for tough bugs |
 
 Workflow shorthand: **S**cope → **P**lan → **E**xecute → **C**lean → **R**ebase. `prune`, `test`, and `sweep` also run standalone; order is a default, not a requirement.
