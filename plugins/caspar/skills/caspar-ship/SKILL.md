@@ -40,7 +40,7 @@ Fully autonomous — no approval gates; parse intent, build it, ship the PR. Run
    - **Lint (strict): fix all violations — no skipping, no `eslint-disable`/`--no-verify`; refactor structural issues, never suppress.**
    - Test: run affected + full suite, fix failures. Do not write new tests here (done in step 4).
 6. **Rebase** — `git fetch origin`; **YOU MUST create a backup ref first**: `git branch backup/ship-$(date +%Y%m%d-%H%M%S)` (the only rollback; never rebase without it). `git rebase {TARGET_BRANCH}`, auto-resolving conflicts favoring the target's conventions, tracking each decision for the PR. **Verify after**: lint (fix) + full test suite (fix) + confirm commit count and no unexpected changes.
-7. **PR** — `git push -u origin {BRANCH_NAME}`, then `gh pr create`; output the PR URL.
+7. **PR** — `git push -u origin {BRANCH_NAME}`, then `gh pr create`; output the PR URL. Ground the description in the actual change, not memory: **What** = behavioral summary from the diff (not a diff recitation); **Why** = from the brain dump / commits / linked issue (placeholder if none — never fabricated); **Test Plan** = what the diff's tests actually cover. Scale to size — trivial PRs get Summary + Why; larger/multi-area PRs add Changes, Test Plan, and a Feedback-Requested line directing the reviewer. Before opening, verify each claim maps to a real hunk and no secrets/PII are quoted into the body. (See `Skill(caspar-create_pr)` for the full grounding contract.)
 
 ## Handoff
 Terminal skill — output is the PR URL. End with a one-line Next Steps pointer (e.g. review the PR / `/caspar:code_review`).
