@@ -102,7 +102,7 @@
               "type": "Build",
               "status": "pending",
               "produces": "`references/tasks.example.json` with `meta` and `phases[]` detail",
-              "consumed_by": "create_tasks, execute, plan_review, code_review, validate",
+              "consumed_by": "create_tasks, execute, task_review, code_review, validate",
               "replaces": "The implicit Markdown-only task body contract",
               "context": [
                 {

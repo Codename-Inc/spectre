@@ -65,8 +65,9 @@ Capability matrix: [`docs/codex-capability-matrix.md`](./docs/codex-capability-m
 
 CASPAR is built around explicit artifacts and narrow agent contracts. The goal is not more process for its own sake; it is to give coding agents the right context, constraints, and review surfaces so they can work longer without drifting.
 
-- **Adversarial plan review:** STANDARD and COMPREHENSIVE planning require an independent plan review. When possible, CASPAR uses the opposite runtime (`codex` reviewing Claude Code work, or `claude` reviewing Codex work) before the planner applies only scope-safe changes.
+- **Adversarial plan review:** STANDARD and COMPREHENSIVE planning require an independent plan review before task generation. When possible, CASPAR uses the opposite runtime (`codex` reviewing Claude Code work, or `claude` reviewing Codex work) before the planner applies only scope-safe changes.
 - **Compact execution artifacts:** `caspar:create_tasks` emits `specs/execute.md` as the execution index and `specs/tasks.json` as canonical task detail. Execute and validation workflows slice `tasks.json` into narrow task assignments instead of loading a large monolithic task file.
+- **Comprehensive task review:** COMPREHENSIVE flows add a dedicated task-artifact review after task generation, checking that `execute.md` and `tasks.json` faithfully translate the reviewed plan.
 - **Parallel specialist agents:** finder, analyst, patterns, reviewer, tester, web-research, and dev agents handle focused parts of the workflow.
 - **Durable project knowledge:** `/caspar:learn` captures patterns, gotchas, procedures, and decisions into project skills that future agents can discover.
 
@@ -121,6 +122,7 @@ In CASPAR, the **structured workflows** generate some combination of the followi
 - `execute.md` - compact execution index for wave-based delivery
 - `tasks.json` - canonical task detail used for slicing focused agent assignments
 - `reviews/plan_review.md` - independent adversarial plan review for STANDARD/COMPREHENSIVE planning
+- `reviews/task_review.md` - generated task-artifact review for COMPREHENSIVE planning
 - `code_review.md` - prioritized code review feedback
 - `gaps.md` - task list of gaps identified from validation
 - `.claude/skills/{feature_name}/skill.md` - a skill for agents to auto-reference the work
@@ -250,7 +252,9 @@ Although I do sometimes use @caspar:web-research for web research. It's like min
 
 - /caspar:plan to build out a well researched technical design or set of tasks
 
-  - for STANDARD and COMPREHENSIVE plans, Caspar runs an independent adversarial plan review before finalizing the plan. The primary agent reads the saved review report and applies only scope-safe fixes.
+  - for STANDARD and COMPREHENSIVE plans, Caspar runs an independent adversarial plan review before generating tasks. The primary agent reads the saved review report and applies only scope-safe plan fixes.
+
+  - for COMPREHENSIVE plans, Caspar then reviews the generated `execute.md` and `tasks.json` before execution to catch task translation gaps.
 
 - then run /caspar:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /caspar:code_review and /caspar:validate.
 

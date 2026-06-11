@@ -78,7 +78,7 @@ Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not
 
 ## Handoff
 
-Report inline: structure (`{X} phases, {Y} parents, {Z} subtasks`), execution shape (sequential steps / `{N}` waves), and paths for `EXECUTE_FILE` + `DETAIL_FILE`. Then suggest next: `/caspar:plan_review` or `/caspar:execute`.
+Report inline: structure (`{X} phases, {Y} parents, {Z} subtasks`), execution shape (sequential steps / `{N}` waves), and paths for `EXECUTE_FILE` + `DETAIL_FILE`. If `--depth comprehensive`, suggest `/caspar:task_review`; otherwise suggest `/caspar:execute`.
 
 ## Escalate-If
 

@@ -52,7 +52,8 @@ Command roster (S→P→E→C→R + standalone utilities):
 | `caspar-plan` | scope ready — research + route by complexity |
 | `caspar-create_plan` | complex work needing architecture first |
 | `caspar-create_tasks` | plan ready → concrete tasks |
-| `caspar-plan_review` | sanity-check a plan/tasks for over-engineering |
+| `caspar-plan_review` | sanity-check a plan before task generation |
+| `caspar-task_review` | comprehensive task-artifact translation check |
 | `caspar-execute` | execute.md + tasks.json exist — multi-agent parallel build |
 | `caspar-code_review` | implementation complete — in-depth review |
 | `caspar-validate` | verify implementation against scope |
