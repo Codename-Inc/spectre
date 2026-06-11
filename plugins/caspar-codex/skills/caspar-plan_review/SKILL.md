@@ -33,15 +33,25 @@ Adversarial review of planning artifacts - **clear on WHAT, silent on HOW.** Pre
 2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex non-interactively.
 3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces a report missing required sections after one repair attempt, record the reason and fall back to same-runtime Caspar subagents.
 4. Primary-agent self-review is prohibited. The primary may only write `REVIEW_REPORT` when compiling explicit fallback subagent returns.
+5. Do not spend tool calls discovering how to start the opposite runtime. Use exactly the initiation recipe below; only `command -v {opposite_cli}` is needed for availability.
 
-**External reviewer command shape:**
+**Opposite-runtime initiation recipe (copy exactly):**
 
-- Claude Code reviewer:
-  `claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"`
-- Codex reviewer:
-  `codex exec -C "$PWD" --sandbox workspace-write --ask-for-approval never "$REVIEW_PROMPT"`
+From **Codex** primary, start a **Claude Code** review session:
 
-Both commands must run with filesystem write capability for the final review document: Claude via the explicit `Write` tool and Codex via `--sandbox workspace-write`. Claude must also allow `Task` so it can dispatch lens subagents. The reviewer prompt limits write capability to `REVIEW_REPORT`.
+```bash
+claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+```
+
+From **Claude Code** primary, start a **Codex** review session:
+
+```bash
+codex exec -C "$PWD" -s workspace-write "$REVIEW_PROMPT"
+```
+
+Run both commands from the repository root (`$PWD`). Do not add approval flags, interactive resume flags, broad bypass flags, `codex review`, or project discovery commands. Do not wrap the prompt with `cat`, temp files, `tail`, or shell pipelines unless your execution environment cannot pass a long argument; if a temp prompt file is unavoidable, run the same command shape with `$(cat /tmp/plan_review_prompt.txt)` as the final argument and do not otherwise change flags.
+
+Both commands must run with filesystem write capability for the final review document: Claude via the explicit `Write` tool and Codex via `-s workspace-write`. Claude must also allow `Task` so it can dispatch lens subagents. The reviewer prompt limits write capability to `REVIEW_REPORT`.
 
 Allow the external reviewer run to take at least 20 minutes before treating it as hung or failed; if the invoking tool supports an explicit timeout, set it to at least 1200000 ms. Full mode deliberately fans out independent lens reviews and may take that long.
 
