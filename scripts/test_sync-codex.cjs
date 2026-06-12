@@ -159,3 +159,21 @@ test('check mode detects drift and passes after regeneration', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('caspar-execute uses lightweight sentinel review before final comprehensive review', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillPaths = [
+    path.join(repoRoot, 'plugins', 'caspar', 'skills', 'caspar-execute', 'SKILL.md'),
+    path.join(repoRoot, 'plugins', 'caspar-codex', 'skills', 'caspar-execute', 'SKILL.md'),
+  ];
+
+  for (const skillPath of skillPaths) {
+    const skill = fs.readFileSync(skillPath, 'utf8');
+    assert.match(skill, /Sentinel selector/);
+    assert.match(skill, /Lightweight sentinel review/);
+    assert.match(skill, /Final comprehensive review \+ validate/);
+    assert.match(skill, /sentinel review counts/);
+    assert.doesNotMatch(skill, /Dual clean-room review/);
+    assert.doesNotMatch(skill, /dispatch two .*reviewer/);
+  }
+});
