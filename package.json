@@ -1,6 +1,6 @@
 {
   "name": "@codename_inc/caspar",
-  "version": "5.4.6",
+  "version": "5.4.7",
   "description": "Contract-driven agentic coding workflow for Claude Code and Codex.",
   "type": "module",
   "homepage": "https://github.com/Codename-Inc/caspar#readme",
