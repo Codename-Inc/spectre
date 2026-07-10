@@ -1,6 +1,6 @@
 ---
 name: "caspar-plan_review"
-description: "Independent adversarial review of plan.md before task generation. Prefer an opposite-runtime CLI reviewer that writes reviews/plan_review.md directly; fall back to Caspar subagents only when unavailable. Trigger after create_plan and before create_tasks. Do NOT review generated tasks, finished code, or apply scope changes."
+description: "Independent adversarial review of plan.md before task generation. Use a pinned high-effort opposite-runtime reviewer; fall back to one native reviewer with the same contract when unavailable. Trigger after create_plan and before create_tasks. Do NOT review generated tasks, finished code, or apply scope changes."
 user-invocable: true
 ---
 
@@ -29,7 +29,7 @@ Reviewers may recommend deleting unrequested implementation, unnecessary abstrac
 **External-first selection**
 1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
 2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
-3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to Caspar subagents.
+3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@caspar:reviewer`; unavailable opposing runtimes never block completion.
 4. Primary-agent self-review is prohibited except compiling explicit fallback subagent returns.
 5. Do not probe for startup commands. Use exactly the recipe below.
 
@@ -37,17 +37,19 @@ Reviewers may recommend deleting unrequested implementation, unnecessary abstrac
 
 From Codex primary:
 ```bash
-claude -p --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+claude -p --model fable --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
 ```bash
-codex exec -C "$PWD" -s workspace-write "$REVIEW_PROMPT"
+codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
 ```
+
+External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: fable`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
 
 Run from repo root. Do not add approval flags, resume flags, broad bypass flags, `codex review`, project discovery commands, shell pipelines, or temp prompt files unless argument length requires a file. If a prompt file is unavoidable, keep the same command shape and pass `$(cat /tmp/plan_review_prompt.txt)` as the final argument.
 
-`REVIEW_PROMPT` includes: TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, and: "This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens, tell each lens worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
+`REVIEW_PROMPT` includes: TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
 
 **Review lenses**
 
@@ -59,8 +61,8 @@ Run from repo root. Do not add approval flags, resume flags, broad bypass flags,
 | Canonical reference quality | `@caspar:patterns` | vague "follow existing pattern" claims; propose concrete file:line anchors or reuse targets |
 
 - **Adversarial mode:** one opposite-runtime pass focused on execution readiness.
-- **Full mode:** opposite-runtime reviewer fans out one worker per lens, waits, then writes the report.
-- **Fallback:** adversarial uses one `@caspar:reviewer`; full dispatches the four lenses in parallel. Subagents return compressed findings in-thread; only the compiled report persists.
+- **Full mode:** opposite-runtime reviewer fans out one worker per lens only with pinned-model inheritance; otherwise the pinned parent reviews all four lenses, then writes the report.
+- **Native fallback:** dispatch one clean-context `@caspar:reviewer` with the same artifact manifest, scope invariant, lenses, severity rules, evidence requirements, and report schema from `REVIEW_PROMPT`. In full mode this single reviewer evaluates every lens itself; it does not delegate. Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged. Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
 - Severity: **Blocker**, **High**, **Medium**, **Low**, **Scope Change Required**.
 
 **Write-back**
@@ -76,9 +78,9 @@ Run from repo root. Do not add approval flags, resume flags, broad bypass flags,
 1. **Must-Delete (Lens 1 - YAGNI)** - one nominated scope-safe cut or "No scope-safe deletion found".
 2. **Findings** - table `# | Severity | Lens | Location | Finding | Suggested Edit`.
 3. **Summary** - counts per severity; Blocker/High must resolve before task generation.
-4. **Review Metadata** - reviewed artifacts, canonical scope source, auto-apply mode, ISO8601 timestamp, `Mode:`, `Reviewer Runtime:`, `Fallback Reason:` when applicable.
+4. **Review Metadata** - reviewed artifacts, canonical scope source, auto-apply mode, ISO8601 timestamp, `Mode:`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
 
-DONE when the report exists before edits; every finding has a location + concrete suggested edit; external reviewer or fallback reason is recorded; applied edits touch only `plan.md`; scope-change recommendations are left unapplied; post-edit self-check passes.
+DONE when the report exists before edits; every finding has a location + concrete suggested edit; runtime/model/effort/route metadata is recorded; any native fallback reason is recorded; applied edits touch only `plan.md`; scope-change recommendations are left unapplied; post-edit self-check passes.
 
 ## Handoff
 

@@ -123,7 +123,7 @@ In CASPAR, the **structured workflows** generate some combination of the followi
 - `tasks.json` - canonical task detail used for slicing focused agent assignments
 - `reviews/plan_review.md` - independent adversarial plan review for STANDARD/COMPREHENSIVE planning
 - `reviews/task_review.md` - generated task-artifact review for COMPREHENSIVE planning
-- `code_review.md` - prioritized code review feedback
+- `reviews/comprehensive_code_review.md` - opposing-runtime adversarial code review findings
 - `gaps.md` - task list of gaps identified from validation
 - `.claude/skills/{feature_name}/skill.md` - a skill for agents to auto-reference the work
 
@@ -256,7 +256,7 @@ Although I do sometimes use @caspar:web-research for web research. It's like min
 
   - for COMPREHENSIVE plans, Caspar then reviews the generated `execute.md` and `tasks.json` before execution to catch task translation gaps.
 
-- then run /caspar:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /caspar:code_review and /caspar:validate.
+- then run /caspar:execute to use parallel subagents to work through the tasks. Execute is a meta prompt that also calls /caspar:code_review with a pinned high-effort opposing model (or the same adversarial contract through a native fallback) and /caspar:validate.
 
   - execute reads the compact `execute.md` index, slices `tasks.json` into focused `<task_assignment>` payloads, and updates task status in JSON as work lands.
 

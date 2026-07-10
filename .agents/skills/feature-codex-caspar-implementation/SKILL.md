@@ -1,6 +1,6 @@
 ---
 name: feature-codex-caspar-implementation
-description: Use when modifying the Codex CASPAR install flow, project skill syncing, learn/recall registry files, or Codex-specific runtime files.
+description: Use when modifying the Codex CASPAR install flow, project skill syncing, learn/recall registry files, or Codex-specific runtime files. TRIGGER when: codex, caspar, codex install, project skills, registry, caspar-learn, caspar-recall, config.toml, doctor
 user-invocable: false
 ---
 
@@ -9,8 +9,8 @@ user-invocable: false
 **Trigger**: codex, caspar, codex install, project skills, registry, caspar-learn, caspar-recall, config.toml, doctor
 **Confidence**: high
 **Created**: 2026-03-30
-**Updated**: 2026-05-31
-**Version**: 3
+**Updated**: 2026-07-10
+**Version**: 4
 
 ## Current Design
 
@@ -29,6 +29,14 @@ Workflow task execution now uses a two-artifact contract:
 - `execute.md` is the compact primary-agent index (document manifest, task detail source, execution summary, wave plan, parent-task index, slicing rules).
 - `tasks.json` is the full mutable detail/status source (`meta` + `phases[]`); primary execution/review/validation consumers should slice it by parent task id instead of reading the whole file.
 - Do not reintroduce the old `specs/tasks.md` task-list flow or a Markdown fallback/converter.
+
+Review gates use one cross-runtime contract:
+
+- `caspar-plan_review`, `caspar-task_review`, and `caspar-code_review` prefer the opposing CLI with an explicit high-effort model: Codex launches Claude Code with `--model fable --effort high`; Claude Code launches Codex with `-m gpt-5.6-sol -c 'model_reasoning_effort="high"'`.
+- If the opposing runtime is unavailable or fails validation after one repair attempt, the gate dispatches one native reviewer with the same manifest, adversarial lenses, severity/evidence rules, exclusions, and report schema. This fallback does not block completion and must record its reason plus runtime/model metadata.
+- `caspar-code_review` is an adversarial, evidence-gated review for correctness, regressions/integration, security, performance/reliability, overengineering, and test adequacy. It does not use subjective numeric scores.
+- `caspar-execute` delegates its final cumulative review to `caspar-code_review --orchestrated`; do not reintroduce a separate final-review prompt inside execute.
+- Canonical workflow skills live under `plugins/caspar/skills/`; regenerate `plugins/caspar-codex/` and keep regression assertions in `scripts/test_sync-codex.cjs` aligned with these invariants.
 
 ## Install Flow
 

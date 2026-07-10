@@ -1,56 +1,101 @@
 ---
 name: "caspar-code_review"
-description: "Run an independent, severity-ranked code review of completed work — scopes to the modified files + their related deps, dispatches a clean-room @caspar:reviewer, and writes a report with CRITICAL/HIGH/MEDIUM/LOW findings and a prioritized action plan. Trigger after a unit of work is implemented and you want a second-pass quality/security/correctness check before clean/test/ship. Do NOT trigger to perform the fixes (review only — it never edits code), to run tests (caspar-test), or to do dead-code removal (caspar-prune)."
+description: "Run an independent adversarial code review of completed work using a pinned high-effort opposing runtime, with a same-contract native fallback. Finds bugs, correctness and security failures, regressions, performance landmines, overengineering, and missing behavioral tests. Review only; never edits code."
 user-invocable: true
 ---
 
 # code_review
 
-Independent, comprehensive review of **what was just built** — correctness, security, quality, production-readiness — returned as severity-ranked findings with evidence and a prioritized fix order. **Review only; never edit code.**
+Adversarial review of what was just built. A clean-context reviewer tries to falsify correctness and production readiness, then returns only evidence-backed, severity-ranked findings. Review only; never edit code.
 
 ## Inputs
 
-- `$ARGUMENTS` — optional focus areas / guidance; honor it but still review comprehensively.
-- The completed work + the files it touched (created/modified/deleted, each with what changed) — the review scope. Pull from `tasks.json` parent/subtask slices when present, else `plan.md`, else infer from the diff and the user's request; trace to origin docs (PRD / task_summary) for acceptance criteria when available. Do not use `execute.md` as the review source except to locate `tasks.json`.
+- `$ARGUMENTS` - optional focus guidance, explicit diff/base range, target `OUT_DIR`, and optional `--orchestrated` when another workflow will consume the report.
+- Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
+- If the work scope is genuinely ambiguous after inspecting artifacts and git state, ask what to review before dispatching.
 
-## Working Set (late-bound — read at run-time, never inline)
+## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
-- `OUT_DIR = target_dir || docs/tasks/{branch}`; report goes under `{OUT_DIR}/reviews/`
-- the actual diff / changed files and task artifacts under `{OUT_DIR}/` — read just-in-time. For `tasks.json`, extract only relevant `phases[].parents[]` and child subtask slices; do not load whole JSON into the review brief.
+- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`).
+- `OUT_DIR = target_dir || docs/tasks/{branch}`; report under `{OUT_DIR}/reviews/`.
+- `REVIEW_REPORT = {OUT_DIR}/reviews/comprehensive_code_review.md`; if it exists, use `comprehensive_code_review_{YYYY-MM-DD_HHMMSS}.md` and never overwrite prior evidence.
+- Build a late-bound review manifest: diff/base range, changed-file summary, in-scope requirement/AC paths, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
 
 ## Method / guardrails
 
-- **Scope first, tightly.** Define the exact set under review = modified/created files + their direct deps, imports, and tests. State in-scope vs out-of-scope explicitly. This prevents adjacent-code drift.
-- **Dispatch one `@reviewer`** with a clean-room brief: the work completed, the file list (path + what changed), extracted requirements/acceptance criteria, and the severity scale + evidence rule below. The reviewer reads the code itself; you give it scope, not your own findings.
-- **Severity scale:**
-  - **CRITICAL** — prevents execution; security vuln (injection, auth bypass, privilege escalation, data/secret exposure, insecure randomness); broken core logic.
-  - **HIGH** — maintainability/structure, missing core functionality, resource leaks, perf on hot paths (N+1, blocking I/O, O(n²) on large data), error handling that blocks users or leaks internals, API/network security (SSRF, CORS, rate-limit, HTTPS).
-  - **MEDIUM** — test coverage gaps, code quality/duplication, non-critical perf, config/CVEs/headers.
-  - **LOW** — docs, logging hygiene, final polish (dead code, debug prints, scoped diff).
-- **Evidence rule (YOU MUST):** every CRITICAL/HIGH finding carries `file:line` **and** a reproducible failure or exploit path describing observable behavior. No evidence chain → auto-downgrade one severity. "Could potentially" is not evidence.
-- **Stay in scope (YOU MUST NOT over-flag).** Flag only problems that block delivering the *completed work*; suggest only changes that support its acceptance criteria. Do NOT flag missing features from incomplete/different scopes or enhancements beyond the minimal viable implementation. Early-stage product: YAGNI + KISS + DRY + SOLID — no over-engineering.
-- **No fixes.** Report and hand back; the user decides what to act on.
+**External-first selection**
+1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
+2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
+3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@reviewer`; unavailable opposing runtimes never block completion.
+4. Primary-agent self-review is prohibited except validating the saved report and persisting an explicit native fallback return.
+5. Do not probe for startup commands. Use exactly the applicable recipe below from repo root.
+
+**Opposite-runtime initiation recipe**
+
+From Codex primary:
+```bash
+claude -p --model fable --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Bash(git diff *),Bash(git show *),Bash(git status *),Bash(git rev-parse *),Write" --output-format text "$REVIEW_PROMPT"
+```
+
+From Claude Code primary:
+```bash
+codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
+```
+
+External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: fable`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
+
+The external reviewer may write only `REVIEW_REPORT`; it may not edit code, tests, plans, tasks, scope docs, or other artifacts. Allow at least 20 minutes before treating the run as hung.
+
+`REVIEW_PROMPT` includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It also includes the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
+
+**Adversarial lenses**
+
+| Lens | Attack surface |
+|---|---|
+| Correctness | wrong outputs, broken invariants, edge cases, state/ordering/concurrency failures, error-path behavior |
+| Regression / integration | broken callers, unreachable wiring, stale active paths, contract mismatches, incomplete migrations |
+| Security | trust boundaries, auth/permissions, injection, secret/data exposure, unsafe input or destructive behavior |
+| Performance / reliability | hot-path complexity, N+1 work, blocking I/O, leaks, unbounded memory/work, retry or failure amplification |
+| Overengineering | speculative abstractions, duplicate paths, needless indirection, generality not required by scope; flag only when a materially simpler in-scope shape is evident |
+| Test adequacy | changed behavior with no executable regression signal, untested failure/security paths, assertions that cannot catch the defect |
+
+**Severity and evidence**
+
+- **CRITICAL** - exploitable security failure, data loss/corruption, privilege bypass, or core execution failure.
+- **HIGH** - concrete user-facing correctness/regression, serious security weakness, or demonstrated hot-path/reliability failure.
+- **MEDIUM** - localized defect, meaningful maintainability/overengineering cost, non-critical performance issue, or material test gap with a concrete failure risk.
+- **LOW** - small but actionable issue. Do not report style, naming, formatting, praise, or speculative future concerns.
+- Every finding needs `file:line`, the violated behavior/requirement, concrete evidence, impact, and the smallest scope-safe fix.
+- Every CRITICAL/HIGH also needs a reproducible failure, exploit, or performance path with observable behavior. No evidence chain means downgrade or omit; "could potentially" is not evidence.
+- Stay within the completed work and its direct blast radius. Missing features from another scope and subjective architecture preferences are not findings.
+
+**Native fallback**
+
+- Dispatch one clean-context `@reviewer` with the same manifest, adversarial role, lenses, severity rules, evidence requirements, exclusions, and report schema from `REVIEW_PROMPT`.
+- Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged to `REVIEW_REPORT`.
+- Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
+
+After either route, verify the report exists, contains every required section, names the reviewed scope, and includes all runtime/model metadata. Repair an invalid external report once with the same CLI; otherwise use the native fallback. Never fix findings inside this skill.
 
 ## Outputs + DONE
 
-Write the report to `{OUT_DIR}/reviews/comprehensive_code_review.md` (scoped filename like `{name}_comprehensive_code_review_{timestamp}.md` if one already exists, never overwrite); `mkdir -p` the dir. Required sections:
+Required report sections:
 
-1. **Scope Boundary Validation** — completed work + modified files understood; in-scope vs out-of-scope stated; other/incomplete work explicitly excluded.
-2. **Context Summary** — docs reviewed + code scope identified.
-3. **Files Reviewed** — specific files/areas examined.
-4. **Summary Assessment** — readiness, security posture, risk level.
-5. **Findings by Severity** — CRITICAL / HIGH / MEDIUM / LOW, each finding `file:line` + description + fix (CRITICAL/HIGH obey the evidence rule).
-6. **Scores (0–10)** — Security Posture · Logic Correctness · Code Quality · Production Readiness.
-7. **Prioritized Action Plan** — ordered fixes (CRITICAL → HIGH → MEDIUM → LOW), related fixes grouped.
+1. **Scope Boundary** - completed work, diff/base, requirements, in-scope files/dependencies/tests, and explicit exclusions.
+2. **Verdict** - `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, or `CLEAN`.
+3. **Findings** - table `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Smallest Fix`, ordered CRITICAL to LOW. Say `No findings` when clean; do not pad.
+4. **Coverage Record** - files/paths and tests inspected, plus material areas not verified and why.
+5. **Prioritized Actions** - minimal ordered remediation list, or `None` when clean.
+6. **Review Metadata** - ISO8601 timestamp, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
 
-**DONE when:** the report exists with all 7 sections; findings are severity-ranked and every CRITICAL/HIGH has an evidence chain; in/out-of-scope is explicit; no code was modified.
+DONE when the report exists with all six sections; scope is explicit; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings satisfy evidence rules; no code or non-report artifact was modified.
 
 ## Handoff
 
-Respond to the user with **only the high-priority items** (numbered for selection: brief description + `file:line` + impact + recommendation) and point to the report path. Do not perform fixes. Then suggest the next command inline — typically `caspar-fix` to address findings, or `caspar-clean` / `caspar-test` to continue the loop.
+- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Suggest `caspar-fix` for blockers or `caspar-clean` / `caspar-test` when unblocked.
+- `--orchestrated`: return the verdict, CRITICAL/HIGH findings with their evidence chains, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
 
 ## Escalate-If
 
-- The diff/work scope can't be determined (no tasks.json, no plan.md, ambiguous request) → ask the user what to review before dispatching.
-- A finding implies a scope or requirements change rather than a defect → surface it to the user; do not silently expand the review.
+- Diff/work scope remains ambiguous after reading available task/plan artifacts and git state -> ask what to review before dispatching.
+- A proposed finding changes requirements rather than identifying a defect -> label it `Scope Change Required`; do not include it in the blocking verdict.

@@ -1,12 +1,12 @@
 ---
 name: "caspar-execute"
-description: "Build the planned feature from a compact execute.md index and sliceable tasks.json detail, dispatching parallel task waves through deterministic checks, lightweight sentinel review, and final comprehensive validation. Trigger after execute.md/tasks.json exist or to resume a partially-built wave plan. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (caspar-prune)."
+description: "Build the planned feature from a compact execute.md index and sliceable tasks.json detail, dispatching parallel task waves through deterministic checks, lightweight sentinel review, and final adversarial review/validation. Trigger after execute.md/tasks.json exist or to resume a partially-built wave plan. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (caspar-prune)."
 user-invocable: true
 ---
 
 # execute
 
-Execute tasks in parallel waves without loading the full task graph into primary-agent context. Read `execute.md` whole, slice `tasks.json` only for selected parent tasks, verify each wave before advancing, adapt for spec compliance, run final comprehensive review/validation over the cumulative diff, and emit a manual test guide.
+Execute tasks in parallel waves without loading the full task graph into primary-agent context. Read `execute.md` whole, slice `tasks.json` only for selected parent tasks, verify each wave before advancing, adapt for spec compliance, run final adversarial review/validation over the cumulative diff, and emit a manual test guide.
 
 ## Inputs
 
@@ -59,12 +59,12 @@ Execute tasks in parallel waves without loading the full task graph into primary
 6. **Adapt only for spec compliance.** Edit `TASKS_JSON` directly: append gap tasks/subtasks with `status: "pending"`, mark obsolete work `skipped`, and add learned context to future tasks. If parent ids, titles, dependencies, or wave membership change, update only affected `Wave Plan` / `Parent Task Index` rows in `EXECUTE_INDEX`, then re-read the index. No nice-to-haves; no scope expansion.
 7. **Next wave.** Recompute pending status from `TASKS_JSON` projections, gather prior completion reports into `## Prior-Wave Context`, repeat.
 
-**Final comprehensive review + validate.** After all parent tasks are `done`/`skipped` and deterministic checks pass, run the expensive review once over the cumulative feature diff:
-- Dispatch multi-lens clean-room review using `@reviewer` workers for security + correctness, wiring/reachability, scope adherence, dead computation / old active paths, and test adequacy for changed behavior.
-- Reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and relevant `TASKS_JSON` slices. Do not use dev reports as evidence.
-- CRITICAL/HIGH findings enter the bounded fix loop. Medium/Low findings are summarized but do not block completion unless the user asks.
+**Final adversarial code review + validate.** After all parent tasks are `done`/`skipped` and deterministic checks pass, run the expensive review once over the cumulative feature diff:
+- Run `Skill(caspar-code_review)` with `{OUT_DIR} --orchestrated` over the cumulative diff. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
+- Reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and relevant `TASKS_JSON` slices. Do not use dev reports or implementer rationale as evidence.
+- Read the saved report. CRITICAL/HIGH findings enter the bounded fix loop; Medium/Low findings are summarized but do not block completion unless the user asks.
 - Then `@analyst` runs `Skill(caspar-validate)` (`caspar-validate`) narrowed to cross-wave integration audit, scope-creep audit, and dead-computation sweep over the cumulative diff. Pass `SCOPE_DOCS` plus `TASKS_JSON`; do not use `execute.md` as the validation source.
-- High-priority review or validation gaps → dispatch `@dev` to fix, rerun deterministic checks, then rerun only the affected final lens/validation check.
+- High-priority review or validation gaps → dispatch `@dev` to fix, rerun deterministic checks, then rerun `Skill(caspar-code_review)` or only the affected validation check.
 
 ## Outputs + DONE
 
@@ -72,7 +72,7 @@ Execute tasks in parallel waves without loading the full task graph into primary
 - `TASKS_JSON` statuses reflect completed/skipped/adapted work and parse after final write.
 - `{OUT_DIR}/test_guide.md` or `{OUT_DIR}/testing/{branch}_test_guide.md` from `Skill(caspar-create_test_guide)`.
 - Completion summary: tasks done · waves · sentinel review counts (`skip`/`wiring`/`risk`) · per-wave fix-loop counts · final review status · validation status · test-guide path · Task Evolution Summary · E2E Gaps Addressed · Unresolved Findings.
-- **DONE when:** every wave passed deterministic checks plus any required sentinel review; all planned tasks are `done`/`skipped`; final comprehensive review and cross-wave validate are clean or gaps fixed/accepted; test guide written; summary returned.
+- **DONE when:** every wave passed deterministic checks plus any required sentinel review; all planned tasks are `done`/`skipped`; final adversarial review and cross-wave validate are clean or gaps fixed/accepted; test guide written; summary returned.
 
 ## Handoff
 

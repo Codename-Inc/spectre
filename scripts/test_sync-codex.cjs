@@ -160,7 +160,7 @@ test('check mode detects drift and passes after regeneration', () => {
   }
 });
 
-test('caspar-execute uses lightweight sentinel review before final comprehensive review', () => {
+test('caspar-execute uses lightweight sentinel review before final adversarial review', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillPaths = [
     path.join(repoRoot, 'plugins', 'caspar', 'skills', 'caspar-execute', 'SKILL.md'),
@@ -171,9 +171,79 @@ test('caspar-execute uses lightweight sentinel review before final comprehensive
     const skill = fs.readFileSync(skillPath, 'utf8');
     assert.match(skill, /Sentinel selector/);
     assert.match(skill, /Lightweight sentinel review/);
-    assert.match(skill, /Final comprehensive review \+ validate/);
+    assert.match(skill, /Final adversarial code review \+ validate/);
     assert.match(skill, /sentinel review counts/);
     assert.doesNotMatch(skill, /Dual clean-room review/);
     assert.doesNotMatch(skill, /dispatch two .*reviewer/);
+  }
+});
+
+test('review gates pin high-effort opposing models and retain native fallback', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillNames = ['caspar-plan_review', 'caspar-task_review', 'caspar-code_review'];
+
+  for (const rootName of ['caspar', 'caspar-codex']) {
+    for (const skillName of skillNames) {
+      const skillPath = path.join(
+        repoRoot,
+        'plugins',
+        rootName,
+        'skills',
+        skillName,
+        'SKILL.md',
+      );
+      const skill = fs.readFileSync(skillPath, 'utf8');
+
+      assert.match(skill, /claude -p --model fable --effort high/);
+      assert.match(
+        skill,
+        /codex exec -C "\$PWD" -m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
+      );
+      assert.match(skill, /unavailable opposing runtimes never block completion/);
+      assert.match(skill, /Native fallback/);
+      assert.match(skill, /Reviewer Model:/);
+      assert.match(skill, /Reviewer Effort:/);
+      assert.match(skill, /Invocation Route:/);
+      assert.match(skill, /Reviewer Model: fable/);
+      assert.match(skill, /Invocation Route: Codex -> Claude Code/);
+      assert.match(skill, /Reviewer Model: gpt-5\.6-sol/);
+      assert.match(skill, /Invocation Route: Claude Code -> Codex/);
+    }
+  }
+});
+
+test('code review is adversarial and execute delegates the final review gate', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['caspar', 'caspar-codex']) {
+    const codeReviewPath = path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'caspar-code_review',
+      'SKILL.md',
+    );
+    const codeReview = fs.readFileSync(codeReviewPath, 'utf8');
+    assert.match(codeReview, /Adversarial review of what was just built/);
+    assert.match(codeReview, /Correctness/);
+    assert.match(codeReview, /Security/);
+    assert.match(codeReview, /Performance \/ reliability/);
+    assert.match(codeReview, /Overengineering/);
+    assert.match(codeReview, /Evidence \/ Reproduction/);
+    assert.doesNotMatch(codeReview, /Scores \(0(?:-|\u2013)10\)/);
+
+    const executePath = path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'caspar-execute',
+      'SKILL.md',
+    );
+    const execute = fs.readFileSync(executePath, 'utf8');
+    assert.match(execute, /Final adversarial code review \+ validate/);
+    assert.match(execute, /Skill\(caspar-code_review\)/);
+    assert.doesNotMatch(execute, /Dispatch multi-lens clean-room review/);
   }
 });

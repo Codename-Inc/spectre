@@ -55,7 +55,7 @@ Command roster (S→P→E→C→R + standalone utilities):
 | `/caspar:plan_review` | sanity-check a plan before task generation |
 | `/caspar:task_review` | comprehensive task-artifact translation check |
 | `/caspar:execute` | execute.md + tasks.json exist — multi-agent parallel build |
-| `/caspar:code_review` | implementation complete — in-depth review |
+| `/caspar:code_review` | implementation complete - adversarial opposing-model review |
 | `/caspar:validate` | verify implementation against scope |
 | `/caspar:create_test_guide` | manual QA checklist |
 | `/caspar:clean` | meta cleanup — prune, test, sweep |
