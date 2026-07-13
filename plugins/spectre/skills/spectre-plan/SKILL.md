@@ -15,7 +15,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 ## Description
 
 - **What** — Classify scope cheaply, run only needed research, route to the smallest safe workflow
-- **Outcome** — MICRO uses a checklist; LIGHT writes concise `plan.md` + `tasks.md`; STANDARD adds adversarial review; COMPREHENSIVE adds full research, design gate, and full review.
+- **Outcome** — MICRO uses a checklist; LIGHT writes concise `plan.md` + the `execute.md`/`tasks.json` task pair; STANDARD adds adversarial review; COMPREHENSIVE adds full research, design gate, and full review.
 
 ## ARGUMENTS Input
 
@@ -34,14 +34,14 @@ Treat the current command arguments as this workflow's input. When invoked from 
 **You MUST call these skills (not describe them):**
 
 - Use the **Skill** tool with `skill: "spectre-create_plan"` and `args: "{path} --depth {tier}"` — generates plan.md, including LIGHT
-- Use the **Skill** tool with `skill: "spectre-create_tasks"` and `args: "{path} --depth {tier}"` — generates tasks.md
+- Use the **Skill** tool with `skill: "spectre-create_tasks"` and `args: "{path} --depth {tier}"` — generates `specs/execute.md` and `specs/tasks.json`
 - Use the **Skill** tool with `skill: "spectre-plan_review"` and `args: "{OUT_DIR} --mode {adversarial|full} --auto-apply scope-safe"` — reviews and integrates scope-safe feedback for STANDARD/COMPREHENSIVE
 
 ## Instructions
 
 - Classify before research; do not spawn subagents until the tier and research budget are known
 - Route based on hard-stops and clarity, not point-scoring
-- Never overwrite existing `tasks.md` or `plan.md` — use scoped names
+- Never overwrite existing `plan.md`, `execute.md`, or `tasks.json` artifacts for a different feature — use scoped names
 - Treat `concepts/scope.md` (then `specs/prd.md` / `specs/ux.md` when present) as canonical. Plan generation, task generation, review, and feedback integration may change implementation approach, sequencing, verification, references, and YAGNI fences, but MUST NOT cut, narrow, expand, or reinterpret the agreed scope without an explicit user scope-change gate.
 
 ## Step 1 - Preflight Route
@@ -51,7 +51,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
   - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified)
   - `mkdir -p "${OUT_DIR}"`
 
-- **Action** — ScanExistingContext: Read existing artifacts in `{OUT_DIR}/` if present: `task_context.md`, `specs/plan.md`, `specs/tasks.md`, `concepts/scope.md`, `specs/ux.md`, `research/*.md`. Extract filled assumptions from scope/UX for later design review.
+- **Action** — ScanExistingContext: Read existing artifacts in `{OUT_DIR}/` if present: `task_context.md`, `specs/plan.md`, `specs/execute.md`, `specs/tasks.json`, `concepts/scope.md`, `specs/ux.md`, `research/*.md`. Extract filled assumptions from scope/UX for later design review.
 
 - **Action** — CheapLocalScan: Use only thread context, provided files, existing artifacts, and cheap local search (`rg`, filenames, package manifests). Do not spawn subagents.
 
@@ -172,7 +172,7 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
 - Describe what you would do
 - Summarize the plan/task steps yourself
 - End your turn without invoking Skill
-- Write plan.md or tasks.md content directly
+- Write plan.md, execute.md, or tasks.json content directly
 
 **YOU MUST:**
 
@@ -197,7 +197,8 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   - **Wait** — Returns concise plan with solution shape, patterns, risks, and verification approach
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth light"`
   - **Wait** — Returns task breakdown grounded in the light plan
-  - **Action** — PresentLightArtifacts: Summarize `{OUT_DIR}/specs/plan.md` and `{OUT_DIR}/specs/tasks.md`. State that LIGHT skipped `plan_review` and the human execution gate by design.
+  - **Action** — VerifyExecutionIndex: Cheaply verify `{OUT_DIR}/specs/execute.md` exists and contains `Document Manifest`, `Task Detail Source`, `Execution Summary`, `Wave Plan`, `Parent Task Index`, and `Slicing Rules`; verify the referenced `tasks.json` parses. Do not read full task bodies or reconstruct the index.
+  - **Action** — PresentLightArtifacts: Summarize `{OUT_DIR}/specs/plan.md`, `{OUT_DIR}/specs/execute.md`, and `{OUT_DIR}/specs/tasks.json`. State that LIGHT skipped `plan_review` and the human execution gate by design.
   - Skip to footer
 
 - **ElseIf STANDARD**:
@@ -206,9 +207,10 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   - **Wait** — Returns focused plan (Overview, Approach, Out of Scope)
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth standard"`
   - **Wait** — Returns task breakdown
+  - **Action** — VerifyExecutionIndex: Cheaply verify `{OUT_DIR}/specs/execute.md` exists and contains `Document Manifest`, `Task Detail Source`, `Execution Summary`, `Wave Plan`, `Parent Task Index`, and `Slicing Rules`; verify the referenced `tasks.json` parses. Do not read full task bodies or reconstruct the index.
   - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode adversarial --auto-apply scope-safe"`
   - **Wait** — Returns adversarial findings, applied edits, skipped scope-changing recommendations, and updated artifacts
-  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
+  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md`, `execute.md`, and/or `tasks.json`. If `plan_review` changed parent task ids, parent titles, dependencies, or wave guidance, update only the affected index rows in `execute.md`; otherwise do not rebuild the index. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
   - Continue to Final Gate
 
 - **ElseIf COMPREHENSIVE**:
@@ -217,9 +219,10 @@ Goal: align on the *shape* of the solution before generating a full plan. This c
   - **Wait** — Returns full plan (all sections: Architecture, Phases, API Design, Testing Strategy, etc.)
   - **INVOKE NOW** → Skill tool with `skill: "spectre-create_tasks"`, `args: "{OUT_DIR}/task_context.md --depth comprehensive"`
   - **Wait** — Returns task breakdown
+  - **Action** — VerifyExecutionIndex: Cheaply verify `{OUT_DIR}/specs/execute.md` exists and contains `Document Manifest`, `Task Detail Source`, `Execution Summary`, `Wave Plan`, `Parent Task Index`, and `Slicing Rules`; verify the referenced `tasks.json` parses. Do not read full task bodies or reconstruct the index.
   - **INVOKE NOW** → Skill tool with `skill: "spectre-plan_review"`, `args: "{OUT_DIR} --mode full --auto-apply scope-safe"`
   - **Wait** — Returns full-lens findings, applied edits, skipped scope-changing recommendations, and updated artifacts
-  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md` and/or `tasks.md`. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
+  - **Action** — IntegratePlanReviewFeedback: Read the plan_review report path returned by `plan_review`. Confirm every scope-safe Blocker/High finding is reflected in `plan.md`, `execute.md`, and/or `tasks.json`. If `plan_review` changed parent task ids, parent titles, dependencies, or wave guidance, update only the affected index rows in `execute.md`; otherwise do not rebuild the index. If `plan_review` produced a scope-safe suggested edit but did not apply it because it needed minor adaptation, apply the smallest artifact edit now and record it in the final summary. Do not apply Scope Change Required findings.
   - Continue to Final Gate
 
 ---
@@ -247,14 +250,14 @@ Only proceed past this checkpoint when the user confirms.
 ### Final Gate
 
 - **Action** — PresentFinalArtifacts:
-  - Summarize final artifact paths: `{OUT_DIR}/specs/plan.md`, `{OUT_DIR}/specs/tasks.md`, and the saved plan_review report under `{OUT_DIR}/reviews/`.
+  - Summarize final artifact paths: `{OUT_DIR}/specs/plan.md`, `{OUT_DIR}/specs/execute.md`, `{OUT_DIR}/specs/tasks.json`, and the saved plan_review report under `{OUT_DIR}/reviews/`.
   - Summarize review integration: findings applied by `plan_review`, any additional plan-orchestrator edits applied to integrate feedback, skipped edits, and any recommendations that were blocked because they would change canonical scope.
   - If plan_review surfaced a scope-changing recommendation, state: "This requires a scope change; I did not apply it." Ask the user whether to reopen scope or approve the current canonical-scope-preserving plan/tasks.
-  - Otherwise prompt: "Final reviewed plan/tasks are ready. Reply `Approved` to proceed to execution, or provide final feedback."
+  - Otherwise prompt: "Final reviewed plan and task artifacts are ready. Reply `Approved` to proceed to execution, or provide final feedback."
 
 - **Wait** — User final approval or feedback.
 
-- **If feedback preserves canonical scope** — apply the smallest edits to `plan.md`/`tasks.md`, re-run `plan_review {OUT_DIR} --auto-apply scope-safe` if the feedback changes implementation approach, verification, dependencies, task sequencing, or references, then present the Final Gate again.
+- **If feedback preserves canonical scope** — apply the smallest edits to `plan.md`, `execute.md`, and/or `tasks.json`, re-run `plan_review {OUT_DIR} --auto-apply scope-safe` if the feedback changes implementation approach, verification, dependencies, task sequencing, or references, then present the Final Gate again.
 - **If feedback changes canonical scope** — stop and route back to `/spectre:scope` (or explicitly update the canonical scope artifact if the user directs it). Do not silently update plan/tasks against stale scope.
 
 ---

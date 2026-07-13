@@ -52,12 +52,12 @@ When verifying any implementation:
     > "What should I validate against? Please provide:
     >
     > - Path to scope document (e.g., `docs/tasks/main/scope.md`)
-    > - Path to tasks document (e.g., `docs/tasks/main/tasks.md`)
+    > - Path to tasks detail JSON (e.g., `docs/tasks/main/specs/tasks.json`)
     > - Or say 'use thread context' to validate against our conversation"
 
   - **Wait** — User provides validation inputs
 
-- **Action** — ReadScopeDocs: Read provided documents completely (no limits).
+- **Action** — ReadScopeDocs: Read provided scope documents completely (no limits). When `tasks.json` is provided, do not use `execute.md` as a reviewer entrypoint and do not read a legacy Markdown task list; extract the validation slices from `tasks.json` `phases[]`.
 
   - Extract all requirements, acceptance criteria, deliverables
   - Document scope boundaries (in-scope / out-of-scope)
@@ -65,7 +65,7 @@ When verifying any implementation:
 
 - **Action** — ChunkIntoValidationAreas: Break scope into discrete validation areas.
 
-  - **From tasks.md**: Each parent task (e.g., \[1.1\], \[1.2\]) = one validation area
+  - **From tasks.json**: Each `phases[].parents[]` parent task (e.g., `1.1`, `1.2`) = one validation area; use the parent `title`, `description`, and child subtask `acceptance_criteria`/`context` fields as the expected deliverables for that area
   - **From scope.md**: Each "In Scope" item = one validation area
   - **From thread context**: Each discussed feature/requirement = one validation area
   - Aim for 3-8 validation areas (merge small items, split large ones)
@@ -93,12 +93,12 @@ When verifying any implementation:
   
   ## Context Documents
   - Scope: {path or "thread context"}
-  - Tasks: {path if provided}
+  - Tasks: {tasks.json path if provided; pass only the relevant parent-task slice, not execute.md}
   - Branch: {branch_name}
   
   ## Your Validation Area
   **Area**: {area_name}
-  **Source Requirement**: {exact text from scope/tasks doc}
+  **Source Requirement**: {exact text from scope doc or tasks.json parent task slice}
   **Expected Deliverables**: {what should exist}
   
   ## Your Task
@@ -349,4 +349,4 @@ When verifying any implementation:
 
 ## Next Steps
 
-See `Skill(spectre)` skill for footer format and command options. 
+See `Skill(spectre)` skill for footer format and command options.

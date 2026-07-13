@@ -23,26 +23,41 @@ $ARGUMENTS
 
 ## Step 1 - Adaptive Wave Execution
 
-- **Action** — LoadScopeContext: Identify available scope docs in `{OUT_DIR}/`:
-  - `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, `specs/plan.md`, `specs/tasks.md`, `task_summary.md`
-  - Store existing paths as `SCOPE_DOCS` for subagent dispatch
+- **Action** — ResolveExecuteBrief: If no explicit argument is provided, default to `docs/tasks/{branch}/specs/execute.md`.
+  - If the user passes `spectre-execute <path>`, treat that path as the compact execution index.
+  - Read the execute index whole. It is the token-efficient replacement for a separate task index artifact and contains the document manifest, task-detail source, execution summary, wave plan, parent-task index, and slicing rules.
+  - Resolve `TASKS_JSON` from the execute index:
+    1. If `## Task Detail Source` lists a `Tasks JSON:` path, use that path.
+    2. Else if the index basename is `execute.md`, use adjacent `tasks.json`.
+    3. Else if the index basename ends in `.execute.md`, replace that suffix with `.tasks.json` in the same directory.
+    4. Otherwise stop and ask for the matching task detail JSON path.
+  - Do not use a Markdown task fallback or converter. If Beads tasks are already the input source, keep the Beads path; otherwise use the `execute.md` + adjacent `tasks.json` contract.
 
-- **Action** — LoadTaskList: Read `docs/tasks/{branch}/specs/tasks.md` or Beads tasks
-  - Identify wave structure and first wave
+- **Action** — LoadDocumentManifest: Extract the `## Document Manifest` paths from the execute index.
+  - Read each listed existing document before execution.
+  - Store existing manifest paths as `SCOPE_DOCS` for subagent dispatch.
+  - Do not infer or substitute different planning docs unless a listed required path is missing and the user explicitly directs the replacement.
+
+- **Action** — LoadTaskIndex: Use the execute index's execution summary, wave plan, and parent-task index to identify pending work and the first wave.
+  - For status projection, query only task ids/status fields from `TASKS_JSON`; do not load the full JSON detail into context.
+  - After any `TASKS_JSON` write, re-parse it before planning the next wave.
 
 - **Action** — ExecuteAdaptiveLoop: Until all tasks complete:
 
   1. **Batch Tasks**: Assign up to 3 sequential parent tasks per subagent
      - **Batching Rule**: Group sequential tasks (e.g., 1.1→1.2→1.3) to one agent
+     - **Slice Boundary Rule**: Batches are selected parent task ids from the wave guidance. They may span phases when the wave guidance and dependencies assign those parent tasks to the same owner.
      - **Parallelization Boundary**: If task N must complete before parallel wave W starts, end the batch at N
      - Example: Tasks 1.1-1.5 sequential, then 2.1-2.3 parallel → Agent A: 1.1-1.3, Agent B: 1.4-1.5, then parallel dispatch for wave 2
 
   2. **Dispatch Wave**: Launch parallel @dev subagents (1 per task batch)
      - **CRITICAL**: Each subagent MUST read `SCOPE_DOCS` before executing
-     - Each receives: task batch assignment, SCOPE_DOCS paths, and (after wave 1) a **Prior-Wave Context** block
+     - Before dispatch, extract only the selected parent task ids from `TASKS_JSON` for the owner's batch using any convenient mechanism (`jq`, `node -e`, or targeted Read/Edit). The slice must include minimal phase labels plus the assigned parent tasks, subtasks, acceptance criteria, context, and status fields for those parents only.
+     - Inline that extracted slice in the dispatch prompt under a `<task_assignment>` XML envelope. Run an in-flight self-check that the prompt contains only the selected parent task ids and no unrelated parent task ids.
+     - `@dev` receives: the inlined `<task_assignment>`, SCOPE_DOCS paths, and (after wave 1) a **Prior-Wave Context** block. `@dev` reads no tasks file.
      - **Prior-Wave Context** (REQUIRED in waves 2+): the orchestrator appends each prior wave's @dev Completion Reports verbatim into this wave's dispatch prompt under a `## Prior-Wave Context` header. Includes Completed tasks, Files changed, Scope signal, Discoveries, and Guidance from each prior batch. This is how state is carried forward — there is no separate state file.
      - **Test discovery**: instruct @dev to use the project's native related-test command (`jest --findRelatedTests <file>`, `pytest` by path, `vitest related`, `cargo test <path>`). Do not create parallel test files for code already covered.
-     - Instruct: "Read scope docs first to understand E2E UX and integration points. Load Skill(spectre-tdd), then execute tasks sequentially using its TDD methodology. **Commit after each parent task** with conventional commit format (e.g., `feat(module): add X`, `fix(module): resolve Y`). Return completion report with **Implementation Insights** + **E2E Completeness Check**."
+     - Instruct: "Read scope docs first to understand E2E UX and integration points. Use the inlined `<task_assignment>` as the only task source; do not read any tasks file. Load Skill(spectre-tdd), then execute tasks sequentially using its TDD methodology. **Commit after each parent task** with conventional commit format (e.g., `feat(module): add X`, `fix(module): resolve Y`). Return completion report with **Implementation Insights** + **E2E Completeness Check**."
 
      **E2E Completeness Check** (subagent returns one per batch):
      - ⚪ Complete — tasks sufficient to deliver spec intent
@@ -60,7 +75,7 @@ $ARGUMENTS
 
      Build each reviewer prompt from:
      - Wave diff: `git diff <parent-of-first-wave-commit>..HEAD`
-     - Acceptance criteria: verbatim text from scope/tasks docs for this wave's tasks
+     - Acceptance criteria: verbatim text from the inlined `<task_assignment>` for this wave's tasks, plus relevant scope docs
      - Files-touched manifest
 
      **Forbidden in reviewer prompts**: @dev completion reports, implementer rationale, orchestrator paraphrase of "what the dev did and why". The reviewer is a clean room — diff + criteria only.
@@ -98,7 +113,9 @@ $ARGUMENTS
 
      **3d. Exit condition**: No CRITICAL/HIGH remain, OR iteration cap reached and user has been notified of unresolved findings.
 
-  4. **Mark Complete**: Update tasks doc with `[x]` for completed tasks
+  4. **Mark Complete**: Edit `TASKS_JSON` directly to set completed assigned subtasks/parent tasks to `status: "done"` in `phases[]`.
+     - Mechanism is flexible (`jq`, `node -e`, or Read/Edit), but the write must preserve indented valid JSON.
+     - Immediately re-read/re-parse `TASKS_JSON` after the write before reflecting or planning another wave.
 
   5. **Reflect**: Review completion reports for:
      - Scope signals (🟡/🟠/🔴) from implementation insights
@@ -107,14 +124,16 @@ $ARGUMENTS
      - **Else** → adapt tasks
 
   6. **Adapt** (only if triggered):
-     - Modify future tasks with learned context
-     - Add tasks for E2E gaps with `[ADDED - E2E gap]` prefix
-     - Add required sub-tasks with `[ADDED]` prefix
-     - Mark obsoleted with `[SKIPPED - reason]`
+     - Modify future tasks with learned context by editing `TASKS_JSON` directly
+     - Add tasks for E2E gaps by appending new JSON task objects with clear titles and `status: "pending"`
+     - Add required sub-tasks by appending new JSON subtask objects with clear titles and `status: "pending"`
+     - Mark obsoleted tasks with `status: "skipped"` and a short reason in the task note/metadata
+     - Re-read/re-parse `TASKS_JSON` after every adaptation write
+     - If adaptation changes wave membership or the parent-task index, update the execute index's Wave Plan and Parent Task Index in the same pass, then re-read it before the next wave
      - Flag cross-task integration issues to remaining waves
      - **Guardrails**: ❌ No "nice-to-have" additions, ❌ No scope expansion, ✅ Only adapt for spec compliance
 
-  7. **Next Wave**: Identify next tasks, gather prior-wave completion reports for the Prior-Wave Context block, return to step 1
+  7. **Next Wave**: Identify next tasks from the refreshed execute brief plus `TASKS_JSON` status projection, gather prior-wave completion reports for the Prior-Wave Context block, return to step 1
 
 ## Step 2 - Cross-Wave Validate
 

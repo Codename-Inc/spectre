@@ -43,13 +43,13 @@ Optional user input to seed this workflow.
 - `path/to/related.ext` ({imports|dependencies|tests|config})
 ```
 
-#### **Scenario A: Work from Task List** (when `tasks.md` exists and was followed)
+#### **Scenario A: Work from Task List** (when `tasks.json` exists and was followed)
 
 ```plaintext
 **Work Completed (from Task List):**
-- Task 1.1: [exact task description from tasks.md]
-- Task 1.2: [exact task description from tasks.md]
-- Task 2.1: [exact task description from tasks.md]
+- Task 1.1: [exact parent task title + description from tasks.json phases[].parents[]]
+- Task 1.2: [exact parent task title + description from tasks.json phases[].parents[]]
+- Task 2.1: [exact parent task title + description from tasks.json phases[].parents[]]
 
 [Use common file format above]
 ```
@@ -87,7 +87,7 @@ Optional user input to seed this workflow.
 
 - **Action** — ExtractWorkContext: Extract requirements and context from appropriate documentation based on scenario.
   - All scenarios: Extract work requirements → trace to origin docs (PRD/task_summary) → pull technical details → identify file context → document out-of-scope
-  - **Scenario A**: Source from `tasks.md`
+  - **Scenario A**: Source from `tasks.json` by pulling only relevant `phases[].parents[]` task titles/descriptions and, when needed, their child subtask titles/descriptions. Do not use `execute.md` as a reviewer entrypoint, and do not extract work scope from a whole Markdown task file.
   - **Scenario B**: Source from `plan.md`/`quick_task_plan.md`
   - **Scenario C**: Source from task_summary.md/PRD/user comms; define acceptance criteria
 
@@ -121,7 +121,7 @@ Optional user input to seed this workflow.
 
 **Documentation Context:**`docs/tasks/{task_name}/` (if available)
 
-- Available docs: \[list which exist: task_summary.md, prd.md, plan.md, tasks.md\]
+- Available docs: \[list which exist: task_summary.md, prd.md, plan.md, tasks.json\]
 - Missing docs: \[list which expected docs are missing\]
 
 **Guidelines & Preferences:**\[Style guides, architecture rules, naming conventions, test expectations\]
@@ -136,7 +136,7 @@ Optional user input to seed this workflow.
 
    - `scope.md` or `ux.md` or `prd.md` or `spec.md` or any other scope artifact
    - `initial_plan.md` or `plan.md` or `quick_task_plan.md` - Implementation approach
-   - `tasks.md` or `{task_name}_tasks.md` - Specific work items and progress
+   - `tasks.json` - Specific work items and progress. For task-list reviews, use `phases[].parents[]` for parent task ids, titles, descriptions, and status; use child subtasks only when needed to clarify the completed work. Do not use `execute.md` and do not whole-read a legacy Markdown task list.
 
 2. **Identify Code Scope**: Based on task documentation:
 

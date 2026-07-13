@@ -1,6 +1,6 @@
 ---
 name: "spectre-plan_review"
-description: "👻 | Independent multi-lens review of plan.md and/or tasks.md — finds overengineering, missing verification, hallucinated deps, weak references"
+description: "👻 | Independent multi-lens review of plan.md and/or tasks.json — finds overengineering, missing verification, hallucinated deps, weak references"
 user-invocable: true
 ---
 
@@ -23,7 +23,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 `concepts/scope.md` is canonical when present. If absent, use `specs/prd.md`, `specs/ux.md`, and explicit requirements in `task_context.md` as the scope source, in that order.
 
-Reviewers may recommend deleting unrequested implementation details, unnecessary abstractions, weak verification, hallucinated references, bad dependencies, or task sequencing problems. They MUST NOT cut, narrow, expand, or reinterpret agreed scope. If a reviewer believes the agreed scope itself is too large, internally inconsistent, or missing a requirement, phrase that as a **Scope Change Required** recommendation for the user. Do not apply it to `plan.md` or `tasks.md` during write-back.
+Reviewers may recommend deleting unrequested implementation details, unnecessary abstractions, weak verification, hallucinated references, bad dependencies, or task sequencing problems. They MUST NOT cut, narrow, expand, or reinterpret agreed scope. If a reviewer believes the agreed scope itself is too large, internally inconsistent, or missing a requirement, phrase that as a **Scope Change Required** recommendation for the user. Do not apply it to `plan.md` or `tasks.json` during write-back.
 
 ## ARGUMENTS Input
 
@@ -58,18 +58,21 @@ Full mode uses four lenses because a single reviewer biases toward the issues it
 
 - **Action** — ResolveArtifacts: Locate the available review inputs.
   - `PLAN=${TASK_DIR}/specs/plan.md` (or scoped name)
-  - `TASKS=${TASK_DIR}/specs/tasks.md` (or scoped name)
+  - `TASKS=${TASK_DIR}/specs/tasks.json` (or scoped name)
   - `CONTEXT=${TASK_DIR}/task_context.md`
   - `SCOPE=${TASK_DIR}/concepts/scope.md` when present; otherwise use `specs/prd.md` / `specs/ux.md` as available
   - `REVIEWS_DIR=${TASK_DIR}/reviews`
   - `REVIEW_REPORT=${REVIEWS_DIR}/plan_review.md`; if that exists, use `plan_review_{YYYY-MM-DD_HHMMSS}.md` to avoid overwriting prior review evidence.
   - `TMP_REVIEW_DIR=${TMPDIR:-/tmp}/spectre-plan-review/{safe_branch}/{YYYY-MM-DD_HHMMSS}`; create it outside the repo for non-canonical lens reports.
-  - `plan.md` and `tasks.md` are independently reviewable. It is valid to review only `plan.md`, only `tasks.md`, or both.
+  - `plan.md` and `tasks.json` are independently reviewable. It is valid to review only `plan.md`, only sliced task detail from `tasks.json`, or both.
   - `task_context.md` is helpful context but is not required. If it is missing, continue and note that requirements traceability is limited.
-  - If both `plan.md` and `tasks.md` are missing, stop and suggest the user run `spectre-plan` or `spectre-create_tasks` first.
-  - If exactly one of `plan.md` or `tasks.md` is missing, list it as absent context and continue. Do not decline, stop, or ask the user to create the missing artifact.
+  - If both `plan.md` and `tasks.json` are missing, stop and suggest the user run `spectre-plan` or `spectre-create_tasks` first.
+  - If exactly one of `plan.md` or `tasks.json` is missing, list it as absent context and continue. Do not decline, stop, or ask the user to create the missing artifact.
 
-- **Action** — ReadAvailable: Read each available file completely into context before dispatching reviewers. Reviewers receive curated excerpts plus an artifact manifest that says which files are present and absent. Every reviewer must review the artifacts that exist and must not treat absent artifacts as a blocker. The manifest must label the canonical scope source and state that review findings may not remove or narrow scope.
+- **Action** — ReadAvailable: Read available scope, context, and plan files completely before dispatching reviewers. For `tasks.json`, do not read `specs/execute.md` and do not load the full task detail file into context; extract only the `phases[]` fields needed by reviewers:
+  - parent task `id`, `title`, `description`, `status`, `predecessor`, and `unblocks`
+  - subtask `id`, `title`, `type`, `status`, `produces`, `consumed_by`, `replaces`, `context`, `predecessor`, and `acceptance_criteria`
+  Reviewers receive curated excerpts plus an artifact manifest that says which files are present and absent. Every reviewer must review the artifacts that exist and must not treat absent artifacts as a blocker. The manifest must label the canonical scope source and state that review findings may not remove or narrow scope.
 
 ## Step 2 — Dispatch Reviewers
 
@@ -78,7 +81,7 @@ Full mode uses four lenses because a single reviewer biases toward the issues it
 If ARGUMENTS contains `--mode adversarial`, spawn one `@reviewer` subagent with write access to `${REVIEW_REPORT}`. Pass the artifact manifest, canonical scope source, and available artifact excerpts. The reviewer must write `${REVIEW_REPORT}` before returning.
 
 Brief:
-> Attack this plan/tasks only for execution readiness. Find: (1) what will make implementation fail or produce wrong output, (2) unrequested overbuild or out-of-bounds work, (3) hallucinated files/packages/symbols/endpoints/env vars/CLI flags, (4) non-executable verification or missing acceptance criteria, (5) task gaps that leave producer output unwired to a consumer. Do not critique whether the architecture is optimal unless it creates one of those failures. Preserve canonical scope.
+> Attack this plan and sliced `tasks.json` detail only for execution readiness. Find: (1) what will make implementation fail or produce wrong output, (2) unrequested overbuild or out-of-bounds work, (3) hallucinated files/packages/symbols/endpoints/env vars/CLI flags, (4) non-executable verification or missing acceptance criteria, (5) task gaps that leave producer output unwired to a consumer. Do not critique whether the architecture is optimal unless it creates one of those failures. Preserve canonical scope.
 >
 > Output:
 > `## Review Findings — {feature}`
@@ -105,7 +108,7 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 >
 > Find:
 > 1. When `plan.md` is present: anything in Technical Approach that isn't traceable to a requirement in available context (`scope.md` / `task_context.md` / PRD / UX). If context is absent, use the plan's own requirements and boundaries.
-> 2. When `tasks.md` is present: tasks that implement something the available requirements don't ask for. If requirements context is absent, use the task list's stated goals and boundaries.
+> 2. When `tasks.json` is present: use `phases[].parents[]` and `phases[].parents[].subtasks[]` slices to find tasks that implement something the available requirements don't ask for. If requirements context is absent, use the task artifact's `meta`, parent descriptions, and stated boundaries.
 > 3. Abstractions, interfaces, or layers introduced for a single concrete caller.
 > 4. Generality (config files, plugin points, factories) where the actual need is one specific behavior.
 > 5. Overlap with the `Out-of-Bounds — DO NOT add` list (if anything violates that list, it's a hard fail).
@@ -121,9 +124,9 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 > Find:
 > 1. When `plan.md` is present: items in "Verification — How We Know This Works" that are prose ("works correctly", "is consistent") rather than executable (test name / observable behavior / state condition).
 > 2. When `plan.md` is present: phases that don't declare a verification signal.
-> 3. When `tasks.md` is present: sub-tasks whose acceptance criteria aren't one of the three executable types (test passes / observable behavior / state condition).
-> 4. When both `plan.md` and `tasks.md` are present: verification signals in `plan.md` with no matching acceptance criterion in `tasks.md`.
-> 5. When `tasks.md` is present: behavior-changing sub-tasks that lack a preceding RED test sub-task.
+> 3. When `tasks.json` is present: inspect `phases[].parents[].subtasks[].acceptance_criteria`; flag criteria that aren't one of the three executable types (test passes / observable behavior / state condition).
+> 4. When both `plan.md` and `tasks.json` are present: verification signals in `plan.md` with no matching `acceptance_criteria` entry in the task slices.
+> 5. When `tasks.json` is present: use `phases[].parents[].subtasks[].type` and predecessor order to find behavior-changing subtasks that lack a preceding RED test subtask.
 >
 > Required output: list every non-executable criterion with a proposed rewrite in one of the three types. Cite file:line for each.
 
@@ -132,7 +135,7 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 > Review the available plan and/or task list for references to things that may not exist. AI-generated plans hallucinate file paths, package names, function signatures, and API endpoints at measurable rates (~20% for packages per Snyk analysis). Your job is to verify every reference is real.
 >
 > Verify:
-> 1. Every file path mentioned in available artifacts, including `plan.md` "Critical Files for Implementation" and `tasks.md` Context blocks when present — does the file exist in the repo today? Use Glob/Read to confirm.
+> 1. Every file path mentioned in available artifacts, including `plan.md` "Critical Files for Implementation" and `tasks.json` `phases[].parents[].subtasks[].context[].path` entries when present — does the file exist in the repo today? Use Glob/Read to confirm.
 > 2. Every package in `plan.md` "External Dependencies" when `plan.md` is present — does it exist at the named version? (Note: actual install/registry check is the executor's Phase 0 job; your job is to flag suspicious names — typos, near-misses to well-known packages, lookalikes.)
 > 3. Every function, class, or symbol named in available plan/tasks — grep the repo, confirm it exists where claimed.
 > 4. Every API endpoint, env var, or CLI flag referenced — confirm it's defined in the codebase.
@@ -145,7 +148,7 @@ Missing-artifact rule for every lens: review what exists. If a finding depends o
 >
 > Find:
 > 1. When `plan.md` is present: places in Technical Approach that reference "existing patterns" or "similar features" without a specific file:line.
-> 2. When `tasks.md` is present: sub-tasks whose Context block lacks a canonical reference pointer.
+> 2. When `tasks.json` is present: sub-tasks whose `context[]` entries lack a canonical reference pointer (`path` plus `anchor` or equivalent file:line specificity).
 > 3. Better canonical references that the plan missed — actual files in the codebase that more closely match the intended shape.
 > 4. Reuse opportunities the plan ignored: utilities, hooks, helpers, or types already in the repo that the plan re-implements.
 >
@@ -175,7 +178,7 @@ Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` direc
   | # | Severity | Lens | Location | Finding | Suggested Edit |
   |---|----------|------|----------|---------|----------------|
   | 1 | Blocker  | Existence | plan.md `## External Dependencies` | `react-use-undocumented@2.4.0` doesn't exist on npm | Remove; the plan can use `useReducer` from React stdlib (see `src/hooks/useFormState.ts:18`) |
-  | 2 | High     | Verifiability | tasks.md `1.2.1` | "Component renders correctly" is prose | Replace with: Test passes `<ProductCard /> renders product.title and product.price` |
+  | 2 | High     | Verifiability | tasks.json `phases[].parents[].subtasks[1.2.1]` | "Component renders correctly" is prose | Replace with: Test passes `<ProductCard /> renders product.title and product.price` |
   | 3 | High     | YAGNI | plan.md `## Technical Approach` | Adds retry-with-backoff for a sync internal call | Delete; not in requirements; Out-of-Bounds list already forbids retry logic |
   | … |          |       |          |         |                |
 
@@ -191,7 +194,7 @@ Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` direc
   - Auto-apply mode: {enabled/disabled}
   - Timestamp: {ISO8601}
   - Tmp reports: {4 paths}
-  - Note: This report captures plan_review findings before any write-back to plan.md or tasks.md.
+  - Note: This report captures plan_review findings before any write-back to plan.md or tasks.json.
   ```
 
 - **Action** — ConfirmCompiledReport: Confirm `${REVIEW_REPORT}` exists. Include the saved report path in all subsequent summaries and in `ReportApplied`.
@@ -215,7 +218,7 @@ Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` direc
 - **Wait** — User selects.
 
 - **Action** — ApplyEdits: For each selected finding:
-  - Open the named artifact (`plan.md` or `tasks.md`)
+  - Open the named artifact (`plan.md` or `tasks.json`)
   - Apply the Suggested Edit verbatim where possible; if the edit needs adaptation, make the minimum change consistent with the finding's intent
   - Track which findings were applied
   - Before writing, confirm the edit preserves every requirement and boundary in the canonical scope source. If it would remove, narrow, expand, or reinterpret scope, skip it and record it as "skipped: requires scope change."
@@ -224,7 +227,7 @@ Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` direc
   - Re-verify any file:line refs touched
   - Re-verify acceptance criteria are still executable
   - Confirm no edit introduced a new Out-of-Bounds violation
-  - Confirm canonical scope is still fully represented by the resulting plan/tasks
+  - Confirm canonical scope is still fully represented by the resulting plan/tasks artifacts
   - If any check fails, surface it and ask the user before continuing
 
 - **Action** — ReportApplied:
@@ -242,6 +245,6 @@ Skip this step in adversarial mode because Step 2 wrote `${REVIEW_REPORT}` direc
 
 ## Notes
 
-- This skill does NOT generate plans or tasks. It reviews available planning artifacts. If only one of `plan.md` or `tasks.md` exists, review that artifact. Only route the user to `spectre-plan` or `spectre-create_tasks` when neither reviewable artifact exists.
+- This skill does NOT generate plans or tasks. It reviews available planning artifacts. If only one of `plan.md` or `tasks.json` exists, review that artifact. Only route the user to `spectre-plan` or `spectre-create_tasks` when neither reviewable artifact exists.
 - The four lenses are intentionally non-overlapping by design but will surface overlap in practice — dedupe at synthesis, don't ask reviewers to coordinate.
 - The "Must-Delete" nomination from Lens 1 is mandatory output — even on a tight plan, naming the single weakest element is a forcing function against under-review.

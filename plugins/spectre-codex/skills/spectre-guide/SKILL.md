@@ -285,7 +285,7 @@ SPECTRE generates these documents in `docs/tasks/{branch_name}/`:
 | `concepts/scope.md` | `spectre-scope` | What's IN and OUT |
 | `specs/ux.md` | `spectre-ux` | User flows, components, interactions |
 | `specs/plan.md` | `spectre-create_plan` | Technical design and phasing |
-| `specs/tasks.md` | `spectre-create_tasks` | Concrete tasks with acceptance criteria |
+| `specs/execute.md` + `specs/tasks.json` | `spectre-create_tasks` | Execution brief plus sliceable task detail with acceptance criteria |
 | `reviews/code_review.md` | `spectre-code_review` | Severity-based code review findings |
 | `validation/validation_gaps.md` | `spectre-validate` | Gaps between scope and implementation |
 | `testing/*_test_guide.md` | `spectre-create_test_guide` | Manual QA checklists |

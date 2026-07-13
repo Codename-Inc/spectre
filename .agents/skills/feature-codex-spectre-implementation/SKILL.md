@@ -91,6 +91,14 @@ The implementation is split into four layers:
 
 The key invariant is that command markdowns are shims; workflow bodies live in skills, and Codex install must copy the generated Codex tree instead of regenerating workflow skills from command files.
 
+When adding auxiliary files inside a skill directory, such as examples, fixtures, or templates, place
+documentation examples under `references/` unless they are executable scripts or runtime assets, and
+make their references skill-local. `sync-codex` copies the whole canonical skill directory into
+`plugins/spectre-codex/skills/{skill}/`, and Codex install then copies that generated directory into
+`.codex/skills/{skill}/`. A path like `plugins/spectre/skills/{skill}/fixture.json` works only in the
+repo checkout and breaks after install. Prefer `fixture.json`, `./fixture.json`, or a relative sibling
+path like `../spectre-execute/SKILL.md` when the installed skill must be able to follow the reference.
+
 ### 3. Codex config and hook wiring
 
 `src/lib/config.js` owns `config.toml` and `hooks.json`. It enables Codex features, writes `[agents.spectre_*]` tables, and registers/removes the `SessionStart` hook without clobbering unrelated existing hook handlers.
@@ -212,6 +220,7 @@ If you are tempted to put the full handoff into hook output, don't. The current 
 
 - `SessionStart` does not fire just because the Codex UI opens. It runs on the first real turn of a new/resumed session.
 - Runtime hooks are copied generated assets. Avoid reintroducing package-cache `file://` imports, local checkout path assumptions, or `.spectre/manifest.json` gates for user-scope startup behavior.
+- Skill assets are copied installed assets too. Do not hard-code `plugins/spectre/...` paths inside skill fixtures/templates unless the reference is explicitly repo-only; installed Codex skills should use skill-local paths.
 - The standalone `.codex/skills/spectre-apply/SKILL.md` is the source for the managed startup knowledge block, but Codex should receive that block through `AGENTS.override.md`; do not put the apply coercion into SessionStart `additionalContext`.
 - Project knowledge without a registry entry is incomplete. The skill may exist on disk, but trigger-based discovery will be missing.
 - Project installs are the only mode that create `.spectre/manifest.json` and initial project-local knowledge/session files. User installs write global Codex assets and global hooks that still run in every workspace; those hooks should degrade to a ready banner when no project registry or handoff exists.

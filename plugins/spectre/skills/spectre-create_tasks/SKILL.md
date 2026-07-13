@@ -265,7 +265,7 @@ Generate Phase 0 only when the plan introduces external dependencies, except COM
     - [ ] Every "Verification" entry from `plan.md` mapped to at least one acceptance criterion?
   - **Exclusion Validation**:
     - [ ] No additions beyond explicit requests?
-    - [ ] `plan.md`'s "Out-of-Bounds — DO NOT add" list carried forward verbatim into tasks.md banner?
+    - [ ] `plan.md`'s "Out-of-Bounds — DO NOT add" list carried forward verbatim into the task artifacts?
     - [ ] No task implements anything in the Out-of-Bounds list?
   - **Structure Validation**:
     - [ ] Parent tasks are small-medium scope, sub-tasks are atomic?
@@ -337,155 +337,198 @@ Group independent parent tasks into waves for parallel execution. Skip this sect
 
 ## Step 6 - Document & Output
 
-### 6a. Write tasks.md
-- Determine `TASKS_FILE` (default `${TASK_DIR}/specs/tasks.md`; if it already exists, create a scoped name like `${TASK_DIR}/specs/{task_name}_tasks.md` or `tasks_{timestamp}.md` to avoid overwriting).
-Save to `${TASKS_FILE}`:
+### 6a. Write the two task artifacts
+- Determine:
+  - `DETAIL_FILE=${TASK_DIR}/specs/tasks.json`
+  - `EXECUTE_FILE=${TASK_DIR}/specs/execute.md`
+- Write **both** files. This is a hard cutover: do not emit a Markdown task-list artifact and do not create a converter/fallback.
+- If either target already exists for a different feature, create a scoped pair with the same basename, e.g. `${TASK_DIR}/specs/{task_name}.tasks.json` and `${TASK_DIR}/specs/{task_name}.execute.md`.
 
-For LIGHT, keep the template compact: Objective, Scope, Out-of-Bounds, Architecture Context, Tasks, and a short Execution Order. Omit Requirements Traced, Coverage Summary, and Parallel Execution unless needed. STANDARD/COMPREHENSIVE use the fuller structure below.
+#### `tasks.json` detail contract
+- Save indented JSON to `${DETAIL_FILE}`.
+- Use the skill-local `references/tasks.example.json` as the concrete fixture reference.
+- The top-level keys are exactly:
+  - `meta` — objective, scope, out-of-bounds, requirements trace, architecture context, and coverage summary.
+  - `phases[]` — phase objects containing parent tasks and subtasks with full task detail plus mutable `status`.
+- `tasks.json` MUST NOT contain stored `index`, `indexes`, `wave_plan`, or `waves` keys. The cheap planning layer belongs in `execute.md`.
+- `status` lives only in `tasks.json`, using `pending`, `in_progress`, `done`, or `skipped`.
+- Preserve every current task field 1:1 in JSON:
+  - Phase: `id`, `title`, `summary`, `status`, `parents[]`
+  - Parent task: `id`, `title`, `description`, `status`, `predecessor`, `unblocks`, `subtasks[]`
+  - Subtask: `id`, `title`, `type`, `status`, `produces`, `consumed_by`, `replaces`, `context[]`, optional `predecessor`, `acceptance_criteria[]`
+  - Context item: `path`, `anchor`, `note`
+  - Acceptance criterion: `type` (`test`, `observable`, or `state`) and `text`
+- After writing, re-parse the file:
+  - `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "${DETAIL_FILE}"`
+
+```json
+{
+  "meta": {
+    "feature": "{feature name}",
+    "generated_at": "{ISO timestamp}",
+    "schema_version": 1,
+    "objective": "{single sentence describing outcome}",
+    "scope": {
+      "in_scope": ["{explicit in-scope item}"],
+      "out_of_scope": ["{explicit out-of-scope item}"]
+    },
+    "out_of_bounds": ["{forbidden addition carried from plan.md}"],
+    "requirements_trace": [
+      {
+        "id": "REQ-001",
+        "description": "{requirement}",
+        "source": "{source doc or anchor}",
+        "tasks": ["1.1"]
+      }
+    ],
+    "architecture_context": {
+      "where_this_fits": ["{component/system context}"],
+      "technical_approach": ["{approach and existing pattern}"],
+      "key_decisions": ["{decision and rationale}"]
+    },
+    "coverage_summary": {
+      "requirements_extracted": 1,
+      "requirements_with_task_coverage": 1,
+      "phases": 1,
+      "parent_tasks": 1,
+      "subtasks": 2
+    }
+  },
+  "phases": [
+    {
+      "id": "1",
+      "title": "{Phase Name}",
+      "summary": "{phase purpose}",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "1.1",
+          "title": "{Parent Task Title}",
+          "description": "{cohesive deliverable}",
+          "status": "pending",
+          "predecessor": "none",
+          "unblocks": "terminal",
+          "subtasks": [
+            {
+              "id": "1.1.1",
+              "title": "Write failing test `{test_name}` asserting `{behavior}`",
+              "type": "RED",
+              "status": "pending",
+              "produces": "A failing test that pins the desired behavior",
+              "consumed_by": "1.1.2",
+              "replaces": "N/A",
+              "context": [
+                {
+                  "path": "path/to/existing/code.ts",
+                  "anchor": "line 42",
+                  "note": "Current behavior being changed"
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "state",
+                  "text": "File `path/to/test.ts` exists and contains test `{test_name}`."
+                },
+                {
+                  "type": "test",
+                  "text": "Test `{test_name}` fails for the documented unimplemented behavior."
+                }
+              ]
+            },
+            {
+              "id": "1.1.2",
+              "title": "{Implement the change}",
+              "type": "Build",
+              "status": "pending",
+              "produces": "{output variable/value/prop}",
+              "consumed_by": "{component/hook that uses this}",
+              "replaces": "{old code path or N/A}",
+              "context": [
+                {
+                  "path": "path/to/file.ts",
+                  "anchor": "line 120",
+                  "note": "Code to modify"
+                }
+              ],
+              "predecessor": "1.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Test `{test_name}` passes."
+                },
+                {
+                  "type": "observable",
+                  "text": "{specific runtime signal}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `execute.md` compact execution index contract
+- Save Markdown to `${EXECUTE_FILE}`.
+- Use the skill-local `references/execute.example.md` as the concrete fixture reference.
+- This file is the token-efficient execution index. It is safe for the primary executor to read whole.
+- It must contain the orchestration metadata needed by `/spectre:execute` without duplicating task bodies:
+  - `## Document Manifest`
+  - `## Task Detail Source`
+  - `## Execution Summary`
+  - `## Wave Plan`
+  - `## Parent Task Index`
+  - `## Slicing Rules`
+- Build `Document Manifest` from the actual known artifact paths available to this workflow; do not assume literal filenames like `scope.md` or `ux.md`. Include scope, UX, prototype, plan, research/context, PRD, or other relevant docs only when their actual paths are known or discovered.
+- `Task Detail Source` lists `${DETAIL_FILE}` as machine-readable data. It must explicitly say not to read that file whole.
+- `Execution Summary` includes counts for phases, parent tasks, subtasks, and dependency/wave totals.
+- Parent-task index entries list phase label, parent task id/title, subtask ids, predecessor, and unblocks. Do not include task bodies, `acceptance_criteria`, `produces`, `consumed_by`, context payloads, or mutable `status`.
+- The wave plan and parent-task index must be derived from the same in-memory task structure used to write `tasks.json`, so the primary executor can plan without opening the detail JSON.
+- Slicing is by selected parent task ids, not by phase. A dispatch slice may include parent tasks from one or more phases when wave guidance and batching assign those parents to the same subagent.
 
 ```markdown
-# Tasks — {feature name}
-*Generated by create_tasks on {timestamp}*
+# Execute Index — {feature name}
 
-## Objective
-{single sentence describing outcome}
+## Document Manifest
+Read these docs before execution:
+- Scope: `{actual scope artifact path if known}`
+- UX: `{actual UX artifact path if present}`
+- Prototype: `{actual HTML prototype path if present}`
+- Plan: `{actual plan artifact path}`
+- Research: `{actual task_context/research path if present}`
 
-## Scope
-- **In Scope**: {bullet list}
-- **Out of Scope**: {bullet list}
+## Task Detail Source
+Do not read this file whole:
+- Tasks JSON: `{DETAIL_FILE}`
 
-## Out-of-Bounds — DO NOT add
-*Carried forward verbatim from plan.md. Executors: if a task tempts you to add any of these, stop and ask.*
-- {Forbidden addition 1, e.g. "rate limiting"}
-- {Forbidden addition 2, e.g. "retry/backoff"}
-- {Forbidden addition 3, e.g. "telemetry events"}
-- {Forbidden addition 4, e.g. "admin UI"}
+Use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
 
-## Requirements Traced
-| ID | Description | Source | Tasks |
-|----|-------------|--------|-------|
-| REQ-001 | ... | prd.md | 1.1, 1.2 |
-| REQ-002 | ... | task_summary.md | 2.1 |
+## Execution Summary
+- Phases: {N}
+- Parent tasks: {N}
+- Subtasks: {N}
+- Waves: {N}
 
----
+## Wave Plan
+- Wave 1: `{ id: "wave-1", label: "{label}", parent_task_ids: ["1.1"], after: [], rationale: "{why these tasks run together}" }`
+- Wave 2: `{ id: "wave-2", label: "{label}", parent_task_ids: ["2.1"], after: ["wave-1"], rationale: "{dependency reason}" }`
 
-## Architecture Context
+## Parent Task Index
+- Phase 1 — {Phase Name}
+  - `{ id: "1.1", title: "{Parent Task Title}", subtasks: ["1.1.1", "1.1.2"], predecessor: "none", unblocks: "2.1" }`
 
-### Where This Fits
-- {Which system/component this work extends or modifies}
-- {How it connects to existing architecture — with file references}
+## Slicing Rules
+Read this index to plan waves. For each owner, choose selected parent task ids from the Wave Plan and batching rules, then query only those parent tasks from `tasks.json` using `jq`, `node -e`, or direct targeted mechanics. Inline the selected parent-task slice under `<task_assignment>`.
 
-### Technical Approach
-- {Key pattern/approach we're following — reference existing code if applicable}
-- {Why this approach vs alternatives}
-- {What existing code we're leveraging}
-
-### Key Decisions
-- {Decision 1 and rationale}
-- {Decision 2 and rationale}
-
----
-
-## Tasks
-
-### Phase 0: Dependency Verification
-*Confirms every external dependency in plan.md exists at the declared version before any implementation begins.*
-
-#### [0.1] Verify external dependencies
-- **Predecessor**: none
-- **Unblocks**: 1.1
-- [ ] **0.1.1** Verify each package@version from plan.md "External Dependencies" section exists
-  - **Produces**: confirmation log of resolved package metadata
-  - **Consumed by**: Phase 1 implementation tasks
-  - **Context**:
-    - plan.md anchor: `## External Dependencies — Verify Before Implementation`
-    - check commands listed in plan section
-  - [ ] State condition: `npm view <pkg>@<ver>` returns valid metadata for every package
-  - [ ] State condition: no package in the list is flagged as deprecated or security-advised
-  - [ ] Test passes: minimal import-and-call smoke for each new package
-
-### Phase 1: {Phase Name}
-
-#### [1.1] {Parent Task Title}
-- **Predecessor**: 0.1
-- **Unblocks**: 1.2
-
-- [ ] **1.1.1 RED** Write failing test `{test_name}` asserting `{behavior}`
-  - **Produces**: a failing test that pins the desired behavior
-  - **Consumed by**: 1.1.2 (turns this red to green)
-  - **Replaces**: N/A
-  - **Context**:
-    - `path/to/existing/code.ts:42` — current behavior being changed
-    - `path/to/similar/test.ts:18` — canonical test shape to follow
-    - plan.md anchor: `### Verification — How We Know This Works`
-  - [ ] State condition: file `path/to/test.ts` exists and contains test `{test_name}`
-  - [ ] Test passes: the new test fails, with failure message referencing the unimplemented behavior
-
-- [ ] **1.1.2 Build** {Implement the change}
-  - **Produces**: {output variable/value/prop}
-  - **Consumed by**: {component/hook that uses this}
-  - **Replaces**: {old code path, or "N/A" if new}
-  - **Context**:
-    - `path/to/file.ts:120` — code to modify
-    - `path/to/file.ts:180` — adjacent code that must not regress
-    - `path/to/canonical/example.ts:55` — pattern to follow (from @patterns research)
-    - plan.md anchor: `## Technical Approach`
-  - [ ] Test passes: `{test_name}` (from 1.1.1) now passes
-  - [ ] Test passes: existing tests in `path/to/related.test.ts` still pass
-  - [ ] Observable behavior: `{specific runtime signal, e.g. log line, HTTP response shape}`
-
-#### [1.2] {Parent Task Title} — Integration
-- **Predecessor**: 1.1
-- **Unblocks**: {next parent or "terminal"}
-
-- [ ] **1.2.1** Wire {1.1.2 output} to {consumer}
-  - **Wires**: {1.1.2 output} → {consumer component/render}
-  - **Removes**: {old code path being replaced}
-  - **Context**:
-    - `path/to/consumer.tsx:30` — where the wire lands
-    - `path/to/old/path.ts:12` — old code path to remove
-    - plan.md anchor: `### Technical Approach`
-  - [ ] Test passes: integration test asserting consumer renders new data source
-  - [ ] State condition: old code path file `path/to/old/path.ts` deleted or import removed
-  - [ ] Observable behavior: data flows from producer to rendered output (with `{specific assertion}`)
-
-### Phase 2: {Phase Name}
-...
-
----
-
-## Execution Strategies
-
-### Sequential Execution
-1. Task 1.1 - [Name] (no dependencies)
-2. Task 1.2 - [Name] (depends on 1.1)
-3. Task 2.1 - [Name] (depends on 1.1)
-...
-
-### Parallel Execution
-
-**Wave 1 (concurrent)**: 1.1, 2.1
-- Rationale: {why concurrent}
-
-**Wave 2 (after Wave 1)**: 1.2, 2.2
-- Rationale: {why sequenced}
-
-**Wave 3 (after Wave 2)**: 3.1
-- Rationale: {why sequenced}
-
----
-
-## Coverage Summary
-- Total Requirements Extracted: [X]
-- Requirements with Task Coverage: [X] (100%)
-- Phases: [N]
-- Parent Tasks: [Y]
-- Sub-tasks: [Z]
+Do not load the full task detail JSON into orchestration context. Do not require dispatch boundaries to match phase boundaries. Update mutable `status` fields in `tasks.json`, re-parse after every write, and update this index only if parent ids, parent titles, dependencies, or wave guidance change.
 ```
 
 ### 6b. Present Summary
 
-- **Action** — SummarizeStructure: "Task Breakdown Complete. Structure: {X} phases, {Y} parents, {Z} sub-tasks. \[List phases with parent titles\]. Execution: Sequential ({N} steps) | Parallel ({M} waves). Saved to: {path}"
+- **Action** — SummarizeStructure: "Task Breakdown Complete. Structure: {X} phases, {Y} parents, {Z} sub-tasks. \[List phases with parent titles\]. Execution: Sequential ({N} steps) | Parallel ({M} waves). Saved to: {EXECUTE_FILE} and {DETAIL_FILE}"
 
 ### 6c. Next Steps Footer
 
