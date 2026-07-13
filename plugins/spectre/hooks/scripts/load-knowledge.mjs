@@ -111,14 +111,26 @@ function hasProjectKnowledgeSurface(projectDir, registryPath) {
     || overrideContent.includes('<!-- spectre-session:start -->');
 }
 
-function buildKnowledgeOverrideBody(applyContent) {
+function registrySection(registryContent) {
+  const rows = (registryContent || '')
+    .split('\n')
+    .filter((line) => line.trim() && line.includes('|') && !line.startsWith('#'));
+
+  if (!rows.length) {
+    return '_No knowledge captured yet. Use `spectre-learn` to capture the first._';
+  }
+  return rows.join('\n');
+}
+
+function buildKnowledgeOverrideBody(applyContent, registryContent) {
+  const body = applyContent.trim().replace('{{REGISTRY}}', registrySection(registryContent));
   return [
     '## SPECTRE Knowledge Context',
     '',
     'This block is managed by SPECTRE and replaced automatically on session start.',
     'Use it before searching or implementing work in this repository.',
     '',
-    applyContent.trim()
+    body
   ].join('\n');
 }
 
@@ -164,7 +176,7 @@ function main() {
       path.join(projectDir, 'AGENTS.override.md'),
       '<!-- spectre-knowledge:start -->',
       '<!-- spectre-knowledge:end -->',
-      buildKnowledgeOverrideBody(applyContent)
+      buildKnowledgeOverrideBody(applyContent, registryContent)
     );
   }
 
@@ -190,6 +202,7 @@ function main() {
 export {
   buildKnowledgeOverrideBody,
   countRegistryEntries,
+  registrySection,
   hasProjectKnowledgeSurface,
   resolvePluginSkillPath,
   stripFrontmatter

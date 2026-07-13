@@ -141,11 +141,24 @@ export function ensureKnowledgeFiles(projectDir) {
   fs.writeFileSync(paths.recallSkillPath, generateRecallSkillContent(projectDir));
 }
 
+export function registrySection(registryContent) {
+  const rows = (registryContent || '')
+    .split('\n')
+    .filter((line) => line.trim() && line.includes('|') && !line.startsWith('#'));
+
+  if (!rows.length) {
+    return '_No knowledge captured yet. Use `spectre-learn` to capture the first._';
+  }
+
+  return rows.join('\n');
+}
+
 export function buildKnowledgeOverrideBody(projectDir) {
   ensureKnowledgeFiles(projectDir);
+  const { registryContent } = readKnowledgeRegistry(projectDir);
   const applyContent = stripFrontmatter(
     rewriteCodexCommandRefs(rewriteProjectSkillPaths(pluginSkillContent('spectre-apply')))
-  );
+  ).replace('{{REGISTRY}}', registrySection(registryContent));
 
   return normalizeSkillMarkdown(applyContent);
 }

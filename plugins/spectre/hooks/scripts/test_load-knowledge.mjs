@@ -22,25 +22,22 @@ function createTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-lk-'));
 }
 
+const APPLY_SKILL_BODY =
+  '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
+  '## Registry\n\n{{REGISTRY}}\n\n' +
+  '## The Rule\n\nLoad matching skills first.\n';
+
 function createApplySkill(pluginDir) {
   const skillPath = path.join(pluginDir, 'skills', 'spectre-apply', 'SKILL.md');
   fs.mkdirSync(path.dirname(skillPath), { recursive: true });
-  fs.writeFileSync(skillPath,
-    '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
-    '## How to Find Skills\n\nScan available skills.\n\n' +
-    '## Workflow\n\nDo things.\n'
-  );
+  fs.writeFileSync(skillPath, APPLY_SKILL_BODY);
   return skillPath;
 }
 
 function createCodexApplySkill(codexHome) {
   const skillPath = path.join(codexHome, 'skills', 'spectre-apply', 'SKILL.md');
   fs.mkdirSync(path.dirname(skillPath), { recursive: true });
-  fs.writeFileSync(skillPath,
-    '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
-    '## How to Find Skills\n\nScan available skills.\n\n' +
-    '## Workflow\n\nDo things.\n'
-  );
+  fs.writeFileSync(skillPath, APPLY_SKILL_BODY);
   return skillPath;
 }
 
@@ -187,7 +184,11 @@ describe('LoadKnowledge - Core behavior', () => {
       assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
       const overrideContent = fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8');
       assert.match(overrideContent, /# Apply Knowledge/);
-      assert.doesNotMatch(overrideContent, /feature-auth\|feature\|auth, login\|Auth system knowledge/);
+      assert.match(overrideContent, /feature-auth\|feature\|auth, login\|Auth system knowledge/);
+      assert.match(overrideContent, /gotcha-db\|gotchas\|database, query\|DB gotchas/);
+      assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
+      // Comments and blanks are stripped — only entry rows ride along.
+      assert.doesNotMatch(overrideContent, /# SPECTRE Knowledge Registry/);
     } finally {
       cleanup(tmp);
     }
@@ -309,7 +310,7 @@ describe('LoadKnowledge - Core behavior', () => {
     }
   });
 
-  it('registry content is NOT embedded in context', () => {
+  it('registry content IS embedded in the knowledge block', () => {
     const tmp = createTmpDir();
     const pluginDir = path.join(tmp, 'plugin');
     fs.mkdirSync(pluginDir);
@@ -327,10 +328,30 @@ describe('LoadKnowledge - Core behavior', () => {
       const output = JSON.parse(result.stdout);
       assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
       const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
-      assert.ok(!overrideContent.includes('embedded-skill|feature|embed|Embedded skill'),
-        'Registry entries should not be embedded in context');
+      assert.ok(overrideContent.includes('embedded-skill|feature|embed|Embedded skill'),
+        'Registry entries must be embedded so skills are discoverable without reading the registry file');
+      assert.ok(!overrideContent.includes('{{REGISTRY}}'),
+        'Placeholder must be substituted');
       assert.ok(overrideContent.includes('# Apply Knowledge'),
         'Scaffold content should still be present');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('substitutes an empty-registry notice when no registry exists', () => {
+    const tmp = createTmpDir();
+    const pluginDir = path.join(tmp, 'plugin');
+    fs.mkdirSync(pluginDir);
+    createApplySkill(pluginDir);
+    createManifest(tmp);
+
+    try {
+      const result = runHook({ pluginRoot: pluginDir, cwd: tmp });
+      assert.equal(result.exitCode, 0);
+      const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
+      assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
+      assert.match(overrideContent, /No knowledge captured yet/);
     } finally {
       cleanup(tmp);
     }

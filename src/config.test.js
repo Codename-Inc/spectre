@@ -90,9 +90,9 @@ test('buildSessionStartOutput returns official SessionStart payload from the lat
   assert.match(overrideContent, /<!-- spectre-session:end -->/);
   assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
   assert.match(overrideContent, /## SPECTRE Knowledge Context/);
-  assert.match(overrideContent, /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
-  assert.doesNotMatch(overrideContent, /feature-auth\|feature\|auth, login\|Use when modifying auth flows/);
-  assert.match(overrideContent, /skill list already has what you need/);
+  assert.match(overrideContent, /call `Skill\(\{name\}\)` FIRST/);
+  assert.match(overrideContent, /feature-auth\|feature\|auth, login\|Use when modifying auth flows/);
+  assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
   assert.match(overrideContent, /<!-- spectre-knowledge:end -->/);
   assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
 });
@@ -130,6 +130,7 @@ test('buildSessionStartOutput keeps knowledge active when no handoff exists and 
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
   assert.match(overrideContent, /spectre-knowledge:start/);
-  assert.match(overrideContent, /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
-  assert.match(overrideContent, /Capture via `Skill\(spectre-learn\)`/);
+  assert.match(overrideContent, /call `Skill\(\{name\}\)` FIRST/);
+  assert.match(overrideContent, /No knowledge captured yet/);
+  assert.match(overrideContent, /`Skill\(spectre-learn\)`/);
 });

@@ -51,7 +51,9 @@ test('project install writes workflow skills, agent config, and official Session
 
     const applySkillPath = path.join(codeHome, 'skills', 'spectre-apply', 'SKILL.md');
     assert.ok(fs.existsSync(applySkillPath));
-    assert.match(fs.readFileSync(applySkillPath, 'utf8'), /If ANY skill's triggers or description match your current task, you MUST load the skill FIRST/);
+    // The installed skill is the template — the SessionStart hook substitutes {{REGISTRY}} at inject time.
+    assert.match(fs.readFileSync(applySkillPath, 'utf8'), /call `Skill\(\{name\}\)` FIRST/);
+    assert.match(fs.readFileSync(applySkillPath, 'utf8'), /\{\{REGISTRY\}\}/);
 
     const learnSkillPath = path.join(codeHome, 'skills', 'spectre-learn', 'SKILL.md');
     assert.ok(fs.existsSync(learnSkillPath));
@@ -132,7 +134,8 @@ test('project install writes workflow skills, agent config, and official Session
     assert.match(parsedKnowledgeOutput.systemMessage, /spectre: ready/);
     const knowledgeOverride = fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8');
     assert.match(knowledgeOverride, /<!-- spectre-knowledge:start -->/);
-    assert.match(knowledgeOverride, /# Apply Knowledge/);
+    assert.match(knowledgeOverride, /# Project Knowledge/);
+    assert.doesNotMatch(knowledgeOverride, /\{\{REGISTRY\}\}/);
     assert.doesNotMatch(knowledgeOutput, /additionalContext/);
 
     execFileSync('codex', ['--version'], {
