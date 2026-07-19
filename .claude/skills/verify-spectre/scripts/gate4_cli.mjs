@@ -210,7 +210,7 @@ for (const scope of ['project', 'user']) {
 const legacy = makeProject('legacy', { legacyMarkers: true });
 cli(['install', 'codex', '--scope', 'project', '--project-dir', legacy], legacy);
 const legacyBody = override(legacy) || '';
-g.warn(!legacyBody.includes('caspar-'), 'reinstall clears legacy caspar-* markers',
+g.check(!legacyBody.includes('caspar-'), 'reinstall clears legacy caspar-* markers',
   'stale fork markers survive reinstall — extend cleanupLegacyProjectContext in src/lib/project.js (merge Phase 4)');
 
 g.done();

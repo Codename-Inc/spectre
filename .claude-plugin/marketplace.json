@@ -1,33 +1,32 @@
 {
   "name": "spectre",
-  "version": "5.3.3",
+  "version": "6.0.0",
   "owner": {
     "name": "Joe Fernandez",
-    "email": "joe@subspace.build"
+    "email": "joe@bycodename.com"
   },
   "metadata": {
-    "description": "spectre - Structured agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, Extract. A meta-prompting system where prompts invoke subagents that execute specialized prompts.",
+    "description": "spectre - Contract-driven agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, and Learn with Claude Code and Codex.",
     "homepage": "https://github.com/Codename-Inc/spectre"
   },
   "plugins": [
     {
       "name": "spectre",
       "source": "./plugins/spectre",
-      "description": "Agentic coding workflow with session memory. spectre guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Extract phases. Includes cross-session memory via /spectre:handoff. Start with /spectre:scope.",
+      "description": "Contract-driven agentic coding workflow. spectre guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Learn flows. Start with /spectre:scope.",
       "author": {
         "name": "Joe Fernandez",
-        "email": "joe@subspace.build"
+        "email": "joe@bycodename.com"
       },
       "keywords": [
         "workflow",
         "tdd",
         "planning",
         "code-review",
-        "session",
-        "memory",
-        "handoff"
+        "skills",
+        "knowledge"
       ],
-      "version": "5.3.3"
+      "version": "6.0.0"
     }
   ]
 }

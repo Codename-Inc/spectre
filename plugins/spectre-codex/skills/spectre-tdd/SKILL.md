@@ -1,111 +1,49 @@
 ---
 name: "spectre-tdd"
-description: "Load this skill when executing TDD (Test-Driven Development) methodology. Use when implementing features via strict RED-GREEN-REFACTOR cycles, or when a prompt instructs execution via TDD."
+description: "Execute implementation via strict red/green/refactor — derive test opportunities, write happy + failure tests, confirm RED failures before any production code, ship minimal GREEN code, then report test evidence. Trigger when a task or prompt requires TDD, failing-test-first, or RED-GREEN-REFACTOR execution (e.g. invoked by fix/execute). Do NOT trigger for test auditing, risk classification, or test planning without implementation — use spectre-test for that."
 ---
 
-# TDD: Test-Driven Development Methodology
+# tdd
 
-Execute tasks using strict TDD (RED → GREEN → REFACTOR). Outcome: Tasks completed with Happy/Failure tests passing, minimal code shipped.
+Implement assigned behavior through strict RED → GREEN → REFACTOR. Outcome: tasks done with happy + failure tests passing and only test-forced production code shipped.
 
-## Iron Law
+## Inputs
 
-```
-NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
-```
+- `$ARGUMENTS` or thread context — the assigned implementation task(s). If no clear task, stop and ask.
+- The task's acceptance criteria / artifact, if one exists.
 
-Wrote code before the test? **Delete it. Start over.** Don't keep it as "reference." Don't "adapt" it. Delete means delete. Implement fresh from tests.
+## Working Set (late-bound — read at run-time, never inline)
 
-## Rules
+- Target behavior, acceptance criteria, and the smallest affected code/test files.
+- Narrow test/lint commands for those files only (`--testPathPattern`, `--findRelatedTests`, per-file lint, or equivalent).
+- Existing test helpers, fixtures, stubs, fake timers, seeded-RNG patterns.
 
-- **2 tests per Test Opportunity (TO)**: 1 Happy path, 1 Failure path — then stop
-- **Scoped execution**: Never run repo-wide tests; use `--testPathPattern`, `--findRelatedTests`, or per-file lint
-- **YAGNI**: No abstractions unless test forces it or ≥2 call sites exist
-- **Anti-flake**: Use fake timers, stubs, seeded RNG
+## Outputs + DONE
 
----
+- A todo list with one cycle per Test Opportunity: `RED happy` → `RED failure` → `GREEN minimal impl` → `REFACTOR` → `COMMIT`.
+- The implementation diff, focused tests, and (optional) conventional commit `feat({task}): description`.
+- A completion report: Summary (tasks done, ✅ happy / ✅ failure test status, files modified); Artifacts (helpers/mocks/fixtures); API Surface (new/modified exports + signatures); Patterns; Deferred coverage gaps.
 
-## Step 1 - Generate TDD TODO List
+**DONE when:** every Test Opportunity has exactly one happy-path and one primary-failure test (unless the behavior genuinely supports only one); each new test was observed failing for the expected reason before its implementation; minimal production code makes the focused tests pass; refactors left the tests green; every new function has a test; all focused tests + relevant lint pass cleanly.
 
-- **Action** — ParseTaskList: Extract tasks from ARGUMENTS or thread context
-  - **If** no clear tasks → stop and ask for guidance
-- **Action** — IdentifyTestOpportunities: Derive TOs (smallest behavior unit: function, route, bug fix, acceptance criterion)
-- **Action** — TransformToTDD: Convert each TO to cycle using TodoWrite:
-  - `RED: Happy — {test}` → `RED: Failure — {test}` → `GREEN: Minimal impl` → `REFACTOR: Tidy` → `COMMIT`
-- **Action** — VerifyScope: Confirm TODO contains ONLY assigned tasks
+## Method / guardrails
 
-## Step 2 - RED Phase: Write Failing Tests
+- **Iron Law — YOU MUST confirm RED before GREEN.** No production code before a failing test. If code was written first, **delete it and restart from the tests** — do not keep it as reference, do not adapt it.
+- A Test Opportunity is the smallest behavior unit: a function, route, bug fix, or acceptance criterion.
+- Per Test Opportunity: write the happy test, then the primary-failure test; run the narrowest command; confirm both **fail (not error) for the missing behavior**, not a typo/setup bug. A test that passes immediately is testing existing behavior — fix it or pick uncovered behavior.
+- GREEN = the least code to pass the focused tests: no extra branches, params, dependencies, or abstractions unless a test forces them or ≥2 call sites exist (YAGNI).
+- Refactor only while green, and only for duplication ≥3 or a material readability gain; if a refactor breaks tests, revert it.
+- Resolve lint pressure in order: guard clauses / split compounds → tiny same-file helpers → file constants → orchestrator + helpers → same-directory helper module only if still failing.
+- Keep execution scoped — never run repo-wide tests when a focused command exists.
+- Prefer the repo's existing anti-flake patterns: fake timers, stubs, seeded RNG, deterministic fixtures.
 
-- **Action** — WriteHappyTest: Write first failing test (happy path)
-  - Execute only this test/file, not entire suite
-- **Action** — WriteFailureTest: Write second failing test (primary failure mode)
-- **Action** — VerifyRed: **MANDATORY** — Confirm each test:
-  - Fails (not errors)
-  - Fails for expected reason (feature missing, not typo)
-  - **If** passes → you're testing existing behavior; fix test
+## Handoff
 
-## Step 3 - GREEN Phase: Minimal Implementation
+Return the completion report inline with the exact commands run and pass/fail evidence — no scratch files. Then render the inline Next Steps line: `spectre-clean` to tidy, or `spectre-test` for broader risk-based verification.
 
-- **Action** — ImplementMinimal: Write least code to pass tests
-  - No extra branches, params, or dependencies unless test forces them
-- **Action** — VerifyGreen: **MANDATORY** — Run tests (narrowest scope)
-  - **If** fail → fix code, not test
-  - Remove any speculative code not forced by tests
+## Escalate-If
 
-## Step 4 - REFACTOR Phase: Clean Code
-
-- **Action** — RefactorSafely: Improve only if duplication ≥3 OR readability materially improves
-  - Keep tests green; **If** tests fail → revert
-- **Action** — HandleLintFailures: Apply in order until clear:
-  1. Guard clauses, split compound expressions
-  2. Extract tiny private helpers (same file)
-  3. Hoist literals to file constants
-  4. Split into orchestrator + helpers
-  5. Only if still failing: same-directory helper module
-
-## Step 5 - Loop or Complete
-
-- **If** more TOs → return to Step 2
-- **Else** → proceed to Step 6
-
-## Step 6 - Commit & Report
-
-- **Action** — CommitCode: Conventional format (`feat({task}): description`)
-- **Action** — GenerateReport:
-  - **Summary**: Tasks completed, test status (✅ Happy ✅ Failure), files modified
-  - **Artifacts**: Test helpers, mocks, fixtures created
-  - **API Surface**: New/modified exports with signatures
-  - **Patterns**: Code/testing patterns to follow
-  - **Deferred**: Coverage gaps for follow-up
-
----
-
-## Red Flags — STOP and Restart
-
-If any of these occur, delete code and start over with TDD:
-
-| Red Flag | Why It's Wrong |
-|----------|----------------|
-| Code written before test | Violates Iron Law |
-| Test passes immediately | Testing existing behavior, not new |
-| Can't explain why test failed | Don't understand what you're testing |
-| "Just this once" thinking | Rationalization — TDD has no exceptions |
-| Keeping code "as reference" | You'll adapt it; that's tests-after |
-
-## When Stuck
-
-| Problem | Solution |
-|---------|----------|
-| Don't know how to test | Write wished-for API first, then assert on it |
-| Test too complicated | Design too complicated — simplify interface |
-| Must mock everything | Code too coupled — use dependency injection |
-| Test setup huge | Extract helpers; still complex? Simplify design |
-
-## Pre-Completion Checklist
-
-Before marking complete, verify:
-- [ ] Every new function has a test
-- [ ] Watched each test fail before implementing
-- [ ] Each failure was for expected reason
-- [ ] Wrote minimal code to pass
-- [ ] All tests pass, output clean
-- [ ] Mocks used only when unavoidable
+- The assigned task or its acceptance criteria are unclear → stop and ask.
+- You cannot make a meaningful RED test fail for the expected reason.
+- The focused test command cannot be isolated to the changed files.
+- Test setup dwarfs the behavior under test → the design is too coupled; simplify the interface (or ask) before continuing.

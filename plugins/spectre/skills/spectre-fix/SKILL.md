@@ -1,70 +1,37 @@
 ---
-name: spectre-fix
-description: Investigate bugs & implement fixes - primary agent
+name: "spectre-fix"
+description: "Investigate a reported bug, pin the root cause, and implement a verified fix. Use when given an error, stack trace, failing behavior, or repro steps and asked to diagnose and fix it — the diagnose-then-fix loop. Do NOT use for greenfield feature work (use plan/execute) or for fixes already root-caused with an approved approach (go straight to execute)."
 user-invocable: true
 ---
 
 # fix
 
-## Input Handling
+Diagnose a bug to its root cause, get approval on the fix approach, then implement it test-first. Treat the current command `$ARGUMENTS` as the bug report.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
+- **bug_report** (`$ARGUMENTS`): error/stack trace, repro steps, context. If empty, ask the user for error message, repro steps, and relevant context before proceeding.
 
-# fix: Analyze bug and recommend fix
+## Working Set
+- The affected code paths and recent changes around the reported symptom (read just-in-time; do not inline file lists here).
+- `@spectre:analyst` for parallel hypothesis investigation.
 
-## Description
+## Outputs + DONE
+A root-cause diagnosis and a verified fix. DONE when:
+- Root cause is identified (not just the symptom suppressed) — name the cause, the affected files, and the fix approach.
+- The fix was approved by the user before any code was written.
+- The fix is implemented test-first (RED before GREEN — confirm the test fails for the right reason, then make it pass).
+- Fix includes `[🪳 TEMP {TOPIC}]`-prefixed debug logging to confirm the fix and gather data if it fails.
+- A closing summary lists what was delivered and the exact steps the user runs to validate.
 
-- **What** — Hypothesize root causes, investigate in parallel, recommend fix with logging
-- **Outcome** — Root cause identified, solution recommendation with `[🪳 TEMP]` debug logging
+## Method / guardrails
+1. **Hypothesize.** Brainstorm 5–7 possible sources; distill to the 1–2 most likely root causes, weighing the component's primary data flow, recent changes, error patterns, stack traces, and affected paths.
+2. **Investigate in parallel.** Dispatch one `@spectre:analyst` per top hypothesis; each traces its hypothesis through the codebase (relevant code, recent commits, similar patterns, edge cases) and returns a compressed (~1–2K) finding in-thread — no scratch files.
+3. **Synthesize & gate.** Present the root cause, affected files, and proposed approach. **YOU MUST hold for user approval here — do NOT write code until approved (HoldForApproval).**
+4. **Implement test-first.** Per `Skill(spectre-tdd)`: write the failing test, confirm RED, then implement the fix plus the `[🪳 TEMP {TOPIC}]` logging to GREEN. Address the root cause; do not paper over the symptom.
 
-## Variables
+## Handoff
+Summarize what you delivered and the concrete validation steps. Then render the inline Next Steps line pointing to the natural follow-on (e.g. `/spectre:test` or `/spectre:clean`).
 
-### Dynamic Variables
-
-- `bug_report`: Error details, repro steps, context — (via ARGUMENTS: $ARGUMENTS)
-
-### Static Variables
-
-- `debug_prefix`: \[🪳 TEMP {TOPIC}\]
-
-## ARGUMENTS Input
-
-<ARGUMENTS> $ARGUMENTS </ARGUMENTS>
-
-## Step (1/5) - Gather Bug Context
-
-- **Action** — CheckInput: Verify bug report provided
-  - **If**: ARGUMENTS empty
-  - **Then**: Ask user for error message, repro steps, and relevant context
-  - **Else**: Use ARGUMENTS as bug report; request missing details if needed
-- **Wait** — Bug report with error details and repro steps
-
-## Step (2/5) - Generate Hypotheses
-
-- **Action** — Brainstorm: Reflect on 5-7 possible sources of the problem
-- **Action** — Prioritize: Distill to 1-2 most likely root causes
-  - Consider: the primary data flow for this component/module, recent changes, error patterns, stack traces, affected code paths
-
-## Step (3/5) - Investigate in Parallel
-
-- **Action** — DispatchAgents: Spawn parallel `@spectre:analyst` subagents to investigate top hypotheses
-  - Each agent gets one hypothesis to trace through codebase
-  - Agents search for: relevant code, recent commits, similar patterns, edge cases
-
-## Step (4/5) - Summarize Findings
-
-- **Action** — Synthesize: Summarize findings and solution recommendation
-  - Include: root cause, affected files, proposed fix approach
-  - **Rule**: Solution must include `{debug_prefix}` logging to verify fix and gather data if fix fails
-- **Action** — HoldForApproval: Present analysis; do NOT write code yet
-  - **Wait** — User approval before implementing fix
-
-## Step (5/5) - Execute
-
-- **Action** — Load TDD Skill: `Skill(spectre-tdd)` to use TDD
-- **Action** — Execute Fix: Add Logs and Implement Fix using TDD
-- **Action** — When finished, summarize what you delivered, including providing specific steps for the user to validate.
-
-## Next Steps
-
-Use the spectre-guide Skills and render the Next Steps Footer per the skill guidance
+## Escalate-If
+- Bug report is empty or too thin to form hypotheses → ask the user for error, repro, and context.
+- Investigation contradicts every hypothesis (no root cause found) → report findings and ask for more repro detail rather than guessing a fix.

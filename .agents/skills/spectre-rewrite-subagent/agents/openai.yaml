@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spectre Subagent Rewrite"
+  short_description: "Rewrite Spectre subagents into compact contracts"
+  default_prompt: "Use $spectre-rewrite-subagent to rewrite the Spectre finder subagent definition."

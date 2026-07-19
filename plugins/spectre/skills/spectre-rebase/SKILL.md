@@ -1,82 +1,42 @@
 ---
-name: spectre-rebase
-description: 👻 | Safe guided rebase w/conflict handling - primary agent
+name: "spectre-rebase"
+description: "👻 | Safe guided git rebase — backup ref, auto-resolve conflicts, verify tests, smoketest guide. Use to rebase the current branch onto a target (e.g. origin/main), especially when conflicts or post-rebase verification are expected. Do NOT use for merges, cherry-picks, interactive history edits, or non-git work."
 user-invocable: true
 ---
 
 # rebase
 
-## Input Handling
+Rebase the current branch onto a target, resolving conflicts and verifying the result, with a recoverable safety net.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
+- Target branch from `$ARGUMENTS` (e.g. `origin/main`). If absent, ask which branch to rebase onto.
+- Current branch + working-tree state (read just-in-time via `git status`, never assume).
 
+## Working Set
+- The current git branch and its commits ahead of target.
+- Project test/lint commands (detect from repo: `npm test`, `pytest`, `cargo test`, `go test`).
 
-# rebase: Safe Git Rebase with Automatic Conflict Resolution
+## Outputs + DONE
+A rebased branch and a **Rebase Summary** returned in-thread (not written to disk):
+- Branch `{current} → {target}`; commit count; conflict count; test result PASS/FAIL.
+- Per-conflict decision table: `| File | Decision | Rationale |`.
+- Smoketest guide grounded in files touched: `{area}: [ ] {behavior to verify}`.
+- Safety line: backup ref name + restore command.
 
-## Description
-- **What** — Guide rebase with safety refs, automatic conflict resolution, test verification
-- **Outcome** — Successfully rebased branch with resolved conflicts, passing tests, smoketest guide
+**DONE when:** rebase completes with no remaining conflict markers, commit count validated against expectation, **lint + full test suite actually run and passing**, and the summary (including the backup ref + restore command) is delivered.
 
-## ARGUMENTS Input
+## Method / guardrails
+1. **Snapshot first.** If the tree is dirty, auto-commit (`git commit -am "chore: snapshot before rebase"`) — no prompt. Then `git fetch origin`.
+2. **YOU MUST create a backup ref before rebasing** and surface its restore command in the summary:
+   `git branch backup/rebase-$(date +%Y%m%d-%H%M%S)` → restore via `git reset --hard {backup}`. This is the only rollback; never start the rebase without it.
+3. Run `git rebase {target}`. For each conflict: resolve favoring the target branch's conventions (no prompts), record `{file}: {decision} — {rationale}`, `git add`, `git rebase --continue`. Repeat until clean.
+4. **Verify after resolution** — run lint (fix violations) and the full test suite; confirm commit count and no unexpected changes. Do not declare done on an unverified rebase.
+5. Track every resolution decision as you go (the summary table is a postcondition, not an afterthought).
 
-Optional target branch to rebase onto.
+## Handoff
+Return the Rebase Summary inline as a compressed (1–2K) block. End with a one-line Next Steps pointer to the appropriate next phase (e.g. evaluate / ship).
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
-
-## Instructions
-- Auto-commit uncommitted changes (no confirmation)
-- Auto-resolve conflicts favoring target branch conventions (no prompts)
-- Track every resolution decision for summary
-- Actually run tests, don't just suggest
-
-## Step 1 - Confirm Target Branch
-
-- **Action** — CheckArguments:
-  - **If** ARGUMENTS has branch → proceed
-  - **Else** → ask: "What branch to rebase onto? (e.g., `origin/main`)"
-- **Wait** — If needed
-
-## Step 2 - Prepare
-
-- **Action** — EnsureCleanTree:
-  - **If** uncommitted changes → `git commit -am "chore: snapshot before rebase"`
-- **Action** — FetchLatest: `git fetch origin`
-- **Action** — CreateSafetyRef: `git branch backup/rebase-$(date +%Y%m%d-%H%M%S)`
-- **Action** — AssessComplexity: Light (≤5 commits), Moderate (5-20), Large (>20)
-
-## Step 3 - Execute Rebase
-
-- **Action** — StartRebase: `git rebase {target_branch}`
-  - **If** no conflicts → skip to Step 4
-
-- **Action** — ResolveAllConflicts: For each conflict:
-  1. Read conflict markers
-  2. Resolve (favor target branch patterns)
-  3. Track: `{file}: {decision} — {rationale}`
-  4. `git add {file}`
-  5. `git rebase --continue`
-  - Repeat until complete
-
-## Step 4 - Verify
-
-- **Action** — RunLint: Fix violations
-- **Action** — RunTestSuite: Detect command (npm test, pytest, cargo test, go test), run full suite
-- **Action** — ValidateRebase: Confirm commit count, no unexpected changes
-
-## Step 5 - Summary
-
-- **Action** — GenerateSummary:
-  > **Rebase Summary**
-  > - Branch: {current} → {target}
-  > - Commits: {count} | Conflicts: {count} | Tests: {PASS/FAIL}
-  >
-  > **Decisions**: | File | Decision | Rationale |
-  >
-  > **Smoketest Guide** (based on files touched):
-  > - {Feature Area}: [ ] {behavior to verify}
-  >
-  > **Safety**: Backup `{branch}` | Restore: `git reset --hard {backup}`
-
-- **Action** — RenderFooter: Use `@skill-spectre:spectre-guide` skill for Next Steps
+## Escalate-If
+- Conflicts can't be resolved by favoring the target (genuine semantic divergence) → stop, report, leave the rebase in progress for the user.
+- Tests fail after rebase → report the failure and the restore command; do not force-push or proceed.
+- Working tree or target branch state is ambiguous → ask before acting.

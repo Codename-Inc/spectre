@@ -1,12 +1,12 @@
 ---
 name: release
-description: Run the SPECTRE release workflow, including version bumps, Codex sync, global Codex install verification, GitHub release, manual npm publish handoff, npm verification, and final global Codex refresh.
+description: Run the Spectre release workflow, including version bumps, Codex sync, global Codex install verification, GitHub release, manual npm publish handoff, npm verification, and final global Codex refresh.
 user-invocable: true
 ---
 
 # Release
 
-You are running the SPECTRE release workflow. Follow each step precisely.
+You are running the Spectre release workflow. Follow each step precisely.
 
 ## Input Handling
 
@@ -98,11 +98,11 @@ Before changelog, tag, push, or npm publish, make sure the global Codex install 
 2. Verify the installed Codex runtime and hook wiring:
 
    ```bash
-   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
+   node bin/spectre.js doctor codex --scope user --project-dir "$PWD"
    ```
 
 3. If the update or doctor command fails, stop and fix it before shipping.
-4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
+4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, or `~/.codex/` unless the user explicitly asks. This step is a local install guard, not a release artifact commit.
 
 ### Step 6: Build Changelog
 
@@ -178,10 +178,10 @@ After the user confirms npm publish completed:
 3. Verify the installed Codex runtime and hook wiring:
 
    ```bash
-   node bin/spectre.js doctor codex --scope user --project-dir "$PWD" --verify-hooks
+   node bin/spectre.js doctor codex --scope user --project-dir "$PWD"
    ```
 
-4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, `~/.codex/`, or `AGENTS.override.md` unless the user explicitly asks.
+4. Do not stage ignored local runtime state such as `.codex/`, `.spectre/`, or `~/.codex/` unless the user explicitly asks.
 
 ### Step 11: Done
 

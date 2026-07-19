@@ -94,6 +94,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+tmp/
 
 # Local config
 .env.local

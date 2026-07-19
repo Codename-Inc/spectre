@@ -10,7 +10,7 @@ Open an issue with:
 - Description of the bug
 - Steps to reproduce
 - Expected vs actual behavior
-- Claude Code version
+- Claude Code or Codex version
 
 ### Feature Requests
 
@@ -24,7 +24,7 @@ Open an issue describing:
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Test with Claude Code (`claude --plugin-dir /path/to/spectre`)
+4. Test with Claude Code and/or Codex
 5. Commit with clear messages
 6. Push and open a PR
 
@@ -40,38 +40,39 @@ cd spectre
 Test the plugin locally:
 ```bash
 claude --plugin-dir /path/to/spectre
+npm run sync-codex -- --check --quiet
+npm test
 ```
 
 ### Structure
 
 ```
 spectre/
-├── plugin.json       # Plugin manifest
-├── commands/         # Slash commands
-├── agents/           # Subagent definitions
-├── hooks/            # Session memory hooks
-├── skills/           # Skills
-├── cli/              # Python CLI for other agents
-└── .claude-plugin/   # Marketplace registration
+├── .claude-plugin/   # Marketplace registration
+├── plugins/spectre/   # Canonical plugin source
+├── plugins/spectre-codex/ # Generated Codex bundle
+├── scripts/          # Translation and validation scripts
+└── src/              # npm CLI installer
 ```
 
-### Adding Commands
+### Adding Workflow Skills
 
-1. Create a markdown file in `commands/`
-2. Follow existing command patterns
-3. Test with Claude Code
+1. Create or update a skill in `plugins/spectre/skills/`
+2. Follow existing skill patterns
+3. Run `npm run sync-codex -- --quiet`
 4. Update docs if needed
 
 ### Adding Agents
 
 1. Create a markdown file in `agents/`
 2. Define name, description, and methodology
-3. Test subagent dispatch
+3. Run `npm run sync-codex -- --quiet`
+4. Test subagent dispatch
 
 ## Code Style
 
-- Commands/agents are markdown with YAML frontmatter
-- CLI is Python with Click
+- Skills/agents are markdown with YAML frontmatter
+- The installer CLI is Node.js
 - Keep prompts clear and actionable
 
 ## Questions?

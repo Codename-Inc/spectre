@@ -1,160 +1,90 @@
 ---
 name: "spectre-execute"
-description: "👻 | Adaptive Wave-Based Build with Per-Wave Verification Gate"
+description: "Build the planned feature from a compact execute.md index and sliceable tasks.json detail, dispatching parallel task waves through deterministic checks, lightweight sentinel review, and final adversarial review/validation. Trigger after execute.md/tasks.json exist or to resume a partially-built wave plan. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (spectre-prune)."
 user-invocable: true
 ---
 
 # execute
 
-## Input Handling
+Execute tasks in parallel waves without loading the full task graph into primary-agent context. Read `execute.md` whole, slice `tasks.json` only for selected parent tasks, verify each wave before advancing, adapt for spec compliance, run final adversarial review/validation over the cumulative diff, and emit a manual test guide.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
 
+- `$ARGUMENTS` — optional path to an execute index or wave/scope hints.
+- Required default artifact: `{OUT_DIR}/specs/execute.md` with `Task Detail Source` pointing to `tasks.json`. If absent → stop, route to `spectre-create_tasks`.
 
-# execute: Adaptive Task Execution with Per-Wave Verification
+## Working Set
 
-Execute tasks in parallel waves with full scope context, verify each wave before proceeding, adapt based on learnings, audit cross-wave integration, generate manual test guide. Outcome: complete implementation with verified quality and E2E requirement coverage.
+- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = docs/tasks/{branch}`.
+- `EXECUTE_INDEX = arg path || {OUT_DIR}/specs/execute.md`.
+- Resolve `TASKS_JSON`:
+  1. Use `## Task Detail Source` line `Tasks JSON: <path>` when present.
+  2. Else if index basename is `execute.md`, use adjacent `tasks.json`.
+  3. Else if basename ends `.execute.md`, use sibling `.tasks.json`.
+  4. Otherwise stop and ask for the matching task detail JSON path.
+- `SCOPE_DOCS` = existing paths listed in the execute index `## Document Manifest`; read each before execution and pass paths to subagents.
+- Wave diff per gate: `git diff <parent-of-first-wave-commit>..HEAD`; files-touched manifest; verbatim ACs from this wave's selected parent-task slice.
 
-## ARGUMENTS
+## Method / guardrails
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
+**Resolve + load index.**
+- Read `EXECUTE_INDEX` whole. It is the token-efficient orchestration index: manifest, task source, summary, wave plan, parent-task index, slicing rules.
+- Do **not** read `TASKS_JSON` whole. Use targeted parsing only: status projection, selected parent-task slices, reviewer criteria/context slices, and status updates.
+- After any JSON write, re-parse `TASKS_JSON` before planning the next wave.
 
-## Step 1 - Adaptive Wave Execution
+**Adaptive wave loop** — until all parent tasks are `done` or `skipped`:
 
-- **Action** — ResolveExecuteBrief: If no explicit argument is provided, default to `docs/tasks/{branch}/specs/execute.md`.
-  - If the user passes `spectre-execute <path>`, treat that path as the compact execution index.
-  - Read the execute index whole. It is the token-efficient replacement for a separate task index artifact and contains the document manifest, task-detail source, execution summary, wave plan, parent-task index, and slicing rules.
-  - Resolve `TASKS_JSON` from the execute index:
-    1. If `## Task Detail Source` lists a `Tasks JSON:` path, use that path.
-    2. Else if the index basename is `execute.md`, use adjacent `tasks.json`.
-    3. Else if the index basename ends in `.execute.md`, replace that suffix with `.tasks.json` in the same directory.
-    4. Otherwise stop and ask for the matching task detail JSON path.
-  - Do not use a Markdown task fallback or converter. If Beads tasks are already the input source, keep the Beads path; otherwise use the `execute.md` + adjacent `tasks.json` contract.
+1. **Batch.** Use the execute index's Wave Plan + Parent Task Index to choose pending parent ids. Assign <=3 sequential parent tasks per `@dev`; batches may span phases when wave guidance allows. End a batch before any dependency boundary.
+2. **Dispatch wave.** Launch parallel `@dev` (one per batch).
+   - Before dispatch, extract only the selected parent task ids from `TASKS_JSON` using `jq`, `node -e`, or targeted read/edit mechanics. Include minimal phase labels plus assigned parents, subtasks, ACs, context, and status fields.
+   - Inline that slice under `<task_assignment>`. Self-check: the prompt contains selected parent ids and no unrelated parent ids.
+   - `@dev` receives: `<task_assignment>`, `SCOPE_DOCS` paths, and waves 2+ **Prior-Wave Context**. It MUST read scope docs first, use `<task_assignment>` as the only task source, and **not read any tasks file**.
+   - Then it loads `Skill(spectre-tdd)`, executes tasks sequentially with red/green TDD, commits after each parent task, uses native related-test commands, and returns compressed **Implementation Insights** + **E2E Completeness Check**.
+   - E2E signal: ⚪ Complete · 🟡 Gap [missing functionality] · 🔴 Blocker [needs other-task changes].
+3. **Per-wave verification gate** (order is load-bearing):
+   - **3a — Deterministic pre-gate:** detect and run lint/typecheck/build from `package.json`/`pyproject.toml`/`Cargo.toml`/`Makefile`; fix until green. Never invoke reviewers while deterministic checks fail.
+   - **3b — Sentinel selector:** classify the wave before reviewer dispatch:
+     - `skip`: deterministic checks passed; isolated implementation; no downstream dependency; no shared contract, replaced path, or E2E gap. Do not dispatch a reviewer; record `sentinel_review: skipped`.
+     - `wiring`: default when the wave adds the first vertical slice, touches UI/data/control-flow integration, produces output consumed by later tasks, replaces an old path, exposes a feature, or reports 🟡/🔴 E2E status.
+     - `risk`: use only when touched code involves auth, permissions, payments, PII, migrations, public APIs, secrets, network input, destructive actions, or data correctness.
+     - If unsure, choose `wiring` rather than dual review.
+   - **3c — Lightweight sentinel review:** dispatch at most one `@reviewer` only for `wiring` or `risk`. Build the prompt only from wave diff, verbatim ACs/context from the selected slice, relevant scope docs, and files manifest. Forbidden: dev reports, implementer rationale, orchestrator paraphrase.
+     - `wiring` lens: Defined -> Connected -> Reachable; grep usage, trace UI/API render or call path backward, flag dead computations, orphaned outputs, duplicate data sources, and old active paths.
+     - `risk` lens: security + correctness, including scope adherence for the risk surface.
+     - Reviewer output must be either `CLEAN` or CRITICAL/HIGH findings only. No Medium/Low/nits/style/speculative architecture. Every finding must include `file:line`, reproducible failure/exploit scenario, concrete evidence chain, smallest scope-safe fix shape, and `sha256(file_path + line + finding_category)`. No evidence chain means `CLEAN`.
+   - **3d — Bounded fix loop:** CRITICAL/HIGH findings get <=3 fix waves. Reappearing hash = reviewer disagreement; escalate and do not re-queue. Halt on test-file changes >0.5x implementation-file changes or cumulative fix diff growth >25% per iteration. Re-run 3a, then re-run 3b/3c only when the selector still requires sentinel review after fixes.
+   - **3e — Exit:** deterministic checks pass and no required sentinel CRITICAL/HIGH remains, or cap reached and user notified.
+4. **Mark complete.** Edit `TASKS_JSON` status fields for assigned subtasks/parents to `done`; preserve indented valid JSON; re-parse immediately.
+5. **Reflect.** Read completion reports for scope signals and E2E gaps. All ⚪ → next wave. Otherwise adapt.
+6. **Adapt only for spec compliance.** Edit `TASKS_JSON` directly: append gap tasks/subtasks with `status: "pending"`, mark obsolete work `skipped`, and add learned context to future tasks. If parent ids, titles, dependencies, or wave membership change, update only affected `Wave Plan` / `Parent Task Index` rows in `EXECUTE_INDEX`, then re-read the index. No nice-to-haves; no scope expansion.
+7. **Next wave.** Recompute pending status from `TASKS_JSON` projections, gather prior completion reports into `## Prior-Wave Context`, repeat.
 
-- **Action** — LoadDocumentManifest: Extract the `## Document Manifest` paths from the execute index.
-  - Read each listed existing document before execution.
-  - Store existing manifest paths as `SCOPE_DOCS` for subagent dispatch.
-  - Do not infer or substitute different planning docs unless a listed required path is missing and the user explicitly directs the replacement.
+**Final adversarial code review + validate.** After all parent tasks are `done`/`skipped` and deterministic checks pass, run the expensive review once over the cumulative feature diff:
+- Run `Skill(spectre-code_review)` with `{OUT_DIR} --orchestrated` over the cumulative diff. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
+- Reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and relevant `TASKS_JSON` slices. Do not use dev reports or implementer rationale as evidence.
+- Read the saved report. CRITICAL/HIGH findings enter the bounded fix loop; Medium/Low findings are summarized but do not block completion unless the user asks.
+- Then `@analyst` runs `Skill(spectre-validate)` (`spectre-validate`) narrowed to cross-wave integration audit, scope-creep audit, and dead-computation sweep over the cumulative diff. Pass `SCOPE_DOCS` plus `TASKS_JSON`; do not use `execute.md` as the validation source.
+- High-priority review or validation gaps → dispatch `@dev` to fix, rerun deterministic checks, then rerun `Skill(spectre-code_review)` or only the affected validation check.
 
-- **Action** — LoadTaskIndex: Use the execute index's execution summary, wave plan, and parent-task index to identify pending work and the first wave.
-  - For status projection, query only task ids/status fields from `TASKS_JSON`; do not load the full JSON detail into context.
-  - After any `TASKS_JSON` write, re-parse it before planning the next wave.
+## Outputs + DONE
 
-- **Action** — ExecuteAdaptiveLoop: Until all tasks complete:
+- Complete implementation, committed per parent task.
+- `TASKS_JSON` statuses reflect completed/skipped/adapted work and parse after final write.
+- `{OUT_DIR}/test_guide.md` or `{OUT_DIR}/testing/{branch}_test_guide.md` from `Skill(spectre-create_test_guide)`.
+- Completion summary: tasks done · waves · sentinel review counts (`skip`/`wiring`/`risk`) · per-wave fix-loop counts · final review status · validation status · test-guide path · Task Evolution Summary · E2E Gaps Addressed · Unresolved Findings.
+- **DONE when:** every wave passed deterministic checks plus any required sentinel review; all planned tasks are `done`/`skipped`; final adversarial review and cross-wave validate are clean or gaps fixed/accepted; test guide written; summary returned.
 
-  1. **Batch Tasks**: Assign up to 3 sequential parent tasks per subagent
-     - **Batching Rule**: Group sequential tasks (e.g., 1.1→1.2→1.3) to one agent
-     - **Slice Boundary Rule**: Batches are selected parent task ids from the wave guidance. They may span phases when the wave guidance and dependencies assign those parent tasks to the same owner.
-     - **Parallelization Boundary**: If task N must complete before parallel wave W starts, end the batch at N
-     - Example: Tasks 1.1-1.5 sequential, then 2.1-2.3 parallel → Agent A: 1.1-1.3, Agent B: 1.4-1.5, then parallel dispatch for wave 2
+## Handoff
 
-  2. **Dispatch Wave**: Launch parallel @dev subagents (1 per task batch)
-     - **CRITICAL**: Each subagent MUST read `SCOPE_DOCS` before executing
-     - Before dispatch, extract only the selected parent task ids from `TASKS_JSON` for the owner's batch using any convenient mechanism (`jq`, `node -e`, or targeted Read/Edit). The slice must include minimal phase labels plus the assigned parent tasks, subtasks, acceptance criteria, context, and status fields for those parents only.
-     - Inline that extracted slice in the dispatch prompt under a `<task_assignment>` XML envelope. Run an in-flight self-check that the prompt contains only the selected parent task ids and no unrelated parent task ids.
-     - `@dev` receives: the inlined `<task_assignment>`, SCOPE_DOCS paths, and (after wave 1) a **Prior-Wave Context** block. `@dev` reads no tasks file.
-     - **Prior-Wave Context** (REQUIRED in waves 2+): the orchestrator appends each prior wave's @dev Completion Reports verbatim into this wave's dispatch prompt under a `## Prior-Wave Context` header. Includes Completed tasks, Files changed, Scope signal, Discoveries, and Guidance from each prior batch. This is how state is carried forward — there is no separate state file.
-     - **Test discovery**: instruct @dev to use the project's native related-test command (`jest --findRelatedTests <file>`, `pytest` by path, `vitest related`, `cargo test <path>`). Do not create parallel test files for code already covered.
-     - Instruct: "Read scope docs first to understand E2E UX and integration points. Use the inlined `<task_assignment>` as the only task source; do not read any tasks file. Load Skill(spectre-tdd), then execute tasks sequentially using its TDD methodology. **Commit after each parent task** with conventional commit format (e.g., `feat(module): add X`, `fix(module): resolve Y`). Return completion report with **Implementation Insights** + **E2E Completeness Check**."
+Report the summary inline (counts, fix-loop iterations, unresolved findings, test-guide path), then suggest next:
 
-     **E2E Completeness Check** (subagent returns one per batch):
-     - ⚪ Complete — tasks sufficient to deliver spec intent
-     - 🟡 Gap — [specific functionality missing for E2E UX]
-     - 🔴 Blocker — [cannot deliver spec without changes to other tasks]
+- `spectre-clean` — run prune + risk-based tests + sweep/commit
+- `spectre-test` — strengthen automated tests
+- `spectre-rebase` — tidy history before merge
 
-  3. **Per-Wave Verification Gate**: Verify the wave's output before adapting or advancing.
+## Escalate-If
 
-     **3a. Deterministic pre-gate (no AI)**
-     - Detect project commands from `package.json` / `pyproject.toml` / `Cargo.toml` / `Makefile`
-     - Run lint, typecheck, build — whichever apply
-     - If any fail: dispatch @dev to fix the failures, re-run the gate. Do NOT invoke @reviewer until all deterministic checks pass.
-
-     **3b. Parallel review lenses (single message, two @reviewer dispatches)**
-
-     Build each reviewer prompt from:
-     - Wave diff: `git diff <parent-of-first-wave-commit>..HEAD`
-     - Acceptance criteria: verbatim text from the inlined `<task_assignment>` for this wave's tasks, plus relevant scope docs
-     - Files-touched manifest
-
-     **Forbidden in reviewer prompts**: @dev completion reports, implementer rationale, orchestrator paraphrase of "what the dev did and why". The reviewer is a clean room — diff + criteria only.
-
-     **Lens 1 — security + correctness**
-     - OWASP Top-10, injection, auth, secrets, data exposure
-     - Logic, edge cases, state transitions
-     - Scope adherence (flag only in-scope issues; do not flag missing out-of-scope work)
-
-     **Lens 2 — wiring**
-     - Apply the Defined → Connected → Reachable methodology:
-       - Defined: code exists in a file
-       - Connected: code is imported/called by other code
-       - Reachable: a user action can trigger the code path
-     - For each new function/component, grep for usage (not just definition)
-     - For UI features, trace render-backward: JSX ← variable ← source ← user action
-     - Flag dead computations (computed but never reach output) and old code paths still active when replaced
-
-     **Severity & evidence rule** (enforced in both lens prompts):
-     - Every CRITICAL or HIGH finding MUST include:
-       1. `file:line` reference
-       2. A reproducible failure scenario or exploit path describing observable behavior
-     - Findings without an evidence chain are auto-downgraded one severity level. "Could potentially" is not evidence.
-     - Each finding includes a hash: `sha256(file_path + line + finding_category)` for the fix-loop ledger (3c).
-
-     **3c. Bounded fix loop**
-
-     If lens dispatches return CRITICAL/HIGH:
-     - **Iteration cap**: 3 fix waves maximum
-     - **Hash ledger**: maintain a set of finding hashes addressed. If a finding with a hash already in the ledger reappears in a later review, classify as "reviewer disagreement" and escalate to user — do NOT re-queue.
-     - **Fix/test ratio**: monitor changes per fix wave. If test-file changes > 0.5 × implementation-file changes, halt and surface to user — likely "fixing the test instead of the bug."
-     - **Diff-growth circuit-breaker**: if cumulative fix-wave diff grows > 25% per iteration, halt and surface — fixes are adding surface area, not reducing it.
-     - **Dispatch fix**: parallel @dev subagents address each CRITICAL/HIGH finding. Each fix-dev receives the finding's full evidence chain (file:line + scenario), not just the description.
-     - **Re-verify**: after fixes commit, return to 3a (deterministic) then 3b (lenses).
-
-     **3d. Exit condition**: No CRITICAL/HIGH remain, OR iteration cap reached and user has been notified of unresolved findings.
-
-  4. **Mark Complete**: Edit `TASKS_JSON` directly to set completed assigned subtasks/parent tasks to `status: "done"` in `phases[]`.
-     - Mechanism is flexible (`jq`, `node -e`, or Read/Edit), but the write must preserve indented valid JSON.
-     - Immediately re-read/re-parse `TASKS_JSON` after the write before reflecting or planning another wave.
-
-  5. **Reflect**: Review completion reports for:
-     - Scope signals (🟡/🟠/🔴) from implementation insights
-     - E2E completeness gaps (🟡/🔴) from completeness checks
-     - **If** all ⚪ across both → skip to step 7
-     - **Else** → adapt tasks
-
-  6. **Adapt** (only if triggered):
-     - Modify future tasks with learned context by editing `TASKS_JSON` directly
-     - Add tasks for E2E gaps by appending new JSON task objects with clear titles and `status: "pending"`
-     - Add required sub-tasks by appending new JSON subtask objects with clear titles and `status: "pending"`
-     - Mark obsoleted tasks with `status: "skipped"` and a short reason in the task note/metadata
-     - Re-read/re-parse `TASKS_JSON` after every adaptation write
-     - If adaptation changes wave membership or the parent-task index, update the execute index's Wave Plan and Parent Task Index in the same pass, then re-read it before the next wave
-     - Flag cross-task integration issues to remaining waves
-     - **Guardrails**: ❌ No "nice-to-have" additions, ❌ No scope expansion, ✅ Only adapt for spec compliance
-
-  7. **Next Wave**: Identify next tasks from the refreshed execute brief plus `TASKS_JSON` status projection, gather prior-wave completion reports for the Prior-Wave Context block, return to step 1
-
-## Step 2 - Cross-Wave Validate
-
-- **Action** — SpawnValidation: @analyst runs `Skill(spectre-validate)` (Claude slash route: `spectre-validate`) with **narrowed scope**:
-  - Focus: cross-wave integration audit (did later waves silently break earlier waves' wiring?) + scope-creep audit (anything implemented that is NOT in the acceptance criteria?) + dead-computation sweep across the full cumulative diff
-  - Skip: per-area wiring verification (already done per-wave in Step 1.3b's wiring lens)
-
-- **Action** — AddressGaps: If high priority gaps surface → dispatch @dev subagents to fix.
-
-## Step 3 - Prepare for QA
-
-- **Action** — GenerateTestGuide: @dev runs `Skill(spectre-create_test_guide)` (Claude slash route: `spectre-create_test_guide`)
-  - Save to `{OUT_DIR}/test_guide.md`
-
-## Step 4 - Report
-
-- **Action** — SummarizeCompletion:
-  - Tasks completed, waves executed, per-wave fix-loop iteration counts, validation status
-  - Test guide location
-  - **Task Evolution Summary**: Adaptations made (or "None - original plan executed")
-  - **E2E Gaps Addressed**: Summary of completeness issues found and resolved
-  - **Unresolved Findings** (if any): Any CRITICAL/HIGH that hit the fix-loop cap and were escalated to user
-
-- **Action** — RenderFooter: Use `Skill(spectre-guide)` skill for Next Steps
+- `execute.md` missing, missing required sections, or cannot resolve/parse `tasks.json` → stop; route to `spectre-create_tasks`.
+- A subagent prompt slice contains unrelated parent task ids → fix the slice before dispatch.
+- Fix loop hits cap, a hash recurs, or a circuit breaker trips → halt and surface; do not force past it.
+- Deterministic pre-gate cannot pass → fix before review; never advance a red wave.

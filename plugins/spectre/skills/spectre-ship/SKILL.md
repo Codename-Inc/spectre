@@ -1,181 +1,51 @@
 ---
-name: spectre-ship
-description: 👻 | Autonomous end-to-end: brain dump -> scope -> TDD -> commit -> rebase -> PR
+name: "spectre-ship"
+description: "👻 | Autonomous end-to-end delivery — brain dump → scope → TDD → sweep → rebase → PR, zero confirmation gates. Use when you want a reviewable PR produced hands-off from an informal description. Do NOT use when you want approval checkpoints (use the staged scope/plan/execute flow), or for non-code/non-git work."
 user-invocable: true
 ---
 
 # ship
 
-## Input Handling
+Take a brain dump and autonomously produce a reviewable PR — scope, implement with TDD, sweep, rebase, and open the PR with no user approval gates.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
+- Brain dump from `$ARGUMENTS`. If empty, ask once for it, then proceed autonomously.
+- Parse from it: `INTENT_TYPE` (`feat` = new behavior, `fix` = broken behavior), `TARGET_BRANCH` (default `origin/main`), `SCOPE_SUMMARY` (1–2 sentences), `RELEVANT_FILES`, `CONTEXT`.
+- Current branch + tree state (read just-in-time via `git status`/`git rev-parse`, never assume).
 
-# ship: Autonomous End-to-End Delivery
+## Working Set
+- The code area named in `RELEVANT_FILES`/`SCOPE_SUMMARY` (locate via `@spectre:finder`, understand via `@spectre:analyst`).
+- Project test/lint commands (detect from repo).
+- `BRANCH_NAME` for artifact paths.
 
-Take a brain dump and autonomously produce a reviewable PR. Zero confirmation gates — scope, implement with TDD, sweep, rebase, and open a PR.
+## Outputs + DONE
+- `docs/tasks/{BRANCH_NAME}/concepts/scope.md` — lightweight (~20 lines): Objective · Type · In Scope · Out of Scope · Target Branch · Key Files.
+- Conventional commits (one per task minimum), `{INTENT_TYPE}({scope}): {desc}`.
+- A pushed branch + a PR (`gh pr create`) with title `{INTENT_TYPE}({scope}): {SCOPE_SUMMARY}` (<70 chars) and body sections: Summary · Changes · Test Plan · "Shipped autonomously via `/spectre:ship`".
 
-**Execution Style**: Fully autonomous. No user approval gates. Parse intent, build it, ship the PR.
+**DONE when:** all tasks completed via TDD, sweep done and committed, branch rebased onto `TARGET_BRANCH` with **lint + full test suite actually run and passing**, branch pushed, and the **PR URL output as the final deliverable**.
 
-## ARGUMENTS
+## Method / guardrails
+Fully autonomous — no approval gates; parse intent, build it, ship the PR. Run in order:
 
-&lt;ARGUMENTS&gt; $ARGUMENTS &lt;/ARGUMENTS&gt;
+1. **Worktree** — if on `main`/`master`, `EnterWorktree` to isolate; else use the current branch. Capture `BRANCH_NAME`.
+2. **Quick scope** — fan out `@spectre:finder` + `@spectre:analyst` (read-only), write the ~20-line scope.md. This is a light scope, not full `/spectre:scope`.
+3. **Tasks** — `TaskCreate` 3–8 tasks proportional to scope, dependency-ordered (foundational first), each with imperative subject + acceptance criteria. Ephemeral — no file artifact.
+4. **Execute (TDD)** — per task sequentially: `TaskUpdate`→in_progress; load `Skill(spectre-tdd)`; **RED (failing test first) → GREEN (minimal impl) → REFACTOR**; commit; `TaskUpdate`→completed. Skip TDD only for config/doc-only tasks. If new work surfaces, create a new task — do not scope-creep the current one.
+5. **Sweep** (inline, no subagents) — run every check, then commit `chore({scope}): sweep cleanup` if it produced changes:
+   - Diff sanity: no unintended/whitespace-only/merge-artifact edits; no out-of-scope staged files; **no secrets/keys/credentials**.
+   - Logging: remove temp/debug logs; keep intentional error/warning/state logs; appropriate levels.
+   - Hygiene: remove commented-out code; resolve/document TODO/FIXME/HACK added this session; remove hardcoded test values.
+   - Dead code: orphaned imports, unused vars/functions, debug artifacts.
+   - **Lint (strict): fix all violations — no skipping, no `eslint-disable`/`--no-verify`; refactor structural issues, never suppress.**
+   - Test: run affected + full suite, fix failures. Do not write new tests here (done in step 4).
+6. **Rebase** — `git fetch origin`; **YOU MUST create a backup ref first**: `git branch backup/ship-$(date +%Y%m%d-%H%M%S)` (the only rollback; never rebase without it). `git rebase {TARGET_BRANCH}`, auto-resolving conflicts favoring the target's conventions, tracking each decision for the PR. **Verify after**: lint (fix) + full test suite (fix) + confirm commit count and no unexpected changes.
+7. **PR** — `git push -u origin {BRANCH_NAME}`, then `gh pr create`; output the PR URL. Ground the description in the actual change, not memory: **What** = behavioral summary from the diff (not a diff recitation); **Why** = from the brain dump / commits / linked issue (placeholder if none — never fabricated); **Test Plan** = what the diff's tests actually cover. Scale to size — trivial PRs get Summary + Why; larger/multi-area PRs add Changes, Test Plan, and a Feedback-Requested line directing the reviewer. Before opening, verify each claim maps to a real hunk and no secrets/PII are quoted into the body. (See `Skill(spectre-create_pr)` for the full grounding contract.)
 
-## Step (1/8) - Parse Context
+## Handoff
+Terminal skill — output is the PR URL. End with a one-line Next Steps pointer (e.g. review the PR / `/spectre:code_review`).
 
-- **Action** — ParseBrainDump: Extract from ARGUMENTS:
-  - `INTENT_TYPE`: `feat` or `fix` (infer from context — new behavior = feat, broken behavior = fix)
-  - `TARGET_BRANCH`: Extract if specified (e.g., "rebase onto develop"), default `origin/main`
-  - `SCOPE_SUMMARY`: 1-2 sentence distillation of what to build/fix
-  - `RELEVANT_FILES`: Any files, components, or areas mentioned
-  - `CONTEXT`: Remaining context, constraints, preferences
-- **Action** — ValidateInput:
-  - **If** ARGUMENTS empty → ask user for brain dump, then proceed autonomously
-  - **Else** → proceed
-
-## Step (2/8) - Ensure Worktree
-
-- **Action** — DetectBranch: `git rev-parse --abbrev-ref HEAD`
-  - **If** already in a worktree or on a non-main branch (not `main`, not `master`) → use current context, proceed
-  - **If** on `main` or `master` → use `EnterWorktree` to create an isolated worktree
-- **Action** — SetBranchName: Capture current branch name as `BRANCH_NAME` for artifact paths
-
-## Step (3/8) - Quick Scope
-
-- **Action** — DispatchResearch: Spawn parallel lightweight agents:
-
-  - `@spectre:finder` — Locate files related to `RELEVANT_FILES` and `SCOPE_SUMMARY`
-  - `@spectre:analyst` — Understand the relevant code area, key interfaces, existing patterns
-
-- **Action** — WriteScopeDoc: Create `docs/tasks/{BRANCH_NAME}/concepts/scope.md`:
-
-  ```markdown
-  # Scope: {SCOPE_SUMMARY}
-  
-  ## Objective
-  {1-2 sentences from brain dump}
-  
-  ## Type
-  {feat or fix}
-  
-  ## In Scope
-  - {bullet list of what will be done}
-  
-  ## Out of Scope
-  - {what this explicitly won't touch}
-  
-  ## Target Branch
-  {TARGET_BRANCH}
-  
-  ## Key Files
-  {from research — relevant files and their roles}
-  ```
-
-  Keep it \~20 lines. This is a lightweight scope, not full `/spectre:scope`.
-
-## Step (4/8) - Create Tasks
-
-- **Action** — CreateTasks: Use `TaskCreate` to create 3-8 tasks proportional to scope complexity.
-  - Each task gets: clear `subject` (imperative), `description` (what to do + acceptance criteria), `activeForm` (present continuous)
-  - Order tasks by dependency — foundational work first
-  - Tasks are ephemeral and operational — no file artifact needed
-
-## Step (5/8) - Execute with TDD
-
-- **Action** — ExecuteLoop: For each task sequentially:
-
-  1. `TaskUpdate` → `in_progress`
-  2. Load `@skill-spectre:spectre-tdd` for TDD methodology
-  3. Execute: RED (write failing test) → GREEN (minimal implementation) → REFACTOR (clean up)
-  4. Commit with conventional format: `{INTENT_TYPE}({scope}): {description}`
-  5. `TaskUpdate` → `completed`
-
-  **Rules**:
-
-  - One commit per task minimum
-  - Conventional commit format always
-  - TDD methodology for implementation tasks (skip for config/doc-only tasks)
-  - If a task reveals new work, create additional tasks rather than scope-creeping the current one
-
-## Step (6/8) - Sweep
-
-Inline sweep — same checklist as `/spectre:sweep`, no subagents:
-
-### 6.1 Diff Sanity Check
-
-- Review full diff for unintentional changes (whitespace-only edits, merge artifacts)
-- Verify no accidentally staged files outside the intended scope
-- Confirm no secrets, API keys, credentials, or sensitive data in diff
-
-### 6.2 Logging Audit
-
-- Remove temporary/debug logging (console.log, print, debug flags)
-- Preserve intentional logs: errors, critical warnings, key state transitions
-- Verify log levels are appropriate for production context
-
-### 6.3 Code Hygiene
-
-- Remove commented-out code (it's in git history if needed)
-- Resolve or document any TODO/FIXME/HACK introduced in this session
-- Remove hardcoded test values that should be config/env
-
-### 6.4 Opportunistic Dead Code Cleanup
-
-- Orphaned imports with no usage in the file
-- Unused variables or functions declared but never referenced
-- Debug artifacts (debugger statements, leftover TODO/FIXME from this work)
-
-### 6.5 Lint (Strict)
-
-- Run the project linter and **fix all violations** — no skipping, no eslint-disable
-- Address structural lint issues by refactoring, not suppressing
-
-### 6.6 Test
-
-- Run affected tests + full test suite
-- Fix any failures caused by the changes
-- Do NOT write new tests here — that was done in Step 5
-
-### 6.7 Commit Sweep Fixes
-
-- If sweep produced changes, commit: `chore({scope}): sweep cleanup`
-
-## Step (7/8) - Rebase
-
-- **Action** — FetchLatest: `git fetch origin`
-- **Action** — CreateSafetyRef: `git branch backup/ship-$(date +%Y%m%d-%H%M%S)`
-- **Action** — Rebase: `git rebase {TARGET_BRANCH}`
-  - **If** conflicts → resolve automatically, favoring target branch conventions
-  - Track resolution decisions for PR summary
-- **Action** — VerifyPostRebase:
-  - Run linter — fix violations
-  - Run full test suite — fix failures
-  - Confirm commit count and no unexpected changes
-
-## Step (8/8) - Create PR
-
-- **Action** — PushBranch: `git push -u origin {BRANCH_NAME}`
-
-- **Action** — CreatePR: `gh pr create` with:
-
-  **Title**: `{INTENT_TYPE}({scope}): {SCOPE_SUMMARY}` (under 70 chars)
-
-  **Body**:
-
-  ```markdown
-  ## Summary
-  {From scope doc — objective and what was done}
-  
-  ## Changes
-  {Bulleted list derived from completed tasks}
-  
-  ## Test Plan
-  {Bulleted checklist — what was tested, what to verify manually}
-  
-  Shipped autonomously via `/spectre:ship`
-  ```
-
-- **Action** — OutputPRUrl: Display the PR URL as the final deliverable
-
-## Next Steps
-
-Use `@skill-spectre:spectre-guide` skill to render the Next Steps footer.
+## Escalate-If
+- `ARGUMENTS` empty → ask once for the brain dump, then continue autonomously.
+- Rebase conflicts are genuine semantic divergence (not resolvable by favoring the target) → stop, report, leave the rebase in progress with the backup-ref restore command.
+- Tests still fail after rebase/sweep fixes → report the failure + restore command; do not force-push or open the PR.

@@ -18,7 +18,7 @@ Search and load relevant knowledge from the project's spectre learnings into you
 2. **Load matching skills**: `Skill({skill-name})`
 3. **Apply knowledge** — use it to guide your approach
 
-The registry above is a fallback reference. For session-start discovery, triggers are embedded in each skill's frontmatter description.
+The registry above is a fallback reference. Discovery relies on each installed skill's frontmatter description.
 
 ## Search Commands
 

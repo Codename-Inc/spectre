@@ -1,535 +1,88 @@
 ---
-name: spectre-create_tasks
-description: 👻 | Transform requirements into executable tasks - primary agent
+name: "spectre-create_tasks"
+description: "Break requirements into executable task artifacts: a compact execute.md index plus sliceable tasks.json detail with typed acceptance criteria, RED-test pairing, and dependency waves. Trigger after scope/plan when you need concrete build tasks before execute. Do NOT trigger to set scope, design architecture, or run implementation."
 user-invocable: true
 ---
 
 # create_tasks
 
-## Input Handling
-
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
-
-
-# create_tasks: Unified Task Breakdown
-
-## Description
-- Transform requirements into detailed, actionable task lists with dependency analysis and execution options.
-- Adapts to available context: uses existing research when sufficient, conducts research when needed.
-- Outputs both sequential and parallel execution strategies.
-- Scales naturally: generates as many phases and tasks as the scope requires.
-
-## ARGUMENTS Input
-
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
-
----
-
-## Step 1 - Establish Context
-
-### 1z. Determine Depth
-- Read `--depth` from ARGUMENTS. Default: `standard`.
-- **LIGHT**: compact execution list; 1-3 parent tasks; Phase 0 only for new deps; RED tasks only for risky behavior changes; dependency waves only if useful.
-- **STANDARD**: normal task list; RED tasks for behavior changes; concise sequencing; adversarial-review ready.
-- **COMPREHENSIVE**: full task artifact; Phase 0, context payloads, RED pairing, coverage matrix, and parallel waves required.
-
-### 1a. Determine Output Location
-- `branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)`
-- **If** user specifies path → `TASK_DIR={that value}`
-- **Else** → `TASK_DIR=docs/tasks/{branch_name}`
-- Ensure dirs exist: `mkdir -p "${TASK_DIR}/specs" "${TASK_DIR}/research" "${TASK_DIR}/clarifications"`
-
-### 1b. Scan Available Artifacts
-Inventory what exists in `TASK_DIR/`:
-- [ ] `task_summary.md` — scope/objectives
-- [ ] `prd.md` — detailed requirements
-- [ ] `ux.md` — user experience specs
-- [ ] `plan.md` — technical approach
-- [ ] `task_context.md` — technical research
-- [ ] `research/*.md` — analysis docs
-
-Also note: thread context, user-provided docs, ARGUMENTS content.
-
-### 1c. Assess Complexity
-**Simple task** (research likely unnecessary):
-- MICRO/LIGHT depth or single file/component change
-- Clear pattern already exists in codebase
-- Scope explicitly stated, no ambiguity
-
-**Complex task** (research likely needed):
-- Multi-component or cross-cutting
-- New patterns or integrations
-- Unclear technical approach
-
----
-
-## Step 2 - Research Decision
-
-### 2a. Do We NEED Research?
-Based on complexity assessment from 1c:
-- **If** depth is `light` and `plan.md`/`task_context.md` names target files → `NEED_RESEARCH=false`
-- **If** simple task with clear scope → `NEED_RESEARCH=false`
-- **If** complex task or unclear approach → `NEED_RESEARCH=true`
-
-### 2b. Do We HAVE Research? (if NEED_RESEARCH=true)
-Assess existing artifacts with judgment:
-
-| Artifact | Check For |
-|----------|-----------|
-| `task_context.md` | "## Technical Research" section with relevant analysis |
-| `research/*.md` | Docs covering codebase patterns, integration points |
-| `plan.md` | Technical approach, file locations, architecture decisions |
-
-**Judgment call**: Do existing artifacts sufficiently cover:
-- Codebase patterns relevant to this scope?
-- Integration points and dependencies?
-- Technical approach and target files?
-
-- **If** sufficient coverage → `HAVE_RESEARCH=true`
-- **If** gaps exist → `HAVE_RESEARCH=false` (note specific gaps)
-
-### 2c. Action
-- **If** `NEED_RESEARCH=false` → proceed to Step 3
-- **If** `NEED_RESEARCH=true` AND `HAVE_RESEARCH=true` → read existing, proceed to Step 3
-- **If** `NEED_RESEARCH=true` AND `HAVE_RESEARCH=false` → conduct research (Step 2d)
-
-### 2d. Conduct Research (conditional)
-- Spawn parallel agents: @codebase-locator, @codebase-analyzer, @codebase-pattern-finder
-- Review: `CLAUDE.md`, `README.md`, architecture docs
-- Identify: patterns, integration points, technical constraints
-- Save to `${TASK_DIR}/task_context.md` under "## Technical Research"
-
----
-
-## Step 3 - Extract Requirements
-
-### 3a. Gather From All Sources
-Read completely (no limits):
-- Planning docs: `task_summary.md`, `prd.md`, `plan.md`, `ux.md`
-- Thread context: discussed requirements, user goals
-- ARGUMENTS: any provided scope
-
-### 3b. Synthesize Requirements
-- Extract: what must be built, who uses it, success criteria
-- Extract: out of scope, constraints, boundaries
-- Number each: REQ-001, REQ-002, etc.
-- Categorize: Core functionality, UX, Technical constraints
-
-### 3c. Requirements Boundary Check
-- [ ] Clear on what IS explicitly requested?
-- [ ] Clear on what is NOT mentioned (exclude)?
-- [ ] **Scope Litmus Test**: Would user recognize this as exactly what they asked?
-
-**STRICT COMPLIANCE**: Tasks deliver ONLY what's explicitly stated. No performance optimizations, extra features, future-proofing, or "best practices" unless requested.
-
----
-
-## Step 4 - Generate Tasks
-
-### 4a. Synthesize Architecture Context
-- **Action** — SynthesizeArchitectureContext: Based on research findings, document where this work fits and how we'll approach it.
-  - **Where This Fits**: Which system/component this extends, how it connects to existing architecture (with file references)
-  - **Technical Approach**: Key pattern we're following, why this approach vs alternatives, what existing code we're leveraging
-  - **Key Decisions**: Important technical decisions made and their rationale
-  - This section helps the user understand how the work integrates with the product before diving into tasks
-
-### Task Hierarchy (4 Levels)
-- **Phase**: Organizational header (no checkbox) — groups related parent tasks
-- **Parent Task**: Cohesive deliverable (small-medium scope) — one component/file
-- **Sub-task**: Atomic work (single focused change) — single action, 2-3 acceptance criteria
-- **Acceptance Criteria**: Executable, verifiable outcomes (see Acceptance Criteria Types below)
-
-**Numbering**: Phase 1 → Parent 1.1, 1.2 → Sub-tasks 1.1.1, 1.1.2 → Criteria
-
-### Right-Sized for AI Execution
-
-Published data on AI agent execution (Cognition's Devin reviews, Anthropic's Claude Code guidance) converges on a bounded sweet spot: each sub-task should be completable in roughly the time a junior would take in a 4–8 hour window — not a multi-day epic, not a 10-line tweak.
-
-**Hard size cap — split a sub-task if ANY of these is true:**
-- Touches more than 3 files
-- Has more than 5 acceptance criteria
-- Would require more than ~200 lines of diff
-- Requires a mid-execution judgment call about scope (split the judgment into its own predecessor task)
-- Spans more than one concern (e.g., schema + UI in one sub-task)
-
-When splitting, keep the integration-aware principle intact: each split task still names its Producer / Consumer / Replaces.
-
-### Acceptance Criteria Types
-
-Every acceptance criterion MUST be one of three executable types. Prose criteria like "feature works correctly" or "behavior is consistent" are forbidden — an executor cannot self-check them.
-
-1. **Test passes** — `Test \`<test_name>\` passes` (or `tests in <file_path> pass`)
-2. **Observable behavior** — A specific, checkable runtime signal: `GET /api/x returns 200 with field \`y\``, `Console logs \`event=loaded params={...}\``, `Button click triggers <handler> within 100ms`
-3. **State / file condition** — `File \`<path>\` exists and contains <pattern>`, `Migration \`<id>\` applied`, `Env var \`X\` is read at startup`
-
-Mixing types within a sub-task is fine. What's not fine: criteria the agent cannot verify without asking the user.
-
-### Test-First Task Pairing
-
-For STANDARD/COMPREHENSIVE sub-tasks that change observable behavior (not pure refactors or cleanup), pair with a preceding RED task. For LIGHT, add a RED task only when the behavior is risky, ambiguous, or regression-prone. Pattern:
-
-- **N.M.k RED**: Write failing test `<test_name>` asserting `<behavior>`. Acceptance: test exists and fails for the documented reason.
-- **N.M.(k+1) Build**: Implement `<change>`. Acceptance: the RED test passes; no other tests regress.
-
-This is the TDAD pattern (test-driven agentic development): the failing test is the executor's self-correction signal. Without it, the executor is guessing whether the implementation is right.
-
-Pure refactors, cleanups, and config-only tasks don't require RED pairing — but if behavior changes, the RED comes first.
-
-### Integration-Aware Task Principle
-
-> **"A feature isn't done when pieces exist. It's done when data flows from user action to rendered pixels."**
-
-Every task that creates something must specify:
-1. **What it produces** — exact output (variable, return value, prop, event)
-2. **What consumes it** — exact consumer (component, hook, handler) that uses the output
-3. **What it replaces** — old code path being deprecated (if any)
-
-Tasks without consumers are incomplete. Tasks that don't address old code paths leave dead/duplicate logic.
-
-**Task Types**:
-- **Build tasks**: Create a component/hook/utility/function
-- **Integration tasks**: Wire producer output to consumer input (MANDATORY for every build task)
-- **Cleanup tasks**: Remove/redirect old code paths (MANDATORY when replacing patterns)
-
-### 4b. Create Parent Tasks
-- **Action** — CreateParentTasks: Draft as many phases as needed to logically organize work, each with as many parent tasks as required to cover complete scope.
-  - Each parent task = single cohesive deliverable (small-medium scope)
-  - Cover ALL extracted requirements with no gaps
-  - Group related work into phases for clarity
-  - Align with technical approach (from research or existing docs)
-  - LIGHT cap: 1-3 parent tasks unless tier reassessment is required.
-  - Every parent task carries explicit sequencing in its body:
-    - **Predecessor**: parent task IDs that must complete first (or "none")
-    - **Unblocks**: parent task IDs this unblocks (or "terminal")
-  - Phase 0 rules are depth-aware (see below). Other phases start at Phase 1.
-
-### 4a-Phase0. Phase 0 — Dependency Verification
-
-Generate Phase 0 only when the plan introduces external dependencies, except COMPREHENSIVE where Phase 0 is always present. Each dependency sub-task verifies the package exists at the named version and exposes the API the plan assumed.
-
-- Acceptance type: state condition (`npm view <pkg>@<ver>` returns valid metadata) and/or test passes (a minimal import-and-call smoke test).
-- If COMPREHENSIVE and `plan.md` declared "no new packages," Phase 0 is a single sub-task that confirms no new dependencies were silently introduced during implementation (cross-check `package.json` diff at end). For LIGHT/STANDARD, put that check in the final implementation task instead.
-- Phase 0 unblocks Phase 1; it cannot be skipped or run in parallel with Phase 1.
-
-### 4c. Break Down Sub-tasks
-- **Action** — BreakdownSubTasks: For each parent, generate as many detailed sub-tasks as needed to complete the parent.
-  - **Sub-task structure**:
-    - Start with action verb (Create, Implement, Add, Update, Configure, Enable)
-    - Use technical language freely (components, endpoints, middleware, hooks, schemas)
-    - Specify technical patterns and architecture decisions
-    - Name specific files, components, or modules when helpful
-    - Describe technical behavior and integration points
-    - Be specific enough for junior dev to know where to start
-    - Completable as a single focused change
-
-  - **What to INCLUDE in sub-tasks:**
-    - Technical terms (JWT, REST, WebSocket, React hooks, SQL queries)
-    - Architecture patterns (middleware, pub/sub, observer, factory)
-    - Integration points (which components connect, API contracts)
-    - File/component names (UserProfileComponent, authMiddleware.ts)
-    - Technical constraints (max file size, timeout duration, data format)
-    - **Produces**: What output this creates (variable name, return value, prop)
-    - **Consumed by**: What uses this output (component, hook, render path)
-    - **Replaces**: What old code path this supersedes (if any)
-    - **Context**: a self-contained payload an executor can use without re-reading the full plan. LIGHT may use 1-2 refs and a plan anchor; STANDARD/COMPREHENSIVE include:
-      - 2–4 file:line refs pulled from research (the exact code being modified or extended)
-      - 1 canonical reference pointer (a file:line from `@patterns` research that shows the shape to follow)
-      - 1 link/anchor into `plan.md` for the relevant section
-    - **Predecessor** (sub-task level, optional): a sub-task ID this depends on. Only when intra-parent ordering is non-obvious.
-
-  - **What to AVOID in sub-tasks:**
-    - ❌ Code snippets or pseudo-code
-    - ❌ Exact function signatures or variable names
-    - ❌ Line-by-line implementation steps
-    - ❌ Specific library API calls (unless architecturally significant)
-
-  - **Acceptance criteria**:
-    - Every criterion MUST be one of the three executable types (see "Acceptance Criteria Types" above): test passes / observable behavior / state condition.
-    - 2–3 criteria per sub-task. If a sub-task needs more than 3 to be checkable, split it.
-    - Prose criteria ("works correctly", "is consistent", "user-friendly") are forbidden — they're not self-checkable.
-
-  - **Decomposition (hard size cap)**: Split if ANY of: >3 files touched, >5 criteria, >~200 LOC, mid-task scope judgment required, or more than one concern.
-
-### 4d. Validate Task Structure
-- **Action** — VerifyCoverage: Cross-reference tasks against extracted requirements.
-  - Map each requirement from Step 3 to at least one task
-  - Flag any uncovered requirements → add missing tasks
-  - Flag any tasks without requirement justification → remove or justify
-
-- **Action** — ValidateTasks: Validate complete task structure.
-  - **Coverage Validation**:
-    - [ ] All extracted requirements from Step 3 addressed by tasks?
-    - [ ] No gaps in requirement coverage?
-    - [ ] Every "Verification" entry from `plan.md` mapped to at least one acceptance criterion?
-  - **Exclusion Validation**:
-    - [ ] No additions beyond explicit requests?
-    - [ ] `plan.md`'s "Out-of-Bounds — DO NOT add" list carried forward verbatim into the task artifacts?
-    - [ ] No task implements anything in the Out-of-Bounds list?
-  - **Structure Validation**:
-    - [ ] Parent tasks are small-medium scope, sub-tasks are atomic?
-    - [ ] Each sub-task has 2-3 acceptance criteria, each one of the three executable types?
-    - [ ] No sub-task exceeds the size cap (>3 files / >5 criteria / >~200 LOC / multi-concern / mid-task scope judgment)?
-    - [ ] RED pairing follows the selected depth contract?
-    - [ ] Context payloads follow the selected depth contract?
-    - [ ] Every parent task has Predecessor and Unblocks declared?
-    - [ ] Phase 0 follows the selected depth contract?
-
-- **Action** — ValidateIntegration: Verify every build task is wired to consumers.
-  - **Consumer Specified**:
-    - [ ] Does every "create X" task specify what consumes X?
-    - [ ] No orphaned computations (values produced but never used)?
-  - **Integration Explicit**:
-    - [ ] Is there a task for wiring producer output → consumer input?
-    - [ ] For UI features: is there a task verifying data reaches the render path?
-  - **Old Paths Addressed**:
-    - [ ] If replacing old code, is removal/redirect a task?
-    - [ ] No duplicate data sources for the same concern?
-  - **Last Mile Covered**:
-    - [ ] For every feature affecting what users SEE: task exists to wire to JSX render?
-
----
-
-## Step 5 - Dependency Analysis & Execution Strategies
-
-### 5a. Map Dependencies
-- Review parent tasks (📋 level) for dependencies
-- Identify which parent tasks can be completed in parallel vs sequential
-- Dependency rules:
-  - Parent tasks requiring output from other parents must be sequenced
-  - Tasks modifying same files need sequencing or coordination
-  - Testing tasks run after implementation tasks
-  - Setup/configuration tasks complete before dependent work
-
-### 5b. Generate Sequential Execution Order
-Define step-by-step execution order based on dependencies. For LIGHT, keep this to one compact ordered list:
-```markdown
-## Sequential Execution
-1. 1.1 - [Name] (no dependencies)
-2. 1.2 - [Name] (depends on 1.1)
-3. 2.1 - [Name] (depends on 1.1)
-4. 2.2 - [Name] (depends on 1.2, 2.1)
-...
-```
-
-### 5c. Generate Parallel Execution Waves
-Group independent parent tasks into waves for parallel execution. Skip this section for LIGHT unless two or more parent tasks can truly run concurrently:
-```markdown
-## Parallel Execution
-
-### Wave 1 (concurrent)
-- 1.1, 2.1 — no dependencies, can start immediately
-- Rationale: {why these can run concurrently}
-
-### Wave 2 (after Wave 1)
-- 1.2, 2.2 — depend on Wave 1 outputs
-- Rationale: {why these depend on Wave 1}
-
-### Wave 3 (after Wave 2)
-- 3.1 — integration, needs prior waves complete
-- Rationale: {why this needs prior waves}
-```
-
-**Note**: Phases (📦) are organizational; execution planning happens at parent task (📋) level.
-
----
-
-## Step 6 - Document & Output
-
-### 6a. Write the two task artifacts
-- Determine:
-  - `DETAIL_FILE=${TASK_DIR}/specs/tasks.json`
-  - `EXECUTE_FILE=${TASK_DIR}/specs/execute.md`
-- Write **both** files. This is a hard cutover: do not emit a Markdown task-list artifact and do not create a converter/fallback.
-- If either target already exists for a different feature, create a scoped pair with the same basename, e.g. `${TASK_DIR}/specs/{task_name}.tasks.json` and `${TASK_DIR}/specs/{task_name}.execute.md`.
-
-#### `tasks.json` detail contract
-- Save indented JSON to `${DETAIL_FILE}`.
-- Use the skill-local `references/tasks.example.json` as the concrete fixture reference.
-- The top-level keys are exactly:
-  - `meta` — objective, scope, out-of-bounds, requirements trace, architecture context, and coverage summary.
-  - `phases[]` — phase objects containing parent tasks and subtasks with full task detail plus mutable `status`.
-- `tasks.json` MUST NOT contain stored `index`, `indexes`, `wave_plan`, or `waves` keys. The cheap planning layer belongs in `execute.md`.
-- `status` lives only in `tasks.json`, using `pending`, `in_progress`, `done`, or `skipped`.
-- Preserve every current task field 1:1 in JSON:
+Transform requirements into two execution artifacts: `execute.md` for primary-agent orchestration and `tasks.json` for full task detail/status. The executor reads the index whole and slices JSON detail by parent task id; it never pays the token cost of the entire task graph.
+
+## Inputs
+
+- `$ARGUMENTS` — feature/context; may carry `--depth` (`light` | `standard` | `comprehensive`, default `standard`) and/or output dir.
+- Planning artifacts in `OUT_DIR`, read fully: `concepts/scope.md` / `task_summary.md`, `specs/prd.md`, `specs/plan.md`, `specs/ux.md`, `task_context.md`, `research/*.md`. Plan **Out-of-Bounds** and **Verification** entries are load-bearing.
+- If requirements are too thin to extract scope → ask, or route to `/spectre:plan`; do not invent scope.
+
+## Working Set
+
+- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`).
+- `OUT_DIR = user-specified || docs/tasks/{branch}`; ensure `{OUT_DIR}/specs` exists.
+- Default pair: `EXECUTE_FILE={OUT_DIR}/specs/execute.md`, `DETAIL_FILE={OUT_DIR}/specs/tasks.json`. If either exists for another feature, write a scoped pair with the same basename: `{name}.execute.md` + `{name}.tasks.json`.
+- Reference fixtures: `references/execute.example.md`, `references/tasks.example.json`.
+- Research only if plan/context do not name target files/patterns: dispatch `@spectre:finder`, `@spectre:analyst`, `@spectre:patterns`; fold returns into `task_context.md` `## Technical Research`. Skip for LIGHT or clear single-component scope.
+
+## Method / guardrails
+
+1. **Extract requirements** from artifacts + thread. Number REQ-001…; capture in-scope, out-of-scope, constraints. **STRICT COMPLIANCE:** tasks deliver only explicit scope.
+2. **Hierarchy:** Phase → Parent task → Subtask → Acceptance criteria. Number 1 → 1.1 → 1.1.1. Every parent declares `predecessor` and `unblocks`.
+3. **Phase 0:** include when the plan adds external deps; always include for COMPREHENSIVE. Verify package/version/API assumptions before implementation.
+4. **Integration-aware:** every build subtask names `produces`, `consumed_by`, and `replaces`; add wiring/cleanup tasks where needed. No orphaned outputs.
+5. **Acceptance criteria:** each criterion is exactly one executable type: `test`, `observable`, or `state`. Use 2-3 criteria per subtask; no prose like "works correctly".
+6. **RED pairing:** STANDARD/COMPREHENSIVE behavior changes get a preceding RED subtask; LIGHT only when risky/ambiguous/regression-prone.
+7. **Size cap:** split a subtask if it touches >3 files, has >5 criteria, implies >~200 LOC, requires mid-task scope judgment, or spans multiple concerns.
+8. **Context payload:** STANDARD/COMPREHENSIVE subtasks carry 2-4 file:line refs + one canonical pattern ref + one plan anchor; LIGHT uses 1-2 refs + a plan anchor. Avoid snippets and step-by-step code instructions.
+9. **Validate before writing:** every REQ maps to tasks; every plan Verification signal maps to a criterion; every build output has a consumer; no task implements Out-of-Bounds.
+10. **Dependency analysis:** derive sequential order and parallel waves at parent-task granularity. Phases are organizational; waves may span phases when dependencies allow.
+
+**Depth contract:** LIGHT = compact graph, 1-3 parents, Phase 0 only for new deps, RED only when risky, waves optional. STANDARD = normal graph with concise sequencing. COMPREHENSIVE = full graph with Phase 0, context payloads, RED pairing, coverage matrix, and waves.
+
+## Artifact Contract
+
+Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not create a Markdown fallback/converter.
+
+### `tasks.json`
+
+- Save indented JSON to `DETAIL_FILE`; re-parse it after writing:
+  `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$DETAIL_FILE"`
+- Top-level keys are exactly `meta` and `phases`.
+- `meta` contains: `feature`, `generated_at`, `schema_version`, `objective`, `scope`, `out_of_bounds`, `requirements_trace`, `architecture_context`, `coverage_summary`.
+- `phases[]` contains phase objects with parent tasks and subtasks; mutable status lives only here.
+- Do **not** store `index`, `indexes`, `wave_plan`, or `waves` in JSON. Cheap orchestration metadata belongs in `execute.md`.
+- Status enum: `pending`, `in_progress`, `done`, `skipped`.
+- Preserve task fields:
   - Phase: `id`, `title`, `summary`, `status`, `parents[]`
-  - Parent task: `id`, `title`, `description`, `status`, `predecessor`, `unblocks`, `subtasks[]`
+  - Parent: `id`, `title`, `description`, `status`, `predecessor`, `unblocks`, `subtasks[]`
   - Subtask: `id`, `title`, `type`, `status`, `produces`, `consumed_by`, `replaces`, `context[]`, optional `predecessor`, `acceptance_criteria[]`
   - Context item: `path`, `anchor`, `note`
-  - Acceptance criterion: `type` (`test`, `observable`, or `state`) and `text`
-- After writing, re-parse the file:
-  - `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "${DETAIL_FILE}"`
+  - Acceptance criterion: `type` (`test` | `observable` | `state`) and `text`
 
-```json
-{
-  "meta": {
-    "feature": "{feature name}",
-    "generated_at": "{ISO timestamp}",
-    "schema_version": 1,
-    "objective": "{single sentence describing outcome}",
-    "scope": {
-      "in_scope": ["{explicit in-scope item}"],
-      "out_of_scope": ["{explicit out-of-scope item}"]
-    },
-    "out_of_bounds": ["{forbidden addition carried from plan.md}"],
-    "requirements_trace": [
-      {
-        "id": "REQ-001",
-        "description": "{requirement}",
-        "source": "{source doc or anchor}",
-        "tasks": ["1.1"]
-      }
-    ],
-    "architecture_context": {
-      "where_this_fits": ["{component/system context}"],
-      "technical_approach": ["{approach and existing pattern}"],
-      "key_decisions": ["{decision and rationale}"]
-    },
-    "coverage_summary": {
-      "requirements_extracted": 1,
-      "requirements_with_task_coverage": 1,
-      "phases": 1,
-      "parent_tasks": 1,
-      "subtasks": 2
-    }
-  },
-  "phases": [
-    {
-      "id": "1",
-      "title": "{Phase Name}",
-      "summary": "{phase purpose}",
-      "status": "pending",
-      "parents": [
-        {
-          "id": "1.1",
-          "title": "{Parent Task Title}",
-          "description": "{cohesive deliverable}",
-          "status": "pending",
-          "predecessor": "none",
-          "unblocks": "terminal",
-          "subtasks": [
-            {
-              "id": "1.1.1",
-              "title": "Write failing test `{test_name}` asserting `{behavior}`",
-              "type": "RED",
-              "status": "pending",
-              "produces": "A failing test that pins the desired behavior",
-              "consumed_by": "1.1.2",
-              "replaces": "N/A",
-              "context": [
-                {
-                  "path": "path/to/existing/code.ts",
-                  "anchor": "line 42",
-                  "note": "Current behavior being changed"
-                }
-              ],
-              "predecessor": "none",
-              "acceptance_criteria": [
-                {
-                  "type": "state",
-                  "text": "File `path/to/test.ts` exists and contains test `{test_name}`."
-                },
-                {
-                  "type": "test",
-                  "text": "Test `{test_name}` fails for the documented unimplemented behavior."
-                }
-              ]
-            },
-            {
-              "id": "1.1.2",
-              "title": "{Implement the change}",
-              "type": "Build",
-              "status": "pending",
-              "produces": "{output variable/value/prop}",
-              "consumed_by": "{component/hook that uses this}",
-              "replaces": "{old code path or N/A}",
-              "context": [
-                {
-                  "path": "path/to/file.ts",
-                  "anchor": "line 120",
-                  "note": "Code to modify"
-                }
-              ],
-              "predecessor": "1.1.1",
-              "acceptance_criteria": [
-                {
-                  "type": "test",
-                  "text": "Test `{test_name}` passes."
-                },
-                {
-                  "type": "observable",
-                  "text": "{specific runtime signal}"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
+### `execute.md`
 
-#### `execute.md` compact execution index contract
-- Save Markdown to `${EXECUTE_FILE}`.
-- Use the skill-local `references/execute.example.md` as the concrete fixture reference.
-- This file is the token-efficient execution index. It is safe for the primary executor to read whole.
-- It must contain the orchestration metadata needed by `/spectre:execute` without duplicating task bodies:
-  - `## Document Manifest`
-  - `## Task Detail Source`
-  - `## Execution Summary`
-  - `## Wave Plan`
-  - `## Parent Task Index`
-  - `## Slicing Rules`
-- Build `Document Manifest` from the actual known artifact paths available to this workflow; do not assume literal filenames like `scope.md` or `ux.md`. Include scope, UX, prototype, plan, research/context, PRD, or other relevant docs only when their actual paths are known or discovered.
-- `Task Detail Source` lists `${DETAIL_FILE}` as machine-readable data. It must explicitly say not to read that file whole.
-- `Execution Summary` includes counts for phases, parent tasks, subtasks, and dependency/wave totals.
-- Parent-task index entries list phase label, parent task id/title, subtask ids, predecessor, and unblocks. Do not include task bodies, `acceptance_criteria`, `produces`, `consumed_by`, context payloads, or mutable `status`.
-- The wave plan and parent-task index must be derived from the same in-memory task structure used to write `tasks.json`, so the primary executor can plan without opening the detail JSON.
-- Slicing is by selected parent task ids, not by phase. A dispatch slice may include parent tasks from one or more phases when wave guidance and batching assign those parents to the same subagent.
+- Save Markdown to `EXECUTE_FILE`; it is safe for the primary executor to read whole.
+- Required sections: `Document Manifest`, `Task Detail Source`, `Execution Summary`, `Wave Plan`, `Parent Task Index`, `Slicing Rules`.
+- `Document Manifest` lists only actual discovered scope/UX/prototype/plan/research/PRD paths. Do not assume literal filenames.
+- `Task Detail Source` lists `DETAIL_FILE` and says not to read it whole.
+- `Execution Summary` counts phases, parent tasks, subtasks, and waves.
+- `Wave Plan` includes each wave as an inline object with `id`, `label`, `parent_task_ids`, `after`, and `rationale`.
+- `Parent Task Index` lists phase label plus parent `id`, `title`, `subtasks`, `predecessor`, and `unblocks`. Do not include task bodies, acceptance criteria, context payloads, or mutable status.
+- Derive `Wave Plan` and `Parent Task Index` from the same in-memory task structure used for `tasks.json`.
+- Slicing is by selected parent task ids, not phase. Batches may span phases when wave guidance and dependencies assign those parents to the same owner.
 
-```markdown
-# Execute Index — {feature name}
+## Outputs + DONE
 
-## Document Manifest
-Read these docs before execution:
-- Scope: `{actual scope artifact path if known}`
-- UX: `{actual UX artifact path if present}`
-- Prototype: `{actual HTML prototype path if present}`
-- Plan: `{actual plan artifact path}`
-- Research: `{actual task_context/research path if present}`
+- `EXECUTE_FILE` exists and contains the six required sections.
+- `DETAIL_FILE` exists and parses as JSON.
+- Every REQ is covered; no out-of-scope additions; Out-of-Bounds carried into `meta.out_of_bounds`; every parent has predecessor/unblocks; every build subtask has producer/consumer/replaces; acceptance criteria use only the three executable types; RED pairing and context payloads follow depth; no subtask exceeds the size cap; every plan Verification entry maps to a criterion.
+- The execute index tells downstream agents to use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
 
-## Task Detail Source
-Do not read this file whole:
-- Tasks JSON: `{DETAIL_FILE}`
+## Handoff
 
-Use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
+Report inline: structure (`{X} phases, {Y} parents, {Z} subtasks`), execution shape (sequential steps / `{N}` waves), and paths for `EXECUTE_FILE` + `DETAIL_FILE`. If `--depth comprehensive`, suggest `/spectre:task_review`; otherwise suggest `/spectre:execute`.
 
-## Execution Summary
-- Phases: {N}
-- Parent tasks: {N}
-- Subtasks: {N}
-- Waves: {N}
+## Escalate-If
 
-## Wave Plan
-- Wave 1: `{ id: "wave-1", label: "{label}", parent_task_ids: ["1.1"], after: [], rationale: "{why these tasks run together}" }`
-- Wave 2: `{ id: "wave-2", label: "{label}", parent_task_ids: ["2.1"], after: ["wave-1"], rationale: "{dependency reason}" }`
-
-## Parent Task Index
-- Phase 1 — {Phase Name}
-  - `{ id: "1.1", title: "{Parent Task Title}", subtasks: ["1.1.1", "1.1.2"], predecessor: "none", unblocks: "2.1" }`
-
-## Slicing Rules
-Read this index to plan waves. For each owner, choose selected parent task ids from the Wave Plan and batching rules, then query only those parent tasks from `tasks.json` using `jq`, `node -e`, or direct targeted mechanics. Inline the selected parent-task slice under `<task_assignment>`.
-
-Do not load the full task detail JSON into orchestration context. Do not require dispatch boundaries to match phase boundaries. Update mutable `status` fields in `tasks.json`, re-parse after every write, and update this index only if parent ids, parent titles, dependencies, or wave guidance change.
-```
-
-### 6b. Present Summary
-
-- **Action** — SummarizeStructure: "Task Breakdown Complete. Structure: {X} phases, {Y} parents, {Z} sub-tasks. \[List phases with parent titles\]. Execution: Sequential ({N} steps) | Parallel ({M} waves). Saved to: {EXECUTE_FILE} and {DETAIL_FILE}"
-
-### 6c. Next Steps Footer
-
-Action — RenderFooter: Use @skill-spectre:spectre-guide skill for Next Steps footer
+- No requirements artifact and thread context is too thin → stop; route to `/spectre:scope` or `/spectre:plan`.
+- `plan.md` has no Out-of-Bounds or Verification section → flag the gap; proceed only if scope is otherwise clear.
+- A requirement cannot become an executable `test`/`observable`/`state` criterion → surface it instead of writing prose criteria.
+- Scope tempts expansion beyond explicit request → stop and confirm before adding tasks.

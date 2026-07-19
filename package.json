@@ -1,7 +1,27 @@
 {
   "name": "@codename_inc/spectre",
-  "version": "5.3.3",
+  "version": "6.0.0",
+  "description": "Contract-driven agentic coding workflow for Claude Code and Codex.",
   "type": "module",
+  "homepage": "https://github.com/Codename-Inc/spectre#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Codename-Inc/spectre.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Codename-Inc/spectre/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agents",
+    "claude-code",
+    "codex",
+    "workflow",
+    "planning",
+    "tdd",
+    "code-review"
+  ],
   "bin": {
     "spectre": "bin/spectre.js"
   },

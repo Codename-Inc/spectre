@@ -1,121 +1,76 @@
 ---
-name: spectre-ux
-description: 👻 | Define user flows, components, and UX behavior — generates the UX spec for a feature - primary agent
+name: "spectre-ux"
+description: "Define exactly how a feature behaves — user flows, screens, components, states, copy, and accessibility — producing a definitive ux.md spec for implementation. Two stages: align on user flows, then write the detailed spec. Trigger after scope/PRD when a feature needs a behavioral/UX spec before planning or building UI. Do NOT trigger for pure backend/non-UI work, for setting scope boundaries (spectre-scope), or for technical architecture (spectre-plan)."
 user-invocable: true
 ---
 
 # ux
 
-## Input Handling
+Transform product requirements into a definitive behavioral spec — **clear on WHAT the user sees/does and how the system responds**, silent on visual taste (trust the implementer for pixels). Two stages with a hard gate between them: (1) align on user flows, then (2) write the detailed `ux.md`.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
 
-# ux: Define Exactly How the Feature Works
+- `$ARGUMENTS` — the feature/context.
+- Requirements doc — first that exists, read FULLY (no offset/limit):
+  1. `{OUT_DIR}/concepts/scope.md` (canonical, preferred)
+  2. `{OUT_DIR}/specs/prd.md`
+  3. `{OUT_DIR}/task_summary.md`
+- **If none exist → ask for scope context or recommend `/spectre:scope` first; do not invent scope.**
 
-Transform product requirements into a definitive behavioral specification. Two stages: align on user flows, then generate detailed spec. Output: `ux.md` ready for implementation.
+## Working Set (late-bound — read at run-time, never inline)
 
-<ARGUMENTS> $ARGUMENTS </ARGUMENTS>
+- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
+- `OUT_DIR = user-specified || docs/tasks/{branch}`
+- Existing UI: one `@spectre:patterns` dispatch (Stage 1) for similar screens/components, conventions, design tokens — return ≤~2K in-thread, no files.
 
----
+## Method / guardrails
 
-# STAGE 1: Flow Discovery & Alignment
+**Stage 1 — Flow discovery & alignment (align before specifying).**
+- Identify **user segments** — flows diverge across these and missing them is the #1 cause of UX rework: first-time vs returning, anon vs signed-in, free vs paid, role-based.
+- Identify journeys: user goals, entry points, completion states.
+- Write each flow as a narrative: Goal · Entry point · Steps (**User sees → User does → System responds**) · Decision points + branches · Success state · open Questions. Call out where flows diverge per segment.
+- Present flows, propose a specific take (N flows × M segments + key segmentation calls), and ask for pushback. **GATE: write no detailed spec until the user replies "Flows approved." On feedback → revise and re-present.**
 
-**Goal**: Align on HOW the feature works before specifying details.
+**Stage 2 — Detailed spec (only after the flow gate clears).**
+- Review approved flows for gaps (component behaviors, edge cases, state defs, segment variants); if significant, ask 3–5 targeted questions via `AskUserQuestion` (empty states, errors, loading, limits, segment differences) — no clarification files.
+- Write `{OUT_DIR}/ux.md` with every required section + the domain specifics below.
 
-## Step 1 — Understand the Feature
+## Outputs + DONE
 
-1. **Read scope and requirements** in this precedence (read whichever exist FULLY, no offset/limit):
-   - `docs/tasks/{branch}/concepts/scope.md` — the canonical scope doc (preferred)
-   - `docs/tasks/{branch}/specs/prd.md` — if a PRD was generated separately
-   - `docs/tasks/{branch}/task_summary.md` — if present
-   - **If none exist** → ask the user for scope context (or recommend `/spectre:scope` first) before proceeding.
-2. **Research patterns**: Dispatch `@spectre:patterns` to find existing screens/components similar to what we're building. Note conventions, reusable elements, and any design tokens.
-3. **Identify user segments**: List the user segments this feature serves — first-time vs returning, anonymous vs signed-in, free vs paid, role-based variants. UX often diverges across segments and missing this is a common cause of rework.
-4. **Identify journeys**: List user goals, entry points, and completion states.
+Write `{OUT_DIR}/ux.md` with **all 11 sections**:
 
-## Step 2 — Present User Flows
+1. **Overview** — what it is, problem solved, primary user goal (1 para)
+2. **User Segments** — each segment served + what's different about their UX
+3. **Screens** — every screen: name, 1-line purpose, navigation relationships
+4. **Flows** — formalized from Stage 1 with alternate paths (validation fail, cancel, network error) + per-segment branches
+5. **Layouts** — per screen: header/main/footer structure + responsive behavior (**desktop >1024 · tablet 768–1024 · mobile <768**)
+6. **Components** — each interactive element: purpose, location, applicable states (from the State Vocabulary)
+7. **Interactions** — table: **Element | Action | Result** (exhaustive)
+8. **States** — table: **State | Trigger | Appearance | Available Actions**
+9. **Content** — exact copy: page titles, buttons, empty states, error messages, confirmation dialogs
+10. **Edge Cases** — limits/boundaries, null/long data, permissions, offline/network failures, segment-specific
+11. **Accessibility** — tab order, keyboard actions (Enter/Space/Escape), screen-reader announcements, focus management
 
-Write each flow as a narrative walkthrough.
+**State Vocabulary** — pick what's relevant per component (not every component needs every state):
+- **Visual** (per interactive element): default, hover, focus, active/pressed, disabled
+- **Data** (per data view): empty, loading, partial-loaded, loaded, error, stale/refreshing
+- **Form**: pristine, dirty, touched, submitting, submitted-success, submitted-error, per-field validation-error
+- **Selection**: none, single, multi, partial-selection, all-selected
+- **Sync** (collaborative/async): optimistic, pending, conflict, resolved
+- **Network** (where relevant): online, offline, reconnecting
 
-**Per flow include**: Goal, Entry point, Journey steps (User sees → User does → System responds), Decision points with branches, Success state, Questions where ambiguity exists.
+**DONE when:** the Stage-1 flow gate was cleared (user approved flows); `ux.md` exists with all 11 sections; segments addressed; flows carry alternate paths; Interactions and States tables use the exact column formats above; component states are drawn from the State Vocabulary; layouts state the responsive breakpoints; accessibility and edge cases covered.
 
-**Per user segment**: Call out where flows diverge (e.g., "First-time users see X tour; returning users skip directly to Y").
+## Handoff
 
-After writing all flows, propose a specific take rather than asking open-ended:
+Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then offer validation and suggest the next command — do not wait silently:
 
-> **User Flows — Proposed**
->
-> I've mapped {N} flows across {M} user segments: {list with one-line summaries}
->
-> **Key segmentation calls**: [where flows diverge by user state and why]
->
-> Push back on anything wrong, missing, or over-/under-segmented. Reply with feedback or **"Flows approved"** to proceed.
+- **Prototype** (optional, recommended before planning): `/spectre:prototype` renders this spec high-fi and flags assumptions it had to fill in — catches issues prose review misses. If run, apply spec updates from surfaced assumptions, then finalize.
+- Next: `/spectre:create_plan` · `/spectre:create_tasks` · `/spectre:tdd`
 
-**Wait for approval. If feedback → revise and re-present. If approved → Stage 2.**
+## Escalate-If
 
----
-
-# STAGE 2: Detailed Specification
-
-**Gate**: Only proceed after explicit flow approval.
-
-## Step 3 — Clarify Remaining Details
-
-Review approved flows for gaps: component behaviors, edge cases, state definitions, segment variants.
-
-If significant gaps, ask 3–5 targeted questions (empty states, error handling, loading, limits, segment differences). Save to `clarifications/ux_clarifications_{timestamp}.md`, prompt user to read, incorporate answers.
-
-## Step 4 — Write the Specification
-
-Generate complete spec with these sections:
-
-### Required Sections
-
-1. **Overview** — What this feature is, problem it solves, primary user goal (1 paragraph)
-2. **User Segments** — Each segment served, what's different about their UX (e.g., first-time onboarding, role-based permissions, free vs paid limits, anon vs signed-in)
-3. **Screens** — Every screen: name, purpose (1 line), navigation relationships
-4. **Flows** — Formalized from Stage 1 with alternate paths (validation fail, cancel, network error). Include per-segment branches where they diverge.
-5. **Layouts** — Per screen: header/main/footer structure + responsive behavior (desktop >1024, tablet 768–1024, mobile <768)
-6. **Components** — Each interactive element: purpose, location, applicable states (see State Vocabulary below)
-7. **Interactions** — Table format: Element | Action | Result (exhaustive)
-8. **States** — Table format: State | Trigger | Appearance | Available Actions
-9. **Content** — Exact copy: page titles, buttons, empty states, error messages, confirmation dialogs
-10. **Edge Cases** — Limits/boundaries, null/long data handling, permissions, offline/network failures, segment-specific edge cases
-11. **Accessibility** — Tab order, keyboard actions (Enter/Space/Escape), screen reader announcements, focus management
-
-### State Vocabulary
-
-Use these state categories where applicable. Not every component needs every state — pick what's relevant for the feature.
-
-- **Visual states** (per interactive element): default, hover, focus, active/pressed, disabled
-- **Data states** (per data view): empty, loading, partial-loaded, loaded, error, stale/refreshing
-- **Form states**: pristine, dirty, touched, submitting, submitted-success, submitted-error, validation-error per field
-- **Selection states**: none, single, multi, partial-selection, all-selected
-- **Sync states** (collaborative or async UI): optimistic, pending, conflict, resolved
-- **Network states** (where relevant): online, offline, reconnecting
-
-Save to `docs/tasks/{branch}/ux.md`
-
-Prompt:
-
-> **UX Specification Complete**
->
-> Written to `{path}`. Please review: Any behaviors wrong or missing? Edge cases not covered? Segment differences captured?
->
-> **Want a prototype to validate visually before approving?** `/spectre:prototype` will render this spec (high-fi, no synthesis) and flag assumptions where I had to fill in details — catches issues prose review misses. Reply `prototype` to run it now.
->
-> Otherwise, reply with feedback, or **"Approved"** to finalize.
-
-**Wait for approval, feedback, or prototype request.** If user replies `prototype`, invoke `/spectre:prototype` (the post-ux mode auto-detects the complete ux.md). Once prototype completes and any spec updates from filled assumptions are applied, return here for final approval.
-
-## Step 5 — Handoff
-
-Confirm completion with summary: screens specified, segments addressed, flows documented, components with states, edge cases and accessibility covered.
-
-Read `.spectre/next_steps_guide.md` and render Next Steps footer:
-
-```
-Next Steps | Phase: Scope | Status: UX Complete
-Recommendation: {contextual next action — if no prototype was generated, suggest /spectre:prototype to validate the spec visually before /plan}
-Options: /spectre:prototype (validate spec visually), /spectre:create_plan, /spectre:create_tasks, /spectre:tdd
-```
+- No scope/PRD/summary found → stop; get scope context or route to `/spectre:scope` before specifying.
+- User pushes for implementation/architecture decisions → note them, defer to `/spectre:plan`; keep this pass on behavior.
+- Flows won't converge after iterating → surface the specific unresolved divergence (usually a segment conflict) and ask the user to decide before Stage 2.
+- Feature has no user-facing surface → this spec adds nothing; route back to `/spectre:plan`.

@@ -33,7 +33,7 @@ function usage() {
   spectre install codex [--scope user|project] [--project-dir <path>]
   spectre uninstall codex [--scope user|project] [--project-dir <path>]
   spectre update codex [--scope user|project] [--project-dir <path>]
-  spectre doctor codex [--scope user|project] [--project-dir <path>] [--verify-hooks] [--json]
+  spectre doctor codex [--scope user|project] [--project-dir <path>] [--json]
 `;
 }
 

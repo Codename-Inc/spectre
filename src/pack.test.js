@@ -65,14 +65,18 @@ test('packed npm artifact installs Codex assets from generated tree', { concurre
 
     const codexHome = path.join(projectDir, '.codex');
     assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'spectre-plan', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'spectre-apply', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'skills', 'spectre-handoff', 'SKILL.md')));
     assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'agents', 'dev.toml')));
     assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
+    assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'scripts', 'register_learning.mjs')));
     assert.ok(!fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'session-start.mjs')));
-
     const hooksConfig = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf8'));
-    assert.ok(hooksConfig.hooks.SessionStart.some(group =>
-      Array.isArray(group.hooks) && group.hooks.some(hook => hook.command.includes('spectre/hooks/scripts/load-knowledge.mjs'))
-    ));
+    assert.deepEqual(
+      hooksConfig.hooks.SessionStart.flatMap(group => group.hooks)
+        .map(hook => path.basename(hook.command.match(/'([^']+)'$/)?.[1] || hook.command)),
+      ['bootstrap.mjs', 'handoff-resume.mjs', 'load-knowledge.mjs']
+    );
 
     const runtimeFiles = collectFiles(path.join(codexHome, 'spectre'));
     for (const filePath of runtimeFiles) {

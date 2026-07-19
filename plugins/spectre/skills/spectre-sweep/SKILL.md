@@ -1,91 +1,42 @@
 ---
-name: spectre-sweep
-description: 👻 | Light pass cleanup - clean, lint, test, commit
+name: "spectre-sweep"
+description: "Light pre-commit cleanup pass — diff sanity, log/dead-code hygiene on changed files, strict lint, run related + broad tests, then conventional-commit. Use when wrapping up uncommitted or just-finished work before check-in (\"sweep\", \"clean up and commit\", \"tidy this diff\"), standalone or as the final phase of spectre-clean. Do NOT use for forensic dead-code removal across the codebase (use spectre-prune), for authoring new tests (use spectre-test), or as a full validation gate — this is a fast hygiene+commit pass, not deep review."
 user-invocable: true
 ---
 
 # sweep
 
-## Input Handling
+Prepare uncommitted or recently-changed work for check-in: a fast, formulaic hygiene pass, then descriptive conventional commits. No subagents, no approval gates — execute each step and move on.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
+- `$ARGUMENTS` (optional scope/intent hint). Read the live working tree at runtime (`git status`, `git diff`) — do not assume a prior phase ran.
 
+## Working Set
+Changed files only. Opportunistic, not forensic — do not hunt beyond the diff.
 
-## Pre-Commit Sweep
+## Outputs + DONE
+One or more conventional commits covering the changes. DONE when:
+- Diff reviewed: no unintended edits, no out-of-scope staged files, **no secrets/keys/credentials/PII**.
+- Debug/temp logging removed; intentional logs (errors, key state transitions) kept at production-appropriate levels.
+- Commented-out code, session-introduced TODO/FIXME/HACK, and hardcoded test values resolved or documented.
+- Lint passes with **zero violations fixed by suppression** — refactor structural issues, never `eslint-disable` or equivalent. `.gitignore` covers temp/build/IDE artifacts.
+- Related + broader test suite run and green; failures caused by these changes fixed.
+- Work committed as `type(scope): description` conventional commits, split by concern.
 
-You are preparing uncommitted or recently committed changes for check-in. Perform a systematic cleanup, then commit with descriptive conventional commits.
+## Method / guardrails
+1. **Diff sanity** — scan full diff for accidental edits, stray staged files, and secrets.
+2. **Log + code hygiene** — strip debug logging, commented-out code, leftover TODO/FIXME from this work, hardcoded test values; keep intentional logs.
+3. **Opportunistic dead code (changed files only)** — orphaned imports, unused vars/functions, debugger statements. No deep investigation.
+4. **Strict lint** — fix all violations by correcting code; YOU MUST NOT suppress or `--no-verify`. Refactor for size/complexity thresholds.
+5. **Test** — run tests related to changed files (co-located, importers, shared modules) plus the broader suite; fix change-caused failures. Do NOT author new tests — this is a sweep, not a test pass.
+6. **Commit** — group by concern into conventional commits.
+   - Types: feat · fix · refactor · test · chore · docs · style · perf.
+   - Subject answers what changed and why; include scope (`feat(auth): add token refresh on 401`). Optional body for motivation/trade-offs.
+   - One concern per commit — if it spans concerns, split it. Treat commits as durable context for future readers/LLMs; never `fix: updates` / `refactor: clean up`.
 
-**Execution Style**: Fast, formulaic checklist. No subagents, no user approval gates. Execute each step and move on.
+## Handoff
+Next Steps: one-line footer suggesting the natural follow-on (e.g. `/spectre:rebase` to tidy history, or push/PR) grounded in the actual repo state.
 
-### 1. Diff Sanity Check
-
-- Review full diff for unintentional changes (whitespace-only edits, merge artifacts)
-- Verify no accidentally staged files outside the intended scope
-- Confirm no secrets, API keys, credentials, or sensitive data in diff
-
-### 2. Logging Audit
-
-- Remove temporary/debug logging (console.log, print, debug flags, etc.)
-- Preserve intentional logs: errors, critical warnings, key state transitions
-- Verify log levels are appropriate for production context
-
-### 3. Code Hygiene
-
-- Remove commented-out code (it's in git history if needed)
-- Resolve or document any TODO/FIXME/HACK introduced in this session
-- Remove hardcoded test values that should be config/env
-
-### 4. Opportunistic Dead Code Cleanup
-
-Quick scan of changed files only — remove anything obviously dead, no deep investigation:
-
-- Orphaned imports with no usage in the file
-- Unused variables or functions declared but never referenced
-- Commented-out code blocks
-- Debug artifacts (debugger statements, leftover TODO/FIXME from this work)
-
-Do not hunt for dead code beyond the changed files. This is opportunistic, not forensic.
-
-### 5. Lint (Strict)
-
-- Run the project linter and **fix all violations** — no skipping, no eslint-disable
-- Address structural lint issues (file size, complexity thresholds) by refactoring, not suppressing
-- Verify .gitignore coverage (no temp files, build artifacts, IDE configs)
-
-### 6. Test
-
-- Identify test files related to the changed files (co-located tests, imports, shared modules)
-- Run those tests and the broader test suite
-- Fix any failures caused by the changes
-- Do NOT write new tests in this step — this is a sweep, not a test authoring pass
-
-### 7. Commit
-
-Group changes into logical conventional commits. Commits are project history and critical context for LLMs and future developers — invest in making them descriptive.
-
-**Format**: `type(scope): description`
-
-**Types**: feat, fix, refactor, test, chore, docs, style, perf
-
-**Grouping** — separate commits by concern:
-- Feature/behavior additions → `feat`
-- Refactors/cleanup with no behavior change → `refactor`
-- Bug fixes → `fix`
-- Test additions/updates → `test`
-- Config/dependency changes → `chore`
-- Documentation → `docs`
-
-**Commit message quality**:
-- Subject line answers: what changed and why (not "fix stuff" or "update files")
-- Include scope to locate the change: `feat(auth): add token refresh on 401 response`
-- If the commit touches multiple concerns, it's too big — split it
-- Body (optional) adds context: motivation, trade-offs, what was considered and rejected
-
-**Anti-patterns**:
-- `fix: updates` — says nothing
-- `refactor: clean up` — clean up what? why?
-- One giant commit for unrelated changes
-
-### 8. Render Footer
-
-Use `@skill-spectre:spectre-guide` skill for Next Steps footer.
+## Escalate-If
+- A secret/credential appears in the diff — stop, surface it, do not commit until resolved.
+- Lint or a test failure can only be cleared by suppression or by changing behavior beyond this diff — stop and ask rather than `--no-verify`.

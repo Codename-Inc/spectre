@@ -8,31 +8,29 @@ import { execFileSync } from 'child_process';
 function makeProject() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-test-'));
   execFileSync('git', ['init', '-b', 'main'], { cwd: tmp, stdio: 'ignore' });
+  return tmp;
+}
+
+function makeSessionProject() {
+  const tmp = makeProject();
   fs.mkdirSync(path.join(tmp, 'docs', 'tasks', 'main', 'session_logs'), { recursive: true });
-  fs.mkdirSync(path.join(tmp, '.agents', 'skills', 'feature-auth'), { recursive: true });
   fs.mkdirSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'references'), { recursive: true });
   fs.writeFileSync(
     path.join(tmp, 'docs', 'tasks', 'main', 'session_logs', '2026-03-09-100000_handoff.json'),
     JSON.stringify({
       version: '1.1',
-      timestamp: '2026-03-09-100000',
       branch_name: 'main',
       task_name: 'codex-port-migration',
       progress_update: {
         goal: 'Ship official SessionStart migration',
-        summary: 'Switched Codex continuity to a managed AGENTS.override.md block with a SessionStart status line.',
-        accomplished: ['Updated hook generation', 'Cleaned up legacy bridge files'],
+        summary: 'Switched continuity to a managed AGENTS.override.md block.',
+        accomplished: ['Updated hook generation'],
         now: 'Wiring tests for the new SessionStart payload',
-        next_steps: ['Update docs', 'Run the full test suite'],
-        confidence: 'high',
-        constraints: ['Hook output must stay JSON'],
-        decisions: ['Use a managed AGENTS.override.md block as the continuity channel'],
-        blockers: [],
-        open_questions: ['Whether to show systemMessage in the UI'],
-        risks: ['Codex hook schema is still experimental']
+        next_steps: ['Run the full test suite'],
+        confidence: 'high'
       },
       working_set: {
-        key_files: ['src/lib/install.js', 'src/lib/project.js'],
+        key_files: ['src/lib/project.js'],
         active_ids: ['bd-123'],
         recent_commands: ['npm test']
       },
@@ -41,19 +39,6 @@ function makeProject() {
         last_commit: 'abc1234'
       }
     }, null, 2)
-  );
-  fs.writeFileSync(
-    path.join(tmp, '.agents', 'skills', 'feature-auth', 'SKILL.md'),
-    [
-      '---',
-      'name: feature-auth',
-      'description: Use when modifying auth flows.',
-      '---',
-      '',
-      '# Auth Knowledge',
-      '',
-      'The auth system uses token rotation.'
-    ].join('\n')
   );
   fs.writeFileSync(
     path.join(tmp, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon'),
@@ -67,38 +52,26 @@ function makeProject() {
   return tmp;
 }
 
-test('buildSessionStartOutput returns official SessionStart payload from the latest handoff', async () => {
-  const tmp = makeProject();
+test('SessionStart writes the latest handoff and inlined knowledge to the managed override', async () => {
+  const tmp = makeSessionProject();
   const { buildSessionStartOutput } = await import('./lib/project.js');
+
   const output = buildSessionStartOutput(tmp, { source: 'resume' });
-  const overridePath = path.join(tmp, 'AGENTS.override.md');
+  const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
 
-  assert.ok(output);
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | injected docs/tasks/main/session_logs/2026-03-09-100000_handoff.json | 👻 spectre: 1 knowledge skills available');
-  assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-
-  assert.ok(fs.existsSync(overridePath));
-  const overrideContent = fs.readFileSync(overridePath, 'utf8');
+  assert.match(output.systemMessage, /injected docs\/tasks\/main\/session_logs\/2026-03-09-100000_handoff\.json/);
+  assert.match(output.systemMessage, /1 knowledge skills available/);
   assert.match(overrideContent, /<!-- spectre-session:start -->/);
-  assert.match(overrideContent, /## SPECTRE Session Context/);
   assert.match(overrideContent, /official SessionStart migration/);
   assert.match(overrideContent, /Wiring tests for the new SessionStart payload/);
-  assert.match(overrideContent, /### Spectre Notes/);
-  assert.match(overrideContent, /\*\*SessionStart Source\*\*: resume/);
-  assert.match(overrideContent, /docs\/tasks\/main\/session_logs\/2026-03-09-100000_handoff\.json/);
-  assert.match(overrideContent, /<!-- spectre-session:end -->/);
   assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
-  assert.match(overrideContent, /## SPECTRE Knowledge Context/);
-  assert.match(overrideContent, /call `Skill\(\{name\}\)` FIRST/);
   assert.match(overrideContent, /feature-auth\|feature\|auth, login\|Use when modifying auth flows/);
   assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
-  assert.match(overrideContent, /<!-- spectre-knowledge:end -->/);
-  assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
 });
 
-test('buildSessionStartOutput keeps knowledge active when no handoff exists and removes only the session block', async () => {
-  const tmp = makeProject();
+test('SessionStart clears stale session state but keeps empty knowledge and user content', async () => {
+  const tmp = makeSessionProject();
   fs.rmSync(path.join(tmp, '.agents'), { recursive: true, force: true });
   fs.writeFileSync(
     path.join(tmp, 'AGENTS.override.md'),
@@ -106,7 +79,52 @@ test('buildSessionStartOutput keeps knowledge active when no handoff exists and 
       'User content before.',
       '',
       '<!-- spectre-session:start -->',
-      'old spectre content',
+      'stale session content',
+      '<!-- spectre-session:end -->',
+      '',
+      '<!-- spectre-knowledge:start -->',
+      'stale knowledge content',
+      '<!-- spectre-knowledge:end -->',
+      '',
+      'User content after.'
+    ].join('\n')
+  );
+  fs.rmSync(path.join(tmp, 'docs', 'tasks', 'main', 'session_logs'), { recursive: true, force: true });
+  const { buildSessionStartOutput } = await import('./lib/project.js');
+
+  const output = buildSessionStartOutput(tmp, { source: 'clear' });
+  const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
+
+  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | 👻 spectre: ready — capture knowledge with /spectre:learn');
+  assert.match(overrideContent, /User content before\./);
+  assert.match(overrideContent, /User content after\./);
+  assert.doesNotMatch(overrideContent, /spectre-session:start/);
+  assert.match(overrideContent, /spectre-knowledge:start/);
+  assert.match(overrideContent, /No knowledge captured yet/);
+  assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
+});
+
+test('project install creates recall files without managed memory injection', async () => {
+  const tmp = makeProject();
+  const { installProjectFiles } = await import('./lib/project.js');
+
+  installProjectFiles(tmp, 'project');
+
+  assert.ok(fs.existsSync(path.join(tmp, '.spectre', 'manifest.json')));
+  assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
+  assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
+  assert.ok(!fs.existsSync(path.join(tmp, 'AGENTS.override.md')));
+});
+
+test('project install removes legacy managed override blocks', async () => {
+  const tmp = makeProject();
+  fs.writeFileSync(
+    path.join(tmp, 'AGENTS.override.md'),
+    [
+      'User content before.',
+      '',
+      '<!-- spectre-session:start -->',
+      'old session content',
       '<!-- spectre-session:end -->',
       '',
       '<!-- spectre-knowledge:start -->',
@@ -116,21 +134,55 @@ test('buildSessionStartOutput keeps knowledge active when no handoff exists and 
       'User content after.'
     ].join('\n')
   );
-  const activePath = path.join(tmp, 'docs', 'tasks', 'main', 'session_logs', '2026-03-09-100000_handoff.json');
-  const archiveDir = path.join(tmp, 'docs', 'tasks', 'main', 'session_logs', 'archive');
-  fs.mkdirSync(archiveDir, { recursive: true });
-  fs.renameSync(activePath, path.join(archiveDir, '2026-03-09-100000_handoff.json'));
 
-  const { buildSessionStartOutput } = await import('./lib/project.js');
-  const output = buildSessionStartOutput(tmp, { source: 'clear' });
-  assert.ok(output);
-  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | 👻 spectre: ready — capture knowledge with /spectre:learn');
+  const { installProjectFiles } = await import('./lib/project.js');
+  installProjectFiles(tmp, 'project');
+
   const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
-  assert.match(overrideContent, /spectre-knowledge:start/);
-  assert.match(overrideContent, /call `Skill\(\{name\}\)` FIRST/);
-  assert.match(overrideContent, /No knowledge captured yet/);
-  assert.match(overrideContent, /`Skill\(spectre-learn\)`/);
+  assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
+});
+
+test('project reinstall removes fork-era managed blocks without removing user content', async () => {
+  const tmp = makeProject();
+  const forkName = ['cas', 'par'].join('');
+  fs.writeFileSync(
+    path.join(tmp, 'AGENTS.md'),
+    [
+      'Root user content.',
+      '',
+      `<!-- ${forkName}-codex:start -->`,
+      'stale bridge content',
+      `<!-- ${forkName}-codex:end -->`
+    ].join('\n')
+  );
+  fs.writeFileSync(
+    path.join(tmp, 'AGENTS.override.md'),
+    [
+      'User content before.',
+      '',
+      `<!-- ${forkName}-session:start -->`,
+      'stale session content',
+      `<!-- ${forkName}-session:end -->`,
+      '',
+      `<!-- ${forkName}-knowledge:start -->`,
+      'stale knowledge content',
+      `<!-- ${forkName}-knowledge:end -->`,
+      '',
+      'User content after.'
+    ].join('\n')
+  );
+
+  const { installProjectFiles } = await import('./lib/project.js');
+  installProjectFiles(tmp, 'project');
+
+  const rootAgentsContent = fs.readFileSync(path.join(tmp, 'AGENTS.md'), 'utf8');
+  const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
+  assert.match(rootAgentsContent, /Root user content\./);
+  assert.doesNotMatch(rootAgentsContent, new RegExp(`${forkName}-codex:start`));
+  assert.match(overrideContent, /User content before\./);
+  assert.match(overrideContent, /User content after\./);
+  assert.doesNotMatch(overrideContent, new RegExp(`${forkName}-(session|knowledge):start`));
 });

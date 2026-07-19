@@ -1,124 +1,54 @@
 ---
-name: spectre-kickoff
-description: 👻 | Project kickoff with deep research & MVP pathfinding - primary agent
+name: "spectre-kickoff"
+description: "Project kickoff — deep codebase + external research producing an evidence-backed kickoff doc, gap analysis, and MVP path before scoping. Use to start a fresh feature/project from an unclear problem, when the user wants research/options/an MVP recommendation before committing to scope or a plan. Do not trigger once scope is already defined (use /spectre:scope) or for a single targeted code question (use an analyst agent directly)."
 user-invocable: true
 ---
 
 # kickoff
 
-## Input Handling
+Deep research entry point: investigate the codebase and external best practices, then hand off a written kickoff doc with a gap analysis and MVP path. Clear on WHAT to produce; the research method is yours.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+## Inputs
+- `$ARGUMENTS` — the project/feature context (the current command arguments). If empty, ask the user for it before any tools.
+- Any docs the user references — read them FULLY in main context (not via subagent): vision, constraints, decisions, open questions.
 
+## Working set (late-bound — read at runtime, never inline)
+- Codebase, via read-only research agents (see Method).
+- `task_name` derived from context (kebab-case); current git commit/branch for metadata + permalinks.
 
-# kickoff: Deep Codebase Research + MVP Path Discovery
+## Method / guardrails
+1. **Acknowledge first.** Open with a reply naming what we're exploring, the decision we're heading toward, and what success looks like. No tool calls in this first turn.
+2. **Decompose** the project into research areas (components, dirs/files, patterns, data flows, code to extend); track them with TodoWrite.
+3. **Research in parallel**, read-only — locator → analyzer-on-findings → breadth. Spawn follow-ups if a thread is shallow. Use Context7 MCP for central 3rd-party libs.
 
-Comprehensive codebase research, external best practices, and MVP implementation path with file:line evidence. Output: kickoff document with architecture insights, gap analysis, and implementation options saved to `docs/tasks/{task_name}/kickoff/`.
+   | Agent | Task | Required output |
+   |---|---|---|
+   | `@spectre:finder` | relevant files, entry points, handlers, models | file paths by domain |
+   | `@spectre:analyst` | data flow, dependencies, behavior, edge cases | file:line for ALL findings |
+   | `@spectre:patterns` | similar impls, patterns to follow/avoid | code examples w/ file:line |
+   | `@spectre:web-research` | best practices, prior art, pitfalls | findings WITH links |
 
-## ARGUMENTS
+   Demand file:line evidence (codebase) and links (external). Returns come back as compressed in-thread summaries — no intermediate report files.
+4. **Wait for all agents** before synthesizing; update TodoWrite as each lands.
+5. **Synthesize → gap → MVP → options.** Connect findings across components with file:line throughout; gap analysis = current capabilities (file refs) vs required, split missing-vs-modify; MVP = core value + minimum slice + what to defer; give 2–3 options each with summary, key decisions, code to leverage (refs), new work, effort, trade-offs; surface decision points and open questions.
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
+## Outputs + DONE
+Write the kickoff doc to `docs/tasks/{task_name}/kickoff/{task_name}_kickoff.md` (`mkdir -p` first; timestamp-suffix if the file exists). **Save it before presenting** the summary.
 
-## Step 1: Acknowledge & Clarify
+- YAML frontmatter: date, git_commit, branch, repo, topic, tags, status.
+- Required sections, in order: Title · Metadata · Project Context · Research Summary · Detailed Codebase Findings (by area, file:line, snippets) · Code References (table) · Architecture Insights (patterns, conventions, constraints) · External Research (with links) · Gap Analysis · MVP Suggestion · Implementation Options (2–3, with trade-offs) · Decision Points · Open Questions · Related Resources.
+- If on `main`/pushed, convert file refs to GitHub permalinks: `https://github.com/{owner}/{repo}/blob/{commit}/{file}#L{line}`.
 
-- **Action** — ImmediateReply: Respond before any tools.
-  - **If** ARGUMENTS → acknowledge context, identify: what we're exploring, what decision we're heading toward, what success looks like
-  - **Else** → prompt for project context
-  - **CRITICAL**: No tool calls in this step
+**DONE when:** doc saved with every required section populated, all findings carry file:line (or external links), gap analysis and an MVP path are stated, and the saved summary + scoping questions have been presented to the user.
 
-## Step 2: Gather Context & Decompose
+## Handoff
+Present a compact summary (vision · what exists w/ refs · architecture insights · external learnings · gap · MVP path) plus 1–3 scoping questions, each offering concrete options (e.g. "Option A leverages `code:line` vs Option B"). Then engage scoping: wait, ask follow-ups, and **research answerable questions instead of asking them** — do not move to planning until ambiguities resolve. Fold clarifications back into the doc under `## Scoping Clarifications [timestamp]`; spawn more research if needed.
 
-- **Action** — ReadMentionedDocs: Read referenced docs FULLY in main context (not subagent). Extract: vision, constraints, decisions made, open questions.
-- **Action** — DecomposeResearchAreas: Break project into research areas. Consider: components to investigate, directories/files, architectural patterns, data flows, existing code to extend.
-- **Action** — CreateResearchPlan: Use TodoWrite to track research subtasks.
+When resolved, offer the next step:
+1. Proceed to scope → `/spectre:scope` with `FROM_KICKOFF=true`, `KICKOFF_DOC={path}`, `SKIP_EXPLORATION=true`, + context summary.
+2. Skip to planning → `/spectre:plan` with the kickoff doc as context.
 
-## Step 3: Deep Parallel Research
-
-- **Action** — SpawnResearchAgents: Launch parallel agents for comprehensive context.
-
-| Agent | Task | Required Output |
-|-------|------|-----------------|
-| @finder | Find relevant files, entry points, handlers, models | File paths by domain |
-| @analyst | Trace data flow, dependencies, behavior, edge cases | file:line refs for ALL findings |
-| @patterns | Find similar implementations, patterns to follow/avoid | Code examples with file:line |
-| @web-research | Best practices, similar solutions, pitfalls | Findings WITH LINKS |
-
-**Strategy**: locator → analyzer on findings → parallel for breadth. Spawn follow-ups if shallow. Demand file:line evidence.
-
-**3rd Party Libs**: Use Context7 MCP for central libraries.
-
-- **Action** — WaitForAgents: ALL agents must complete before synthesis. Update TodoWrite as each completes.
-
-## Step 4: Synthesize Understanding
-
-- **Action** — CompileFindings: Synthesize with file:line refs throughout.
-  - Codebase: Connect findings across components, document data flow, answer "how does codebase handle [area]?"
-  - Architecture: Patterns to follow (with examples), conventions, constraints, reuse vs build new
-  - External: Industry patterns (with links), best practices, pitfalls
-
-- **Action** — PerformGapAnalysis: Current capabilities (with file refs) vs required capabilities. What's missing vs needs modification.
-
-- **Action** — IdentifyMVPAndOptions:
-  - MVP: Core value, minimum for value, what to defer (informed by codebase complexity)
-  - Options: 2-3 approaches with: summary, key decisions, code to leverage (file refs), new work, effort sense, trade-offs
-  - Decision points: Architecture, scope, technology, integration, patterns
-
-## Step 5: Generate Document
-
-- **Action** — DetermineOutputDir:
-  - Derive `task_name` from context (kebab-case)
-  - `OUT_DIR = user_specified || docs/tasks/{task_name}/kickoff`
-  - `mkdir -p "$OUT_DIR"`
-
-- **Action** — CreateDocument: Structure with YAML frontmatter (date, git_commit, branch, repo, topic, tags, status).
-
-  **Sections**: Title → Metadata → Project Context → Research Summary → Detailed Codebase Findings (by area, file:line refs, code snippets) → Code References (table) → Architecture Insights (patterns, conventions, constraints) → External Research (with links) → Gap Analysis → MVP Suggestion → Implementation Options (2-3 with trade-offs) → Decision Points → Open Questions → Related Resources
-
-- **Action** — AddGitHubPermalinks: If on main/pushed, convert file refs to `https://github.com/{owner}/{repo}/blob/{commit}/{file}#L{line}`
-
-- **Action** — SaveDocument: Save as `{task_name}_kickoff.md` (timestamp variant if exists). **CRITICAL**: Save before Step 6.
-
-## Step 6: Present & Scope
-
-- **Action** — PresentSummary:
-  > **Kickoff Complete** — saved to `{path}`
-  >
-  > **Vision**: [1-2 sentences]
-  > **What Exists**: [key components with file:line refs]
-  > **Architecture Insights**: [patterns, conventions, constraints]
-  > **External Learnings**: [key insights with links]
-  > **Gap**: [have → need]
-  > **MVP Path**: [smallest valuable slice]
-  >
-  > **Scoping Questions** (before planning):
-  > 1. [Scope/boundary question] — Option A (leverages `code:line`) vs Option B
-  > 2. [Technical approach] — suggested vs alternative
-  > 3. [Priority/constraint question]
-
-- **Action** — EngageInScoping: Wait for response, ask follow-ups. No planning until ambiguities resolved. Research answerable questions instead of asking.
-
-## Step 7: Handle Follow-ups
-
-- **Action** — HandleFollowUps:
-  - **If** clarifications → update doc with `## Scoping Clarifications [timestamp]`
-  - **If** more research needed → spawn agents, demand file:line evidence, update doc
-  - Continue until ambiguities resolved
-
-## Step 8: Transition to Scope
-
-- **Action** — SummarizeAndTransition:
-  > **Ready for Scope Definition**
-  >
-  > **Established**: User problem, user value, key findings (file:line), decisions made, remaining ambiguities
-  >
-  > **Options**:
-  > 1. "Proceed with scope" → `/spectre:scope` with FROM_KICKOFF=true, SKIP_EXPLORATION=true
-  > 2. "Skip to planning" → `/spectre:plan` with kickoff doc context
-  > 3. "Need to think" → `/spectre:handoff`
-
-- **Action** — ExecuteChoice:
-  - **If** scope → invoke `/spectre:scope` with: FROM_KICKOFF=true, KICKOFF_DOC={path}, SKIP_EXPLORATION=true, context summary
-  - **If** planning → suggest `/spectre:plan`
-  - **If** pause → run `/spectre:handoff`
+## Escalate-If
+- No project context supplied and none inferable → ask the user before researching.
+- Research stays shallow / no file:line evidence after follow-ups → say so and present partial findings rather than fabricating depth.
+- Scoping ambiguities can't be resolved by research → surface them as Open Questions; do not proceed to planning.

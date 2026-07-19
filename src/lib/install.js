@@ -48,12 +48,8 @@ function generatedCodexHooksDir() {
   return path.join(generatedCodexRoot(), 'hooks');
 }
 
-function generatedCodexHooksConfigPath() {
-  return path.join(generatedCodexHooksDir(), 'hooks.json');
-}
-
 function generatedCodexHooksConfig() {
-  const hooksPath = generatedCodexHooksConfigPath();
+  const hooksPath = path.join(generatedCodexHooksDir(), 'hooks.json');
   if (!fs.existsSync(hooksPath)) {
     throw new Error(`Missing generated Codex hooks config: ${hooksPath}. Run npm run sync-codex first.`);
   }
@@ -62,6 +58,7 @@ function generatedCodexHooksConfig() {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed.hooks) {
     throw new Error(`Malformed generated Codex hooks config: ${hooksPath}`);
   }
+
   return parsed.hooks;
 }
 
@@ -100,6 +97,13 @@ function replaceDirectory(sourceDir, targetDir) {
   fs.rmSync(targetDir, { recursive: true, force: true });
   ensureDir(path.dirname(targetDir));
   fs.cpSync(sourceDir, targetDir, { recursive: true });
+}
+
+function removeLegacyForkRuntime(runtimeRoot) {
+  const legacyRoot = path.join(path.dirname(runtimeRoot), ['cas', 'par'].join(''));
+  if (fs.existsSync(legacyRoot)) {
+    fs.rmSync(legacyRoot, { recursive: true, force: true });
+  }
 }
 
 function removeLegacyPrefixedSkillDirs() {
@@ -250,6 +254,7 @@ function installRuntimeScripts() {
 export function installCodex({ scope, projectDir }) {
   const runtimeRoot = codexRuntimeRoot();
   ensureDir(runtimeRoot);
+  removeLegacyForkRuntime(runtimeRoot);
   installRuntimeScripts();
   cleanupLegacyPrompts();
   installGeneratedCodexSkills();

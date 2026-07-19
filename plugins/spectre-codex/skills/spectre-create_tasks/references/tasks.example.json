@@ -1,7 +1,7 @@
 {
   "meta": {
     "feature": "Example Feature",
-    "generated_at": "2026-05-28T00:00:00Z",
+    "generated_at": "2026-06-03T00:00:00Z",
     "schema_version": 1,
     "objective": "Deliver an example feature through a sliceable task artifact.",
     "scope": {
@@ -80,13 +80,8 @@
               "context": [
                 {
                   "path": "SKILL.md",
-                  "anchor": "Step 6",
+                  "anchor": "Artifact Contract",
                   "note": "The producer skill owns the authoritative schema."
-                },
-                {
-                  "path": "docs/tasks/example/specs/plan.md",
-                  "anchor": "## Verification",
-                  "note": "Verification requires parseable JSON."
                 }
               ],
               "predecessor": "none",
@@ -97,7 +92,7 @@
                 },
                 {
                   "type": "test",
-                  "text": "Test command `node -e \"JSON.parse(require('fs').readFileSync('references/tasks.example.json','utf8'))\"` fails for the documented reason when run from this skill directory."
+                  "text": "Parse command fails for the documented reason before the fixture is authored."
                 }
               ]
             },
@@ -107,18 +102,13 @@
               "type": "Build",
               "status": "pending",
               "produces": "`references/tasks.example.json` with `meta` and `phases[]` detail",
-              "consumed_by": "create_tasks, execute, plan_review, code_review, validate",
+              "consumed_by": "create_tasks, execute, task_review, code_review, validate",
               "replaces": "The implicit Markdown-only task body contract",
               "context": [
                 {
                   "path": "SKILL.md",
-                  "anchor": "Task Hierarchy",
+                  "anchor": "tasks.json",
                   "note": "Current fields must have a JSON home."
-                },
-                {
-                  "path": "docs/tasks/example/specs/plan.md",
-                  "anchor": "## Data Architecture",
-                  "note": "No wave or index data belongs in tasks.json."
                 }
               ],
               "predecessor": "1.1.1",
@@ -133,7 +123,7 @@
                 },
                 {
                   "type": "state",
-                  "text": "No stored `index` or `waves` key appears in the JSON fixture."
+                  "text": "No stored `index`, `indexes`, `wave_plan`, or `waves` key appears in the JSON fixture."
                 }
               ]
             }
@@ -161,12 +151,12 @@
               "type": "Integration",
               "status": "pending",
               "produces": "An XML `<task_assignment>` envelope containing exactly parent task 2.1",
-              "consumed_by": "@dev owner for parent task 2.1",
+              "consumed_by": "@spectre:dev owner for parent task 2.1",
               "replaces": "Whole legacy Markdown task-list reads by execution owners",
               "context": [
                 {
                   "path": "../spectre-execute/SKILL.md",
-                  "anchor": "Dispatch Wave",
+                  "anchor": "Dispatch wave",
                   "note": "The orchestrator owns selected parent-task extraction."
                 }
               ],
@@ -178,7 +168,7 @@
                 },
                 {
                   "type": "observable",
-                  "text": "@dev receives the `<task_assignment>` envelope inline and is not instructed to read a tasks file."
+                  "text": "@spectre:dev receives the `<task_assignment>` envelope inline and is not instructed to read a tasks file."
                 }
               ]
             }

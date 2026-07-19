@@ -73,8 +73,14 @@ function rewriteCodexCommandRefs(source) {
 
 function rewriteSkillForCodex(source) {
   const { frontmatter, body } = parseFrontmatter(source, 'SKILL.md');
+  const rewrittenFrontmatter = Object.fromEntries(
+    Object.entries(frontmatter).map(([key, value]) => [
+      key,
+      rewriteCodexCommandRefs(rewriteProjectSkillPaths(String(value))),
+    ]),
+  );
   const rewrittenBody = rewriteCodexCommandRefs(rewriteProjectSkillPaths(body));
-  return renderFrontmatter(frontmatter, rewrittenBody);
+  return renderFrontmatter(rewrittenFrontmatter, rewrittenBody);
 }
 
 function writeIfChanged(filePath, content) {

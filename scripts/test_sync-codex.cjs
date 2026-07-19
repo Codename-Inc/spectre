@@ -40,7 +40,7 @@ Write code carefully.
     path.join(canonicalRoot, 'skills', 'spectre-plan', 'SKILL.md'),
     `---
 name: spectre-plan
-description: "\\ud83d\\udc7b | Create: implementation plans."
+description: "\\ud83d\\udc7b | Create implementation plans after /spectre:scope."
 ---
 
 Read .claude/skills/example/SKILL.md, then invoke /spectre:create_tasks.
@@ -49,33 +49,10 @@ Load @skill-spectre:spectre-tdd and dispatch @spectre:tester.
   );
 
   writeFile(
-    path.join(canonicalRoot, 'hooks', 'scripts', 'bootstrap.mjs'),
+    path.join(canonicalRoot, 'hooks', 'scripts', 'register_learning.mjs'),
     `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({}) + '\\n');
 `,
-  );
-
-  writeFile(
-    path.join(canonicalRoot, 'hooks', 'hooks.json'),
-    JSON.stringify(
-      {
-        hooks: {
-          SessionStart: [
-            {
-              matcher: 'startup',
-              hooks: [
-                {
-                  type: 'command',
-                  command: 'node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bootstrap.mjs',
-                },
-              ],
-            },
-          ],
-        },
-      },
-      null,
-      2,
-    ),
   );
 
   return { canonicalRoot, codexRoot };
@@ -129,8 +106,8 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
       'utf8',
     );
     const { frontmatter } = skills.parseFrontmatter(skill, 'spectre-plan/SKILL.md');
-    assert.equal(frontmatter.description, '👻 | Create: implementation plans.');
-    assert.match(skill, /^description: "👻 \| Create: implementation plans\."/m);
+    assert.equal(frontmatter.description, '👻 | Create implementation plans after spectre-scope.');
+    assert.match(skill, /^description: "👻 \| Create implementation plans after spectre-scope\."/m);
     assert.doesNotMatch(skill, /\\ud83d/);
     assert.match(skill, /\.agents\/skills\/example\/SKILL\.md/);
     assert.match(skill, /invoke spectre-create_tasks\./);
@@ -141,15 +118,11 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
     assert.doesNotMatch(skill, /@skill-spectre:/);
     assert.doesNotMatch(skill, /@spectre:/);
 
-    const hooksConfig = JSON.parse(
-      fs.readFileSync(path.join(codexRoot, 'hooks', 'hooks.json'), 'utf8'),
-    );
-    const command = hooksConfig.hooks.SessionStart[0].hooks[0].command;
-    assert.equal(command, 'node ${CODEX_HOME}/spectre/hooks/scripts/bootstrap.mjs');
     assert.equal(
-      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'bootstrap.mjs')),
+      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'register_learning.mjs')),
       true,
     );
+    assert.equal(fs.existsSync(path.join(codexRoot, 'hooks', 'hooks.json')), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -157,8 +130,8 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
 
 test('hooks translator rewrites legacy command extensions to Codex mjs paths', () => {
   assert.equal(
-    hooks.rewriteHookCommand('node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/load-knowledge.cjs'),
-    'node ${CODEX_HOME}/spectre/hooks/scripts/load-knowledge.mjs',
+    hooks.rewriteHookCommand('node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/register_learning.cjs'),
+    'node ${CODEX_HOME}/spectre/hooks/scripts/register_learning.mjs',
   );
 });
 
@@ -184,5 +157,93 @@ test('check mode detects drift and passes after regeneration', () => {
     );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('spectre-execute uses lightweight sentinel review before final adversarial review', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillPaths = [
+    path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-execute', 'SKILL.md'),
+    path.join(repoRoot, 'plugins', 'spectre-codex', 'skills', 'spectre-execute', 'SKILL.md'),
+  ];
+
+  for (const skillPath of skillPaths) {
+    const skill = fs.readFileSync(skillPath, 'utf8');
+    assert.match(skill, /Sentinel selector/);
+    assert.match(skill, /Lightweight sentinel review/);
+    assert.match(skill, /Final adversarial code review \+ validate/);
+    assert.match(skill, /sentinel review counts/);
+    assert.doesNotMatch(skill, /Dual clean-room review/);
+    assert.doesNotMatch(skill, /dispatch two .*reviewer/);
+  }
+});
+
+test('review gates pin high-effort opposing models and retain native fallback', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillNames = ['spectre-plan_review', 'spectre-task_review', 'spectre-code_review'];
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    for (const skillName of skillNames) {
+      const skillPath = path.join(
+        repoRoot,
+        'plugins',
+        rootName,
+        'skills',
+        skillName,
+        'SKILL.md',
+      );
+      const skill = fs.readFileSync(skillPath, 'utf8');
+
+      assert.match(skill, /claude -p --model fable --effort high/);
+      assert.match(
+        skill,
+        /codex exec -C "\$PWD" -m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
+      );
+      assert.match(skill, /unavailable opposing runtimes never block completion/);
+      assert.match(skill, /Native fallback/);
+      assert.match(skill, /Reviewer Model:/);
+      assert.match(skill, /Reviewer Effort:/);
+      assert.match(skill, /Invocation Route:/);
+      assert.match(skill, /Reviewer Model: fable/);
+      assert.match(skill, /Invocation Route: Codex -> Claude Code/);
+      assert.match(skill, /Reviewer Model: gpt-5\.6-sol/);
+      assert.match(skill, /Invocation Route: Claude Code -> Codex/);
+    }
+  }
+});
+
+test('code review is adversarial and execute delegates the final review gate', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const codeReviewPath = path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'spectre-code_review',
+      'SKILL.md',
+    );
+    const codeReview = fs.readFileSync(codeReviewPath, 'utf8');
+    assert.match(codeReview, /Adversarial review of what was just built/);
+    assert.match(codeReview, /Correctness/);
+    assert.match(codeReview, /Security/);
+    assert.match(codeReview, /Performance \/ reliability/);
+    assert.match(codeReview, /Overengineering/);
+    assert.match(codeReview, /Evidence \/ Reproduction/);
+    assert.doesNotMatch(codeReview, /Scores \(0(?:-|\u2013)10\)/);
+
+    const executePath = path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'spectre-execute',
+      'SKILL.md',
+    );
+    const execute = fs.readFileSync(executePath, 'utf8');
+    assert.match(execute, /Final adversarial code review \+ validate/);
+    assert.match(execute, /Skill\(spectre-code_review\)/);
+    assert.doesNotMatch(execute, /Dispatch multi-lens clean-room review/);
   }
 });

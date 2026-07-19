@@ -1,110 +1,37 @@
 ---
-name: spectre-quick_dev
-description: 👻 | Quickly scope, research, & plan s/m tasks - primary agent
+name: "spectre-quick_dev"
+description: "Lightweight scope→research→plan workflow for small/medium tasks (bug fixes, small features). Confirms functional scope with the user, runs parallel read-only research, then writes a quick_task_plan.md with phased parent/sub-task structure. Trigger when the user wants a quick plan for a bounded change and full /spectre:plan task-generation would be overkill. Do NOT trigger for large/multi-area features (route to /spectre:plan + /spectre:create_tasks) or for pure execution with a plan already in hand."
 user-invocable: true
 ---
 
-# quick_dev
+# quick_dev — Scope → Research → Plan (small/medium tasks)
 
-## Input Handling
+**Purpose:** Take a small/medium task (bug fix, small feature) from a rough ask to a confirmed scope, a grounded research synthesis, and a phased `quick_task_plan.md` — without the full plan/create_tasks pipeline.
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+**Inputs:**
+- `$ARGUMENTS` — the task description (current command args). Read any files the user mentions in full (no limit/offset).
+- Output dir: `docs/tasks/{branch_name}` unless the user specifies one.
 
+**Working set:** the user's task + referenced files; the codebase (via research agents); `{OUT_DIR}/specs/`. Resolve branch/paths via tool reads at runtime, not inline.
 
-# quick_dev: Scope → Research → Plan for Small/Medium Tasks
+**Outputs + DONE:** `{OUT_DIR}/specs/quick_task_plan.md` (scoped filename if one exists), containing exactly these sections:
+1. **Agreed Scope** — Objective · In Scope · Out of Scope · Constraints
+2. **Research Summary** — key codebase findings (file paths, patterns)
+3. **Approach Summary** — strategy, integration points
+4. **Implementation Tasks** — phased, format below
+5. **Success Criteria**
 
-## Description
-- **What** — Lightweight workflow for bug fixes and small features: confirm scope, research via parallel agents, create implementation plan
-- **Outcome** — Validated scope, research synthesis, `quick_task_plan.md` with parent/sub-task structure
+- **Task format:** `## Phase` → `### [1.1] Parent Task` → `- [ ] **1.1.1** Sub-task` → `- [ ] Criterion`. Sub-tasks start with an action verb, name files/components, cite patterns + integration points + constraints; **exclude** code snippets / line-by-line steps; **2–3 acceptance criteria each**.
+- **Bounds:** ~3 phases, ~8 parent tasks max.
+- DONE when: user-confirmed scope, synthesized research, written plan, and **every in-scope item maps to a task with no out-of-scope tasks added** (validate coverage before declaring done).
 
-## ARGUMENTS Input
+**Method / guardrails:**
+- **Step 1 — context, reply-first.** Respond before any tool call. If `$ARGUMENTS` lacks task context, ask "What are you trying to build or fix? Share any docs or context." and wait. Make no tool calls and ask no *technical* questions here — research answers those.
+- **Step 2 — confirm functional scope (gate).** Present scope as Objective · ✅ In Scope (behaviors, not implementation) · ❌ Out of Scope · UX Assumptions · Constraints (user-provided only). Scope is **WHAT, not HOW** — do not ask about implementation/technical approach; research settles that. **Wait for the user to confirm or amend; apply changes before proceeding.**
+- **Step 3 — research (parallel, read-only).** Spawn in parallel and wait for all: `@spectre:finder` (where files live), `@spectre:analyst` (how code works), `@spectre:patterns` (similar implementations), and `@spectre:web-research` *only if the user asks*. Synthesize in-thread (file paths, patterns, architectural decisions) — no intermediate report files.
+- **Step 4 — clarify (gate).** Use `AskUserQuestion` for 2–4 questions, **only** on what research revealed needs a user decision (UX preferences, behavioral trade-offs); give Pros/Cons/Trade-offs for multi-option ones. Never re-ask scope (settled Step 2) or technical questions answerable from code.
+- **Step 5 — write the plan.** `mkdir -p "${OUT_DIR}/specs"`; generate `quick_task_plan.md` per the structure above, then validate coverage.
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
+**Handoff:** Present `**Task Plan Created**: {path}` with `✅ Scope | ✅ Research | ✅ Plan`. End with a one-line Next Steps: implement directly, or if the plan exceeds the bounds (>~3 phases / ~8 parent tasks) suggest **`/spectre:create_tasks`** for full task generation.
 
-## Step 1 - Gather Context
-
-- **Action** — ImmediateReply: Respond before running tools
-  - **If** ARGUMENTS has task context → proceed to Step 2
-  - **Else** → ask: "What are you trying to build or fix? Share any docs or context."
-  - **CRITICAL**: No tool calls here. No technical questions — research answers those.
-- **Wait** — Only if ARGUMENTS empty
-
-- **Action** — ReadFiles: Read any files mentioned by user completely (no limit/offset)
-
-## Step 2 - Confirm Scope (Functional Only)
-
-**Scope is about WHAT we're building, not HOW.** Technical approach comes from research.
-
-**DO NOT ask about**: implementation approach or technical decisions — research answers those.
-
-- **Action** — PresentScope:
-  > **📋 Scope Confirmation**
-  >
-  > **Objective**: {functional outcome}
-  >
-  > **✅ In Scope**: {what the feature does — behaviors, not implementation}
-  >
-  > **❌ Out of Scope**: {what we're NOT building}
-  >
-  > **UX Assumptions**: {how you imagine the user flow working}
-  >
-  > **Constraints**: {user-provided only}
-  >
-  > Any items to move between IN/OUT? Clarify UX flow? Reply with changes or 'Confirmed'.
-
-- **Wait** — User confirms or provides changes (apply and proceed)
-
-## Step 3 - Research
-
-- **Action** — SpawnAgents: Launch parallel research agents
-  - `@finder` — find WHERE files/components live
-  - `@analyst` — understand HOW code works
-  - `@patterns` — find similar implementations
-  - `@web-research` — external docs (only if user asks)
-  - **Wait** for ALL agents to complete
-
-- **Action** — Synthesize: Compile findings with file paths, patterns, architectural decisions
-
-## Step 4 - Clarify Ambiguities
-
-- **Action** — AskClarifyingQuestions: Use AskUserQuestion tool for 2-4 questions
-  - **Only ask** what research revealed needs user decision: UX preferences, behavioral trade-offs
-  - For multi-option questions: include Pros/Cons/Trade-offs
-  - **Never ask** scope questions (settled in Step 2) or technical questions answerable by code
-
-## Step 5 - Create Plan
-
-- **Action** — DetermineOutputDir:
-  - `OUT_DIR=docs/tasks/{branch_name}` (or user-specified)
-  - `mkdir -p "${OUT_DIR}/specs"`
-
-- **Action** — GeneratePlan: Create `{OUT_DIR}/specs/quick_task_plan.md` (use scoped name if exists)
-
-  **Plan Structure**:
-  1. Agreed Scope (Objective, In/Out of Scope, Constraints)
-  2. Research Summary (key codebase findings)
-  3. Approach Summary (strategy, integration points)
-  4. Implementation Tasks (see format below)
-  5. Success Criteria
-
-  **Task Format**: `## Phase` → `### [1.1] Parent Task` → `- [ ] **1.1.1** Sub-task` → `- [ ] Criterion`
-
-  **Sub-task guidance**:
-  - Start with action verb, use technical terms, name files/components
-  - Include: patterns, integration points, constraints
-  - Exclude: code snippets, line-by-line steps
-  - 2-3 acceptance criteria per sub-task
-
-  **Bounds**: ~3 phases, ~8 parent tasks max. If exceeds → suggest `/spectre:create_tasks`
-
-- **Action** — ValidateCoverage: Verify all in-scope items have tasks; no out-of-scope tasks added
-
-## Step 6 - Document & Handoff
-
-- **Action** — PresentSummary:
-  > **Task Plan Created**: `{path}`
-  > ✅ Scope | ✅ Research | ✅ Plan
-
-- **Action** — RenderFooter: Use `@skill-spectre:spectre-guide` skill for Next Steps
+**Escalate if:** scope balloons past small/medium (route to `/spectre:plan`); the plan would exceed ~3 phases / ~8 parent tasks (suggest `/spectre:create_tasks`); or research surfaces a scope conflict the user must resolve.

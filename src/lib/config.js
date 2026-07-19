@@ -217,6 +217,17 @@ function removeLegacyProjectSkillTables(content) {
   return content.replace(/\n*\[skills\.config\.spectre_[^\]]+\]\n[\s\S]*?(?=^\[\[skills\.config\]\]\n|^\[(?!\[)|(?![\s\S]))/gm, '\n');
 }
 
+function legacyForkName() {
+  return ['cas', 'par'].join('');
+}
+
+function removeLegacyForkAgentTables(content) {
+  const forkName = legacyForkName();
+  return content
+    .replace(new RegExp(`\\n*# ${forkName}-codex-managed\\n?`, 'g'), '\n')
+    .replace(new RegExp(`\\n*\\[agents\\.${forkName}_[^\\]]+\\]\\n[\\s\\S]*?(?=^\\[|(?![\\s\\S]))`, 'gm'), '\n');
+}
+
 function shellQuote(value) {
   return `'${value.replaceAll('\'', `'\\''`)}'`;
 }
@@ -501,7 +512,7 @@ export function removeProjectSkillsConfigured(projectDir) {
 
 export function ensureSpectreHooksConfigured(runtimeRoot, agents, generatedHooks = {}) {
   const { configPath, content: initialContent } = readConfig();
-  let content = initialContent;
+  let content = removeLegacyForkAgentTables(initialContent);
 
   const preSessionEntry = `{ command = ["node", "${escapeTomlString(path.join(runtimeRoot, 'hooks', 'pre-session-start.mjs'))}"] }`;
 

@@ -1,6 +1,6 @@
 ---
 name: feature-codex-spectre-implementation
-description: Use when modifying the Codex SPECTRE install flow, SessionStart continuity, project skill syncing, registry injection, or Codex-specific runtime files.
+description: Use when modifying the Codex SPECTRE install flow, SessionStart continuity, project skill syncing, registry injection, or Codex-specific runtime files. TRIGGER when: codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor
 user-invocable: false
 ---
 
@@ -9,218 +9,135 @@ user-invocable: false
 **Trigger**: codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor
 **Confidence**: high
 **Created**: 2026-03-30
-**Updated**: 2026-05-01
-**Version**: 1
+**Updated**: 2026-07-19
+**Version**: 5
 
-## What is Codex SPECTRE?
+## Current Design
 
-The Codex SPECTRE implementation is the Codex-native port of the original Claude Code SPECTRE plugin. It replaces Claude slash-command/plugin behavior with a Codex install that writes workflow skills, subagent TOML configs, runtime hook/tool scripts, and project-local knowledge files so Codex can run the same SPECTRE workflow natively.
+Codex SPECTRE installs the workflow as Codex-native skills, subagent TOML configs, and generated SessionStart hooks. Project knowledge and session continuity are written into managed `AGENTS.override.md` blocks so hook output stays short.
 
-The important architectural point is that this is a hybrid system: shared Codex assets live under `.codex/`, while project-specific memory and learned knowledge live under `.spectre/`, `docs/tasks/.../session_logs/`, `AGENTS.override.md`, and `.agents/skills/`. That split is what makes SessionStart continuity and registry-driven knowledge loading work without stuffing the full payload into the visible Codex hook output.
+Reusable project knowledge is both configured as normal skills and injected as a compact trigger registry:
 
-## Why Use It? / Use Cases
+- `spectre-learn` writes project skills under `.agents/skills/{category}-{slug}/SKILL.md`.
+- The recall registry lives at `.agents/skills/spectre-recall/references/registry.toon`.
+- `spectre-recall` is generated as an explicit search/load skill.
+- Project installs sync `.agents/skills/*/SKILL.md` into Codex `[[skills.config]]`.
+- `spectre-apply` contains a `{{REGISTRY}}` placeholder that both the hook and `src/lib/knowledge.js` substitute before writing the managed knowledge block.
+- `bootstrap` → `handoff-resume` → `load-knowledge` is the required SessionStart order.
 
-### 1. Install SPECTRE into Codex for a repo or a user
+Workflow task execution now uses a two-artifact contract:
 
-Use this when you want `spectre-scope`, `spectre-plan`, `spectre-execute`, and the rest of the workflow available inside Codex. The CLI supports `project` scope for repo-local installs and `user` scope for global installs.
+- `spectre-create_tasks` writes `{OUT_DIR}/specs/execute.md` plus `{OUT_DIR}/specs/tasks.json`.
+- `execute.md` is the compact primary-agent index (document manifest, task detail source, execution summary, wave plan, parent-task index, slicing rules).
+- `tasks.json` is the full mutable detail/status source (`meta` + `phases[]`); primary execution/review/validation consumers should slice it by parent task id instead of reading the whole file.
+- Do not reintroduce the old `specs/tasks.md` task-list flow or a Markdown fallback/converter.
 
-Example:
+Review gates use one cross-runtime contract:
 
-```bash
-npx spectre install codex --scope project
-```
+- `spectre-plan_review`, `spectre-task_review`, and `spectre-code_review` prefer the opposing CLI with an explicit high-effort model: Codex launches Claude Code with `--model fable --effort high`; Claude Code launches Codex with `-m gpt-5.6-sol -c 'model_reasoning_effort="high"'`.
+- If the opposing runtime is unavailable or fails validation after one repair attempt, the gate dispatches one native reviewer with the same manifest, adversarial lenses, severity/evidence rules, exclusions, and report schema. This fallback does not block completion and must record its reason plus runtime/model metadata.
+- `spectre-code_review` is an adversarial, evidence-gated review for correctness, regressions/integration, security, performance/reliability, overengineering, and test adequacy. It does not use subjective numeric scores.
+- `spectre-execute` delegates its final cumulative review to `spectre-code_review --orchestrated`; do not reintroduce a separate final-review prompt inside execute.
+- Canonical workflow skills live under `plugins/spectre/skills/`; regenerate `plugins/spectre-codex/` and keep regression assertions in `scripts/test_sync-codex.cjs` aligned with these invariants.
 
-### 2. Preserve session continuity across Codex sessions
+## Install Flow
 
-Use this when you want the latest SPECTRE handoff from `docs/tasks/{branch}/session_logs/*_handoff.json` to be restored automatically at the start of a new Codex session.
-
-The design intentionally uses a `SessionStart` hook for a one-line visible status and a managed `AGENTS.override.md` block for the full hidden continuity payload.
-
-### 3. Make learned project knowledge auto-discoverable
-
-Use this when you want skills created by `spectre-learn` to be available to Codex, and when you want trigger keywords from the registry to be injected into startup context so the agent can match on triggers before searching the codebase.
-
-This is the key difference between "a skill exists on disk" and "Codex knows what project knowledge exists right now."
-
-## User Flows
-
-### Flow 1: Install SPECTRE into Codex
-
-1. Run `spectre install codex`.
-2. `src/main.js` parses `install codex`, resolves scope, and sets `CODEX_HOME` for project installs.
-3. `installCodex()` in `src/lib/install.js` writes:
-   - shared skills into `CODEX_HOME/skills/`
+1. `src/main.js` parses `install codex`, resolves scope, and switches `CODEX_HOME` to `./.codex` for project installs.
+2. `installCodex()` in `src/lib/install.js` copies generated Codex assets from `plugins/spectre-codex/`:
    - workflow skills into `CODEX_HOME/skills/`
    - agent TOML configs into `CODEX_HOME/spectre/agents/`
-   - runtime scripts into `CODEX_HOME/spectre/hooks/` and `CODEX_HOME/spectre/tools/`
-4. `ensureSpectreHooksConfigured()` in `src/lib/config.js` enables `features.hooks = true`, `features.skills = true`, and `features.multi_agent = true`, and registers the `SessionStart` hook in `hooks.json`.
-5. For project installs, `installProjectFiles()` creates `.spectre/manifest.json`, ensures `.agents/skills/spectre-recall/` exists, and prepares the project for persisted knowledge/session syncing.
-6. `syncProjectSkillsConfigured()` adds `[[skills.config]]` entries pointing at project skills under `.agents/skills/`.
-7. For user installs, the generated `SessionStart` hooks are registered globally and must run in any current workspace even when that workspace does not have `.spectre/manifest.json`.
-
-### Flow 2: Start a new Codex session with SPECTRE installed
-
-1. Codex fires the `SessionStart` hook from `hooks.json`.
-2. Generated hooks under `.codex/spectre/hooks/scripts/` run in order, including `bootstrap.mjs`, `handoff-resume.mjs`, and `load-knowledge.mjs`.
-3. Those hooks compute the plugin root from their installed script path when `CLAUDE_PLUGIN_ROOT` is unset, so npm-packed installs do not depend on a local checkout path.
-4. Generated hooks keep hook output short. The knowledge hook writes the apply scaffold into the managed `AGENTS.override.md` knowledge block when the workspace has a Spectre surface (`.spectre/manifest.json`, a registry, or existing SPECTRE-managed override markers), and it returns only a visible status line plus `hookEventName`.
-
-### Flow 3: Learn and reuse project knowledge
-
-1. `spectre-learn` writes or updates a project skill under `.agents/skills/{category}-{slug}/SKILL.md`.
-2. The learning is registered in `.agents/skills/spectre-recall/references/registry.toon`.
-3. The recall skill is regenerated at `.agents/skills/spectre-recall/SKILL.md`.
-4. `syncProjectSkillsConfigured()` ensures those project skills are configured in Codex `config.toml`.
-5. On the next session start, the knowledge adapter refreshes `AGENTS.override.md`, so Codex sees the apply coercion/skill instructions through the same managed override channel used for continuity instead of through `additionalContext`.
-
-## Technical Design
-
-The implementation is split into four layers:
-
-### 1. CLI and scope management
-
-`src/main.js` is the entrypoint. It parses `install`, `uninstall`, `update`, and `doctor`, resolves the project directory, and switches `CODEX_HOME` to `./.codex` for project installs. That means the rest of the code can write to "Codex home" generically without special-casing every path.
-
-### 2. Runtime asset installation
-
-`src/lib/install.js` installs pre-generated Codex assets from `plugins/spectre-codex/`. It:
-- copies workflow skills from `plugins/spectre-codex/skills/`
-- copies Codex agent TOML configs from `plugins/spectre-codex/agents/`
-- copies generated hook scripts and `hooks.json` from `plugins/spectre-codex/hooks/` into `CODEX_HOME/spectre/hooks/`
-- installs only small compatibility tool entrypoints under `CODEX_HOME/spectre/tools/`
-
-The key invariant is that command markdowns are shims; workflow bodies live in skills, and Codex install must copy the generated Codex tree instead of regenerating workflow skills from command files.
-
-When adding auxiliary files inside a skill directory, such as examples, fixtures, or templates, place
-documentation examples under `references/` unless they are executable scripts or runtime assets, and
-make their references skill-local. `sync-codex` copies the whole canonical skill directory into
-`plugins/spectre-codex/skills/{skill}/`, and Codex install then copies that generated directory into
-`.codex/skills/{skill}/`. A path like `plugins/spectre/skills/{skill}/fixture.json` works only in the
-repo checkout and breaks after install. Prefer `fixture.json`, `./fixture.json`, or a relative sibling
-path like `../spectre-execute/SKILL.md` when the installed skill must be able to follow the reference.
-
-### 3. Codex config and hook wiring
-
-`src/lib/config.js` owns `config.toml` and `hooks.json`. It enables Codex features, writes `[agents.spectre_*]` tables, and registers/removes the `SessionStart` hook without clobbering unrelated existing hook handlers.
-
-It also syncs project skills by scanning `.agents/skills/*/SKILL.md` and rendering them into `[[skills.config]]` entries. This is how project-learned skills become visible to Codex.
-
-### 4. Project continuity and knowledge injection
-
-`src/lib/project.js` and `src/lib/knowledge.js` own the project-local side:
-- `.spectre/manifest.json`
-- `.agents/skills/spectre-recall/`
-- `AGENTS.override.md`
-- handoff lookup in `docs/tasks/{branch}/session_logs/`
-
-The most important logic is in `buildKnowledgeOverrideBody()`: it starts from the shared `spectre-apply` skill and replaces the `## Registry Location` section with the actual current registry contents or the "no knowledge yet" message. That means the startup context contains both the behavioral rule and the current trigger catalog.
+   - generated hooks into `CODEX_HOME/spectre/hooks/`
+   - runtime helper scripts into `CODEX_HOME/spectre/tools/`
+3. `installCodex()` removes the fork-era sibling runtime and agent tables before writing current `[agents.spectre_*]` definitions.
+4. `ensureSpectreHooksConfigured()` enables `features.hooks`, `features.skills`, and `features.multi_agent`, then materializes generated SessionStart commands into `CODEX_HOME/hooks.json` without clobbering unrelated handlers.
+5. For project installs, `installProjectFiles()` creates `.spectre/manifest.json`, initializes recall files, clears stale managed blocks, and calls `syncProjectSkillsConfigured()`.
+6. On SessionStart, the hooks refresh session and knowledge blocks only when the workspace has the relevant Spectre surface.
 
 ## Key Files
 
-- `src/main.js`
-  CLI entrypoint. Parses commands, resolves scope, and switches `CODEX_HOME` for project installs.
-
+- `plugins/spectre/skills/`
+  Canonical Claude/Codex-compatible workflow skill sources.
+- `plugins/spectre-codex/`
+  Generated Codex bundle. Regenerate with `npm run sync-codex -- --quiet`.
 - `src/lib/install.js`
-  Main installer/uninstaller. Generates workflow skills, agent TOML configs, runtime scripts, and invokes project install logic.
-
+  Main installer/uninstaller.
 - `src/lib/config.js`
-  Owns `config.toml` and `hooks.json` mutation, including `features.hooks`, `multi_agent`, `SessionStart`, and `[[skills.config]]` project-skill syncing.
-
+  Owns `config.toml`, `hooks.json`, agent tables, and project skill sync.
 - `src/lib/project.js`
-  Owns session continuity and managed `AGENTS.override.md` blocks for both session state and knowledge injection.
-
+  Owns `.spectre/manifest.json`, handoff lookup, managed override blocks, and legacy cleanup.
 - `src/lib/knowledge.js`
-  Owns registry file creation, recall skill generation, knowledge status messages, and registry embedding into the knowledge override block.
-
+  Owns recall generation and Codex-side `{{REGISTRY}}` substitution.
 - `src/lib/doctor.js`
-  Verifies Codex version, installed runtime/config state, hook registration, and installed workflow/agent/skill coverage.
-
-- `docs/codex-sessionstart-memory.md`
-  Design rationale for the hybrid SessionStart + `AGENTS.override.md` approach, including why `additionalContext` was rejected.
-
-- `src/install.test.js`
-  End-to-end install/uninstall coverage for project installs, hook registration, generated files, and legacy cleanup.
+  Verifies installed runtime/config state and reports stale hook remnants.
 
 ## Common Tasks
 
-### Add or change SessionStart continuity behavior
+### Add or change a workflow skill
 
-Edit:
-- `src/lib/project.js`
-- `src/lib/install.js`
-- `src/lib/config.js`
-
-What to change:
-1. Update how the session block is built in `buildSessionOverrideContent()` or how the knowledge block is built in `syncKnowledgeOverride()`.
-2. If the runtime hook contract changes, update `sessionStartHook()` in `src/lib/install.js`.
-3. If hook registration changes, update `ensureSpectreHooksConfigured()` in `src/lib/config.js`.
-4. Verify with:
+1. Edit `plugins/spectre/skills/spectre-*/SKILL.md`.
+2. Run:
    ```bash
-   node --test src/config.test.js src/install.test.js
+   npm run sync-codex -- --quiet
+   npm run sync-codex -- --check --quiet
    ```
-
-### Add a new learned project skill and make sure Codex sees it
-
-1. Write the skill under:
-   ```text
-   .agents/skills/{category}-{slug}/SKILL.md
-   ```
-2. Register it in:
-   ```text
-   .agents/skills/spectre-recall/references/registry.toon
-   ```
-3. Regenerate:
-   ```text
-   .agents/skills/spectre-recall/SKILL.md
-   ```
-4. Refresh project context so Codex config and the managed knowledge block stay in sync:
+3. Run focused tests when installer or translator behavior changed:
    ```bash
-   node .codex/spectre/tools/refresh-project-context.mjs --project-root "$PWD"
+   node --test src/install.test.js src/config.test.js scripts/test_sync-codex.cjs
+   ```
+4. If changing `spectre-create_tasks` task artifacts, also validate both task fixtures parse:
+   ```bash
+   node -e "JSON.parse(require('fs').readFileSync('plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json','utf8'))"
+   ```
+
+### Add a learned project skill and make sure Codex sees it
+
+1. Write the skill under `.agents/skills/{category}-{slug}/SKILL.md`.
+2. Register it in `.agents/skills/spectre-recall/references/registry.toon`.
+3. Regenerate `.agents/skills/spectre-recall/SKILL.md`.
+4. Refresh project install state:
+   ```bash
+   npx @codename_inc/spectre update codex --scope project --project-dir "$PWD"
    ```
 
 ### Debug why a project skill is not being used
 
 Check, in order:
+
 1. The skill exists at `.agents/skills/{name}/SKILL.md`.
-2. The registry entry exists in `.agents/skills/spectre-recall/references/registry.toon`.
+2. Its frontmatter description contains concrete trigger language.
 3. `config.toml` contains a `[[skills.config]]` entry for the skill path.
-4. `hooks.json` contains `SessionStart` hooks pointing at `spectre/hooks/scripts/*.mjs`, especially `load-knowledge.mjs`.
-6. Run:
+4. If explicit search is needed, the registry entry exists in `.agents/skills/spectre-recall/references/registry.toon`.
+5. `hooks.json` contains SessionStart commands for `bootstrap.mjs`, `handoff-resume.mjs`, and `load-knowledge.mjs`.
+6. `AGENTS.override.md` contains an inlined registry and no raw `{{REGISTRY}}`.
+7. Run:
    ```bash
-   npx spectre doctor codex --scope project --verify-hooks
+   npx @codename_inc/spectre doctor codex --scope project
    ```
 
-## Example
+## Expected Install Artifacts
 
-### Example install artifacts
-
-After `npx spectre install codex --scope project`, expect files like:
+After `npx @codename_inc/spectre install codex --scope project`, expect files like:
 
 ```text
 .codex/config.toml
 .codex/hooks.json
-.codex/skills/spectre-scope/SKILL.md
 .codex/skills/spectre-apply/SKILL.md
+.codex/skills/spectre-scope/SKILL.md
 .codex/spectre/hooks/hooks.json
 .codex/spectre/hooks/scripts/bootstrap.mjs
 .codex/spectre/hooks/scripts/handoff-resume.mjs
 .codex/spectre/hooks/scripts/load-knowledge.mjs
-.codex/spectre/tools/sync-session-override.mjs
+.codex/spectre/hooks/scripts/register_learning.mjs
 .codex/spectre/agents/dev.toml
 .spectre/manifest.json
 .agents/skills/spectre-recall/SKILL.md
 .agents/skills/spectre-recall/references/registry.toon
 ```
 
-### Example design invariant
+Do not reintroduce:
 
-If you are tempted to put the full handoff into hook output, don't. The current design deliberately keeps the hook output short and writes the full continuity into managed `AGENTS.override.md` blocks instead.
-
-## Pitfalls
-
-- `SessionStart` does not fire just because the Codex UI opens. It runs on the first real turn of a new/resumed session.
-- Runtime hooks are copied generated assets. Avoid reintroducing package-cache `file://` imports, local checkout path assumptions, or `.spectre/manifest.json` gates for user-scope startup behavior.
-- Skill assets are copied installed assets too. Do not hard-code `plugins/spectre/...` paths inside skill fixtures/templates unless the reference is explicitly repo-only; installed Codex skills should use skill-local paths.
-- The standalone `.codex/skills/spectre-apply/SKILL.md` is the source for the managed startup knowledge block, but Codex should receive that block through `AGENTS.override.md`; do not put the apply coercion into SessionStart `additionalContext`.
-- Project knowledge without a registry entry is incomplete. The skill may exist on disk, but trigger-based discovery will be missing.
-- Project installs are the only mode that create `.spectre/manifest.json` and initial project-local knowledge/session files. User installs write global Codex assets and global hooks that still run in every workspace; those hooks should degrade to a ready banner when no project registry or handoff exists.
+- `spectre-evaluate`
+- `spectre-architecture_review`
+- fork-name CLI aliases or duplicate runtime trees
+- raw `{{REGISTRY}}` in generated or installed context
+- startup payloads in `additionalContext`; use managed `AGENTS.override.md` blocks

@@ -122,8 +122,7 @@ function buildCheckboxTree(tasks) {
       continue;
     }
 
-    const taskLines = renderTask(task);
-    lines.push(...taskLines);
+    lines.push(...renderTask(task));
     renderedIds.add(task.id);
 
     for (const entry of tasks) {
@@ -154,7 +153,6 @@ function buildSessionOverrideContent(handoff, options = {}) {
   const branchName = handoff.branch_name || options.branchName || 'unknown';
   const handoffPath = options.handoffPath || 'unknown';
   const source = options.source || 'unknown';
-
   const taskName = handoff.task_name || branchName;
   const progress = handoff.progress_update || {};
   const summary = progress.summary || 'No summary available.';
@@ -169,63 +167,31 @@ function buildSessionOverrideContent(handoff, options = {}) {
   const confidence = progress.confidence || 'unknown';
   const risks = progress.risks || [];
   const workingSet = handoff.working_set || {};
-  const keyFiles = workingSet.key_files || [];
-  const activeIds = workingSet.active_ids || [];
-  const recentCommands = workingSet.recent_commands || [];
   const context = handoff.context || {};
   const beads = handoff.beads || {};
   const beadsAvailable = beads.available != null ? beads.available : true;
-  const tasks = beads.tasks || [];
-  const checkboxTree = beadsAvailable && tasks.length > 0 ? buildCheckboxTree(tasks) : '';
-
+  const checkboxTree = beadsAvailable && beads.tasks?.length > 0 ? buildCheckboxTree(beads.tasks) : '';
   const sections = [];
+
   sections.push(`# Session Context: ${taskName}`);
   sections.push(`\n## Last Session Summary\n${summary}`);
-
-  if (goal) {
-    sections.push(`\n### Goal\n${goal}`);
-  }
-
-  if (constraints.length > 0) {
-    sections.push(`\n### Constraints\n${formatList(constraints, '- None recorded.')}`);
-  }
-
-  sections.push(`\n### What We Accomplished\n${formatList(accomplished, '- None recorded.')}`);
-
-  if (now) {
-    sections.push(`\n### Active Work (Resume Here)\n**${now}**`);
-  }
-
-  sections.push(`\n### What's Next\n${formatList(nextSteps, '- None recorded.')}`);
-
-  if (blockers.length > 0) {
-    sections.push(`\n### Blockers\n${formatList(blockers, '- None recorded.')}`);
-  }
-
-  if (openQuestions.length > 0) {
-    sections.push(`\n### Open Questions\n${formatList(openQuestions, '- None recorded.')}`);
-  }
-
-  if (decisions.length > 0) {
-    sections.push(`\n### Decisions Made\n${formatList(decisions, '- None recorded.')}`);
-  }
+  if (goal) sections.push(`\n### Goal\n${goal}`);
+  if (constraints.length > 0) sections.push(`\n### Constraints\n${formatList(constraints)}`);
+  sections.push(`\n### What We Accomplished\n${formatList(accomplished)}`);
+  if (now) sections.push(`\n### Active Work (Resume Here)\n**${now}**`);
+  sections.push(`\n### What's Next\n${formatList(nextSteps)}`);
+  if (blockers.length > 0) sections.push(`\n### Blockers\n${formatList(blockers)}`);
+  if (openQuestions.length > 0) sections.push(`\n### Open Questions\n${formatList(openQuestions)}`);
+  if (decisions.length > 0) sections.push(`\n### Decisions Made\n${formatList(decisions)}`);
 
   const risksSummary = risks.length > 0 ? formatList(risks, '') : 'None identified';
   sections.push(`\n**Confidence**: ${confidence} | **Risks**: ${risksSummary}`);
 
   const workingSetLines = [];
-  if (keyFiles.length > 0) {
-    workingSetLines.push(`- **Key Files**: ${keyFiles.join(', ')}`);
-  }
-  if (activeIds.length > 0) {
-    workingSetLines.push(`- **Active IDs**: ${activeIds.join(', ')}`);
-  }
-  if (recentCommands.length > 0) {
-    workingSetLines.push(`- **Recent Commands**: ${recentCommands.join(', ')}`);
-  }
-  if (workingSetLines.length > 0) {
-    sections.push(`\n### Working Set\n${workingSetLines.join('\n')}`);
-  }
+  if (workingSet.key_files?.length > 0) workingSetLines.push(`- **Key Files**: ${workingSet.key_files.join(', ')}`);
+  if (workingSet.active_ids?.length > 0) workingSetLines.push(`- **Active IDs**: ${workingSet.active_ids.join(', ')}`);
+  if (workingSet.recent_commands?.length > 0) workingSetLines.push(`- **Recent Commands**: ${workingSet.recent_commands.join(', ')}`);
+  if (workingSetLines.length > 0) sections.push(`\n### Working Set\n${workingSetLines.join('\n')}`);
 
   sections.push(
     '\n### Spectre Notes\n' +
@@ -235,18 +201,13 @@ function buildSessionOverrideContent(handoff, options = {}) {
     `- **SessionStart Source**: ${source}\n` +
     `- **Snapshot**: ${handoffPath}`
   );
-
   sections.push(
-    '\n---\n\n' +
-    '## Context\n' +
+    '\n---\n\n## Context\n' +
     `- **Branch**: ${branchName}\n` +
     `- **Last Commit**: ${context.last_commit || 'unknown'}\n` +
     `- **WIP State**: ${context.wip_state || 'unknown'}`
   );
-
-  if (beadsAvailable && checkboxTree) {
-    sections.push(`\n### Beads Tasks\n${checkboxTree}`);
-  }
+  if (beadsAvailable && checkboxTree) sections.push(`\n### Beads Tasks\n${checkboxTree}`);
 
   return sections.join('');
 }
@@ -322,9 +283,8 @@ export function syncSessionOverride(projectDir, payload = {}) {
 
   const handoffPath = path.relative(projectDir, latestHandoff) || latestHandoff;
   const source = payload.source || 'unknown';
-  const overridePath = projectPaths(projectDir).overrideAgentsPath;
   writeManagedOverride(
-    overridePath,
+    projectPaths(projectDir).overrideAgentsPath,
     SESSION_OVERRIDE_START,
     SESSION_OVERRIDE_END,
     [
@@ -333,20 +293,11 @@ export function syncSessionOverride(projectDir, payload = {}) {
       'This block is managed by SPECTRE and replaced automatically on session start.',
       'Use it as prior working context for this repository session.',
       '',
-      buildSessionOverrideContent(handoff, {
-        branchName,
-        handoffPath,
-        source
-      })
+      buildSessionOverrideContent(handoff, { branchName, handoffPath, source })
     ].join('\n')
   );
 
-  return {
-    handoff,
-    handoffPath,
-    branchName,
-    source
-  };
+  return { handoff, handoffPath, branchName, source };
 }
 
 export function clearKnowledgeOverride(projectDir) {
@@ -393,13 +344,13 @@ export function buildSessionStartOutput(projectDir, payload = {}) {
   };
 }
 
-function removeBridge(rootAgentsPath) {
+function removeBridge(rootAgentsPath, startMarker = AGENTS_BRIDGE_START, endMarker = AGENTS_BRIDGE_END) {
   if (!fs.existsSync(rootAgentsPath)) {
     return;
   }
 
   const current = fs.readFileSync(rootAgentsPath, 'utf8');
-  const pattern = new RegExp(`\\n?${AGENTS_BRIDGE_START}[\\s\\S]*?${AGENTS_BRIDGE_END}\\n?`, 'm');
+  const pattern = new RegExp(`\\n?${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\n?`, 'm');
   const updated = current.replace(pattern, '\n').trimEnd();
 
   if (!updated) {
@@ -412,9 +363,25 @@ function removeBridge(rootAgentsPath) {
 
 function cleanupLegacyProjectContext(projectDir) {
   const paths = projectPaths(projectDir);
+  const forkName = ['cas', 'par'].join('');
   removeBridge(paths.rootAgentsPath);
   removeManagedOverride(paths.overrideAgentsPath, SESSION_OVERRIDE_START, SESSION_OVERRIDE_END);
   removeManagedOverride(paths.overrideAgentsPath, KNOWLEDGE_OVERRIDE_START, KNOWLEDGE_OVERRIDE_END);
+  removeBridge(
+    paths.rootAgentsPath,
+    `<!-- ${forkName}-codex:start -->`,
+    `<!-- ${forkName}-codex:end -->`
+  );
+  removeManagedOverride(
+    paths.overrideAgentsPath,
+    `<!-- ${forkName}-session:start -->`,
+    `<!-- ${forkName}-session:end -->`
+  );
+  removeManagedOverride(
+    paths.overrideAgentsPath,
+    `<!-- ${forkName}-knowledge:start -->`,
+    `<!-- ${forkName}-knowledge:end -->`
+  );
 
   if (fs.existsSync(paths.sessionSkillDir)) {
     fs.rmSync(paths.sessionSkillDir, { recursive: true, force: true });

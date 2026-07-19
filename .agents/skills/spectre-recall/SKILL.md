@@ -6,15 +6,15 @@ user-invocable: true
 
 # Recall Knowledge
 
-Search and load relevant knowledge from the project's spectre learnings into your context.
+Search and load relevant knowledge from the project's Spectre learnings into your context.
 
 ## Registry
 
-# SPECTRE Knowledge Registry
+# Spectre Knowledge Registry
 # Format: skill-name|category|triggers|description
 
-feature-codex-spectre-implementation|feature|codex, spectre, codex install, sessionstart, agents.override, registry, spectre-learn, spectre-recall, hooks.json, config.toml, doctor|Use when modifying the Codex SPECTRE install flow, SessionStart continuity, project skill syncing, registry injection, or Codex-specific runtime files.
-release|workflow|release, version bump, changelog, github release, npm publish, codex sync, local codex install|Run the SPECTRE release workflow, including version bumps, Codex sync, local Codex install verification, GitHub release, and npm publish.
+feature-codex-spectre-implementation|feature|codex, spectre, codex install, project skills, registry, spectre-learn, spectre-recall, config.toml, doctor|Use when modifying the Codex SPECTRE install flow, project skill syncing, learn/recall registry files, or Codex-specific runtime files.
+release|workflow|release, version bump, changelog, github release, npm publish, codex sync, local codex install|Run the Spectre release workflow, including version bumps, Codex sync, local Codex install verification, GitHub release, and npm publish.
 
 ## How to Use
 
@@ -22,7 +22,7 @@ release|workflow|release, version bump, changelog, github release, npm publish, 
 2. **Load matching skills**: `Skill({skill-name})`
 3. **Apply knowledge** — use it to guide your approach
 
-The registry above is a fallback reference. For session-start discovery, triggers are embedded in each skill's frontmatter description.
+The registry above is a fallback reference. Discovery relies on each installed skill's frontmatter description.
 
 ## Search Commands
 
@@ -36,4 +36,3 @@ The registry above is a fallback reference. For session-start discovery, trigger
 **Multiple matches** → List options, ask user which to load
 
 **No matches** → Suggest `/learn` to capture new knowledge
-
