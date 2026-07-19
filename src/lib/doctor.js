@@ -41,7 +41,7 @@ export function codexVersion() {
   return versionMatch[1];
 }
 
-function staleSpectreHookConfigured() {
+function spectreHooksConfigured() {
   const hooksPath = codexHooksConfigPath();
   if (!fs.existsSync(hooksPath)) {
     return { configured: false, error: null };
@@ -78,7 +78,7 @@ function skillPath(skillName) {
 export function runDoctor({ verifyHooks = false, json = false, projectDir = process.cwd() } = {}) {
   const home = resolveCodexHome();
   const version = codexVersion();
-  const hookConfigStatus = staleSpectreHookConfigured();
+  const hookConfigStatus = spectreHooksConfigured();
   const result = {
     codexHome: home,
     codexVersion: version,
@@ -95,7 +95,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     },
     hooks: {
       verifyRequested: verifyHooks,
-      staleSpectreHooksConfigured: false,
+      spectreHooksConfigured: false,
       hooksFeatureEnabled: false,
       hiddenContextInjection: 'none',
       hooksConfigPath: codexHooksConfigPath(),
@@ -113,7 +113,10 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   if (fs.existsSync(codexConfigPath())) {
     const config = fs.readFileSync(codexConfigPath(), 'utf8');
     result.hooks.hooksFeatureEnabled = /^hooks\s*=\s*true\s*$/m.test(config);
-    result.hooks.staleSpectreHooksConfigured = hookConfigStatus.configured;
+    result.hooks.spectreHooksConfigured = hookConfigStatus.configured;
+    if (hookConfigStatus.configured) {
+      result.hooks.hiddenContextInjection = 'agents_override_managed_block';
+    }
     if (hookConfigStatus.error) {
       result.hooks.configError = hookConfigStatus.error;
     }
@@ -133,7 +136,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
     .every(skill => fs.existsSync(skillPath(skill)));
 
   if (verifyHooks) {
-    result.hooks.manualVerification = 'Spectre no longer installs startup hooks or hidden context injection; no interactive hook verification is required.';
+    result.hooks.manualVerification = 'SessionStart hooks are configured; managed context is refreshed when the current workspace has a Spectre knowledge or handoff surface.';
   }
 
   if (json) {
@@ -146,7 +149,7 @@ export function runDoctor({ verifyHooks = false, json = false, projectDir = proc
   process.stdout.write(`Supported: ${result.supported ? 'yes' : 'no'} (requires >= ${result.minVersion})\n`);
   process.stdout.write(`Config present: ${result.installed.config ? 'yes' : 'no'}\n`);
   process.stdout.write(`Runtime present: ${result.installed.runtimeDir ? 'yes' : 'no'}\n`);
-  process.stdout.write(`Stale Spectre hooks configured: ${result.hooks.staleSpectreHooksConfigured ? 'yes' : 'no'}\n`);
+  process.stdout.write(`Spectre hooks configured: ${result.hooks.spectreHooksConfigured ? 'yes' : 'no'}\n`);
   process.stdout.write(`hooks.json present: ${result.hooks.hooksConfigPresent ? 'yes' : 'no'}\n`);
   process.stdout.write(`Hooks feature enabled: ${result.hooks.hooksFeatureEnabled ? 'yes' : 'no'}\n`);
   process.stdout.write(`Hidden context injection: ${result.hooks.hiddenContextInjection}\n`);

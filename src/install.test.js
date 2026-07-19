@@ -110,6 +110,26 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'bin', 'codex')));
     assert.ok(!fs.existsSync(path.join(codeHome, 'prompts', 'spectre:scope.md')));
 
+    const doctor = JSON.parse(execFileSync(process.execPath, [
+      path.join(process.cwd(), 'bin', 'spectre.js'),
+      'doctor',
+      'codex',
+      '--scope',
+      'project',
+      '--project-dir',
+      projectDir,
+      '--json'
+    ], {
+      env: {
+        ...process.env,
+        CODEX_HOME: codeHome
+      },
+      encoding: 'utf8'
+    }));
+    assert.equal(doctor.hooks.spectreHooksConfigured, true);
+    assert.equal(doctor.hooks.hiddenContextInjection, 'agents_override_managed_block');
+    assert.equal('staleSpectreHooksConfigured' in doctor.hooks, false);
+
     execFileSync('codex', ['--version'], {
       env: {
         ...process.env,
@@ -124,6 +144,35 @@ test('project install writes workflow skills, agent config, and memory hooks', {
       process.env.CODEX_HOME = previousCodexHome;
     }
   }
+});
+
+test('doctor reports malformed hooks config without claiming hooks are active', { concurrency: false }, () => {
+  const projectDir = makeProject();
+  const codeHome = path.join(projectDir, '.codex');
+  fs.mkdirSync(codeHome, { recursive: true });
+  fs.writeFileSync(path.join(codeHome, 'config.toml'), '[features]\nhooks = true\n');
+  fs.writeFileSync(path.join(codeHome, 'hooks.json'), '{invalid json');
+
+  const doctor = JSON.parse(execFileSync(process.execPath, [
+    path.join(process.cwd(), 'bin', 'spectre.js'),
+    'doctor',
+    'codex',
+    '--scope',
+    'project',
+    '--project-dir',
+    projectDir,
+    '--json'
+  ], {
+    env: {
+      ...process.env,
+      CODEX_HOME: codeHome
+    },
+    encoding: 'utf8'
+  }));
+
+  assert.equal(doctor.hooks.spectreHooksConfigured, false);
+  assert.equal(doctor.hooks.hiddenContextInjection, 'malformed_hooks_json');
+  assert.match(doctor.hooks.configError, /Unexpected token|Expected property name/);
 });
 
 test('user install installs skills, agents, and global generated hooks', { concurrency: false }, () => {
