@@ -1,0 +1,35 @@
+# Skills expected in plugins/spectre/skills/.
+# Gate 1 fails if any is missing, or if an unlisted one appears.
+# Skills are added and removed deliberately — update this file in the same commit.
+# Generated 2026-07-14 from the pre-merge tree (29 skills).
+# The caspar merge takes this to 31: +create_pr, +prune, +release, +task_review, -evaluate, -architecture_review.
+
+spectre-apply
+spectre-architecture_review
+spectre-clean
+spectre-code_review
+spectre-create_plan
+spectre-create_tasks
+spectre-create_test_guide
+spectre-evaluate
+spectre-execute
+spectre-fix
+spectre-forget
+spectre-guide
+spectre-handoff
+spectre-kickoff
+spectre-learn
+spectre-plan
+spectre-plan_review
+spectre-prototype
+spectre-quick_dev
+spectre-rebase
+spectre-recall
+spectre-research
+spectre-scope
+spectre-ship
+spectre-sweep
+spectre-tdd
+spectre-test
+spectre-ux
+spectre-validate
