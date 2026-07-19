@@ -61,7 +61,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## Step (5/5) - Execute
 
-- **Action** — Load TDD Skill: Load @spectre-tdd SKILL to use TDD
+- **Action** — Load TDD Skill: `Skill(spectre-tdd)` to use TDD
 - **Action** — Execute Fix: Add Logs and Implement Fix using TDD
 - **Action** — When finished, summarize what you delivered, including providing specific steps for the user to validate.
 
