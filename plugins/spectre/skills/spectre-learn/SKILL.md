@@ -1,27 +1,35 @@
 ---
 name: "spectre-learn"
-description: "Use when the user invokes /learn or asks to remember, save, or capture a pattern, decision, gotcha, procedure, or feature dossier from this session for later re-use (\"please remember\", \"what did we learn?\"). Captures durable project knowledge as an on-demand Skill. Do NOT trigger for simple personal preferences (those go to CLAUDE.md) or for recalling existing knowledge (that is /spectre:recall)."
+description: "Use when the user invokes /learn or asks to remember, save, or capture a pattern, decision, gotcha, procedure, or feature dossier from this session for later re-use (\"please remember\", \"what did we learn?\"). Captures durable project knowledge as a canonical user-level record. Do NOT trigger for simple personal preferences (those go to CLAUDE.md) or for recalling existing knowledge (that is /spectre:recall)."
 user-invocable: true
 ---
 
 # Learning Agent
 
-Capture durable project knowledge as a project-level Skill, registered for on-demand recall. When invoked (`/learn`, `/spectre:learn`, `Skill(spectre-learn)`) this is the **exclusive** knowledge handler: do NOT write to `MEMORY.md` or any auto-memory system. Goal: someone with zero context becomes productive on the topic without follow-up questions.
+Capture durable project knowledge as a canonical user-level record. When invoked (`/learn` or `/spectre:learn`), this is the **exclusive** knowledge handler: do not write to `MEMORY.md` or any auto-memory system. Goal: someone with zero context becomes productive on the topic without follow-up questions.
 
 ## Inputs
 - **Topic/content** from `$ARGUMENTS`; if absent, infer from the last ~10–20 messages.
-- **`{{project_root}}`** = `CLAUDE_PROJECT_DIR` else `$PWD`. **YOU MUST NOT** traverse up to a git root / main worktree — save where the user is working. Never use `git rev-parse`.
-- **Registry** (read first): `{{project_root}}/.claude/skills/spectre-recall/references/registry.toon` — lines `{skill-name}|{category}|{triggers}|{description}`.
+- **Project root** = `${CLAUDE_PROJECT_DIR:-$PWD}`. Do not traverse to a Git root or main worktree; identify the project from where the user is working. Never use `git rev-parse`.
+- **Canonical knowledge** from `spectre knowledge search`. The command resolves Git and non-Git projects to the readable user-level store under `~/.spectre/projects/`.
 
 ## Working Set
-- Skill files: `{{project_root}}/.claude/skills/{category}-{slug}/SKILL.md`.
-- Recall skill + registry: `{{project_root}}/.claude/skills/spectre-recall/`.
+- Read-only search results and any selected canonical `recordPath`.
+- One temporary proposal directory created with `mktemp -d`; it must be outside the project.
+- The approved core `SKILL.md` plus optional focused `references/` staged under that proposal directory.
 
 ## Method / guardrails
 1. **Context or investigate.** If the topic was discussed in detail or you already understand it this session, proceed. Otherwise enter **Investigation Mode** — do NOT fabricate. Dispatch `@spectre:finder` to map relevant files, then 2–3 read-only `@spectre:analyst` passes answering the category's required-section questions (cite file:line). Synthesize: cross-reference shared files, resolve conflicts by reading the disputed code, flag gaps.
-2. **Capture criteria** — proceed only if ≥2 of 4 hold: Frequency (recurs) · Pain (cost real debug time) · Surprise (non-obvious) · Durability (true in 6 months). Skip one-offs, generic knowledge, temp workarounds, and simple preferences (→ CLAUDE.md).
-3. **Categorize** — use ONLY these (never invent): `feature · gotchas · patterns · decisions · procedures · integration · performance · testing · ux · strategy`.
-4. **Required sections by category** (minimums — add depth per Content Principles below):
+2. **Migrate, then search before deciding.** Run:
+   ```bash
+   project_root="${CLAUDE_PROJECT_DIR:-$PWD}"
+   spectre knowledge migrate --project-dir "$project_root" --json
+   spectre knowledge search "$ARGUMENTS" --project-dir "$project_root" --json
+   ```
+   Treat migration issues as preserved debt, not permission to rewrite or delete legacy input. Inspect related search results and read each plausible candidate's `recordPath` before choosing an action.
+3. **Capture criteria** — proceed only if ≥2 of 4 hold: Frequency (recurs) · Pain (cost real debug time) · Surprise (non-obvious) · Durability (true in 6 months). Skip one-offs, generic knowledge, temporary workarounds, and simple preferences (→ CLAUDE.md).
+4. **Categorize** — use ONLY these (never invent): `feature · gotchas · patterns · decisions · procedures · integration · performance · testing · ux · strategy`.
+5. **Required sections by category** (minimums — add depth per Content Principles below):
    - **feature**: What is it? · Why/use cases (≥3) · User flows (≥2) · Technical design · Key files (≥3) · Common tasks (≥2)
    - **gotchas**: Symptom · Root cause · Solution (code) · Prevention
    - **patterns**: Problem · Solution (code) · When to use · Trade-offs
@@ -29,20 +37,50 @@ Capture durable project knowledge as a project-level Skill, registered for on-de
    - **procedures**: When to use · Prerequisites · Steps (numbered, w/ commands) · Verification
    - **integration**: What it is · How we connect (auth/endpoints/SDK) · Key operations (code) · Gotchas
    - **performance/testing/ux/strategy**: Context · the actionable knowledge · examples · pitfalls
-5. **Content principles** (all categories): lead with the one key insight · orient (why, 2–3 sentences) before details · be actionable (commands/code/steps) · show with examples · call out pitfalls · keep scannable (80% value in a 60s skim).
-6. **Name** = `{category}-{slug}`, lowercase-kebab-case only (letters/numbers/hyphens), no colons/slashes/underscores/parens, slug ≤5 descriptive words. E.g. `feature-auth-flows`, `gotchas-hook-timeout`.
-7. **Match → UPDATE > APPEND > CREATE** (prefer consolidation). Scan registry for same-category / overlapping-trigger / related candidates; read the candidate SKILL.md before deciding. UPDATE when new info contradicts/extends/supersedes; APPEND when distinct but same skill; CREATE when no semantic match.
-8. **Verify before proposing** (esp. Investigation Mode): spot-check 2–3 key claims against real files; confirm each Key-File purpose; trace one flow for feature learnings. Set confidence low/medium/high accordingly; flag unverified areas inline. Default Investigation learnings to medium.
-9. **Proposal gate — YOU MUST stop and wait for the user.** Show the action (UPDATE/APPEND/CREATE), skill name, **full** proposed content (never a summary), trigger keywords, and confidence. Handle: `y`→write · `n`→cancel · `edit`/custom→revise · different name→use it.
+6. **Content principles** (all categories): lead with the one key insight · orient (why, 2–3 sentences) before details · be actionable (commands/code/steps) · show with examples · call out pitfalls · keep scannable (80% value in a 60s skim). The core must be sufficient for immediate correct application. Move non-essential history, extended examples, and supporting detail into focused files under `references/`.
+7. **Name** = `{category}-{slug}`, lowercase-kebab-case only (letters/numbers/hyphens), no colons/slashes/underscores/parens, slug ≤5 descriptive words. E.g. `feature-auth-flows`, `gotchas-hook-timeout`.
+8. **Match → UPDATE > APPEND > CREATE** (prefer consolidation). Use the canonical search results from step 2. UPDATE when new information contradicts, extends, or supersedes a result. APPEND when it is distinct but belongs in the same record. CREATE only when no result matches. UPDATE and APPEND preserve the original Created date, set Updated to today, and increment `spectre-version`.
+9. **Canonical record shape.** The staged proposal must use only Agent Skills fields at the frontmatter top level. All Spectre extensions are string values under `metadata`; `spectre-triggers` is a JSON-encoded string array. New records default to active.
+
+   <!-- canonical-record:start -->
+   ```yaml
+   ---
+   name: "{category}-{slug}"
+   description: "Use when the declared trigger conditions apply."
+   metadata:
+     spectre-category: "feature"
+     spectre-triggers: '["trigger phrase","second phrase"]'
+     spectre-status: "active"
+     spectre-version: "1"
+   ---
+   ```
+   <!-- canonical-record:end -->
+
+   The description states when to use the knowledge. Preserve unrelated valid string metadata when updating an existing record.
+10. **Verify before proposing** (especially Investigation Mode): spot-check 2–3 key claims against real files; confirm each Key-File purpose; trace one flow for feature learnings. Set confidence low/medium/high accordingly; flag unverified areas inline. Default Investigation learnings to medium.
+11. **Proposal gate — YOU MUST stop and wait for the user.** Show the action (UPDATE/APPEND/CREATE), record name, **full** proposed core content (never a summary), any proposed `references/` files, trigger phrases, and confidence. Handle: `y`→write · `n`→cancel · `edit`/custom→revise · different name→use it. Do not stage or register files before approval.
+12. **Stage only after approval.** Create a temporary root with `mktemp -d`. For UPDATE or APPEND, copy the selected canonical record directory from the parent of its `recordPath` into the temporary root before editing the copy. For CREATE, create a new `{name}/SKILL.md` there. Write focused resources beneath `{name}/references/`. Never edit the selected canonical record in place.
+13. **Register and repair until accepted.** Run:
+    ```bash
+    spectre knowledge register \
+      --record "$proposal_root/$name" \
+      --project-dir "$project_root" \
+      --json
+    ```
+    Handle failures precisely:
+    - `KNOWLEDGE_RECORD_INVALID` with a 9,001-character core: move non-essential detail into `references/`, revise the complete core, and retry. Never truncate or partially register it.
+    - `KNOWLEDGE_PAYLOAD_UNSAFE`: reduce token-dense non-essential material, preserve it in `references/`, revise the complete core, and retry. Never accept preview/file fallback as delivery.
+    - Other validation errors: repair the reported schema or content defect and retry. Lock or filesystem errors are blockers; do not claim success.
+14. **Verify the committed record.** Registration succeeds only when its JSON result has `ok: true`. Search again using the primary trigger phrase, require the expected ID in the results, and read the returned `recordPath` to confirm the approved bytes and resources reached the canonical store. Registration must not create project knowledge files, including for non-Git projects. Remove the temporary proposal only after verification.
 
 ## Outputs + DONE
-- A `SKILL.md` written to `{{project_root}}/.claude/skills/{category}-{slug}/SKILL.md` with frontmatter (`name`, `description` starting "Use when…", `user-invocable: true`) and the dated header (Trigger · Confidence · Created · Updated · Version). On UPDATE: preserve Created, set Updated=today, increment Version. On APPEND: add a new `---`-delimited section with its own header.
-- Registered via the plugin's register CLI (updates `registry.toon`, regenerates `spectre-recall/SKILL.md`, injects `TRIGGER when:` into all skill descriptions). The registry `description` MUST start with "Use when…" and describe *when to use* the knowledge, not what it contains.
-- **DONE when:** user approved at the gate · file written at the correct project-level path · registry entry + recall skill regenerated. Confirm with the saved path and registry path.
+- A validated canonical `SKILL.md` plus any focused `references/`, committed atomically through `spectre knowledge register`.
+- **DONE when:** the user approved at the proposal gate · registration returned `ok: true` · canonical search finds the expected active record · the committed `recordPath` contains the approved content · no project knowledge files were created.
 
 ## Handoff
-Report the saved skill path, category, confidence, and registry path. Proactive update: if you loaded a skill earlier this session and found it incomplete/wrong/extendable, edit it directly (no proposal gate — just inform the user), re-register, and regenerate recall.
+Report the canonical `recordPath`, action, category, confidence, version, and any resource paths. If a previously applied record proved incomplete or wrong, route the correction through the same search, proposal, temporary-stage, registration, and verification flow.
 
 ## Escalate-If
 - Category is ambiguous → ask the user which of the ten categories.
 - Investigation can't confirm a load-bearing claim → flag it inline and set confidence low; do not assert unverified behavior as fact.
+- Migration reports divergent, malformed, oversized, or conflicting input relevant to this topic → preserve it and surface the exact issue before proposing new authority.
