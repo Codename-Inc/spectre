@@ -10,7 +10,13 @@ import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
-const HOST_PROBE_HOOK = path.join(SCRIPT_DIR, 'knowledge-host-probe-hook.mjs');
+const CANONICAL_HOOK_SCRIPTS = path.join(
+  REPO_ROOT,
+  'plugins',
+  'spectre',
+  'hooks',
+  'scripts',
+);
 const PROSE_PROMPT =
   'Apply the knowledge for spectre payload prose boundary and reply exactly ' +
   'SPECTRE_PROSE_INLINE_OK.';
@@ -124,28 +130,46 @@ async function prepareFixture(fixtureRoot) {
   fs.rmSync(codexRuntimeCopyPath, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(codexRuntimeCopyPath), { recursive: true });
   fs.cpSync(
-    path.join(REPO_ROOT, 'plugins', 'spectre', 'hooks', 'scripts', 'knowledge'),
+    path.join(CANONICAL_HOOK_SCRIPTS, 'knowledge'),
     codexRuntimeCopyPath,
     { recursive: true },
   );
+  const codexScriptsPath = path.dirname(codexRuntimeCopyPath);
+  const codexPromptHookPath = path.join(codexScriptsPath, 'user-prompt-submit.mjs');
+  const codexSessionStartHookPath = path.join(codexScriptsPath, 'load-knowledge.mjs');
+  fs.copyFileSync(
+    path.join(CANONICAL_HOOK_SCRIPTS, 'user-prompt-submit.mjs'),
+    codexPromptHookPath,
+  );
+  fs.copyFileSync(
+    path.join(CANONICAL_HOOK_SCRIPTS, 'load-knowledge.mjs'),
+    codexSessionStartHookPath,
+  );
   const codexHooksPath = path.join(codexHome, 'hooks.json');
-  const probeStateRoot = path.join(spectreHome, 'host-probe-state');
   fs.writeFileSync(
     codexHooksPath,
     `${JSON.stringify(
       {
         hooks: {
-          UserPromptSubmit: [
+          SessionStart: [
             {
-              matcher: '*',
+              matcher: 'startup|clear|compact',
               hooks: [
                 {
                   type: 'command',
                   command:
-                    `node ${shellQuote(HOST_PROBE_HOOK)} ` +
-                    `--store ${shellQuote(store.storePath)} ` +
-                    '--host codex ' +
-                    `--state-root ${shellQuote(probeStateRoot)}`,
+                    `node ${shellQuote(codexSessionStartHookPath)} --host codex`,
+                },
+              ],
+            },
+          ],
+          UserPromptSubmit: [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command:
+                    `node ${shellQuote(codexPromptHookPath)} --host codex`,
                 },
               ],
             },
@@ -170,8 +194,8 @@ async function prepareFixture(fixtureRoot) {
     storePath: store.storePath,
     codexRuntimeCopyPath,
     codexHooksPath,
-    hostProbeHookPath: HOST_PROBE_HOOK,
-    probeStateRoot,
+    codexPromptHookPath,
+    codexSessionStartHookPath,
     evidencePath: path.join(
       REPO_ROOT,
       'docs',

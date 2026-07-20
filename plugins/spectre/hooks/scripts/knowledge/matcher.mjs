@@ -275,6 +275,21 @@ export function markKnowledgeApplied({
   return true;
 }
 
+export function clearAppliedKnowledge({
+  storePath,
+  host,
+  sessionId,
+}) {
+  if (validSessionId(sessionId)) {
+    fs.rmSync(ledgerPath(storePath, host, sessionId), { force: true });
+    return;
+  }
+  fs.rmSync(path.join(storePath, 'runtime', 'sessions'), {
+    recursive: true,
+    force: true,
+  });
+}
+
 export {
   MAX_SECONDARY_CHARACTERS,
   MAX_SECONDARY_ENTRIES,

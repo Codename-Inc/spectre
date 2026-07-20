@@ -1,213 +1,156 @@
 #!/usr/bin/env node
 
-/**
- * load-knowledge.mjs
- *
- * SessionStart hook that refreshes the managed SPECTRE knowledge block in
- * AGENTS.override.md and returns a short visible status line.
- *
- * Reads:
- * - Apply skill from plugin: skills/spectre-apply/SKILL.md
- * - Registry from project: .agents/skills/spectre-recall/references/registry.toon
- */
-
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { clearAppliedKnowledge } from './knowledge/matcher.mjs';
+import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
+import { resolveProjectStore } from './knowledge/store.mjs';
 
-function getPluginRoot() {
-  return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..', '..');
+const HOSTS = new Set(['claude', 'codex']);
+const SESSION_SOURCES = new Set(['startup', 'clear', 'compact']);
+const START_MARKER = '<!-- spectre-knowledge:start -->';
+const END_MARKER = '<!-- spectre-knowledge:end -->';
+const CAPABILITY_NOTICE =
+  'spectre: relevant active project knowledge is applied automatically; ' +
+  'search with `spectre knowledge search "<query>"`; capture durable knowledge ' +
+  'with `/spectre:learn`.';
+const CAPABILITY_BODY = [
+  '## SPECTRE Project Knowledge',
+  '',
+  'Relevant active project knowledge is applied automatically when a prompt matches.',
+  'Use `spectre knowledge search "<query>"` for explicit lexical discovery.',
+  'Use `/spectre:learn` to capture durable project knowledge.',
+].join('\n');
+
+function parseHost(argv) {
+  const index = argv.indexOf('--host');
+  if (index === -1) return 'claude';
+  const host = argv[index + 1];
+  return HOSTS.has(host) ? host : null;
 }
 
-function resolvePluginSkillPath(pluginRoot, skillName, ...parts) {
-  const candidates = [
-    path.join(pluginRoot, 'skills', skillName, ...parts),
-    path.join(pluginRoot, '..', 'skills', skillName, ...parts),
-  ];
-  const legacyBareName = skillName.startsWith('spectre-') ? skillName.slice('spectre-'.length) : null;
-  if (legacyBareName) {
-    candidates.push(
-      path.join(pluginRoot, 'skills', legacyBareName, ...parts),
-      path.join(pluginRoot, '..', 'skills', legacyBareName, ...parts)
-    );
+function readHookInput() {
+  const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  return input;
+}
+
+function projectDirectory(input) {
+  if (typeof input.cwd === 'string' && input.cwd !== '') {
+    return path.resolve(input.cwd);
   }
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+  if (
+    typeof process.env.CLAUDE_PROJECT_DIR === 'string' &&
+    process.env.CLAUDE_PROJECT_DIR !== ''
+  ) {
+    return path.resolve(process.env.CLAUDE_PROJECT_DIR);
   }
-
-  return candidates[0];
+  return process.cwd();
 }
 
-function skillBaseDir(projectDir) {
-  const agentsDir = path.join(projectDir, '.agents', 'skills');
-  if (fs.existsSync(agentsDir)) return agentsDir;
-  return path.join(projectDir, '.claude', 'skills');
+function managedBlockPattern() {
+  return new RegExp(
+    `\\n?${START_MARKER}[\\s\\S]*?${END_MARKER}\\n?`,
+    'm',
+  );
 }
 
-function countRegistryEntries(lines) {
-  let count = 0;
-  for (const line of lines) {
-    if (line.trim() && line.includes('|') && !line.startsWith('#')) {
-      count++;
-    }
-  }
-  return count;
-}
-
-function stripFrontmatter(content) {
-  if (content.startsWith('---')) {
-    const end = content.indexOf('---', 3);
-    if (end !== -1) {
-      return content.slice(end + 3).trim();
-    }
-  }
-  return content;
-}
-
-function normalizeOverrideFile(content) {
-  return content
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function managedOverridePattern(startMarker, endMarker) {
-  return new RegExp(`\\n?${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\n?`, 'm');
-}
-
-function writeManagedOverride(overridePath, startMarker, endMarker, bodyContent) {
-  const current = fs.existsSync(overridePath) ? fs.readFileSync(overridePath, 'utf8') : '';
-  const pattern = managedOverridePattern(startMarker, endMarker);
-  const blockContent = `${startMarker}\n${bodyContent}\n${endMarker}`;
-  let updated;
-
-  if (pattern.test(current)) {
-    updated = current.replace(pattern, `${blockContent}\n`);
-  } else if (current.trim()) {
-    updated = `${current.trimEnd()}\n\n${blockContent}\n`;
-  } else {
-    updated = `${blockContent}\n`;
-  }
-
-  const normalized = normalizeOverrideFile(updated);
-  fs.writeFileSync(overridePath, normalized ? `${normalized}\n` : '');
-}
-
-function hasProjectKnowledgeSurface(projectDir, registryPath) {
+function writeCapabilityBlock(projectDir) {
   const overridePath = path.join(projectDir, 'AGENTS.override.md');
-  const overrideContent = fs.existsSync(overridePath) ? fs.readFileSync(overridePath, 'utf8') : '';
-  return fs.existsSync(path.join(projectDir, '.spectre', 'manifest.json'))
-    || fs.existsSync(registryPath)
-    || overrideContent.includes('<!-- spectre-knowledge:start -->')
-    || overrideContent.includes('<!-- spectre-session:start -->');
+  const current = fs.existsSync(overridePath)
+    ? fs.readFileSync(overridePath, 'utf8')
+    : '';
+  const block = `${START_MARKER}\n${CAPABILITY_BODY}\n${END_MARKER}`;
+  const pattern = managedBlockPattern();
+  const updated = pattern.test(current)
+    ? current.replace(pattern, `\n${block}\n`)
+    : current.trim()
+      ? `${current.trimEnd()}\n\n${block}\n`
+      : `${block}\n`;
+  fs.writeFileSync(
+    overridePath,
+    `${updated.replace(/\n{3,}/g, '\n\n').trim()}\n`,
+  );
 }
 
-function registrySection(registryContent) {
-  const rows = (registryContent || '')
-    .split('\n')
-    .filter((line) => line.trim() && line.includes('|') && !line.startsWith('#'));
-
-  if (!rows.length) {
-    return '_No knowledge captured yet. Use `spectre-learn` to capture the first._';
+function hasProjectSurface(projectDir, storePath) {
+  if (storePath) return true;
+  if (fs.existsSync(path.join(projectDir, '.spectre', 'manifest.json'))) {
+    return true;
   }
-  return rows.join('\n');
-}
-
-function buildKnowledgeOverrideBody(applyContent, registryContent) {
-  const body = applyContent.trim().replace('{{REGISTRY}}', registrySection(registryContent));
-  return [
-    '## SPECTRE Knowledge Context',
-    '',
-    'This block is managed by SPECTRE and replaced automatically on session start.',
-    'Use it before searching or implementing work in this repository.',
-    '',
-    body
-  ].join('\n');
-}
-
-function main() {
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const pluginRoot = getPluginRoot();
-
-  const applySkillPath = resolvePluginSkillPath(pluginRoot, 'spectre-apply', 'SKILL.md');
-
-  if (!fs.existsSync(applySkillPath)) {
-    process.exit(0);
-  }
-
-  // Paths - check new name first, fall back to old names for migration
-  let registryPath = path.join(skillBaseDir(projectDir), 'spectre-recall', 'references', 'registry.toon');
-  const oldRegistryPath = path.join(projectDir, '.claude', 'skills', 'spectre-find', 'references', 'registry.toon');
-
-  // Support old "spectre-find" path for projects that haven't migrated
-  if (!fs.existsSync(registryPath) && fs.existsSync(oldRegistryPath)) {
-    registryPath = oldRegistryPath;
-  }
-
-  // Read registry if it exists
-  let registryContent = '';
-  let entryCount = 0;
-  if (fs.existsSync(registryPath)) {
-    registryContent = fs.readFileSync(registryPath, 'utf8').trim();
-    const lines = registryContent ? registryContent.split('\n') : [];
-    entryCount = countRegistryEntries(lines);
-  }
-
-  // Read apply skill and strip frontmatter
-  let applyContent = fs.readFileSync(applySkillPath, 'utf8');
-  applyContent = stripFrontmatter(applyContent);
-  applyContent = applyContent
-    .replaceAll('.claude/skills/', '.agents/skills/')
-    .replace(/\/spectre:([A-Za-z0-9_-]+)/g, (_match, skillName) => {
-      return skillName.startsWith('spectre-') ? skillName : `spectre-${skillName}`;
-    });
-
-  if (hasProjectKnowledgeSurface(projectDir, registryPath)) {
-    writeManagedOverride(
+  try {
+    const override = fs.readFileSync(
       path.join(projectDir, 'AGENTS.override.md'),
-      '<!-- spectre-knowledge:start -->',
-      '<!-- spectre-knowledge:end -->',
-      buildKnowledgeOverrideBody(applyContent, registryContent)
+      'utf8',
     );
+    return override.includes(START_MARKER) ||
+      override.includes('<!-- spectre-session:start -->');
+  } catch {
+    return false;
   }
+}
 
-  // Visible notice
-  let visibleNotice;
-  if (entryCount > 0) {
-    visibleNotice = `\ud83d\udc7b spectre: ${entryCount} knowledge skills available`;
-  } else {
-    visibleNotice = '\ud83d\udc7b spectre: ready \u2014 capture knowledge with /spectre:learn';
+function migrationTimeout() {
+  const configured = Number(process.env.SPECTRE_HOOK_MIGRATION_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : 5_000;
+}
+
+async function runSessionStart(input, host) {
+  if (
+    input?.hook_event_name !== 'SessionStart' ||
+    !SESSION_SOURCES.has(input.source)
+  ) {
+    return null;
   }
-
-  const output = {
-    systemMessage: visibleNotice,
+  const projectDir = projectDirectory(input);
+  await migrateLegacyKnowledge({
+    projectDir,
+    spectreHome: process.env.SPECTRE_HOME,
+    failOpenOnLockTimeout: true,
+    lockOptions: { timeoutMs: migrationTimeout() },
+  });
+  const resolved = await resolveProjectStore(projectDir, {
+    spectreHome: process.env.SPECTRE_HOME,
+    readOnly: true,
+  });
+  if (resolved.storePath) {
+    clearAppliedKnowledge({
+      storePath: resolved.storePath,
+      host,
+      sessionId: input.session_id,
+    });
+  }
+  if (hasProjectSurface(projectDir, resolved.storePath)) {
+    writeCapabilityBlock(projectDir);
+  }
+  return {
+    systemMessage: CAPABILITY_NOTICE,
     hookSpecificOutput: {
-      hookEventName: 'SessionStart'
-    }
+      hookEventName: 'SessionStart',
+    },
   };
+}
 
-  process.stdout.write(JSON.stringify(output) + '\n');
-  process.exit(0);
+async function main() {
+  const host = parseHost(process.argv.slice(2));
+  if (!host) return;
+  const input = readHookInput();
+  const output = await runSessionStart(input, host);
+  if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(`spectre SessionStart hook skipped: ${error.message}\n`);
 }
 
 export {
-  buildKnowledgeOverrideBody,
-  countRegistryEntries,
-  registrySection,
-  hasProjectKnowledgeSurface,
-  resolvePluginSkillPath,
-  stripFrontmatter
+  CAPABILITY_BODY,
+  CAPABILITY_NOTICE,
+  hasProjectSurface,
+  projectDirectory,
+  runSessionStart,
+  writeCapabilityBlock,
 };
-
-if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename)) {
-  main();
-}

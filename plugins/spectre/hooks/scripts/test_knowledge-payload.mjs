@@ -12,7 +12,6 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..', '..', '..');
 const PAYLOAD_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'payload.mjs');
 const HOST_HARNESS = path.join(REPO_ROOT, 'scripts', 'verify-knowledge-hosts.mjs');
-const HOST_PROBE_HOOK = path.join(REPO_ROOT, 'scripts', 'knowledge-host-probe-hook.mjs');
 
 const PROSE_PROMPT =
   'Apply the knowledge for spectre payload prose boundary and reply exactly ' +
@@ -207,12 +206,17 @@ describe('real-host fixture harness contract', () => {
       fs.existsSync(path.join(manifest.codexRuntimeCopyPath, 'payload.mjs')),
       true,
     );
+    assert.equal(fs.existsSync(manifest.codexPromptHookPath), true);
+    assert.equal(fs.existsSync(manifest.codexSessionStartHookPath), true);
     assert.equal(fs.existsSync(manifest.codexHooksPath), true);
-    assert.equal(fs.existsSync(HOST_PROBE_HOOK), true);
     const hooks = JSON.parse(fs.readFileSync(manifest.codexHooksPath, 'utf8'));
     assert.match(
       hooks.hooks.UserPromptSubmit[0].hooks[0].command,
-      /knowledge-host-probe-hook\.mjs/,
+      /user-prompt-submit\.mjs['"]? --host codex$/,
+    );
+    assert.match(
+      hooks.hooks.SessionStart[0].hooks[0].command,
+      /load-knowledge\.mjs['"]? --host codex$/,
     );
   });
 
@@ -232,18 +236,14 @@ describe('real-host fixture harness contract', () => {
     const invoke = (prompt, sessionId) =>
       execFileSync(
         process.execPath,
-        [
-          HOST_PROBE_HOOK,
-          '--store',
-          manifest.storePath,
-          '--host',
-          'codex',
-          '--state-root',
-          path.join(manifest.fixtureRoot, '.probe-state'),
-        ],
+        [manifest.codexPromptHookPath, '--host', 'codex'],
         {
           cwd: manifest.fixtureRoot,
           encoding: 'utf8',
+          env: {
+            ...process.env,
+            SPECTRE_HOME: manifest.spectreHome,
+          },
           input: JSON.stringify({
             hook_event_name: 'UserPromptSubmit',
             prompt,
@@ -259,8 +259,26 @@ describe('real-host fixture harness contract', () => {
     assert.match(first.systemMessage, /testing-payload-prose/);
     assert.equal(invoke(PROSE_PROMPT, 'session-one'), '');
 
-    const reapplied = JSON.parse(invoke(PROSE_PROMPT, 'session-two'));
+    execFileSync(
+      process.execPath,
+      [manifest.codexSessionStartHookPath, '--host', 'codex'],
+      {
+        cwd: manifest.fixtureRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          SPECTRE_HOME: manifest.spectreHome,
+        },
+        input: JSON.stringify({
+          hook_event_name: 'SessionStart',
+          source: 'compact',
+          session_id: 'session-one',
+          cwd: manifest.fixtureRoot,
+        }),
+      },
+    );
+    const reapplied = JSON.parse(invoke(PROSE_PROMPT, 'session-one'));
     assert.match(reapplied.hookSpecificOutput.additionalContext, /SPECTRE_PRIMARY_PROSE_6000_V1/);
-    assert.equal(invoke(NO_MATCH_PROMPT, 'session-two'), '');
+    assert.equal(invoke(NO_MATCH_PROMPT, 'session-one'), '');
   });
 });

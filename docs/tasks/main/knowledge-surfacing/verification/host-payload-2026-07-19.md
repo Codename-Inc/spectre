@@ -152,6 +152,117 @@ diagnostic resume also emitted a model-change warning; it did not affect hook
 deduplication, and the final same-session acceptance command above used no
 explicit model override.
 
+## Phase 4 Production Adapter Reverification
+
+**Date:** 2026-07-19 18:42-18:46 PDT (`America/Los_Angeles`)
+**Result:** PASS
+**Gate:** Production `UserPromptSubmit` plus capability-only `SessionStart`
+
+The Phase 1 probe hook was replaced in the isolated Codex fixture with copies
+of the canonical production `user-prompt-submit.mjs`, `load-knowledge.mjs`,
+and shared `knowledge/` runtime. Claude loaded the same canonical production
+hooks through `--plugin-dir`.
+
+### Runtime
+
+| Item | Value |
+|---|---|
+| Repository base before evidence | `4b3f9f3` |
+| Claude launcher/runtime | `2.1.215 (Claude Code)` / `claude-opus-4-8` |
+| Codex launcher | `codex-cli 0.144.6` |
+| Codex persisted session/TUI self-report | `0.144.0` / `gpt-5.6-sol` |
+| Node.js | `v24.18.0` |
+| Fixture root | `/tmp/spectre-knowledge-hosts-phase4-2026-07-19` |
+| Isolated Codex home | `/tmp/spectre-knowledge-hosts-phase4-2026-07-19/.codex` |
+| Isolated Spectre home | `/tmp/spectre-knowledge-hosts-phase4-2026-07-19/.spectre` |
+
+The Codex launcher/runtime version discrepancy is reported as observed rather
+than normalized away. The real sessions ran the production adapters copied
+from this working tree.
+
+### Commands
+
+Fixture preparation:
+
+```bash
+node /Users/joe/Dev/spectre/scripts/verify-knowledge-hosts.mjs \
+  --fixture-root /tmp/spectre-knowledge-hosts-phase4-2026-07-19 --json
+ln -s /Users/joe/.codex/auth.json \
+  /tmp/spectre-knowledge-hosts-phase4-2026-07-19/.codex/auth.json
+```
+
+Claude production-hook run:
+
+```bash
+cd /tmp/spectre-knowledge-hosts-phase4-2026-07-19
+SPECTRE_HOME="$PWD/.spectre" claude -p \
+  --output-format stream-json --include-hook-events --verbose \
+  --permission-mode dontAsk \
+  --plugin-dir /Users/joe/Dev/spectre/plugins/spectre \
+  --session-id 11111111-1111-4111-8111-111111111111 \
+  'Apply the knowledge for spectre payload prose boundary and reply exactly SPECTRE_PROSE_INLINE_OK.'
+```
+
+The same command used session
+`33333333-3333-4333-8333-333333333333` and the exact code prompt for the
+code fixture. Same-session repeat used `--resume`; the no-match run used
+session `22222222-2222-4222-8222-222222222222`.
+
+Codex production-hook run:
+
+```bash
+SPECTRE_HOME="$PWD/.spectre" CODEX_HOME="$PWD/.codex" \
+  codex exec --json --ignore-user-config --skip-git-repo-check \
+  --dangerously-bypass-hook-trust -s read-only -C "$PWD" \
+  'Apply the knowledge for spectre payload prose boundary and reply exactly SPECTRE_PROSE_INLINE_OK.'
+```
+
+The code and no-match runs used the same command with their exact manifest
+prompts. Same-session repeat used:
+
+```bash
+SPECTRE_HOME="$PWD/.spectre" CODEX_HOME="$PWD/.codex" \
+  codex exec resume --json --ignore-user-config --skip-git-repo-check \
+  --dangerously-bypass-hook-trust \
+  019f7d31-a546-7f22-9d85-b4507641f233 \
+  'Apply the knowledge for spectre payload prose boundary and reply exactly SPECTRE_PROSE_INLINE_OK.'
+```
+
+For deterministic compact verification in both headless hosts, the production
+`load-knowledge.mjs` adapter received a `SessionStart` event with
+`source: "compact"` and the original session ID. Resuming each original real
+host thread then reapplied the production payload. Automated process tests
+cover host-shaped `startup`, `clear`, and `compact` inputs both with and
+without `session_id`.
+
+### Observations
+
+| Required observation | Claude | Codex |
+|---|---|---|
+| Prose response | `SPECTRE_PROSE_INLINE_OK` | `SPECTRE_PROSE_INLINE_OK` |
+| Code response | `SPECTRE_CODE_INLINE_OK` | `SPECTRE_CODE_INLINE_OK` |
+| Applied notice | `spectre: applied testing-payload-prose; 0 also matching` | Same notice visible in TUI |
+| Repeat before reset | Production hook stdout empty | One persisted applied payload |
+| Compact reset | Original thread reapplied | Original thread reapplied |
+| No match | Production hook stdout empty | Zero persisted applied payloads |
+| Preview/file/truncation/fallback | Absent | Absent |
+
+Persisted model-input checks:
+
+```json
+{"case":"claude-prose","payloadCount":2,"lengths":[6419,6419],"exact":true,"sha256":"f4ed29f7107b1bf6c26b65e9e08d2784881423813d249cd142aed2b85b7c87f6","fallback":false}
+{"case":"codex-prose","payloadCount":2,"lengths":[6419,6419],"exact":true,"sha256":"f4ed29f7107b1bf6c26b65e9e08d2784881423813d249cd142aed2b85b7c87f6","fallback":false}
+{"case":"claude-code","payloadCount":1,"lengths":[4412],"exact":true,"sha256":"2b879c4683bb24b836d8114147010972a896b15200fa4754e8902cd684a36473","fallback":false}
+{"case":"codex-code","payloadCount":1,"lengths":[4412],"exact":true,"sha256":"2b879c4683bb24b836d8114147010972a896b15200fa4754e8902cd684a36473","fallback":false}
+{"case":"claude-no-match","payloadCount":0,"exact":true,"fallback":false}
+{"case":"codex-no-match","payloadCount":0,"exact":true,"fallback":false}
+```
+
+The two prose payloads in each original thread are the initial application
+and the post-compact reapplication. The intervening repeat did not add a
+payload. Each persisted payload exactly equals direct production-adapter
+output; the matching hashes across Claude and Codex prove adapter parity.
+
 ## Automated Harness Check
 
 ```bash

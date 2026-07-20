@@ -1,387 +1,324 @@
 #!/usr/bin/env node
 
-/**
- * Tests for load-knowledge.mjs SessionStart hook.
- *
- * Run with: node --test plugins/spectre/hooks/scripts/test_load-knowledge.mjs
- */
-
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SCRIPT_PATH = path.join(__dirname, 'load-knowledge.mjs');
+import {
+  filterAppliedKnowledge,
+  markKnowledgeApplied,
+} from './knowledge/matcher.mjs';
+import { resolveProjectStore } from './knowledge/store.mjs';
 
-function createTmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-lk-'));
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPT_PATH = path.join(SCRIPT_DIR, 'load-knowledge.mjs');
+const START_MARKER = '<!-- spectre-knowledge:start -->';
+const END_MARKER = '<!-- spectre-knowledge:end -->';
+
+function makeTmp(t) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-session-start-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  return tmp;
 }
 
-const APPLY_SKILL_BODY =
-  '---\nname: spectre-apply\n---\n\n# Apply Knowledge\n\n' +
-  '## Registry\n\n{{REGISTRY}}\n\n' +
-  '## The Rule\n\nLoad matching skills first.\n';
-
-function createApplySkill(pluginDir) {
-  const skillPath = path.join(pluginDir, 'skills', 'spectre-apply', 'SKILL.md');
-  fs.mkdirSync(path.dirname(skillPath), { recursive: true });
-  fs.writeFileSync(skillPath, APPLY_SKILL_BODY);
-  return skillPath;
-}
-
-function createCodexApplySkill(codexHome) {
-  const skillPath = path.join(codexHome, 'skills', 'spectre-apply', 'SKILL.md');
-  fs.mkdirSync(path.dirname(skillPath), { recursive: true });
-  fs.writeFileSync(skillPath, APPLY_SKILL_BODY);
-  return skillPath;
-}
-
-function createRegistry(projectDir, entries, subdir) {
-  subdir = subdir || 'spectre-recall';
-  const registryPath = path.join(
-    projectDir, '.claude', 'skills', subdir, 'references', 'registry.toon'
-  );
-  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
-  fs.writeFileSync(registryPath, entries);
-  return registryPath;
+async function createStore(projectDir, spectreHome) {
+  const resolved = await resolveProjectStore(projectDir, {
+    spectreHome,
+    gitRunner() {
+      throw new Error('fixture is intentionally non-Git');
+    },
+  });
+  return resolved.storePath;
 }
 
 function createManifest(projectDir) {
   const manifestPath = path.join(projectDir, '.spectre', 'manifest.json');
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, '{"version":1}\n');
-  return manifestPath;
 }
 
-function runHook(opts) {
-  opts = opts || {};
-  const env = Object.assign({}, process.env);
-  if (opts.pluginRoot) {
-    env.CLAUDE_PLUGIN_ROOT = opts.pluginRoot;
-  } else {
-    delete env.CLAUDE_PLUGIN_ROOT;
-  }
-  if (opts.projectDir) {
-    env.CLAUDE_PROJECT_DIR = opts.projectDir;
-  } else {
-    delete env.CLAUDE_PROJECT_DIR;
-  }
-
-  try {
-    const stdout = execFileSync(process.execPath, [SCRIPT_PATH], {
-      env,
-      cwd: opts.cwd || undefined,
-      timeout: 10000,
-      encoding: 'utf8'
-    });
-    return { stdout, exitCode: 0 };
-  } catch (err) {
-    return { stdout: err.stdout || '', exitCode: err.status };
-  }
+function runHook({
+  cwd,
+  spectreHome,
+  host = 'claude',
+  input,
+  env = {},
+}) {
+  const result = spawnSync(process.execPath, [SCRIPT_PATH, '--host', host], {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: cwd,
+      SPECTRE_HOME: spectreHome,
+      ...env,
+    },
+    input: typeof input === 'string' ? input : JSON.stringify(input),
+    timeout: 10_000,
+  });
+  return {
+    exitCode: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
-function cleanup(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
+function legacySkill(projectDir, id = 'feature-legacy') {
+  const skillDir = path.join(projectDir, '.claude', 'skills', id);
+  const registryPath = path.join(
+    projectDir,
+    '.claude',
+    'skills',
+    'spectre-recall',
+    'references',
+    'registry.toon',
+  );
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  fs.writeFileSync(
+    path.join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${id}`,
+      'description: Legacy registry guidance.',
+      '---',
+      '# Secret legacy record',
+      '',
+      'LEGACY_RECORD_BODY_MUST_NOT_APPEAR_AT_STARTUP',
+    ].join('\n'),
+  );
+  fs.writeFileSync(
+    registryPath,
+    `${id}|feature|legacy trigger|Legacy registry guidance.\n`,
+  );
+  return { skillDir, registryPath };
 }
 
-describe('LoadKnowledge - Core behavior', () => {
-  it('falls back to script-relative plugin root when no plugin root env is set', () => {
-    const tmp = createTmpDir();
-    try {
-      const result = runHook({ pluginRoot: '', cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout.trim());
-      assert.match(output.systemMessage, /spectre: ready/);
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      assert.ok(!fs.existsSync(path.join(tmp, 'AGENTS.override.md')));
-    } finally {
-      cleanup(tmp);
-    }
-  });
+function match(id = 'feature-auth', version = 1) {
+  return { id, version };
+}
 
-  it('exits silently when apply skill missing', () => {
-    const tmp = createTmpDir();
-    try {
-      const result = runHook({ pluginRoot: tmp, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      assert.equal(result.stdout.trim(), '');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('outputs ready message when no registry', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-    createManifest(tmp);
-
-    try {
-      const result = runHook({ pluginRoot: pluginDir, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('ready'));
-      assert.ok(output.systemMessage.includes('/spectre:learn'));
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
-      assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
-      assert.match(overrideContent, /# Apply Knowledge/);
-      assert.doesNotMatch(overrideContent, /additionalContext/);
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('resolves apply skill from Codex home when hooks are under spectre runtime', () => {
-    const tmp = createTmpDir();
-    const codexHome = path.join(tmp, 'codex-home');
-    const runtimeRoot = path.join(codexHome, 'spectre');
-    fs.mkdirSync(path.join(runtimeRoot, 'hooks', 'scripts'), { recursive: true });
-    createCodexApplySkill(codexHome);
-
-    try {
-      const result = runHook({ pluginRoot: runtimeRoot, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('ready'));
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      assert.ok(!fs.existsSync(path.join(tmp, 'AGENTS.override.md')));
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('outputs entry count when registry has entries', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-
-    const projectDir = path.join(tmp, 'project');
-    fs.mkdirSync(projectDir);
-    createRegistry(projectDir,
-      '# SPECTRE Knowledge Registry\n' +
-      '# Format: skill-name|category|triggers|description\n\n' +
-      'feature-auth|feature|auth, login|Auth system knowledge\n' +
-      'gotcha-db|gotchas|database, query|DB gotchas\n'
+describe('capability-only SessionStart', () => {
+  it('writes constant search/learn guidance and migrates without exposing records', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, '.spectre-home');
+    createManifest(projectDir);
+    const legacy = legacySkill(projectDir);
+    fs.writeFileSync(
+      path.join(projectDir, 'AGENTS.override.md'),
+      [
+        'User-owned override.',
+        '',
+        START_MARKER,
+        'feature-old|feature|old trigger|Old registry body',
+        '{{REGISTRY}}',
+        END_MARKER,
+        '',
+      ].join('\n'),
     );
 
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: projectDir,
-        cwd: tmp
-      });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('2 knowledge skills'));
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      const overrideContent = fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8');
-      assert.match(overrideContent, /# Apply Knowledge/);
-      assert.match(overrideContent, /feature-auth\|feature\|auth, login\|Auth system knowledge/);
-      assert.match(overrideContent, /gotcha-db\|gotchas\|database, query\|DB gotchas/);
-      assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
-      // Comments and blanks are stripped — only entry rows ride along.
-      assert.doesNotMatch(overrideContent, /# SPECTRE Knowledge Registry/);
-    } finally {
-      cleanup(tmp);
-    }
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: {
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+        session_id: 'startup-session',
+        cwd: projectDir,
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
+    assert.match(output.systemMessage, /knowledge.*automatically/i);
+    assert.match(output.systemMessage, /spectre knowledge search "<query>"/);
+    assert.match(output.systemMessage, /\/spectre:learn/);
+    const override = fs.readFileSync(
+      path.join(projectDir, 'AGENTS.override.md'),
+      'utf8',
+    );
+    assert.match(override, /User-owned override/);
+    assert.match(override, /knowledge.*automatically/i);
+    assert.match(override, /spectre knowledge search "<query>"/);
+    assert.match(override, /\/spectre:learn/);
+    assert.doesNotMatch(override, /\{\{REGISTRY\}\}/);
+    assert.doesNotMatch(override, /feature-old\|/);
+    assert.doesNotMatch(override, /LEGACY_RECORD_BODY/);
+    assert.equal(fs.existsSync(legacy.skillDir), false);
+
+    const resolved = await resolveProjectStore(projectDir, {
+      spectreHome,
+      readOnly: true,
+      gitRunner() {
+        throw new Error('fixture is intentionally non-Git');
+      },
+    });
+    assert.equal(
+      fs.existsSync(path.join(
+        resolved.storePath,
+        'knowledge',
+        'feature-legacy',
+        'SKILL.md',
+      )),
+      true,
+    );
   });
 
-  it('uses CLAUDE_PROJECT_DIR over cwd', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
+  it('fails open for malformed or wrong events and creates no absent store', (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, '.spectre-home');
+    createManifest(projectDir);
+    const overridePath = path.join(projectDir, 'AGENTS.override.md');
+    fs.writeFileSync(overridePath, 'User-owned override.\n');
 
-    const projectDir = path.join(tmp, 'actual_project');
-    fs.mkdirSync(projectDir);
-    createRegistry(projectDir, '# Registry\n\nmy-skill|feature|test|Test skill\n');
-
-    const cwdDir = path.join(tmp, 'wrong_dir');
-    fs.mkdirSync(cwdDir);
-
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: projectDir,
-        cwd: cwdDir
-      });
+    for (const input of [
+      '{not-json',
+      JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        source: 'startup',
+        cwd: projectDir,
+      }),
+      JSON.stringify({
+        hook_event_name: 'SessionStart',
+        source: 'resume',
+        cwd: projectDir,
+      }),
+    ]) {
+      const result = runHook({ cwd: projectDir, spectreHome, input });
       assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('1 knowledge skills'));
-    } finally {
-      cleanup(tmp);
+      assert.equal(result.stdout, '');
     }
+    assert.equal(fs.readFileSync(overridePath, 'utf8'), 'User-owned override.\n');
+    assert.equal(fs.existsSync(spectreHome), false);
   });
 
-  it('falls back to cwd when no project dir env', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
+  it('skips a held migration lock and still emits capability guidance', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, '.spectre-home');
+    createManifest(projectDir);
+    legacySkill(projectDir);
+    const storePath = await createStore(projectDir, spectreHome);
+    const lockPath = path.join(storePath, '.spectre.lock');
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: process.pid,
+        timestamp: new Date().toISOString(),
+        operation: 'held-by-test',
+      }),
+    );
 
-    createRegistry(tmp, '# Registry\n\ncwd-skill|feature|cwd|CWD skill\n');
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: {
+        hook_event_name: 'SessionStart',
+        source: 'clear',
+        session_id: 'locked-session',
+        cwd: projectDir,
+      },
+      env: { SPECTRE_HOOK_MIGRATION_TIMEOUT_MS: '25' },
+    });
 
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: '',
-        cwd: tmp
-      });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('1 knowledge skills'));
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('falls back to old registry path', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-
-    const projectDir = path.join(tmp, 'project');
-    fs.mkdirSync(projectDir);
-    createRegistry(projectDir, '# Registry\n\nold-skill|feature|old|Old path skill\n', 'spectre-find');
-
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: projectDir,
-        cwd: tmp
-      });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('1 knowledge skills'));
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('writes spectre-knowledge block into AGENTS.override.md', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-    createManifest(tmp);
-
-    try {
-      const result = runHook({ pluginRoot: pluginDir, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
-      assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
-      assert.match(overrideContent, /## SPECTRE Knowledge Context/);
-      assert.match(overrideContent, /# Apply Knowledge/);
-      assert.match(overrideContent, /<!-- spectre-knowledge:end -->/);
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('does not append to unrelated AGENTS.override.md outside a Spectre project', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-    fs.writeFileSync(path.join(tmp, 'AGENTS.override.md'), 'User-owned override content.\n');
-
-    try {
-      const result = runHook({ pluginRoot: pluginDir, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      assert.equal(
-        fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8'),
-        'User-owned override content.\n'
-      );
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('registry content IS embedded in the knowledge block', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-
-    createRegistry(tmp, '# Registry\n\nembedded-skill|feature|embed|Embedded skill\n');
-
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: '',
-        cwd: tmp
-      });
-      assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.deepEqual(output.hookSpecificOutput, { hookEventName: 'SessionStart' });
-      const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
-      assert.ok(overrideContent.includes('embedded-skill|feature|embed|Embedded skill'),
-        'Registry entries must be embedded so skills are discoverable without reading the registry file');
-      assert.ok(!overrideContent.includes('{{REGISTRY}}'),
-        'Placeholder must be substituted');
-      assert.ok(overrideContent.includes('# Apply Knowledge'),
-        'Scaffold content should still be present');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('substitutes an empty-registry notice when no registry exists', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-    createManifest(tmp);
-
-    try {
-      const result = runHook({ pluginRoot: pluginDir, cwd: tmp });
-      assert.equal(result.exitCode, 0);
-      const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
-      assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
-      assert.match(overrideContent, /No knowledge captured yet/);
-    } finally {
-      cleanup(tmp);
-    }
+    assert.equal(result.exitCode, 0);
+    assert.match(JSON.parse(result.stdout).systemMessage, /automatically/i);
+    assert.equal(
+      fs.existsSync(path.join(storePath, 'knowledge', 'feature-legacy')),
+      false,
+    );
+    assert.equal(fs.existsSync(lockPath), true);
   });
 });
 
-describe('LoadKnowledge - Count registry entries', () => {
-  it('ignores comments and blanks', () => {
-    const tmp = createTmpDir();
-    const pluginDir = path.join(tmp, 'plugin');
-    fs.mkdirSync(pluginDir);
-    createApplySkill(pluginDir);
-
-    createRegistry(tmp,
-      '# Comment line\n# Another comment\n\n' +
-      'real-skill|feature|test|Real skill\n' +
-      '\n# Trailing comment\n'
-    );
-
-    try {
-      const result = runHook({
-        pluginRoot: pluginDir,
-        projectDir: '',
-        cwd: tmp
+describe('SessionStart ledger reset', () => {
+  for (const source of ['startup', 'clear', 'compact']) {
+    it(`clears the addressed ${source} session`, async (t) => {
+      const projectDir = makeTmp(t);
+      const spectreHome = path.join(projectDir, '.spectre-home');
+      const storePath = await createStore(projectDir, spectreHome);
+      createManifest(projectDir);
+      const record = match(`feature-${source}`);
+      markKnowledgeApplied({
+        storePath,
+        host: 'claude',
+        sessionId: `${source}-session`,
+        record,
       });
+      assert.deepEqual(filterAppliedKnowledge({
+        storePath,
+        host: 'claude',
+        sessionId: `${source}-session`,
+        matches: [record],
+      }), []);
+
+      const result = runHook({
+        cwd: projectDir,
+        spectreHome,
+        input: {
+          hook_event_name: 'SessionStart',
+          source,
+          session_id: `${source}-session`,
+          cwd: projectDir,
+        },
+      });
+
       assert.equal(result.exitCode, 0);
-      const output = JSON.parse(result.stdout);
-      assert.ok(output.systemMessage.includes('1 knowledge skills'));
-    } finally {
-      cleanup(tmp);
-    }
+      assert.deepEqual(filterAppliedKnowledge({
+        storePath,
+        host: 'claude',
+        sessionId: `${source}-session`,
+        matches: [record],
+      }), [record]);
+    });
+  }
+
+  it('clears every project ledger when session_id is absent', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, '.spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    createManifest(projectDir);
+    const claudeRecord = match('feature-claude');
+    const codexRecord = match('feature-codex');
+    markKnowledgeApplied({
+      storePath,
+      host: 'claude',
+      sessionId: 'claude-session',
+      record: claudeRecord,
+    });
+    markKnowledgeApplied({
+      storePath,
+      host: 'codex',
+      sessionId: 'codex-session',
+      record: codexRecord,
+    });
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: {
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+        cwd: projectDir,
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(filterAppliedKnowledge({
+      storePath,
+      host: 'claude',
+      sessionId: 'claude-session',
+      matches: [claudeRecord],
+    }), [claudeRecord]);
+    assert.deepEqual(filterAppliedKnowledge({
+      storePath,
+      host: 'codex',
+      sessionId: 'codex-session',
+      matches: [codexRecord],
+    }), [codexRecord]);
   });
 });
