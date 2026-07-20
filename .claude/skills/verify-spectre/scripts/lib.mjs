@@ -105,7 +105,8 @@ export function run(cmd, args, opts = {}) {
     const stdout = execFileSync(cmd, args, {
       cwd: opts.cwd || REPO,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      input: opts.input,
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...base, ...(opts.env || {}) },
       timeout: opts.timeout || 300000,
     });

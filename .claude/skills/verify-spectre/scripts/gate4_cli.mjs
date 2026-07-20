@@ -3,10 +3,11 @@
  * Gate 4 — Real-CLI behavioral validation.
  *
  * This is the gate that actually matters. Unit tests exercise functions; users
- * exercise the installed CLI and the hooks Claude/Codex fire at session start.
+ * exercise the installed CLI and the hooks Claude/Codex fire at session start
+ * and prompt submission.
  * Those are different things, and the gap between them is where this project's
- * real bugs have lived (a {{REGISTRY}} placeholder shipped raw, an injection
- * block that silently never wrote).
+ * real bugs have lived (a resolver missing from the generated runtime, a
+ * capability hook silently never writing its managed block).
  *
  * Everything runs in throwaway temp dirs with a fresh CODEX_HOME. Nothing here
  * touches the user's real state.
@@ -16,6 +17,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Gate, REPO, run } from './lib.mjs';
+import { refreshKnowledgeIndex } from '../../../../plugins/spectre/hooks/scripts/knowledge/records.mjs';
+import { resolveProjectStore } from '../../../../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 
 const g = new Gate('4 real-cli');
 const PLUGIN = path.join(REPO, 'plugins', 'spectre');
@@ -24,11 +27,12 @@ const CLI = path.join(REPO, 'bin', 'spectre.js');
 
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-verify-'));
 const CODEX_HOME = path.join(ROOT, 'codex-home');
+const SPECTRE_HOME = path.join(ROOT, 'spectre-home');
 fs.mkdirSync(CODEX_HOME, { recursive: true });
 process.on('exit', () => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 /** A disposable project. `seeded` gives it the knowledge surface the hook gates on. */
-function makeProject(name, { seeded = false, registry = null, legacyMarkers = false } = {}) {
+function makeProject(name, { seeded = false, legacyMarkers = false } = {}) {
   const dir = path.join(ROOT, name);
   fs.mkdirSync(dir, { recursive: true });
   run('git', ['init', '-b', 'main'], { cwd: dir });
@@ -36,11 +40,6 @@ function makeProject(name, { seeded = false, registry = null, legacyMarkers = fa
   if (seeded) {
     fs.mkdirSync(path.join(dir, '.spectre'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.spectre', 'manifest.json'), JSON.stringify({ scope: 'project' }));
-  }
-  if (registry !== null) {
-    const refs = path.join(dir, '.claude', 'skills', 'spectre-recall', 'references');
-    fs.mkdirSync(refs, { recursive: true });
-    fs.writeFileSync(path.join(refs, 'registry.toon'), registry);
   }
   if (legacyMarkers) {
     fs.writeFileSync(path.join(dir, 'AGENTS.override.md'),
@@ -52,10 +51,26 @@ function makeProject(name, { seeded = false, registry = null, legacyMarkers = fa
 // isolated: true strips the ambient harness env, so this suite is the only
 // thing writing to these projects' AGENTS.override.md. See cleanEnv() in lib.
 const hook = (script, projectDir) => run('node', [path.join(HOOKS, script)], {
-  env: { CLAUDE_PROJECT_DIR: projectDir, CLAUDE_PLUGIN_ROOT: PLUGIN },
+  env: {
+    CLAUDE_PROJECT_DIR: projectDir,
+    CLAUDE_PLUGIN_ROOT: PLUGIN,
+    SPECTRE_HOME,
+  },
   cwd: projectDir,
   isolated: true,
 });
+
+const hookEvent = (script, projectDir, input, host = 'claude') =>
+  run('node', [path.join(HOOKS, script), '--host', host], {
+    env: {
+      CLAUDE_PROJECT_DIR: projectDir,
+      CLAUDE_PLUGIN_ROOT: PLUGIN,
+      SPECTRE_HOME,
+    },
+    cwd: projectDir,
+    isolated: true,
+    input: JSON.stringify(input),
+  });
 
 const cli = (args, projectDir) => run('node', [CLI, ...args], {
   env: { CODEX_HOME },
@@ -68,73 +83,138 @@ const override = (dir) => {
   return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
 };
 
+async function seedCanonicalRecord(projectDir, {
+  id = 'gotchas-hook-timeout',
+  trigger = 'hook timeout',
+  sentinel = 'SPECTRE_GATE4_CANONICAL_SENTINEL',
+} = {}) {
+  const resolved = await resolveProjectStore(projectDir, { spectreHome: SPECTRE_HOME });
+  const skillPath = path.join(resolved.storePath, 'knowledge', id, 'SKILL.md');
+  fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+  fs.writeFileSync(skillPath, [
+    '---',
+    `name: ${id}`,
+    'description: Use when diagnosing a hook timeout in the real CLI gate.',
+    'metadata:',
+    '  spectre-category: "gotchas"',
+    `  spectre-triggers: '${JSON.stringify([trigger])}'`,
+    '  spectre-status: "active"',
+    '  spectre-version: "1"',
+    '---',
+    `# ${id}`,
+    '',
+    sentinel,
+    '',
+    'Keep hook diagnostics bounded and deterministic.',
+    '',
+  ].join('\n'));
+  refreshKnowledgeIndex(resolved.storePath);
+  return { id, sentinel, storePath: resolved.storePath };
+}
+
 // ---------------------------------------------------------------------------
 // A. Non-spectre project guard
 // A bare directory has no knowledge surface, so the hook must write nothing.
 // Injecting into an unrelated repo would be a genuinely bad bug.
 // ---------------------------------------------------------------------------
 const bare = makeProject('bare');
-const bareRun = hook('load-knowledge.mjs', bare);
+const bareRun = hookEvent('load-knowledge.mjs', bare, {
+  hook_event_name: 'SessionStart',
+  source: 'startup',
+  cwd: bare,
+  session_id: 'gate4-bare',
+});
 g.check(bareRun.code === 0, 'load-knowledge exits 0 on a non-spectre project', bareRun.stderr);
 g.check(override(bare) === null, 'load-knowledge writes nothing to a non-spectre project',
   'AGENTS.override.md was created in a project with no spectre surface');
 
 // ---------------------------------------------------------------------------
-// B. Populated registry — the happy path
+// B. Canonical store — capability-only SessionStart and prompt-time delivery
 // ---------------------------------------------------------------------------
-const REGISTRY = [
-  'gotchas-hook-timeout|gotchas|hook,timeout,sessionstart|Use when a SessionStart hook hangs.',
-  'patterns-registry-toon|patterns|registry,toon|Use when editing the knowledge registry.',
-].join('\n');
-
-const populated = makeProject('populated', { seeded: true, registry: REGISTRY });
-const popRun = hook('load-knowledge.mjs', populated);
-g.check(popRun.code === 0, 'load-knowledge exits 0 with a populated registry', popRun.stderr);
+const populated = makeProject('populated', { seeded: true });
+const canonical = await seedCanonicalRecord(populated);
+const sessionInput = {
+  hook_event_name: 'SessionStart',
+  source: 'startup',
+  cwd: populated,
+  session_id: 'gate4-populated',
+};
+const popRun = hookEvent('load-knowledge.mjs', populated, sessionInput);
+g.check(popRun.code === 0, 'load-knowledge exits 0 with a canonical store', popRun.stderr);
 
 const popBody = override(populated);
-g.check(popBody !== null, 'injection writes AGENTS.override.md');
+g.check(popBody !== null, 'SessionStart writes the constant capability block');
 if (popBody) {
   g.check(popBody.includes('<!-- spectre-knowledge:start -->') && popBody.includes('<!-- spectre-knowledge:end -->'),
-    'injected block is delimited by spectre-knowledge markers');
-  g.check(popBody.includes('gotchas-hook-timeout'), 'registry rows are inlined into the injected block',
-    'the registry was not substituted — agents would have to read the registry file to discover knowledge');
-  // The bug this whole gate was built around.
-  g.check(!popBody.includes('{{REGISTRY}}'), 'no raw {{REGISTRY}} placeholder survives injection',
-    'the placeholder shipped unsubstituted — the apply skill is broken for this project');
+    'capability block is delimited by spectre-knowledge markers');
+  g.check(
+    popBody.includes('spectre knowledge search "<query>"') &&
+      popBody.includes('/spectre:learn'),
+    'SessionStart exposes constant search and learn guidance');
+  g.check(
+    !popBody.includes(canonical.id) &&
+      !popBody.includes(canonical.sentinel) &&
+      !popBody.includes('{{REGISTRY}}'),
+    'SessionStart exposes no canonical record body or registry placeholder');
 }
 
 let notice = null;
 try { notice = JSON.parse(popRun.stdout); } catch { /* handled below */ }
-g.check(notice !== null, 'load-knowledge emits valid JSON on stdout',
+g.check(notice !== null, 'load-knowledge emits valid SessionStart JSON on stdout',
   'Claude Code parses this; malformed JSON silently drops the hook output');
-g.check(Boolean(notice?.systemMessage?.includes('2')), 'visible notice reports the right knowledge count',
-  `expected a count of 2, got: ${notice?.systemMessage}`);
+g.check(
+  Boolean(notice?.systemMessage?.includes('knowledge is applied automatically')),
+  'SessionStart notice reports the prompt-time knowledge capability',
+  `unexpected notice: ${notice?.systemMessage}`,
+);
+g.check(
+  !fs.existsSync(path.join(populated, '.agents', 'skills', canonical.id)) &&
+    !fs.existsSync(path.join(populated, '.claude', 'skills', canonical.id)),
+  'canonical knowledge remains outside repository-native skill roots',
+);
+
+const promptInput = {
+  hook_event_name: 'UserPromptSubmit',
+  prompt: 'Please diagnose this hook timeout.',
+  cwd: populated,
+  session_id: 'gate4-populated',
+};
+const promptRun = hookEvent('user-prompt-submit.mjs', populated, promptInput);
+let promptOutput = null;
+try { promptOutput = JSON.parse(promptRun.stdout); } catch { /* handled below */ }
+g.check(promptRun.code === 0, 'UserPromptSubmit exits 0 for a matching prompt', promptRun.stderr);
+g.check(
+  promptOutput?.hookSpecificOutput?.additionalContext?.includes(canonical.sentinel),
+  'UserPromptSubmit delivers the complete matching canonical record inline',
+);
+g.check(
+  promptOutput?.systemMessage === `spectre: applied ${canonical.id}; 0 also matching`,
+  'UserPromptSubmit emits the concise applied-record notice',
+  `unexpected notice: ${promptOutput?.systemMessage}`,
+);
+const repeatRun = hookEvent('user-prompt-submit.mjs', populated, promptInput);
+g.check(repeatRun.stdout === '', 'UserPromptSubmit dedupes a repeat in the same session',
+  `repeat emitted unexpected output: ${repeatRun.stdout}`);
 
 // ---------------------------------------------------------------------------
 // C. Idempotency — SessionStart fires on every startup/clear/compact
 // A block that grows or reshuffles on each run would bloat context indefinitely.
 // ---------------------------------------------------------------------------
 const first = override(populated);
-hook('load-knowledge.mjs', populated);
+hookEvent('load-knowledge.mjs', populated, sessionInput);
 g.check(override(populated) === first, 're-running load-knowledge is byte-identical',
   'the injected block changed on second run — it accumulates or reorders across sessions');
 
 // ---------------------------------------------------------------------------
-// D. Empty registry
-// This is the case that catches a missed substitution in the Codex parallel
-// path: with no rows to inline, a broken substitution leaves {{REGISTRY}} bare.
+// D. No-match prompt
 // ---------------------------------------------------------------------------
-const empty = makeProject('empty', { seeded: true, registry: '' });
-const emptyRun = hook('load-knowledge.mjs', empty);
-g.check(emptyRun.code === 0, 'load-knowledge exits 0 with an empty registry', emptyRun.stderr);
-
-const emptyBody = override(empty);
-g.check(emptyBody !== null, 'injection still writes a block when the registry is empty');
-if (emptyBody) {
-  g.check(!emptyBody.includes('{{REGISTRY}}'), 'no raw {{REGISTRY}} placeholder with an empty registry',
-    'substitution is skipped when there are no rows — the empty-registry path is broken');
-  g.check(/no knowledge captured yet/i.test(emptyBody), 'empty-registry notice renders');
-}
+const noMatchRun = hookEvent('user-prompt-submit.mjs', populated, {
+  ...promptInput,
+  prompt: 'This prompt deliberately matches no canonical record.',
+});
+g.check(noMatchRun.code === 0, 'UserPromptSubmit exits 0 for a no-match prompt', noMatchRun.stderr);
+g.check(noMatchRun.stdout === '', 'UserPromptSubmit remains silent for a no-match prompt',
+  `no-match emitted unexpected output: ${noMatchRun.stdout}`);
 
 // ---------------------------------------------------------------------------
 // E. Session memory
@@ -182,11 +262,18 @@ for (const scope of ['project', 'user']) {
   // user-scope install lives in CODEX_HOME, so there is deliberately nothing to
   // inject here — asserting otherwise would be testing the wrong contract.
   if (scope === 'project') {
-    hook('load-knowledge.mjs', proj);
+    hookEvent('load-knowledge.mjs', proj, {
+      hook_event_name: 'SessionStart',
+      source: 'startup',
+      cwd: proj,
+      session_id: `gate4-install-${scope}`,
+    });
     const injected = override(proj) || '';
-    g.check(injected.includes('spectre-knowledge:start'),
-      'session after a project install injects a managed block',
-      'nothing was injected, so the uninstall check below would be vacuous');
+    g.check(
+      injected.includes('spectre-knowledge:start') &&
+        injected.includes('knowledge is applied automatically'),
+      'session after a project install writes the managed capability block',
+      'no capability block was written, so the uninstall check below would be vacuous');
   }
 
   const uninstall = cli(['uninstall', 'codex', '--scope', scope, '--project-dir', proj], proj);
