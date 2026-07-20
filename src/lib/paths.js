@@ -22,6 +22,31 @@ export function resolveCodexHome() {
   return path.join(os.homedir(), '.codex');
 }
 
+export function resolveSpectreHome() {
+  const envHome = process.env.SPECTRE_HOME;
+  if (envHome) {
+    return path.resolve(envHome);
+  }
+  return path.join(os.homedir(), '.spectre');
+}
+
+export function spectreProjectsDir(spectreHome = resolveSpectreHome()) {
+  return path.join(spectreHome, 'projects');
+}
+
+export function knowledgeStorePaths(storePath) {
+  const runtimeDir = path.join(storePath, 'runtime');
+  return {
+    storePath,
+    projectMetadataPath: path.join(storePath, 'project.json'),
+    knowledgeDir: path.join(storePath, 'knowledge'),
+    indexPath: path.join(storePath, 'index.json'),
+    migrationReportPath: path.join(storePath, 'migration-report.json'),
+    runtimeDir,
+    sessionsDir: path.join(runtimeDir, 'sessions')
+  };
+}
+
 export function codexConfigPath() {
   return path.join(resolveCodexHome(), 'config.toml');
 }
