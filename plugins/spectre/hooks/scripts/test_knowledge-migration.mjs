@@ -998,6 +998,50 @@ describe('legacy migration recovery and contention', () => {
     assert.deepEqual(stable, resumed);
   });
 
+  it('retires generated recall without allocating a missing store', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const spectreHome = path.join(makeTmp(t), 'spectre-home');
+    const recallPath = path.join(
+      projectDir,
+      '.agents',
+      'skills',
+      'spectre-recall',
+    );
+    const unrelatedPath = path.join(
+      projectDir,
+      '.agents',
+      'skills',
+      'user-owned',
+      'SKILL.md',
+    );
+    fs.mkdirSync(path.join(recallPath, 'references'), { recursive: true });
+    fs.mkdirSync(path.dirname(unrelatedPath), { recursive: true });
+    fs.writeFileSync(path.join(recallPath, 'SKILL.md'), 'generated recall\n');
+    fs.writeFileSync(
+      path.join(recallPath, 'references', 'registry.toon'),
+      '# no unresolved rows\n',
+    );
+    fs.writeFileSync(unrelatedPath, 'user-owned skill\n');
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    const report = await migrateLegacyKnowledge({
+      projectDir,
+      spectreHome,
+      gitRunner() {
+        throw new Error('fixture is intentionally non-Git');
+      },
+    });
+
+    assert.deepEqual(report, {
+      schemaVersion: 1,
+      grandfatheredClaudeNativeDiscoveryIncomplete: false,
+      entries: [],
+    });
+    assert.equal(fs.existsSync(recallPath), false);
+    assert.equal(fs.readFileSync(unrelatedPath, 'utf8'), 'user-owned skill\n');
+    assert.equal(fs.existsSync(spectreHome), false);
+  });
+
   it('requires indexed canonical identity and surviving trigger inclusion', async (t) => {
     const { classifyLegacyKnowledge } = await loadMigrationModule();
     const results = {};

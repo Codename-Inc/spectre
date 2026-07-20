@@ -662,6 +662,9 @@ function cleanResolvedSources(projectDir, classification, options = {}) {
 export async function migrateLegacyKnowledge(options) {
   const projectDir = path.resolve(options.projectDir);
   const legacyRows = readRegistryRows(projectDir);
+  if (legacyRows.length === 0) {
+    removeGeneratedRecallWhenResolved(projectDir);
+  }
   let storePath = options.storePath ? path.resolve(options.storePath) : null;
   if (!storePath) {
     const resolved = await resolveProjectStore(projectDir, {
