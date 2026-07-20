@@ -1,6 +1,18 @@
 import fs from 'fs';
 import path from 'path';
 import { projectPaths, spectrePluginRoot, ensureDir } from './paths.js';
+import {
+  formatKnowledgeSearchHuman,
+  searchKnowledge
+} from '../../plugins/spectre/hooks/scripts/knowledge/search.mjs';
+
+export async function searchCanonicalKnowledge(options) {
+  return searchKnowledge(options);
+}
+
+export function formatCanonicalKnowledgeSearch(result, query) {
+  return formatKnowledgeSearchHuman(result, query);
+}
 
 function stripFrontmatter(content) {
   if (!content.startsWith('---\n')) {

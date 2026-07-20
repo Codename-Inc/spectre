@@ -3,7 +3,18 @@ import readline from 'readline/promises';
 import fs from 'fs';
 import { runDoctor } from './lib/doctor.js';
 import { installCodex, uninstallCodex } from './lib/install.js';
+import {
+  formatCanonicalKnowledgeSearch,
+  searchCanonicalKnowledge
+} from './lib/knowledge.js';
 import { projectCodexHome } from './lib/paths.js';
+
+class CliError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
 
 function parseArgs(argv) {
   const positional = [];
@@ -34,6 +45,9 @@ function usage() {
   spectre uninstall codex [--scope user|project] [--project-dir <path>]
   spectre update codex [--scope user|project] [--project-dir <path>]
   spectre doctor codex [--scope user|project] [--project-dir <path>] [--json]
+  spectre knowledge search [query] [--project-dir <path>] [--json]
+  spectre knowledge register --record <path> [--project-dir <path>] [--json]
+  spectre knowledge migrate [--project-dir <path>] [--json]
 `;
 }
 
@@ -113,6 +127,45 @@ export async function main(argv) {
   if (!command || command === 'help' || command === '--help') {
     process.stdout.write(usage());
     return;
+  }
+
+  if (command === 'knowledge') {
+    if (target === 'search') {
+      const query = positional.slice(2).join(' ');
+      let result;
+      try {
+        result = await searchCanonicalKnowledge({
+          projectDir: resolveProjectDir(flags),
+          query
+        });
+      } catch (error) {
+        throw new CliError(
+          'KNOWLEDGE_SEARCH_FAILED',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+      if (flags.get('--json')) {
+        process.stdout.write(`${JSON.stringify({ ok: true, query, ...result })}\n`);
+      } else {
+        process.stdout.write(formatCanonicalKnowledgeSearch(result, query));
+        for (const warning of result.warnings) {
+          process.stderr.write(`spectre: skipped invalid knowledge record: ${warning.message}\n`);
+        }
+      }
+      return;
+    }
+
+    if (target === 'register' || target === 'migrate') {
+      throw new CliError(
+        'KNOWLEDGE_COMMAND_NOT_IMPLEMENTED',
+        `spectre knowledge ${target} is recognized but not implemented yet.`
+      );
+    }
+
+    throw new CliError(
+      'UNKNOWN_KNOWLEDGE_COMMAND',
+      `Unknown knowledge command "${target || ''}".`
+    );
   }
 
   if (target !== 'codex') {
