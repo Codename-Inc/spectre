@@ -13,11 +13,6 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..', '..', '..');
 const PAYLOAD_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'payload.mjs');
 const HOST_HARNESS = path.join(REPO_ROOT, 'scripts', 'verify-knowledge-hosts.mjs');
 
-const PROSE_CORE_CHARS = 6_000;
-const CODE_CORE_CHARS = 4_000;
-const SECONDARY_METADATA_RESERVE_CHARS = 750;
-const CLAUDE_SAFE_OUTPUT_CHARS = 9_000;
-
 const PROSE_PROMPT =
   'Apply the knowledge for spectre payload prose boundary and reply exactly ' +
   'SPECTRE_PROSE_INLINE_OK.';
@@ -43,10 +38,10 @@ function repeatToLength(unit, length) {
   return unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 }
 
-function frameCore(core) {
+function frameCore(core, secondaryMetadataReserveChars) {
   const secondaryReserve = repeatToLength(
     '[also matching: reserved metadata]\n',
-    SECONDARY_METADATA_RESERVE_CHARS,
+    secondaryMetadataReserveChars,
   );
   return [
     '# Spectre applied knowledge',
@@ -58,23 +53,28 @@ function frameCore(core) {
   ].join('\n');
 }
 
-const FIXTURES = {
-  prose: repeatToLength(
+function payloadFixtures(boundaries) {
+  return {
+    prose: repeatToLength(
     'Reliable project knowledge is applied directly when its declared trigger matches. ',
-    PROSE_CORE_CHARS,
-  ),
-  code: repeatToLength(
-    'export function applyKnowledge(prompt) {\n  return prompt.trim();\n}\n',
-    CODE_CORE_CHARS,
-  ),
-  punctuation: repeatToLength('(){}[]<>.,;:!?/\\|`~@#$%^&*-_=+ ', CLAUDE_SAFE_OUTPUT_CHARS),
-  unicode: repeatToLength(
-    'cafe\u0301 naive\u0308 Tokyo:\u6771\u4eac Greek:\u0394\u03bf\u03ba\u03b9\u03bc\u03ae guillemets:\u00ab\u00bb ',
-    CLAUDE_SAFE_OUTPUT_CHARS,
-  ),
-};
+      boundaries.proseCoreChars,
+    ),
+    code: repeatToLength(
+      'export function applyKnowledge(prompt) {\n  return prompt.trim();\n}\n',
+      boundaries.codeCoreChars,
+    ),
+    punctuation: repeatToLength(
+      '(){}[]<>.,;:!?/\\|`~@#$%^&*-_=+ ',
+      boundaries.punctuationUnsafeChars,
+    ),
+    unicode: repeatToLength(
+      'cafe\u0301 naive\u0308 Tokyo:\u6771\u4eac Greek:\u0394\u03bf\u03ba\u03b9\u03bc\u03ae guillemets:\u00ab\u00bb ',
+      boundaries.unicodeUnsafeChars,
+    ),
+  };
+}
 
-async function loadMeasurePayload() {
+async function loadPayloadModule() {
   assert.equal(
     fs.existsSync(PAYLOAD_MODULE),
     true,
@@ -82,7 +82,8 @@ async function loadMeasurePayload() {
   );
   const module = await import(pathToFileURL(PAYLOAD_MODULE).href);
   assert.equal(typeof module.measurePayload, 'function');
-  return module.measurePayload;
+  assert.equal(typeof module.PAYLOAD_BOUNDARIES, 'object');
+  return module;
 }
 
 function prepareHostFixture(t) {
@@ -102,24 +103,38 @@ function prepareHostFixture(t) {
   return { fixtureRoot, manifest: JSON.parse(stdout) };
 }
 
-describe('knowledge payload feasibility contract (RED)', () => {
+describe('knowledge payload feasibility contract', () => {
   it('accepts the minimum useful prose and code cores after framing reserve', async () => {
-    assert.equal(FIXTURES.prose.length, PROSE_CORE_CHARS);
-    assert.equal(FIXTURES.code.length, CODE_CORE_CHARS);
-
-    const measurePayload = await loadMeasurePayload();
-    assert.equal(measurePayload('codex', frameCore(FIXTURES.prose)).ok, true);
-    assert.equal(measurePayload('codex', frameCore(FIXTURES.code)).ok, true);
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
+    assert.equal(fixtures.prose.length, PAYLOAD_BOUNDARIES.proseCoreChars);
+    assert.equal(fixtures.code.length, PAYLOAD_BOUNDARIES.codeCoreChars);
+    assert.equal(
+      measurePayload(
+        'codex',
+        frameCore(fixtures.prose, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars),
+      ).ok,
+      true,
+    );
+    assert.equal(
+      measurePayload(
+        'codex',
+        frameCore(fixtures.code, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars),
+      ).ok,
+      true,
+    );
   });
 
   it('measures punctuation-heavy and Unicode boundary fixtures deterministically', async () => {
-    assert.equal(FIXTURES.punctuation.length, CLAUDE_SAFE_OUTPUT_CHARS);
-    assert.equal(FIXTURES.unicode.length, CLAUDE_SAFE_OUTPUT_CHARS);
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
+    assert.equal(fixtures.punctuation.length, PAYLOAD_BOUNDARIES.punctuationUnsafeChars);
+    assert.equal(fixtures.unicode.length, PAYLOAD_BOUNDARIES.unicodeUnsafeChars);
 
-    const measurePayload = await loadMeasurePayload();
-    for (const core of [FIXTURES.punctuation, FIXTURES.unicode]) {
-      const first = measurePayload('codex', frameCore(core));
-      const second = measurePayload('codex', frameCore(core));
+    for (const core of [fixtures.punctuation, fixtures.unicode]) {
+      const framed = frameCore(core, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars);
+      const first = measurePayload('codex', framed);
+      const second = measurePayload('codex', framed);
       assert.deepEqual(second, first);
       assert.equal(Number.isFinite(first.measured), true);
       assert.equal(first.ok, false);
@@ -127,24 +142,30 @@ describe('knowledge payload feasibility contract (RED)', () => {
   });
 
   it('enforces the Claude framing reserve at 9,000 and 9,001 characters', async () => {
-    const emptyFrameLength = frameCore('').length;
-    const exact = frameCore('x'.repeat(CLAUDE_SAFE_OUTPUT_CHARS - emptyFrameLength));
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const emptyFrameLength = frameCore(
+      '',
+      PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
+    ).length;
+    const exact = frameCore(
+      'x'.repeat(PAYLOAD_BOUNDARIES.claudeSafeOutputChars - emptyFrameLength),
+      PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
+    );
     const over = `${exact}x`;
-    assert.equal(exact.length, CLAUDE_SAFE_OUTPUT_CHARS);
-    assert.equal(over.length, CLAUDE_SAFE_OUTPUT_CHARS + 1);
+    assert.equal(exact.length, PAYLOAD_BOUNDARIES.claudeSafeOutputChars);
+    assert.equal(over.length, PAYLOAD_BOUNDARIES.claudeSafeOutputChars + 1);
 
-    const measurePayload = await loadMeasurePayload();
     assert.deepEqual(measurePayload('claude', exact), {
       ok: true,
-      measured: CLAUDE_SAFE_OUTPUT_CHARS,
-      limit: CLAUDE_SAFE_OUTPUT_CHARS,
-      reserve: 1_000,
+      measured: PAYLOAD_BOUNDARIES.claudeSafeOutputChars,
+      limit: PAYLOAD_BOUNDARIES.claudeSafeOutputChars,
+      reserve: PAYLOAD_BOUNDARIES.claudeReserveChars,
     });
     assert.equal(measurePayload('claude', over).ok, false);
   });
 });
 
-describe('real-host fixture harness contract (RED)', () => {
+describe('real-host fixture harness contract', () => {
   it('emits unique sentinels, exact prompts, and resolved host commands', (t) => {
     const { fixtureRoot, manifest } = prepareHostFixture(t);
     const expectedCommands = {
@@ -166,6 +187,16 @@ describe('real-host fixture harness contract (RED)', () => {
       ['SPECTRE_PRIMARY_PROSE_6000_V1', 'SPECTRE_PRIMARY_CODE_4000_V1'],
     );
     assert.equal(new Set(manifest.primarySentinels).size, manifest.primarySentinels.length);
+    assert.equal(manifest.fixtureRoot, fixtureRoot);
+    assert.equal(manifest.spectreHome, path.join(fixtureRoot, '.spectre'));
+    assert.match(
+      manifest.evidencePath,
+      /docs\/tasks\/main\/knowledge-surfacing\/verification\/host-payload-\d{4}-\d{2}-\d{2}\.md$/,
+    );
+    assert.equal(
+      fs.existsSync(path.join(manifest.codexRuntimeCopyPath, 'payload.mjs')),
+      true,
+    );
   });
 
   it('requires every inline and no-fallback observation in the evidence template', (t) => {
