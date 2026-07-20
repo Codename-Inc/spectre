@@ -489,3 +489,150 @@ node --test plugins/spectre/hooks/scripts/test_knowledge-payload.mjs
 Result: `6/6` passed. The tests cover boundary estimation, generated hook
 wiring, exact prompt/sentinel contracts, same-session deduplication,
 new-session reapplication, and no-match silence.
+
+## Comprehensive Review Closure
+
+**Date:** 2026-07-19 21:01-21:20 PDT (`America/Los_Angeles`)
+**Repository base:** `c5e6aa1`
+**Result:** PASS
+**Scope:** dense Codex payload, eligible Git migration, and divergent Git debt
+
+### Runtime
+
+| Item | Value |
+|---|---|
+| Claude Code | `2.1.215` |
+| Claude model | `claude-opus-4-8` |
+| Codex CLI | `0.144.6` |
+| Node.js | `v24.18.0` |
+| Fixture root | `<fixture>` |
+| Eligible project | `<fixture>/eligible-git` |
+| Divergent-debt project | `<fixture>/debt-git` |
+
+Both migration projects were initialized with `git init`. Their isolated
+canonical stores were `<fixture>/eligible-home` and `<fixture>/debt-home`.
+Paths below are relative or redacted; no user home or repository checkout path
+is required to interpret the result.
+
+### Commands
+
+The eligible migration ran through the real Claude host and production plugin
+hooks:
+
+```bash
+git init <fixture>/eligible-git
+cd <fixture>/eligible-git
+SPECTRE_HOME=<fixture>/eligible-home claude -p \
+  --output-format stream-json --include-hook-events --verbose \
+  --permission-mode dontAsk --plugin-dir <repo>/plugins/spectre \
+  --session-id 81818181-1818-4818-8818-181818181818 \
+  'Apply the eligible git migration knowledge and reply exactly SPECTRE_GIT_MIGRATION_OK.'
+```
+
+The divergent fixture exercised explicit migration, project-native Codex
+configuration filtering, and doctor:
+
+```bash
+git init <fixture>/debt-git
+SPECTRE_HOME=<fixture>/debt-home node <repo>/bin/spectre.js \
+  knowledge migrate --project-dir <fixture>/debt-git --json
+SPECTRE_HOME=<fixture>/debt-home node <repo>/bin/spectre.js \
+  update codex --scope project --project-dir <fixture>/debt-git
+SPECTRE_HOME=<fixture>/debt-home node <repo>/bin/spectre.js \
+  doctor codex --scope project --project-dir <fixture>/debt-git --json
+```
+
+### Dense Codex Probe
+
+This was one real Codex host run for the selected near-boundary fixture, not a
+claim about every dense payload or future host version.
+
+| Observation | Result |
+|---|---|
+| Thread | `019f7daf-6edf-7200-9759-94cfc441bc57` |
+| Dense core | `2,050` mixed alphanumeric characters |
+| Exact registration frame | `2,207 / 2,250` estimated tokens, accepted |
+| Exact runtime frame | `1,654 / 2,250` estimated tokens, accepted |
+| Applied contexts | Exactly one |
+| Required response | `SPECTRE_DENSE_INLINE_OK` |
+| Preview/file/truncation/fallback | Absent |
+| Raw transcript SHA-256 | `8eb8c21e9d7812218639ceac68fc54bdb956025bf30a839df66d0a64fe63cf34` |
+| Applied context SHA-256 | `44d142e2416389d5bf72cdd193526c8d063b90f948c54c8d15fc0aafdfcc4838` |
+
+The persisted developer context contained
+`SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1` in full and the assistant response was
+exactly the required sentinel.
+
+### Eligible Git Migration
+
+The Git fixture began with one allowlisted
+`.claude/skills/feature-git-eligible` record and one corresponding legacy
+registry row. The real Claude `SessionStart:startup` hook migrated it before
+the same session's prompt hook matched it.
+
+| Observation | Result |
+|---|---|
+| Claude session | `81818181-1818-4818-8818-181818181818` |
+| Migration report | `MIGRATED` |
+| SessionStart notice | Capability-only knowledge/search/learn notice emitted |
+| Prompt notice | `spectre: applied feature-git-eligible; 0 also matching` |
+| Applied contexts | Exactly one |
+| Primary sentinel | `SPECTRE_GIT_MIGRATION_PRIMARY_V1` present |
+| Required response | `SPECTRE_GIT_MIGRATION_OK` |
+| Canonical location | Isolated `SPECTRE_HOME`, outside the Git repository |
+| Repository knowledge copy | Absent |
+| Legacy source and registry | Removed after successful migration |
+
+The final cleanup assertion required the canonical `SKILL.md`, index, and
+migration report to exist while the legacy source and registry were absent.
+The same host session then read that canonical record through the production
+prompt hook. This preserves the production commit-before-cleanup contract
+without using a fixture-only migration path.
+
+Hashes:
+
+```text
+canonical SKILL.md  51f75c65eaf4d482d7584522eed2b2f5775f8d059a7fe5932e2bc52d100439fd
+migration report    20f4f14cf7c2f010d9d9c39bb78d18fdaf8d9bb0555432200b32c7b58d35ac5a
+Claude stream       f79535946749853ec215121cb33191e4457933a2a3bf5ba2147591344c385c4d
+Claude transcript   ef2c10205e2e2766fffe6b040d2d24196e4e0ce90c034fbe6e2b891717ed5970
+```
+
+### Divergent Migration Debt
+
+The second Git fixture used one allowlisted ID with byte-distinct `.claude`
+and `.agents` sources. It also contained an unrelated enabled native skill and
+an existing `[[skills.config]]` entry with a custom field.
+
+| Observation | Result |
+|---|---|
+| Migration classification | `DIVERGENT` |
+| Canonical winner | None; canonical index contains `0` records |
+| Source preservation | Both divergent sources byte-identical before/after |
+| Registry preservation | Both legacy rows remain |
+| Doctor migration status | `debt` |
+| Doctor unresolved count | `1` |
+| Doctor issue | `feature-divergent-git` / `DIVERGENT` |
+| Unrelated native skill | Bytes unchanged |
+| Unrelated config | Original enabled block and custom field byte-preserved |
+
+Source and evidence hashes:
+
+```text
+.claude divergent source  5347732f10f727cbd4f3a653032aa563a10918336fb5891a172edce22d1c70e4
+.agents divergent source  43fdd987f27ed7dfdef7031e2b9b0358ccae354cdcd616b5a6efce100cea54a8
+unrelated native skill    e9c9018e6e66de6e93b824e2263895b974c525496435becaeb6dbb1c9ef182a2
+migration report          87840dafb582198533d569eb24646824f1602c4bd595ac784204828dd8ad5a50
+doctor JSON               01e4265b7bcda525d9687c2eb1b3e4ed8ef44959f43cfc85f63d268badfdb5a6
+```
+
+Doctor separately reported the disposable project as untrusted because it was
+not added to Codex's trust configuration. That does not affect report parsing
+or the migration-debt result, and this fixture is not claimed as
+resolver-active host proof.
+
+No host prompt was used to claim divergent knowledge application: migration
+intentionally created no canonical record, so doing so would have fabricated
+a winner. The production migrate/update/doctor path instead proved
+non-destructive preservation, native configuration retention, and truthful
+migration debt.
