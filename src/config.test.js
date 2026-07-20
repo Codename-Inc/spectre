@@ -52,7 +52,7 @@ function makeSessionProject() {
   return tmp;
 }
 
-test('SessionStart writes the latest handoff and inlined knowledge to the managed override', async () => {
+test('SessionStart writes the latest handoff and capability-only knowledge guidance', async () => {
   const tmp = makeSessionProject();
   const { buildSessionStartOutput } = await import('./lib/project.js');
 
@@ -61,12 +61,15 @@ test('SessionStart writes the latest handoff and inlined knowledge to the manage
 
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.match(output.systemMessage, /injected docs\/tasks\/main\/session_logs\/2026-03-09-100000_handoff\.json/);
-  assert.match(output.systemMessage, /1 knowledge skills available/);
+  assert.match(output.systemMessage, /knowledge is applied automatically/);
+  assert.match(output.systemMessage, /spectre knowledge search "<query>"/);
   assert.match(overrideContent, /<!-- spectre-session:start -->/);
   assert.match(overrideContent, /official SessionStart migration/);
   assert.match(overrideContent, /Wiring tests for the new SessionStart payload/);
   assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
-  assert.match(overrideContent, /feature-auth\|feature\|auth, login\|Use when modifying auth flows/);
+  assert.doesNotMatch(overrideContent, /feature-auth\|feature\|auth, login/);
+  assert.match(overrideContent, /knowledge is applied automatically/i);
+  assert.match(overrideContent, /spectre knowledge search "<query>"/);
   assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
 });
 
@@ -95,24 +98,24 @@ test('SessionStart clears stale session state but keeps empty knowledge and user
   const output = buildSessionStartOutput(tmp, { source: 'clear' });
   const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
 
-  assert.equal(output.systemMessage, '🟢 👻 SPECTRE active | 👻 spectre: ready — capture knowledge with /spectre:learn');
+  assert.match(output.systemMessage, /knowledge is applied automatically/);
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
   assert.match(overrideContent, /spectre-knowledge:start/);
-  assert.match(overrideContent, /No knowledge captured yet/);
+  assert.match(overrideContent, /knowledge is applied automatically/i);
   assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
 });
 
-test('project install creates recall files without managed memory injection', async () => {
+test('project install creates no native knowledge files or managed memory injection', async () => {
   const tmp = makeProject();
   const { installProjectFiles } = await import('./lib/project.js');
 
   installProjectFiles(tmp, 'project');
 
   assert.ok(fs.existsSync(path.join(tmp, '.spectre', 'manifest.json')));
-  assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
-  assert.ok(fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
+  assert.ok(!fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
+  assert.ok(!fs.existsSync(path.join(tmp, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
   assert.ok(!fs.existsSync(path.join(tmp, 'AGENTS.override.md')));
 });
 

@@ -82,8 +82,8 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     assert.match(config, /multi_agent = true/);
     assert.doesNotMatch(config, /session_start = /);
     assert.doesNotMatch(config, /pre_session_start/);
-    assert.match(config, /\[\[skills\.config\]\]/);
-    assert.match(config, /path = ".*\.agents\/skills\/spectre-recall\/SKILL\.md"/);
+    assert.doesNotMatch(config, /\[\[skills\.config\]\]/);
+    assert.doesNotMatch(config, /\.agents\/skills\/spectre-recall\/SKILL\.md/);
 
     const hooksConfig = JSON.parse(fs.readFileSync(path.join(codeHome, 'hooks.json'), 'utf8'));
     const sessionHooks = hooksConfig.hooks.SessionStart.flatMap(group => group.hooks);
@@ -97,8 +97,8 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'bootstrap.mjs')));
     assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'register_learning.mjs')));
     assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'tools', 'sync-session-override.mjs')));
-    assert.ok(fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
-    assert.ok(fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
+    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
+    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
 
     const manifest = JSON.parse(fs.readFileSync(path.join(projectDir, '.spectre', 'manifest.json'), 'utf8'));
     assert.equal(manifest.codexIntegration.hiddenContextInjection, 'agents_override_managed_block');
@@ -407,7 +407,7 @@ test('project uninstall removes managed workflow skills, agent config, and proje
     assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
     assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'bin', 'codex')));
     assert.ok(!fs.existsSync(path.join(codeHome, 'hooks.json')));
-    assert.ok(fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
+    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
   } finally {
     if (previousCodexHome == null) {
       delete process.env.CODEX_HOME;

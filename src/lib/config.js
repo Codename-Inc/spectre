@@ -213,6 +213,32 @@ function renderSkillsConfigEntries(entries) {
   ].join('\n')).join('\n\n')}\n`;
 }
 
+const RESOLVED_MIGRATION_CODES = new Set([
+  'MIGRATED',
+  'DEDUPLICATED',
+  'ALREADY_MIGRATED'
+]);
+
+function migratedNativeSkillPaths(migrationReport) {
+  const paths = new Set();
+  for (const entry of migrationReport?.entries ?? []) {
+    if (!RESOLVED_MIGRATION_CODES.has(entry.code)) {
+      continue;
+    }
+    for (const sourcePath of entry.sourcePaths ?? []) {
+      paths.add(path.resolve(sourcePath, 'SKILL.md'));
+    }
+  }
+  return paths;
+}
+
+function retiredRecallSkillPaths(projectDir) {
+  return new Set([
+    path.resolve(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md'),
+    path.resolve(projectDir, '.agents', 'skills', 'spectre-find', 'SKILL.md')
+  ]);
+}
+
 function removeLegacyProjectSkillTables(content) {
   return content.replace(/\n*\[skills\.config\.spectre_[^\]]+\]\n[\s\S]*?(?=^\[\[skills\.config\]\]\n|^\[(?!\[)|(?![\s\S]))/gm, '\n');
 }
@@ -452,13 +478,20 @@ function hasRemainingAgentTables(content) {
   return /^\[agents\.[^\]]+\]$/m.test(content);
 }
 
-export function syncProjectSkillsConfigured(projectDir) {
+export function syncProjectSkillsConfigured(projectDir, migrationReport) {
   const { configPath, content: initialContent } = readConfig();
   const paths = projectPaths(projectDir);
-  const projectSkillsRoot = path.resolve(paths.projectSkillsDir);
   const existingEntries = parseArrayTableEntries(initialContent, 'skills.config');
-  const unrelatedEntries = existingEntries.filter(entry =>
-    !(entry.path && path.resolve(entry.path).startsWith(`${projectSkillsRoot}${path.sep}`))
+  const retiredPaths = retiredRecallSkillPaths(projectDir);
+  const migratedPaths = migratedNativeSkillPaths(migrationReport);
+  const removedPaths = new Set([...retiredPaths, ...migratedPaths]);
+  const retainedEntries = existingEntries.filter(entry =>
+    !entry.path || !removedPaths.has(path.resolve(entry.path))
+  );
+  const configuredPaths = new Set(
+    retainedEntries
+      .map(entry => entry.path && path.resolve(entry.path))
+      .filter(Boolean)
   );
   const projectEntries = [];
 
@@ -473,6 +506,10 @@ export function syncProjectSkillsConfigured(projectDir) {
         continue;
       }
 
+      const resolvedSkillPath = path.resolve(skillPath);
+      if (removedPaths.has(resolvedSkillPath) || configuredPaths.has(resolvedSkillPath)) {
+        continue;
+      }
       projectEntries.push({
         path: skillPath,
         enabled: true
@@ -480,11 +517,15 @@ export function syncProjectSkillsConfigured(projectDir) {
     }
   }
 
-  let content = removeLegacyProjectSkillTables(removeArrayTableEntries(initialContent, 'skills.config')).trimEnd();
-  const nextEntries = unrelatedEntries.concat(projectEntries);
-  const renderedEntries = renderSkillsConfigEntries(nextEntries).trimEnd();
+  let content = removeLegacyProjectSkillTables(initialContent);
+  for (const entry of existingEntries) {
+    if (entry.path && removedPaths.has(path.resolve(entry.path))) {
+      content = content.replace(entry.raw, '');
+    }
+  }
+  const renderedEntries = renderSkillsConfigEntries(projectEntries).trimEnd();
   if (renderedEntries) {
-    content = `${content}\n\n${renderedEntries}`;
+    content = `${content.trimEnd()}\n\n${renderedEntries}`;
   }
 
   writeConfig(configPath, content);

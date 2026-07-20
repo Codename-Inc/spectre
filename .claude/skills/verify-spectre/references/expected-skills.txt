@@ -4,7 +4,6 @@
 # Post-merge tree (31 skills):
 # +create_pr, +prune, +release, +task_review, -evaluate, -architecture_review.
 
-spectre-apply
 spectre-clean
 spectre-code_review
 spectre-create_plan

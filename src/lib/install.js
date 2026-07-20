@@ -13,6 +13,7 @@ import {
   syncProjectSkillsConfigured
 } from './config.js';
 import { installProjectFiles, uninstallProjectFiles } from './project.js';
+import { initializeProjectKnowledge } from './knowledge.js';
 import {
   codexPromptsDir,
   codexRuntimeRoot,
@@ -251,7 +252,7 @@ function installRuntimeScripts() {
   writeFile(path.join(toolsDir, 'sync-session-override.mjs'), syncSessionOverrideTool(), 0o755);
 }
 
-export function installCodex({ scope, projectDir }) {
+export async function installCodex({ scope, projectDir }) {
   const runtimeRoot = codexRuntimeRoot();
   ensureDir(runtimeRoot);
   removeLegacyForkRuntime(runtimeRoot);
@@ -263,7 +264,8 @@ export function installCodex({ scope, projectDir }) {
 
   if (scope === 'project') {
     installProjectFiles(projectDir, scope);
-    syncProjectSkillsConfigured(projectDir);
+    const { migrationReport } = await initializeProjectKnowledge({ projectDir });
+    syncProjectSkillsConfigured(projectDir, migrationReport);
   }
 
   const metadata = repoMetadata();

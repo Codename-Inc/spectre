@@ -8,7 +8,7 @@ user-invocable: true
 
 The gate suite for the Spectre plugin itself. Run it after any change to skills, agents, hooks, `src/lib/`, or the Codex mirror — and always before a release.
 
-The reason this exists as scripts rather than a checklist: Spectre's real failures are silent. A skill whose frontmatter name drifts from its directory never triggers. A stale Codex mirror serves every Codex user the previous version indefinitely. An unsubstituted `{{REGISTRY}}` ships a raw template into someone's context. None of these break a test or throw an error — they just quietly stop working. So every check asserts an observable condition (file contents, exit code, byte-comparison) and exits nonzero. Nothing here is eyeballed.
+The reason this exists as scripts rather than a checklist: Spectre's real failures are silent. A skill whose frontmatter name drifts from its directory never triggers. A stale Codex mirror serves every Codex user the previous version indefinitely. A missing prompt resolver leaves exact knowledge matches unapplied without blocking the user's work. None of these break a test or throw an error — they just quietly stop working. So every check asserts an observable condition (file contents, exit code, byte-comparison) and exits nonzero. Nothing here is eyeballed.
 
 ## Run it
 
@@ -27,7 +27,7 @@ The scripts here are the single canonical copy. `.agents/skills/verify-spectre/`
 
 | # | Gate | Asserts |
 |---|------|---------|
-| 1 | **structure** | Skill/agent frontmatter valid and `name` matches its directory · expected-skills manifest intact · `hooks.json` parses, scripts exist, SessionStart order is `bootstrap → handoff-resume → load-knowledge` · `{{REGISTRY}}` appears only in the apply source template · no stale `caspar` naming · every `Skill(spectre-x)` / `/spectre:x` / `@spectre:agent` reference resolves · three version files agree |
+| 1 | **structure** | Skill/agent frontmatter valid and `name` matches its directory · expected-skills manifest intact · `hooks.json` parses, scripts exist, SessionStart order is `bootstrap → handoff-resume → load-knowledge` · no active skill contains `{{REGISTRY}}` · no stale `caspar` naming · every `Skill(spectre-x)` / `/spectre:x` / `@spectre:agent` reference resolves · three version files agree |
 | 2 | **tests** | `npm test` passes; reports the test count so a silent drop (deleted tests, not fixed ones) is visible |
 | 3 | **codex** | `sync-codex --check` is clean — the committed mirror matches canonical source · generated hooks reference `.mjs`, never `.cjs`, and every referenced script exists · skills rewritten to `.agents/skills/` and bare skill names |
 | 4 | **real-cli** | The CLI and hooks actually run, in throwaway temp dirs with a fresh `CODEX_HOME` (see below) |
@@ -38,9 +38,10 @@ The scripts here are the single canonical copy. `.agents/skills/verify-spectre/`
 Tests exercise functions; users exercise the installed CLI and the hooks that fire at session start. Those are different things, and the gap between them is where this project's actual bugs have lived. Gate 4 closes it by driving the real binary:
 
 - **Non-spectre guard** — a bare directory gets nothing written to it.
-- **Populated registry** — injection writes `AGENTS.override.md`, registry rows are *inlined*, no raw `{{REGISTRY}}` survives, and the visible notice reports the right count.
-- **Empty registry** — the notice renders and, critically, `{{REGISTRY}}` still doesn't leak. This is the case that catches a missed substitution in the Codex parallel path in `src/lib/knowledge.js`, because with no rows to inline a broken substitution has nothing to hide behind.
-- **Idempotency** — SessionStart fires on every startup/clear/compact, so a second run must be byte-identical. A block that grows each session bloats context forever.
+- **Equivalent prompt delivery** — Claude Code and Codex register `UserPromptSubmit`; an exact active match is delivered directly through `additionalContext` with a concise applied-knowledge notice.
+- **Capability-only SessionStart** — startup/clear/compact output contains constant search/capture guidance, never registry rows or record bodies.
+- **Prompt idempotency** — repeating the same match in one session injects nothing; a new/clear/compact boundary permits the record version to apply again.
+- **No-match silence** — unrelated prompts receive no knowledge context or visible notice.
 - **Session memory** — a seeded handoff is surfaced by `handoff-resume`.
 - **Install/doctor/uninstall, both scopes** (`--scope user|project`) — and uninstall leaves zero managed markers behind.
 - **Legacy marker cleanup** — a project carrying `caspar-*` blocks from the fork era has them cleared on reinstall.

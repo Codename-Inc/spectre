@@ -87,7 +87,9 @@ if (g.check(fs.existsSync(hooksPath), 'hooks.json exists')) {
     // load-knowledge injects on top. Shuffle them and the resume notice can
     // land before the state it describes exists.
     const EXPECTED = ['bootstrap.mjs', 'handoff-resume.mjs', 'load-knowledge.mjs'];
-    const actual = commands.map((c) => path.basename(c.split(/\s+/).pop() || ''));
+    const scriptForCommand = (command) =>
+      command.split(/\s+/).find((token) => token.endsWith('.mjs')) || '';
+    const actual = commands.map((command) => path.basename(scriptForCommand(command)));
     g.check(
       JSON.stringify(actual) === JSON.stringify(EXPECTED),
       'SessionStart hooks registered in the expected order',
@@ -95,7 +97,7 @@ if (g.check(fs.existsSync(hooksPath), 'hooks.json exists')) {
     );
 
     for (const command of commands) {
-      const script = command.split(/\s+/).pop() || '';
+      const script = scriptForCommand(command);
       const resolved = script.replace('${CLAUDE_PLUGIN_ROOT}', PLUGIN);
       g.check(fs.existsSync(resolved), `hook script exists: ${path.basename(resolved)}`, `not found at ${resolved}`);
     }
@@ -103,20 +105,15 @@ if (g.check(fs.existsSync(hooksPath), 'hooks.json exists')) {
 }
 
 // --- template placeholders --------------------------------------------------
-// {{REGISTRY}} is substituted at inject time. The substitution machinery (the
-// hooks, register_learning, the recall template) legitimately contains the
-// literal — that's the code doing the replacing. What must never happen is a
-// *prompt* shipping the raw placeholder, because that reaches the model as-is.
-// The runtime leak is caught in gate 4; here we guard the prompt surface.
+// Registry substitution is retired. No active skill may ship its placeholder.
 const stray = [];
 for (const dir of skillDirs) {
-  if (dir === 'spectre-apply') continue;  // the source template — the one legitimate holder
   const skillPath = path.join(SKILLS, dir, 'SKILL.md');
   if (fs.existsSync(skillPath) && fs.readFileSync(skillPath, 'utf8').includes('{{REGISTRY}}')) {
     stray.push(dir);
   }
 }
-g.check(stray.length === 0, '{{REGISTRY}} appears in no SKILL.md but the apply template',
+g.check(stray.length === 0, '{{REGISTRY}} appears in no active SKILL.md',
   `raw placeholder would reach the model from: ${stray.join(', ')}`);
 
 // --- stale fork naming ------------------------------------------------------

@@ -105,6 +105,6 @@ test('spectre-recall searches canonical knowledge and reads selected records dir
   assert.match(recall, /read-only/i);
 });
 
-test('legacy recall template remains until npm-side readers retire it', () => {
-  assert.equal(fs.existsSync(TEMPLATE_PATH), true);
+test('legacy recall template is retired after npm-side readers are removed', () => {
+  assert.equal(fs.existsSync(TEMPLATE_PATH), false);
 });

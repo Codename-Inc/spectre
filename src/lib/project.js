@@ -11,13 +11,19 @@ import {
   SESSION_OVERRIDE_START,
   repoMetadata
 } from './constants.js';
-import {
-  buildKnowledgeOverrideBody,
-  ensureKnowledgeFiles,
-  knowledgeStatusMessage,
-  readKnowledgeRegistry
-} from './knowledge.js';
 import { ensureDir, projectPaths } from './paths.js';
+
+const KNOWLEDGE_CAPABILITY_STATUS =
+  'spectre: relevant active project knowledge is applied automatically; ' +
+  'search with `spectre knowledge search "<query>"`; capture durable knowledge ' +
+  'with `/spectre:learn`.';
+const KNOWLEDGE_CAPABILITY_BODY = [
+  '## SPECTRE Project Knowledge',
+  '',
+  'Relevant active project knowledge is applied automatically when a prompt matches.',
+  'Use `spectre knowledge search "<query>"` for explicit lexical discovery.',
+  'Use `/spectre:learn` to capture durable project knowledge.'
+].join('\n');
 
 function gitBranch(projectDir) {
   try {
@@ -305,27 +311,16 @@ export function clearKnowledgeOverride(projectDir) {
 }
 
 export function syncKnowledgeOverride(projectDir) {
-  ensureKnowledgeFiles(projectDir);
-  const { overrideAgentsPath, knowledgeRegistryPath } = projectPaths(projectDir);
-  const { entryCount } = readKnowledgeRegistry(projectDir);
+  const { overrideAgentsPath } = projectPaths(projectDir);
   writeManagedOverride(
     overrideAgentsPath,
     KNOWLEDGE_OVERRIDE_START,
     KNOWLEDGE_OVERRIDE_END,
-    [
-      '## SPECTRE Knowledge Context',
-      '',
-      'This block is managed by SPECTRE and replaced automatically on session start.',
-      'Use it before searching or implementing work in this repository.',
-      '',
-      buildKnowledgeOverrideBody(projectDir)
-    ].join('\n')
+    KNOWLEDGE_CAPABILITY_BODY
   );
 
   return {
-    entryCount,
-    knowledgeStatus: knowledgeStatusMessage(projectDir),
-    registryPath: path.relative(projectDir, knowledgeRegistryPath) || knowledgeRegistryPath
+    knowledgeStatus: KNOWLEDGE_CAPABILITY_STATUS
   };
 }
 
@@ -391,7 +386,6 @@ function cleanupLegacyProjectContext(projectDir) {
 export function installProjectFiles(projectDir, scope) {
   const paths = projectPaths(projectDir);
   ensureDir(paths.spectreDir);
-  ensureDir(paths.projectSkillsDir);
 
   const metadata = repoMetadata();
   const branchName = gitBranch(projectDir);
@@ -409,7 +403,6 @@ export function installProjectFiles(projectDir, scope) {
   };
 
   fs.writeFileSync(paths.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  ensureKnowledgeFiles(projectDir);
   cleanupLegacyProjectContext(projectDir);
 
   const legacyLauncherPath = path.join(paths.projectSpectreBinDir, 'codex');

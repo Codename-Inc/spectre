@@ -5,14 +5,12 @@ import { runDoctor } from './lib/doctor.js';
 import { installCodex, uninstallCodex } from './lib/install.js';
 import {
   formatCanonicalKnowledgeSearch,
-  searchCanonicalKnowledge
+  migrateCanonicalKnowledge,
+  registerCanonicalKnowledge,
+  searchCanonicalKnowledge,
+  serializeCanonicalKnowledgeError
 } from './lib/knowledge.js';
 import { projectCodexHome } from './lib/paths.js';
-import {
-  registerCanonicalKnowledge,
-  serializeKnowledgeError
-} from '../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
-import { migrateLegacyKnowledge } from '../plugins/spectre/hooks/scripts/knowledge/migration.mjs';
 
 class CliError extends Error {
   constructor(code, message) {
@@ -106,7 +104,7 @@ async function promptForScope(command, projectDir) {
   }
 }
 
-function withScopedCodexHome(scope, projectDir, fn) {
+async function withScopedCodexHome(scope, projectDir, fn) {
   const previous = process.env.CODEX_HOME;
   if (scope === 'project') {
     process.env.CODEX_HOME = projectCodexHome(projectDir);
@@ -115,7 +113,7 @@ function withScopedCodexHome(scope, projectDir, fn) {
   }
 
   try {
-    return fn();
+    return await fn();
   } finally {
     if (previous == null) {
       delete process.env.CODEX_HOME;
@@ -176,14 +174,14 @@ export async function main(argv) {
             process.stdout.write(`Registered knowledge record ${result.id}\n`);
           }
         } catch (error) {
-          const payload = serializeKnowledgeError(error);
+          const payload = serializeCanonicalKnowledgeError(error);
           throw new CliError(payload.code, payload.message);
         }
         return;
       }
 
       try {
-        const report = await migrateLegacyKnowledge({
+        const report = await migrateCanonicalKnowledge({
           projectDir: resolveProjectDir(flags),
           lockOptions: flags.get('--lock-timeout-ms')
             ? { timeoutMs: Number(flags.get('--lock-timeout-ms')), retryDelayMs: 5 }
@@ -217,22 +215,22 @@ export async function main(argv) {
   const scope = flags.get('--scope') || await promptForScope(command, projectDir);
 
   if (command === 'install') {
-    withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
+    await withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
     return;
   }
 
   if (command === 'uninstall') {
-    withScopedCodexHome(scope, projectDir, () => uninstallCodex({ scope, projectDir }));
+    await withScopedCodexHome(scope, projectDir, () => uninstallCodex({ scope, projectDir }));
     return;
   }
 
   if (command === 'update') {
-    withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
+    await withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
     return;
   }
 
   if (command === 'doctor') {
-    withScopedCodexHome(scope, projectDir, () => runDoctor({
+    await withScopedCodexHome(scope, projectDir, () => runDoctor({
       verifyHooks: Boolean(flags.get('--verify-hooks')),
       json: Boolean(flags.get('--json')),
       projectDir

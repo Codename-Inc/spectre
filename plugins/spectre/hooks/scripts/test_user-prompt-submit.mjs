@@ -280,8 +280,8 @@ describe('hook manifest', () => {
     );
     assert.equal(
       fs.existsSync(APPLY_SKILL_PATH),
-      true,
-      'physical spectre-apply retirement belongs to Phase 5',
+      false,
+      'prompt-time resolution replaces the retired apply skill',
     );
   });
 });

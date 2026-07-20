@@ -29,7 +29,6 @@ export function listSpectreAgents() {
 }
 
 export const SHARED_SKILLS = [
-  'spectre-apply',
   'spectre-guide',
   'spectre-learn',
   'spectre-tdd'
