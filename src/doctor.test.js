@@ -172,6 +172,17 @@ test('doctor reports active, absent, disabled, and untrusted prompt resolver sta
     assert.equal(doctor.knowledge.resolver.status, expected);
     assert.equal(doctor.knowledge.store.status, 'absent');
   }
+
+  const disabledWithUnrelatedHookSetting = makeFixture(t);
+  writeResolver(disabledWithUnrelatedHookSetting, { hooksEnabled: false });
+  fs.appendFileSync(
+    path.join(disabledWithUnrelatedHookSetting.codexHome, 'config.toml'),
+    '[user.settings]\nhooks = true\n',
+  );
+  assert.equal(
+    doctorJson(disabledWithUnrelatedHookSetting).knowledge.resolver.status,
+    'disabled',
+  );
 });
 
 test('doctor reports malformed indexes and invalid canonical records without repairing the store', { concurrency: false }, async (t) => {
@@ -312,6 +323,14 @@ test('uninstall removes only managed runtime integration and preserves canonical
   const unrelatedSkillBytes = fs.readFileSync(unrelatedSkillPath);
 
   fs.mkdirSync(fixture.codexHome, { recursive: true });
+  const unresolvedConfigEntry = configEntry(
+    unresolvedPath,
+    '# preserve unresolved native discovery',
+  );
+  const unrelatedConfigEntry = configEntry(
+    unrelatedSkillPath,
+    'custom_key = "preserve"',
+  );
   fs.writeFileSync(
     path.join(fixture.codexHome, 'config.toml'),
     [
@@ -328,9 +347,9 @@ test('uninstall removes only managed runtime integration and preserves canonical
       '[user.settings]',
       'keep = "exact"',
       '',
-      configEntry(unresolvedPath, '# preserve unresolved native discovery'),
+      unresolvedConfigEntry,
       '',
-      configEntry(unrelatedSkillPath, 'custom_key = "preserve"'),
+      unrelatedConfigEntry,
       '',
     ].join('\n'),
   );
@@ -387,8 +406,8 @@ test('uninstall removes only managed runtime integration and preserves canonical
   assert.doesNotMatch(config, /# spectre-codex-managed/);
   assert.doesNotMatch(config, /\[agents\.spectre_dev\]/);
   assert.match(config, /\[user\.settings\]\nkeep = "exact"/);
-  assert.match(config, new RegExp(unresolvedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(config, new RegExp(unrelatedSkillPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(config.includes(unresolvedConfigEntry), true);
+  assert.equal(config.includes(unrelatedConfigEntry), true);
 
   const hooks = JSON.parse(
     fs.readFileSync(path.join(fixture.codexHome, 'hooks.json'), 'utf8'),

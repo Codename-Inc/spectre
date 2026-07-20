@@ -539,13 +539,12 @@ export function removeProjectSkillsConfigured(projectDir) {
 
   const initialContent = fs.readFileSync(configPath, 'utf8');
   const retiredPaths = retiredRecallSkillPaths(projectDir);
-  const remainingEntries = parseArrayTableEntries(initialContent, 'skills.config').filter(entry =>
-    !(entry.path && retiredPaths.has(path.resolve(entry.path)))
-  );
-  let content = removeLegacyProjectSkillTables(removeArrayTableEntries(initialContent, 'skills.config')).trimEnd();
-  const renderedEntries = renderSkillsConfigEntries(remainingEntries).trimEnd();
-  if (renderedEntries) {
-    content = `${content}\n\n${renderedEntries}`;
+  const existingEntries = parseArrayTableEntries(initialContent, 'skills.config');
+  let content = removeLegacyProjectSkillTables(initialContent);
+  for (const entry of existingEntries) {
+    if (entry.path && retiredPaths.has(path.resolve(entry.path))) {
+      content = content.replace(entry.raw, '');
+    }
   }
 
   writeConfig(configPath, content);

@@ -129,6 +129,10 @@ function projectTrusted(config, projectDir) {
   );
 }
 
+function hooksEnabled(config) {
+  return /^hooks\s*=\s*true\s*$/m.test(tableBody(config, '[features]'));
+}
+
 function readIndexStatus(indexPath) {
   if (!fs.existsSync(indexPath)) {
     return { status: 'absent', recordCount: 0 };
@@ -284,7 +288,7 @@ async function inspectKnowledge(projectDir, config, hookConfigStatus) {
     'user-prompt-submit.mjs'
   );
   const adapterPresent = fs.existsSync(adapterPath);
-  const hooksFeatureEnabled = /^hooks\s*=\s*true\s*$/m.test(config);
+  const hooksFeatureEnabled = hooksEnabled(config);
   const trusted = projectTrusted(config, projectDir);
   let resolverStatus = 'active';
   if (!hookConfigStatus.promptResolverConfigured || !adapterPresent) {
@@ -427,7 +431,7 @@ export async function runDoctor({ verifyHooks = false, json = false, projectDir 
   };
 
   if (config) {
-    result.hooks.hooksFeatureEnabled = /^hooks\s*=\s*true\s*$/m.test(config);
+    result.hooks.hooksFeatureEnabled = hooksEnabled(config);
     result.hooks.spectreHooksConfigured = hookConfigStatus.configured;
     if (hookConfigStatus.configured) {
       result.hooks.hiddenContextInjection = 'agents_override_managed_block';
