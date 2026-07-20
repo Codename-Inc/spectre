@@ -37,10 +37,10 @@ function entry(overrides = {}) {
   };
 }
 
-function numericTableRecord(length) {
+function numericTableRecord(id, length, unit) {
   const prefix = [
     '---',
-    'name: feature-numeric-table',
+    `name: ${id}`,
     'description: Numeric table boundary fixture.',
     'metadata:',
     '  spectre-category: "testing"',
@@ -51,7 +51,6 @@ function numericTableRecord(length) {
     '# Numeric table',
     '',
   ].join('\n');
-  const unit = '1234567890123456789012345678901 \n';
   const remaining = length - prefix.length;
   return `${prefix}${unit.repeat(Math.ceil(remaining / unit.length))
     .slice(0, remaining)}`;
@@ -203,7 +202,11 @@ describe('bounded prompt framing', () => {
 
   it('rejects an unsafe aggregate numeric table during the exact runtime recheck', async () => {
     const { buildPromptContext } = await loadMatcherModule();
-    const content = numericTableRecord(8_700);
+    const content = numericTableRecord(
+      'feature-numeric-table',
+      8_700,
+      '1234567890123456789012345678901 \n',
+    );
     const result = buildPromptContext({
       host: 'codex',
       primary: {
@@ -218,7 +221,33 @@ describe('bounded prompt framing', () => {
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'PAYLOAD_LIMIT');
     assert.equal(result.additionalContext, null);
+    assert.equal(result.measurement.measured, 3_031);
     assert.equal(result.measurement.measured > result.measurement.limit, true);
+  });
+
+  it('rejects rounded three- and four-digit tables during exact runtime rechecks', async () => {
+    const { buildPromptContext } = await loadMatcherModule();
+    const cases = [
+      ['feature-four-digit-table', 7_036, '1234 \n', 2_916],
+      ['feature-three-digit-table', 8_700, '123 \n', 2_622],
+    ];
+
+    for (const [id, length, unit, expectedMeasured] of cases) {
+      const content = numericTableRecord(id, length, unit);
+      const result = buildPromptContext({
+        host: 'codex',
+        primary: {
+          ...entry({ id }),
+          content,
+        },
+        secondaryMatches: [],
+      });
+
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'PAYLOAD_LIMIT');
+      assert.equal(result.additionalContext, null);
+      assert.equal(result.measurement.measured, expectedMeasured);
+    }
   });
 
   it('keeps a valid primary when secondary metadata would exceed the host budget', async () => {

@@ -67,10 +67,10 @@ function framePrimary(id, content) {
   ].join('\n');
 }
 
-function numericTableRecord(length) {
+function numericTableRecord(id, length, unit) {
   const prefix = [
     '---',
-    'name: feature-numeric-table',
+    `name: ${id}`,
     'description: Numeric table boundary fixture.',
     'metadata:',
     '  spectre-category: "testing"',
@@ -82,7 +82,7 @@ function numericTableRecord(length) {
     '',
   ].join('\n');
   return `${prefix}${repeatToLength(
-    '1234567890123456789012345678901 \n',
+    unit,
     length - prefix.length,
   )}`;
 }
@@ -118,7 +118,19 @@ function payloadFixtures(boundaries) {
       boundaries.denseAlphanumericProbeChars,
     ),
     numericTable: numericTableRecord(
+      'feature-numeric-table',
       boundaries.numericTableUnsafeChars ?? 8_700,
+      '1234567890123456789012345678901 \n',
+    ),
+    fourDigitTable: numericTableRecord(
+      'feature-four-digit-table',
+      boundaries.fourDigitTableUnsafeChars ?? 7_036,
+      '1234 \n',
+    ),
+    threeDigitTable: numericTableRecord(
+      'feature-three-digit-table',
+      boundaries.threeDigitTableUnsafeChars ?? 8_700,
+      '123 \n',
     ),
   };
 }
@@ -238,7 +250,7 @@ describe('knowledge payload feasibility contract', () => {
     fs.writeFileSync(skillPath, fixtures.numericTable);
 
     assert.equal(PAYLOAD_BOUNDARIES.numericTableUnsafeChars, 8_700);
-    assert.equal(PAYLOAD_BOUNDARIES.denseDigitRunMinChars, 4);
+    assert.equal(PAYLOAD_BOUNDARIES.digitTokenGroupChars, 3);
     assert.equal(fixtures.numericTable.length, 8_700);
     assert.equal(Math.max(...digitRuns), 31);
     assert.equal(/[A-Za-z0-9]{32,}/.test(fixtures.numericTable), false);
@@ -247,8 +259,71 @@ describe('knowledge payload feasibility contract', () => {
     const framed = framePrimary('feature-numeric-table', fixtures.numericTable);
     const first = measurePayload('codex', framed);
     assert.deepEqual(measurePayload('codex', framed), first);
+    assert.equal(first.measured, 3_031);
     assert.equal(first.ok, false);
     assert.equal(first.measured > first.limit, true);
+  });
+
+  it('rounds every maximal short digit field to three-character token groups', async (t) => {
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
+    const cases = [
+      {
+        id: 'feature-four-digit-table',
+        content: fixtures.fourDigitTable,
+        boundary: PAYLOAD_BOUNDARIES.fourDigitTableUnsafeChars,
+        expectedChars: 7_036,
+        expectedRun: 4,
+        expectedMeasured: 2_916,
+      },
+      {
+        id: 'feature-three-digit-table',
+        content: fixtures.threeDigitTable,
+        boundary: PAYLOAD_BOUNDARIES.threeDigitTableUnsafeChars,
+        expectedChars: 8_700,
+        expectedRun: 3,
+        expectedMeasured: 2_622,
+      },
+    ];
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-short-digits-'));
+    t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+
+    for (const fixture of cases) {
+      assert.equal(fixture.boundary, fixture.expectedChars);
+      assert.equal(fixture.content.length, fixture.expectedChars);
+      assert.equal(
+        Math.max(...[...fixture.content.matchAll(/\d+/g)]
+          .map(([run]) => run.length)),
+        fixture.expectedRun,
+      );
+      const recordDir = path.join(fixtureRoot, fixture.id);
+      fs.mkdirSync(recordDir);
+      const skillPath = path.join(recordDir, 'SKILL.md');
+      fs.writeFileSync(skillPath, fixture.content);
+      assert.equal(parseKnowledgeRecord(skillPath).record.id, fixture.id);
+
+      const measured = measurePayload(
+        'codex',
+        framePrimary(fixture.id, fixture.content),
+      );
+      assert.equal(measured.measured, fixture.expectedMeasured);
+      assert.equal(measured.ok, false);
+    }
+  });
+
+  it('does not double count digit runs covered by a denser alphanumeric run', async () => {
+    const { measurePayload } = await loadPayloadModule();
+    const containedDigits = measurePayload(
+      'codex',
+      framePrimary('feature-covered-digits', `A${'1'.repeat(40)}B`),
+    );
+    const lettersControl = measurePayload(
+      'codex',
+      framePrimary('feature-covered-digits', `A${'x'.repeat(40)}B`),
+    );
+
+    assert.equal(containedDigits.measured, 46);
+    assert.deepEqual(containedDigits, lettersControl);
   });
 
   it('enforces the Claude framing reserve at 9,000 and 9,001 characters', async () => {

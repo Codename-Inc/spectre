@@ -7,6 +7,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { refreshKnowledgeIndex } from './knowledge/records.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATION_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'migration.mjs');
 
@@ -848,6 +850,156 @@ describe('legacy migration recovery and contention', () => {
 
     assert.equal(report.entries[0].code, 'SOURCE_MISSING');
     assert.deepEqual(snapshotTree(projectDir), before);
+  });
+
+  it('resumes deduplicated cleanup after one registry rewrite removed trigger context', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    const id = 'patterns-registry-resume';
+    const sharedContent = legacySkillContent({
+      name: id,
+      body: '\n# Shared registry source\n\nPreserve body and resources.\n',
+    });
+    const resourceBytes = Buffer.from([0, 10, 13, 255, 42]);
+    const claudeSource = writeLegacySkill(
+      projectDir,
+      '.claude',
+      id,
+      sharedContent,
+      { 'references/shared.bin': resourceBytes },
+    );
+    const agentsSource = writeLegacySkill(
+      projectDir,
+      '.agents',
+      id,
+      sharedContent,
+      { 'references/shared.bin': resourceBytes },
+    );
+    const claudeRegistry = writeRegistry(projectDir, '.claude', [
+      `${id}|patterns|first registry trigger|Use when matching the first registry`,
+    ]);
+    const agentsRegistry = writeRegistry(projectDir, '.agents', [
+      `${id}|patterns|surviving registry trigger|Use when matching the surviving registry`,
+    ]);
+    const canonicalDir = path.join(storePath, 'knowledge', id);
+    const canonicalPath = path.join(canonicalDir, 'SKILL.md');
+    const indexPath = path.join(storePath, 'index.json');
+    const reportPath = path.join(storePath, 'migration-report.json');
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    await assert.rejects(
+      migrateLegacyKnowledge({
+        projectDir,
+        storePath,
+        afterCanonicalCommit() {
+          throw new Error('injected-before-registry-cleanup');
+        },
+      }),
+      /injected-before-registry-cleanup/,
+    );
+    fs.rmSync(claudeSource, { recursive: true, force: true });
+    fs.rmSync(agentsSource, { recursive: true, force: true });
+    fs.writeFileSync(
+      claudeRegistry,
+      fs.readFileSync(claudeRegistry, 'utf8')
+        .split(/\r?\n/)
+        .filter((line) => !line.startsWith(`${id}|`))
+        .join('\n'),
+    );
+    const canonicalBytes = fs.readFileSync(canonicalPath);
+    const canonicalResourceBytes = fs.readFileSync(
+      path.join(canonicalDir, 'references', 'shared.bin'),
+    );
+    const indexBytes = fs.readFileSync(indexPath);
+    assert.doesNotMatch(fs.readFileSync(claudeRegistry, 'utf8'), new RegExp(`${id}\\|`));
+    assert.match(fs.readFileSync(agentsRegistry, 'utf8'), new RegExp(`${id}\\|`));
+    assert.match(canonicalBytes.toString('utf8'), /first registry trigger/);
+    assert.match(canonicalBytes.toString('utf8'), /surviving registry trigger/);
+
+    const resumed = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.equal(resumed.entries[0].code, 'ALREADY_MIGRATED');
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.claude', 'skills', 'spectre-recall')),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall')),
+      false,
+    );
+    assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
+    assert.deepEqual(
+      fs.readFileSync(path.join(canonicalDir, 'references', 'shared.bin')),
+      canonicalResourceBytes,
+    );
+    assert.deepEqual(fs.readFileSync(indexPath), indexBytes);
+    const reportBytes = fs.readFileSync(reportPath);
+
+    const stable = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.deepEqual(stable, resumed);
+    assert.deepEqual(fs.readFileSync(reportPath), reportBytes);
+  });
+
+  it('requires indexed canonical identity and surviving trigger inclusion', async (t) => {
+    const { classifyLegacyKnowledge } = await loadMigrationModule();
+    const results = {};
+    for (const variant of [
+      'missing',
+      'content',
+      'category',
+      'status',
+      'version',
+      'triggers',
+    ]) {
+      const projectDir = path.join(makeTmp(t), 'project');
+      const storePath = path.join(makeTmp(t), 'store');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.mkdirSync(path.join(storePath, 'knowledge'), { recursive: true });
+      const id = `patterns-registry-guard-${variant}`;
+      const survivor = `${variant} surviving trigger`;
+      writeRegistry(projectDir, '.agents', [
+        `${id}|patterns|${survivor}|Use when guarding ${variant}`,
+      ]);
+      const destinationPath = path.join(storePath, 'knowledge', id);
+      if (variant !== 'missing') {
+        fs.mkdirSync(destinationPath, { recursive: true });
+        let content = canonicalContent({
+          id,
+          category: variant === 'category' ? 'feature' : 'patterns',
+          triggers: variant === 'triggers' ? ['different trigger'] : [survivor],
+          body: '\n# Committed body\n\nExpected canonical content.\n',
+        });
+        if (variant === 'status') {
+          content = content.replace('spectre-status: "active"', 'spectre-status: "draft"');
+        }
+        if (variant === 'version') {
+          content = content.replace('spectre-version: "1"', 'spectre-version: "2"');
+        }
+        fs.writeFileSync(path.join(destinationPath, 'SKILL.md'), content);
+        refreshKnowledgeIndex(storePath);
+        if (variant === 'content') {
+          fs.appendFileSync(
+            path.join(destinationPath, 'SKILL.md'),
+            '\nChanged after the canonical commit.\n',
+          );
+        }
+      }
+
+      results[variant] = classifyLegacyKnowledge({
+        projectDir,
+        storePath,
+      }).entries[0].code;
+    }
+
+    assert.deepEqual(results, {
+      missing: 'SOURCE_MISSING',
+      content: 'SOURCE_MISSING',
+      category: 'SOURCE_MISSING',
+      status: 'SOURCE_MISSING',
+      version: 'SOURCE_MISSING',
+      triggers: 'SOURCE_MISSING',
+    });
   });
 
   it('fails open on a SessionStart lock timeout without writes, then explicit migration completes', async (t) => {

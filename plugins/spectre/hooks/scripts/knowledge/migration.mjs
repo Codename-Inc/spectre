@@ -338,17 +338,45 @@ function frameForMeasurement(content) {
   ].join('\n');
 }
 
+function matchesCommittedIndex(destinationPath, parsed) {
+  const storePath = path.dirname(path.dirname(destinationPath));
+  try {
+    const index = JSON.parse(
+      fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'),
+    );
+    const entry = index?.records?.find(({ id }) => id === parsed.record.id);
+    return (
+      entry !== undefined &&
+      path.resolve(storePath, entry.recordPath) ===
+        path.resolve(destinationPath, 'SKILL.md') &&
+      entry.sourceFingerprint === parsed.fingerprint
+    );
+  } catch {
+    return false;
+  }
+}
+
+function includesEveryTrigger(committedTriggers, survivingTriggers) {
+  const committed = new Set(
+    committedTriggers.map((trigger) => trigger.toLocaleLowerCase()),
+  );
+  return survivingTriggers.every((trigger) =>
+    committed.has(trigger.toLocaleLowerCase()));
+}
+
 function matchesCommittedDestination(destinationPath, id, category, triggers) {
   const skillPath = path.join(destinationPath, 'SKILL.md');
   if (!fs.existsSync(skillPath)) return false;
   try {
-    const { record } = parseKnowledgeRecord(skillPath);
+    const parsed = parseKnowledgeRecord(skillPath);
+    const { record } = parsed;
     return (
       record.id === id &&
       record.category === category &&
-      snapshotsEqual(record.triggers, triggers) &&
+      includesEveryTrigger(record.triggers, triggers) &&
       record.status === 'active' &&
-      record.version === 1
+      record.version === 1 &&
+      matchesCommittedIndex(destinationPath, parsed)
     );
   } catch {
     return false;
