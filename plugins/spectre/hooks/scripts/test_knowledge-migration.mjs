@@ -941,6 +941,63 @@ describe('legacy migration recovery and contention', () => {
     assert.deepEqual(fs.readFileSync(reportPath), reportBytes);
   });
 
+  it('retires generated recall after a crash following the final registry rewrite', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    const id = 'patterns-final-registry-crash';
+    writeLegacySkill(
+      projectDir,
+      '.claude',
+      id,
+      legacySkillContent({
+        name: id,
+        body: '\n# Final registry crash\n\nResume generated recall cleanup.\n',
+      }),
+    );
+    const registryPath = writeRegistry(projectDir, '.claude', [
+      `${id}|patterns|final registry crash|Use when resuming final cleanup`,
+    ]);
+    const recallPath = path.join(
+      projectDir,
+      '.claude',
+      'skills',
+      'spectre-recall',
+    );
+    const canonicalPath = path.join(storePath, 'knowledge', id, 'SKILL.md');
+    const indexPath = path.join(storePath, 'index.json');
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    await assert.rejects(
+      migrateLegacyKnowledge({
+        projectDir,
+        storePath,
+        afterRegistryCleanup() {
+          throw new Error('injected-after-final-registry-cleanup');
+        },
+      }),
+      /injected-after-final-registry-cleanup/,
+    );
+    assert.equal(
+      fs.readFileSync(registryPath, 'utf8')
+        .split(/\r?\n/)
+        .some((line) => line.startsWith(`${id}|`)),
+      false,
+    );
+    assert.equal(fs.existsSync(recallPath), true);
+    const canonicalBytes = fs.readFileSync(canonicalPath);
+    const indexBytes = fs.readFileSync(indexPath);
+
+    const resumed = await migrateLegacyKnowledge({ projectDir, storePath });
+
+    assert.equal(fs.existsSync(recallPath), false);
+    assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
+    assert.deepEqual(fs.readFileSync(indexPath), indexBytes);
+    const stable = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.deepEqual(stable, resumed);
+  });
+
   it('requires indexed canonical identity and surviving trigger inclusion', async (t) => {
     const { classifyLegacyKnowledge } = await loadMigrationModule();
     const results = {};

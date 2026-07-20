@@ -645,7 +645,7 @@ function removeGeneratedRecallWhenResolved(projectDir) {
   }
 }
 
-function cleanResolvedSources(projectDir, classification) {
+function cleanResolvedSources(projectDir, classification, options = {}) {
   const resolved = classification.entries.filter(({ code }) =>
     ['MIGRATED', 'DEDUPLICATED', 'ALREADY_MIGRATED'].includes(code));
   const resolvedIds = new Set(resolved.map(({ id }) => id));
@@ -655,6 +655,7 @@ function cleanResolvedSources(projectDir, classification) {
     }
   }
   removeResolvedRegistryRows(projectDir, resolvedIds);
+  if (options.afterRegistryCleanup) options.afterRegistryCleanup();
   removeGeneratedRecallWhenResolved(projectDir);
 }
 
@@ -681,6 +682,7 @@ export async function migrateLegacyKnowledge(options) {
   const reportPath = path.join(storePath, 'migration-report.json');
   const initialClassification = classifyLegacyKnowledge({ projectDir, storePath });
   if (initialClassification.entries.length === 0) {
+    removeGeneratedRecallWhenResolved(projectDir);
     return readExistingReport(reportPath) || durableReport(initialClassification);
   }
 
@@ -697,7 +699,7 @@ export async function migrateLegacyKnowledge(options) {
           fs.rmSync(stageRoot, { recursive: true, force: true });
         }
         if (options.afterCanonicalCommit) options.afterCanonicalCommit();
-        cleanResolvedSources(projectDir, classification);
+        cleanResolvedSources(projectDir, classification, options);
         const report = durableReport(classification);
         atomicWriteJson(reportPath, report);
         return report;
