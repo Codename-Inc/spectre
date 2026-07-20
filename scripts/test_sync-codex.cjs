@@ -135,6 +135,99 @@ test('hooks translator rewrites legacy command extensions to Codex mjs paths', (
   );
 });
 
+test('hooks translator recursively copies runtime modules and rewrites Codex host arguments', () => {
+  const root = tempRoot();
+  try {
+    const { canonicalRoot, codexRoot } = createFixture(root);
+    writeFile(
+      path.join(canonicalRoot, 'hooks', 'scripts', 'knowledge', 'records.mjs'),
+      'export const schemaVersion = 1;\n',
+    );
+    writeFile(
+      path.join(canonicalRoot, 'hooks', 'hooks.json'),
+      `${JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command:
+                    'node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-submit.mjs --host claude',
+                },
+              ],
+            },
+          ],
+        },
+      }, null, 2)}\n`,
+    );
+    writeFile(
+      path.join(canonicalRoot, 'hooks', 'scripts', 'user-prompt-submit.mjs'),
+      'process.stdout.write("{}\\n");\n',
+    );
+
+    const result = runSync({ repoRoot: root, canonicalRoot, codexRoot, quiet: true });
+    assert.equal(result.ok, true);
+    const generatedRecordPath = path.join(
+      codexRoot,
+      'hooks',
+      'scripts',
+      'knowledge',
+      'records.mjs',
+    );
+    assert.equal(fs.existsSync(generatedRecordPath), true);
+    assert.equal(
+      fs.readFileSync(generatedRecordPath, 'utf8'),
+      'export const schemaVersion = 1;\n',
+    );
+    const generatedHooks = JSON.parse(
+      fs.readFileSync(path.join(codexRoot, 'hooks', 'hooks.json'), 'utf8'),
+    );
+    assert.equal(
+      generatedHooks.hooks.UserPromptSubmit[0].hooks[0].command,
+      'node ${CODEX_HOME}/spectre/hooks/scripts/user-prompt-submit.mjs --host codex',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('hooks translator excludes nested tests and removes stale nested runtime files', () => {
+  const root = tempRoot();
+  try {
+    const { canonicalRoot, codexRoot } = createFixture(root);
+    writeFile(
+      path.join(canonicalRoot, 'hooks', 'scripts', 'knowledge', 'store.mjs'),
+      'export const store = true;\n',
+    );
+    writeFile(
+      path.join(canonicalRoot, 'hooks', 'scripts', 'knowledge', 'test_store.mjs'),
+      'throw new Error("must not ship");\n',
+    );
+    writeFile(
+      path.join(codexRoot, 'hooks', 'scripts', 'knowledge', 'stale.mjs'),
+      'stale\n',
+    );
+
+    const result = runSync({ repoRoot: root, canonicalRoot, codexRoot, quiet: true });
+    assert.equal(result.ok, true);
+    assert.equal(
+      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'knowledge', 'store.mjs')),
+      true,
+    );
+    assert.equal(
+      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'knowledge', 'test_store.mjs')),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(codexRoot, 'hooks', 'scripts', 'knowledge', 'stale.mjs')),
+      false,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('check mode detects drift and passes after regeneration', () => {
   const root = tempRoot();
   try {

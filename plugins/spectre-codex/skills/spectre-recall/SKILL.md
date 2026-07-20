@@ -7,37 +7,40 @@ user-invocable: true
 # recall — Search Project Knowledge
 
 ## Purpose
-Find and load the project's captured spectre learnings relevant to a query, so the answer is grounded in prior knowledge instead of re-derived.
+Find and read the project's canonical knowledge relevant to a query, so the answer is grounded in prior knowledge instead of re-derived.
 
 ## Inputs
 - `$ARGUMENTS` — the search query. Empty = list everything by category.
-- The knowledge registry injected into the current SessionStart context by `spectre-apply`.
-- If that injected registry is absent, read the generated recall skill as a fallback:
-  - `{{project_root}}/.agents/skills/spectre-recall/SKILL.md` (Claude Code), or
-  - `{{project_root}}/.agents/skills/spectre-recall/SKILL.md` (Codex).
-  Each registry row is `skill-name|category|triggers|description`. Live trigger keywords also sit in each loaded skill's frontmatter description.
+- Project root = `${CLAUDE_PROJECT_DIR:-$PWD}`. Do not traverse to a Git root or main worktree.
+- Canonical results from the target-independent lexical CLI.
 
 ## Working Set
-Read-only: the injected registry, its fallback file above, and the frontmatter descriptions already in context. No writes.
+Read-only: JSON search results and the selected result's canonical `recordPath`. Persist nothing.
 
 ## Outputs + DONE
-A grounded answer, plus the matching knowledge loaded into context. DONE when:
-- The query was matched against registry triggers/descriptions AND in-context skill descriptions; and
-- The match-count rule below was applied; and
-- On any match, the chosen learning(s) were loaded via `Skill({skill-name})` before answering.
+A grounded answer based on the selected canonical record. DONE when the lexical search completed, the match-count rule was applied, and every chosen result was read directly from its returned `recordPath` before answering.
 
 ## Method / guardrails
-- Match the query against registry `triggers` + `description` and the trigger keywords in loaded skills' frontmatter.
+- Run:
+  ```bash
+  project_root="${CLAUDE_PROJECT_DIR:-$PWD}"
+  spectre knowledge search "$ARGUMENTS" \
+    --project-dir "$project_root" \
+    --json
+  ```
+- Trust only successful JSON output. Results already contain the deterministic lexical ranking, active-state filtering, description, triggers, category, and canonical `recordPath`. Do not invent or semantically rerank entries.
 - Decision rule (load-bearing — apply exactly):
-  - **Single match** → load it automatically: `Skill({skill-name})`.
-  - **Multiple matches** → list the options and ask the user which to load (do not auto-load several).
+  - **Single match** → read the selected result's `recordPath`, then apply that content.
+  - **Multiple matches** → list ID, category, triggers, and description in returned order; ask which one to read. After selection, read the selected `recordPath`.
   - **No match** → say so and suggest `spectre-learn` to capture it.
-- Empty query → list all available knowledge grouped by category; do not load.
-- If neither injected registry content nor a fallback file exists → report that no project knowledge registry exists yet and suggest `spectre-learn` once the current work yields something worth preserving. Do not fabricate entries.
+- **Empty query** → list all results grouped by category; do not read a record until the user selects one.
+- A missing store is a successful empty result, not an error. Report that no canonical project knowledge exists yet and suggest `spectre-learn` once the current work yields something durable.
+- Never write, register, edit, or change lifecycle state during recall.
 
 ## Handoff
-Return the loaded knowledge and a 1–2 line note on what was applied, in-thread. Persist nothing.
+Return the grounded answer and a 1–2 line note naming the record that was read. Persist nothing.
 
 ## Escalate-If
 - Multiple plausible matches and the user's intent is ambiguous → ask which to load.
-- Query implies knowledge that should exist but the registry lacks it → surface the gap and point to `spectre-learn`.
+- Search fails or returns an invalid/unreadable `recordPath` → surface the exact error; do not fabricate knowledge.
+- Query implies knowledge that should exist but search returns none → surface the gap and point to `spectre-learn`.

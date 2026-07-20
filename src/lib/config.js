@@ -328,10 +328,13 @@ function isSpectreHook(hook) {
 }
 
 function materializeHookCommand(command, runtimeRoot) {
-  return command
+  const materialized = command
     .replaceAll('${CODEX_HOME}/spectre', runtimeRoot)
-    .replaceAll('${CODEX_HOME}\\spectre', runtimeRoot)
-    .replace(/^node\s+(.+)$/, (_match, scriptPath) => `node ${shellQuote(scriptPath)}`);
+    .replaceAll('${CODEX_HOME}\\spectre', runtimeRoot);
+  return materialized.replace(
+    /^node\s+(.+?\.mjs)(\s+.*)?$/,
+    (_match, scriptPath, args = '') => `node ${shellQuote(scriptPath)}${args}`,
+  );
 }
 
 function materializeGeneratedHooks(generatedHooks, runtimeRoot) {

@@ -20,16 +20,34 @@ function writeIfChanged(filePath, content) {
 function listRuntimeMjsFiles(sourceScriptsDir) {
   if (!fs.existsSync(sourceScriptsDir)) return [];
 
-  return fs
-    .readdirSync(sourceScriptsDir)
-    .filter((fileName) => fileName.endsWith('.mjs') && !fileName.startsWith('test_'))
-    .sort();
+  const files = [];
+
+  function walk(currentDir, relativeDir = '') {
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name))) {
+      const relativePath = path.join(relativeDir, entry.name);
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath, relativePath);
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith('.mjs') &&
+        !entry.name.startsWith('test_')
+      ) {
+        files.push(relativePath);
+      }
+    }
+  }
+
+  walk(sourceScriptsDir);
+  return files;
 }
 
 function rewriteHookCommand(command) {
   return command
     .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, CODEX_PLUGIN_ROOT)
-    .replace(/hooks\/scripts\/([^/\s]+)\.cjs/g, 'hooks/scripts/$1.mjs');
+    .replace(/hooks\/scripts\/([^/\s]+)\.cjs/g, 'hooks/scripts/$1.mjs')
+    .replace(/(--host\s+)claude\b/g, '$1codex');
 }
 
 function translateHooksJson(sourcePath, targetPath) {
@@ -169,6 +187,7 @@ function verify(codexRoot) {
 module.exports = {
   CODEX_PLUGIN_ROOT,
   commandScriptPaths,
+  listRuntimeMjsFiles,
   rewriteHookCommand,
   translate,
   verify,

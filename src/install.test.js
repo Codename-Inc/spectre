@@ -50,9 +50,10 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     assert.doesNotMatch(scopeSkill, /This is the Codex skill replacement for the deprecated custom prompt \/spectre:scope/);
     assert.doesNotMatch(scopeSkill, /Skill\(scope\)/);
 
-    for (const restoredSkill of ['spectre-apply', 'spectre-forget', 'spectre-handoff']) {
+    for (const restoredSkill of ['spectre-forget', 'spectre-handoff']) {
       assert.ok(fs.existsSync(path.join(codeHome, 'skills', restoredSkill)), `${restoredSkill} should be installed`);
     }
+    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-apply')));
     for (const removedSkill of ['spectre-architecture_review', 'spectre-evaluate']) {
       assert.ok(!fs.existsSync(path.join(codeHome, 'skills', removedSkill)), `${removedSkill} should not be installed`);
     }
@@ -60,8 +61,9 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     const learnSkillPath = path.join(codeHome, 'skills', 'spectre-learn', 'SKILL.md');
     assert.ok(fs.existsSync(learnSkillPath));
     assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /Proposal gate/);
-    assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /\.agents\/skills\/spectre-recall\/references\/registry\.toon/);
-    assert.ok(fs.existsSync(path.join(codeHome, 'skills', 'spectre-learn', 'references', 'recall-template.md')));
+    assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /spectre knowledge register/);
+    assert.doesNotMatch(fs.readFileSync(learnSkillPath, 'utf8'), /registry\.toon/);
+    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-learn', 'references', 'recall-template.md')));
 
     const agentPath = path.join(codeHome, 'spectre', 'agents', 'dev.toml');
     assert.ok(fs.existsSync(agentPath));
@@ -88,8 +90,14 @@ test('project install writes workflow skills, agent config, and memory hooks', {
     const hooksConfig = JSON.parse(fs.readFileSync(path.join(codeHome, 'hooks.json'), 'utf8'));
     const sessionHooks = hooksConfig.hooks.SessionStart.flatMap(group => group.hooks);
     assert.deepEqual(
-      sessionHooks.map(hook => path.basename(hook.command.match(/'([^']+)'$/)?.[1] || hook.command)),
+      sessionHooks.map(hook =>
+        path.basename(hook.command.match(/scripts\/([^/'"\s]+\.mjs)/)?.[1] || hook.command)),
       ['bootstrap.mjs', 'handoff-resume.mjs', 'load-knowledge.mjs']
+    );
+    assert.equal(hooksConfig.hooks.UserPromptSubmit.length, 1);
+    assert.match(
+      hooksConfig.hooks.UserPromptSubmit[0].hooks[0].command,
+      /user-prompt-submit\.mjs' --host codex$/,
     );
     assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'hooks.json')));
     assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
