@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -89,6 +90,23 @@ describe('project identity and readable store allocation', () => {
     const linkedStore = await resolveProjectStore(worktreeRoot, { spectreHome, gitRunner });
     assert.equal(linkedStore.storePath, mainStore.storePath);
     assert.equal(linkedStore.created, false);
+  });
+
+  it('resolves real Git common directories relative to nested command cwd', async (t) => {
+    const tmp = makeTmp(t);
+    const spectreHome = path.join(tmp, 'home');
+    const repositoryRoot = makeProject(tmp, 'repo');
+    const nestedRoot = makeProject(repositoryRoot, 'a', 'b');
+    execFileSync('git', ['init', '-q'], { cwd: repositoryRoot });
+    const { resolveProjectIdentity, resolveProjectStore } = await loadStoreModule();
+
+    const repositoryIdentity = resolveProjectIdentity(repositoryRoot);
+    const nestedIdentity = resolveProjectIdentity(nestedRoot);
+    assert.equal(nestedIdentity.gitCommonDir, repositoryIdentity.gitCommonDir);
+
+    const repositoryStore = await resolveProjectStore(repositoryRoot, { spectreHome });
+    const nestedStore = await resolveProjectStore(nestedRoot, { spectreHome });
+    assert.equal(nestedStore.storePath, repositoryStore.storePath);
   });
 
   it('expands readable paths leftward for same-name collisions without opaque IDs', async (t) => {

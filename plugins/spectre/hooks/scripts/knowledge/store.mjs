@@ -44,7 +44,7 @@ export function resolveProjectIdentity(projectDir, options = {}) {
       ['rev-parse', '--git-common-dir'],
       { cwd: canonicalProjectRoot },
     );
-    const gitCommonDir = resolveGitPath(commonOutput, gitRepositoryRoot);
+    const gitCommonDir = resolveGitPath(commonOutput, canonicalProjectRoot);
     if (!gitCommonDir) throw new Error('malformed Git common directory');
 
     return { canonicalProjectRoot, gitRepositoryRoot, gitCommonDir };
