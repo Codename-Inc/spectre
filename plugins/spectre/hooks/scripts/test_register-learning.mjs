@@ -240,6 +240,15 @@ describe('canonical knowledge registration process', () => {
           id: 'feature-safe',
           body: `\n${'!'.repeat(8_300)}\n`,
         }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
+        ['host-unsafe-digits', {
+          id: 'feature-safe',
+          body: `\n${'0123456789'.repeat(760)}\n`,
+        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
+        ['host-unsafe-alphanumeric', {
+          id: 'feature-safe',
+          body:
+            `\n${'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72'.repeat(238).slice(0, 7_600)}\n`,
+        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
       ]) {
         const proposal = writeCanonicalProposal(path.join(proposals, name), options);
         const failed = runRegister([
@@ -396,6 +405,96 @@ describe('canonical knowledge registration process', () => {
 
       assert.deepEqual(snapshotTree(recordDir), priorRecordTree);
       assert.deepEqual(snapshot(indexPath), priorIndexBytes);
+
+      const originalFailure = new Error('injected-after-index-refresh');
+      await assert.rejects(
+        registerCanonicalKnowledge({
+          projectDir,
+          recordPath: update,
+          spectreHome,
+          afterIndexRefresh() {
+            throw originalFailure;
+          },
+        }),
+        (error) =>
+          error.code === 'KNOWLEDGE_REGISTRATION_FAILED'
+          && error.message === originalFailure.message,
+      );
+
+      assert.deepEqual(snapshotTree(recordDir), priorRecordTree);
+      assert.deepEqual(snapshot(indexPath), priorIndexBytes);
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('recovers interrupted record replacements before processing the next proposal', async () => {
+    const tmp = createTmpDir();
+    try {
+      for (const destinationPresent of [false, true]) {
+        const scenario = destinationPresent ? 'destination-present' : 'destination-missing';
+        const projectDir = path.join(tmp, scenario, 'workspace', 'project');
+        const spectreHome = path.join(tmp, scenario, 'spectre-home');
+        const proposals = path.join(tmp, scenario, 'proposals');
+        fs.mkdirSync(projectDir, { recursive: true });
+        const initial = writeCanonicalProposal(proposals, {
+          id: 'feature-crash-recovery',
+          triggers: ['crash recovery'],
+          resources: { 'references/prior.md': 'prior resource\n' },
+          body: '\n# Prior\n\nRestore these exact bytes.\n',
+        });
+        await registerCanonicalKnowledge({
+          projectDir,
+          recordPath: initial,
+          spectreHome,
+        });
+
+        const storePath = findOnlyStore(spectreHome);
+        const recordDir = path.join(storePath, 'knowledge', 'feature-crash-recovery');
+        const backupDir = `${recordDir}.previous-123-456`;
+        const staleStage = path.join(storePath, '.registration-stage-123-456');
+        const indexPath = path.join(storePath, 'index.json');
+        const priorRecordTree = snapshotTree(recordDir);
+        if (destinationPresent) {
+          fs.cpSync(recordDir, backupDir, { recursive: true });
+        } else {
+          fs.renameSync(recordDir, backupDir);
+        }
+        fs.mkdirSync(staleStage, { recursive: true });
+        fs.writeFileSync(path.join(staleStage, 'partial'), 'stale stage\n');
+        fs.writeFileSync(
+          indexPath,
+          `${JSON.stringify({
+            schemaVersion: 1,
+            generatedAt: '2026-07-19T00:00:00.000Z',
+            records: [],
+          }, null, 2)}\n`,
+        );
+
+        const invalid = writeCanonicalProposal(path.join(proposals, 'invalid'), {
+          id: 'feature-crash-recovery',
+          extraFrontmatter: ['spectre-category: feature'],
+        });
+        await assert.rejects(
+          registerCanonicalKnowledge({
+            projectDir,
+            recordPath: invalid,
+            spectreHome,
+          }),
+          (error) => error.code === 'KNOWLEDGE_RECORD_INVALID',
+          `${scenario} must preserve the incoming validation failure`,
+        );
+
+        assert.deepEqual(snapshotTree(recordDir), priorRecordTree, scenario);
+        assert.equal(fs.existsSync(backupDir), false, scenario);
+        assert.equal(fs.existsSync(staleStage), false, scenario);
+        const repairedIndex = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+        assert.deepEqual(
+          repairedIndex.records.map(({ id }) => id),
+          ['feature-crash-recovery'],
+          scenario,
+        );
+      }
     } finally {
       cleanup(tmp);
     }

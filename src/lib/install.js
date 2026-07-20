@@ -81,6 +81,7 @@ function listGeneratedCodexSkills({ required = false } = {}) {
 function managedCodexSkillNames({ requireGenerated = false } = {}) {
   return Array.from(new Set([
     ...SHARED_SKILLS,
+    'spectre-apply',
     ...listSpectreSkills(),
     ...listGeneratedCodexSkills({ required: requireGenerated })
   ])).sort();

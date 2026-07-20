@@ -92,6 +92,57 @@ describe('project identity and readable store allocation', () => {
     assert.equal(linkedStore.created, false);
   });
 
+  it('prefers a Git common-directory store over a root-only pre-Git store', async (t) => {
+    const tmp = makeTmp(t);
+    const repositoryRoot = makeProject(tmp, 'repo', 'main');
+    const worktreeRoot = makeProject(tmp, 'repo', 'worktree');
+    const commonDir = makeProject(tmp, 'repo', '.git');
+    const gitRunner = fakeGit([
+      { root: repositoryRoot, repositoryRoot, commonDir },
+      { root: worktreeRoot, repositoryRoot: worktreeRoot, commonDir },
+    ]);
+    const { resolveProjectStore } = await loadStoreModule();
+
+    for (const [rootStoreName, commonStoreName] of [
+      ['aaa-root', 'zzz-common'],
+      ['zzz-root', 'aaa-common'],
+    ]) {
+      const spectreHome = path.join(tmp, `home-${rootStoreName}`);
+      const projectsDir = makeProject(spectreHome, 'projects');
+      const rootStore = makeProject(projectsDir, rootStoreName);
+      const commonStore = makeProject(projectsDir, commonStoreName);
+      fs.writeFileSync(
+        path.join(rootStore, 'project.json'),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          canonicalProjectRoot: fs.realpathSync(repositoryRoot),
+        })}\n`,
+      );
+      fs.writeFileSync(
+        path.join(commonStore, 'project.json'),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          canonicalProjectRoot: fs.realpathSync(repositoryRoot),
+          gitRepositoryRoot: fs.realpathSync(repositoryRoot),
+          gitCommonDir: fs.realpathSync(commonDir),
+        })}\n`,
+      );
+
+      const mainStore = await resolveProjectStore(repositoryRoot, {
+        spectreHome,
+        gitRunner,
+      });
+      const linkedStore = await resolveProjectStore(worktreeRoot, {
+        spectreHome,
+        gitRunner,
+      });
+      assert.equal(mainStore.storePath, commonStore);
+      assert.equal(linkedStore.storePath, commonStore);
+      assert.equal(mainStore.created, false);
+      assert.equal(linkedStore.created, false);
+    }
+  });
+
   it('resolves real Git common directories relative to nested command cwd', async (t) => {
     const tmp = makeTmp(t);
     const spectreHome = path.join(tmp, 'home');
@@ -242,6 +293,47 @@ describe('exclusive store locks', () => {
       (error) => error.code === 'LOCK_TIMEOUT',
     );
     assert.deepEqual(JSON.parse(fs.readFileSync(lockPath, 'utf8')), owner);
+  });
+
+  it('does not steal an unparseable lock until its mtime exceeds the stale grace', async (t) => {
+    const tmp = makeTmp(t);
+    const storePath = makeProject(tmp, 'store');
+    const lockPath = path.join(storePath, '.spectre.lock');
+    const observedAt = Date.parse('2026-07-19T20:00:00.000Z');
+    const staleMs = 1_000;
+    fs.writeFileSync(lockPath, '');
+    fs.utimesSync(lockPath, new Date(observedAt), new Date(observedAt));
+    const { withStoreLock } = await loadStoreModule();
+
+    await assert.rejects(
+      withStoreLock(storePath, 'register', async () => 'stolen', {
+        timeoutMs: 20,
+        retryDelayMs: 5,
+        staleMs,
+        now: () => observedAt,
+      }),
+      (error) => error.code === 'LOCK_TIMEOUT',
+    );
+    assert.equal(fs.readFileSync(lockPath, 'utf8'), '');
+
+    fs.utimesSync(
+      lockPath,
+      new Date(observedAt - staleMs - 1),
+      new Date(observedAt - staleMs - 1),
+    );
+    const recovered = await withStoreLock(
+      storePath,
+      'register',
+      async () => 'stale-recovered',
+      {
+        timeoutMs: 100,
+        retryDelayMs: 5,
+        staleMs,
+        now: () => observedAt,
+      },
+    );
+    assert.equal(recovered, 'stale-recovered');
+    assert.equal(fs.existsSync(lockPath), false);
   });
 
   it('recovers dead-PID and timestamp-expired locks exactly once', async (t) => {

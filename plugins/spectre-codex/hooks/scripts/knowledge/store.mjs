@@ -98,15 +98,19 @@ function findProjectMetadata(projectsDir) {
   return found;
 }
 
-function metadataMatches(identity, metadata) {
-  if (
-    identity.gitCommonDir &&
-    typeof metadata.gitCommonDir === 'string' &&
-    canonicalPath(metadata.gitCommonDir) === identity.gitCommonDir
-  ) {
-    return true;
+function findMatchingProjectMetadata(projectsDir, identity) {
+  const candidates = findProjectMetadata(projectsDir);
+  if (identity.gitCommonDir) {
+    const commonDirectoryMatch = candidates.find(({ metadata }) =>
+      typeof metadata.gitCommonDir === 'string'
+      && canonicalPath(metadata.gitCommonDir) === identity.gitCommonDir,
+    );
+    if (commonDirectoryMatch) return commonDirectoryMatch;
   }
-  return canonicalPath(metadata.canonicalProjectRoot) === identity.canonicalProjectRoot;
+
+  return candidates.find(({ metadata }) =>
+    canonicalPath(metadata.canonicalProjectRoot) === identity.canonicalProjectRoot,
+  );
 }
 
 function readableSegments(canonicalProjectRoot) {
@@ -209,7 +213,18 @@ function readLock(lockPath) {
 function staleLockOwner(lockPath, options) {
   const { raw, owner } = readLock(lockPath);
   if (raw === null) return null;
-  if (!owner) return raw;
+  if (!owner) {
+    let modifiedAt;
+    try {
+      modifiedAt = fs.statSync(lockPath).mtimeMs;
+    } catch {
+      return null;
+    }
+    return Number.isFinite(modifiedAt)
+      && nowMilliseconds(options) - modifiedAt > options.staleMs
+      ? raw
+      : null;
+  }
   const parsedTimestamp = Date.parse(owner.timestamp);
   const expired =
     !Number.isFinite(parsedTimestamp) ||
@@ -301,9 +316,7 @@ export async function resolveProjectStore(projectDir, options = {}) {
   const identity = resolveProjectIdentity(projectDir, options);
   const spectreHome = resolveSpectreHome(options.spectreHome);
   const projectsDir = path.join(spectreHome, 'projects');
-  const existing = findProjectMetadata(projectsDir).find(({ metadata }) =>
-    metadataMatches(identity, metadata),
-  );
+  const existing = findMatchingProjectMetadata(projectsDir, identity);
 
   if (existing) {
     return {
@@ -321,9 +334,7 @@ export async function resolveProjectStore(projectDir, options = {}) {
     projectsDir,
     'allocate-project-store',
     async () => {
-      const concurrentExisting = findProjectMetadata(projectsDir).find(({ metadata }) =>
-        metadataMatches(identity, metadata),
-      );
+      const concurrentExisting = findMatchingProjectMetadata(projectsDir, identity);
       if (concurrentExisting) {
         return {
           storePath: concurrentExisting.storePath,

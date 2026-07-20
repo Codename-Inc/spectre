@@ -62,6 +62,10 @@ describe('exact knowledge trigger matching', () => {
       matchKnowledge('Use CAFE\u0301---AUTH.', index)[0].matchedTrigger,
       'café auth',
     );
+    assert.equal(
+      matchKnowledge('Fix the `café auth`+handling.', index)[0].matchedTrigger,
+      'café auth',
+    );
     assert.deepEqual(matchKnowledge('scafe authz', index), []);
     assert.deepEqual(matchKnowledge('Use the inactive trigger.', index), []);
   });
@@ -156,6 +160,25 @@ describe('bounded prompt framing', () => {
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'PAYLOAD_LIMIT');
     assert.equal(result.additionalContext, null);
+  });
+
+  it('rejects an unsafe dense alphanumeric primary during the runtime recheck', async () => {
+    const { buildPromptContext } = await loadMatcherModule();
+    const result = buildPromptContext({
+      host: 'codex',
+      primary: {
+        ...entry({ id: 'feature-dense-runtime' }),
+        content: 'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72'
+          .repeat(250)
+          .slice(0, 8_000),
+      },
+      secondaryMatches: [],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'PAYLOAD_LIMIT');
+    assert.equal(result.additionalContext, null);
+    assert.equal(result.measurement.measured > result.measurement.limit, true);
   });
 
   it('keeps a valid primary when secondary metadata would exceed the host budget', async () => {

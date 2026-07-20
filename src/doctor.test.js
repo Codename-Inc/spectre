@@ -243,10 +243,29 @@ test('doctor reports migration debt and grandfathered Claude native discovery in
       }],
     }, null, 2)}\n`,
   );
+  const currentRegistryPath = path.join(
+    fixture.projectDir,
+    '.agents',
+    'skills',
+    'spectre-recall',
+    'references',
+    'registry.toon',
+  );
+  fs.mkdirSync(path.dirname(currentRegistryPath), { recursive: true });
+  fs.writeFileSync(
+    currentRegistryPath,
+    'feature-late-registry|feature|late registry|Added after the report\n',
+  );
 
   const doctor = doctorJson(fixture);
   assert.equal(doctor.knowledge.migration.status, 'debt');
-  assert.equal(doctor.knowledge.migration.unresolvedCount, 1);
+  assert.equal(doctor.knowledge.migration.unresolvedCount, 2);
+  assert.deepEqual(
+    doctor.knowledge.migration.issues.find(
+      ({ code }) => code === 'UNCLASSIFIED_LEGACY',
+    ),
+    { code: 'UNCLASSIFIED_LEGACY', count: 1 },
+  );
   assert.deepEqual(
     doctor.knowledge.nativeDiscovery.grandfatheredClaudeExceptions.map(({ id }) => id),
     ['feature-grandfathered'],
@@ -267,7 +286,7 @@ test('doctor reports migration debt and grandfathered Claude native discovery in
     fixture.projectDir,
   ], fixture);
   assert.equal(human.status, 0, human.stderr);
-  assert.match(human.stdout, /Migration debt: 1 unresolved/);
+  assert.match(human.stdout, /Migration debt: 2 unresolved/);
   assert.match(
     human.stdout,
     /Native discovery retirement: incomplete \(1 grandfathered Claude exception\)/,

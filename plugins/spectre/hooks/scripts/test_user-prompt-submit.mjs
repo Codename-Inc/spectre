@@ -223,6 +223,66 @@ describe('UserPromptSubmit process adapter', () => {
     assert.match(JSON.parse(valid.stdout).systemMessage, /feature-auth-flow/);
   });
 
+  it('diagnoses an unsafe direct edit and applies the next fitting match', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, '.spectre-home');
+    const storePath = await seedStore(projectDir, spectreHome, [
+      {
+        id: 'feature-oversized',
+        trigger: 'project auth flow',
+        body: 'Initial safe guidance.',
+      },
+      {
+        id: 'feature-fallback',
+        trigger: 'auth flow',
+        body: 'FITTING_FALLBACK_SENTINEL',
+      },
+    ]);
+    const oversizedPath = path.join(
+      storePath,
+      'knowledge',
+      'feature-oversized',
+      'SKILL.md',
+    );
+    const prefix = skillContent({
+      id: 'feature-oversized',
+      trigger: 'project auth flow',
+      body: '',
+    });
+    fs.writeFileSync(oversizedPath, `${prefix}${'x'.repeat(9_000 - prefix.length)}`);
+    assert.equal(fs.readFileSync(oversizedPath, 'utf8').length, 9_000);
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: {
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'Use the project auth flow.',
+        session_id: 'payload-fallback',
+        cwd: projectDir,
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.match(
+      result.stderr,
+      /^spectre prompt hook candidate skipped: id=feature-oversized reason=PAYLOAD_LIMIT measured=\d+ limit=9000\n$/,
+    );
+    const output = JSON.parse(result.stdout);
+    assert.equal(
+      output.systemMessage,
+      'spectre: applied feature-fallback; 1 also matching',
+    );
+    assert.match(
+      output.hookSpecificOutput.additionalContext,
+      /FITTING_FALLBACK_SENTINEL/,
+    );
+    assert.doesNotMatch(
+      output.hookSpecificOutput.additionalContext,
+      /x{100}/,
+    );
+  });
+
   it('fails open on internal store errors without emitting partial context', async (t) => {
     const projectDir = makeTmp(t);
     const spectreHome = path.join(projectDir, '.spectre-home');

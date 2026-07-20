@@ -69,40 +69,41 @@ async function resolvePrompt(input, host) {
   });
   if (matches.length === 0) return null;
 
-  let primary;
-  let parsedPrimary;
   for (const match of matches) {
     const parsed = readVerifiedIndexedRecord(resolved.storePath, match);
     if (!parsed) continue;
-    primary = match;
-    parsedPrimary = parsed;
-    break;
+    const context = buildPromptContext({
+      host,
+      primary: {
+        ...match,
+        content: parsed.content,
+      },
+      secondaryMatches: matches.filter(({ id }) => id !== match.id),
+    });
+    if (!context.ok) {
+      process.stderr.write(
+        `spectre prompt hook candidate skipped: id=${match.id} ` +
+        `reason=${context.reason} measured=${context.measurement.measured} ` +
+        `limit=${context.measurement.limit}\n`,
+      );
+      continue;
+    }
+
+    markKnowledgeApplied({
+      storePath: resolved.storePath,
+      host,
+      sessionId: input.session_id,
+      record: match,
+    });
+    return {
+      systemMessage: context.systemMessage,
+      hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit',
+        additionalContext: context.additionalContext,
+      },
+    };
   }
-  if (!primary) return null;
-
-  const context = buildPromptContext({
-    host,
-    primary: {
-      ...primary,
-      content: parsedPrimary.content,
-    },
-    secondaryMatches: matches.filter(({ id }) => id !== primary.id),
-  });
-  if (!context.ok) return null;
-
-  markKnowledgeApplied({
-    storePath: resolved.storePath,
-    host,
-    sessionId: input.session_id,
-    record: primary,
-  });
-  return {
-    systemMessage: context.systemMessage,
-    hookSpecificOutput: {
-      hookEventName: 'UserPromptSubmit',
-      additionalContext: context.additionalContext,
-    },
-  };
+  return null;
 }
 
 async function main() {

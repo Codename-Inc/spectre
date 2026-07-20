@@ -38,10 +38,11 @@ function containsPhrase(value, phrase) {
 
 function scoreRecord(entry, normalizedQuery, queryTokens) {
   const matchedExactPhrase = [
+    entry.id,
     ...entry.triggers,
     entry.description,
   ].some((value) => containsPhrase(value, normalizedQuery));
-  const triggerOverlap = overlapCount(queryTokens, entry.triggers);
+  const triggerOverlap = overlapCount(queryTokens, [entry.id, ...entry.triggers]);
   const descriptionOverlap = overlapCount(queryTokens, [entry.description]);
   return { matchedExactPhrase, triggerOverlap, descriptionOverlap };
 }

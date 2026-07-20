@@ -197,6 +197,41 @@ describe('capability-only SessionStart', () => {
     assert.equal(fs.existsSync(spectreHome), false);
   });
 
+  it('uses the host-specific learn command in capability guidance', (t) => {
+    for (const [host, learnCommand] of [
+      ['claude', '/spectre:learn'],
+      ['codex', 'spectre-learn'],
+    ]) {
+      const projectDir = makeTmp(t);
+      const spectreHome = path.join(projectDir, '.spectre-home');
+      createManifest(projectDir);
+
+      const result = runHook({
+        cwd: projectDir,
+        spectreHome,
+        host,
+        input: {
+          hook_event_name: 'SessionStart',
+          source: 'startup',
+          session_id: `${host}-guidance`,
+          cwd: projectDir,
+        },
+      });
+
+      assert.equal(result.exitCode, 0);
+      assert.match(JSON.parse(result.stdout).systemMessage, new RegExp(learnCommand));
+      const override = fs.readFileSync(
+        path.join(projectDir, 'AGENTS.override.md'),
+        'utf8',
+      );
+      assert.match(override, new RegExp(learnCommand));
+      if (host === 'codex') {
+        assert.doesNotMatch(result.stdout, /\/spectre:learn/);
+        assert.doesNotMatch(override, /\/spectre:learn/);
+      }
+    }
+  });
+
   it('skips a held migration lock and still emits capability guidance', async (t) => {
     const projectDir = makeTmp(t);
     const spectreHome = path.join(projectDir, '.spectre-home');
@@ -232,6 +267,10 @@ describe('capability-only SessionStart', () => {
       false,
     );
     assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(
+      result.stderr,
+      'spectre SessionStart migration skipped: reason=LOCK_TIMEOUT\n',
+    );
   });
 });
 

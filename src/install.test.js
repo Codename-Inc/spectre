@@ -5,8 +5,9 @@ import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 
-function makeProject() {
+function makeProject(t) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-install-'));
+  t?.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   execFileSync('git', ['init', '-b', 'main'], { cwd: tmp, stdio: 'ignore' });
   fs.mkdirSync(path.join(tmp, 'docs', 'tasks', 'main', 'session_logs'), { recursive: true });
   fs.writeFileSync(
@@ -28,8 +29,22 @@ function makeProject() {
   return tmp;
 }
 
-test('project install writes workflow skills, agent config, and memory hooks', { concurrency: false }, async () => {
-  const projectDir = makeProject();
+function isolateInProcessSpectreHome(t, projectDir) {
+  const previousSpectreHome = process.env.SPECTRE_HOME;
+  const spectreHome = path.join(projectDir, '.test-spectre-home');
+  process.env.SPECTRE_HOME = spectreHome;
+  t.after(() => {
+    if (previousSpectreHome == null) delete process.env.SPECTRE_HOME;
+    else process.env.SPECTRE_HOME = previousSpectreHome;
+    fs.rmSync(spectreHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(spectreHome), false);
+  });
+  return spectreHome;
+}
+
+test('project install writes workflow skills, agent config, and memory hooks', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  const spectreHome = isolateInProcessSpectreHome(t, projectDir);
   const previousCodexHome = process.env.CODEX_HOME;
   delete process.env.CODEX_HOME;
 
@@ -39,6 +54,7 @@ test('project install writes workflow skills, agent config, and memory hooks', {
 
     const { main } = await import('./main.js');
     await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
+    assert.equal(fs.existsSync(path.join(spectreHome, 'projects')), true);
 
     const codeHome = path.join(projectDir, '.codex');
     const scopeSkillPath = path.join(codeHome, 'skills', 'spectre-scope', 'SKILL.md');
@@ -216,8 +232,9 @@ test('user install installs skills, agents, and global generated hooks', { concu
   assert.ok(!fs.existsSync(path.join(workspaceDir, 'AGENTS.override.md')));
 });
 
-test('project install removes legacy bridge artifacts while preserving non-managed AGENTS content', { concurrency: false }, async () => {
-  const projectDir = makeProject();
+test('project install removes legacy bridge artifacts while preserving non-managed AGENTS content', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  isolateInProcessSpectreHome(t, projectDir);
   fs.writeFileSync(
     path.join(projectDir, 'AGENTS.md'),
     [
@@ -272,8 +289,9 @@ test('project install removes legacy bridge artifacts while preserving non-manag
   }
 });
 
-test('project install preserves unrelated hooks.json handlers while adding Spectre hooks', { concurrency: false }, async () => {
-  const projectDir = makeProject();
+test('project install preserves unrelated hooks.json handlers while adding Spectre hooks', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  isolateInProcessSpectreHome(t, projectDir);
   const codeHome = path.join(projectDir, '.codex');
   fs.mkdirSync(codeHome, { recursive: true });
   fs.writeFileSync(
@@ -325,8 +343,9 @@ test('project install preserves unrelated hooks.json handlers while adding Spect
   }
 });
 
-test('install removes fork-era agent definitions and runtime', { concurrency: false }, async () => {
-  const projectDir = makeProject();
+test('install removes fork-era agent definitions and runtime', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  isolateInProcessSpectreHome(t, projectDir);
   const codeHome = path.join(projectDir, '.codex');
   const forkName = ['cas', 'par'].join('');
   const forkRuntime = path.join(codeHome, forkName);
@@ -373,8 +392,33 @@ test('install removes fork-era agent definitions and runtime', { concurrency: fa
   }
 });
 
-test('project uninstall removes managed workflow skills, agent config, and project skill registrations', { concurrency: false }, async () => {
-  const projectDir = makeProject();
+test('project update removes stale apply skill and preserves unrelated user work', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  isolateInProcessSpectreHome(t, projectDir);
+  const codeHome = path.join(projectDir, '.codex');
+  const staleApplyPath = path.join(codeHome, 'skills', 'spectre-apply', 'SKILL.md');
+  const unrelatedPath = path.join(
+    codeHome,
+    'skills',
+    'spectre-apply-notes',
+    'SKILL.md',
+  );
+  fs.mkdirSync(path.dirname(staleApplyPath), { recursive: true });
+  fs.writeFileSync(staleApplyPath, 'previous release managed apply\n');
+  fs.mkdirSync(path.dirname(unrelatedPath), { recursive: true });
+  fs.writeFileSync(unrelatedPath, 'user-owned apply notes\n');
+  const unrelatedBytes = fs.readFileSync(unrelatedPath);
+
+  const { main } = await import('./main.js');
+  await main(['update', 'codex', '--scope', 'project', '--project-dir', projectDir]);
+
+  assert.equal(fs.existsSync(path.dirname(staleApplyPath)), false);
+  assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedBytes);
+});
+
+test('project uninstall removes managed workflow skills, agent config, and project skill registrations', { concurrency: false }, async (t) => {
+  const projectDir = makeProject(t);
+  isolateInProcessSpectreHome(t, projectDir);
   fs.writeFileSync(
     path.join(projectDir, 'AGENTS.override.md'),
     [

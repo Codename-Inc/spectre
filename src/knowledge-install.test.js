@@ -147,6 +147,7 @@ test('project skill sync removes only migration-owned and retired recall entries
       ...preservedBlocks.flatMap((block) => [block, '']),
     ].join('\n'),
   );
+  fs.rmSync(path.dirname(migratedPath), { recursive: true, force: true });
 
   syncProjectSkillsConfigured(projectDir, {
     entries: [
@@ -169,6 +170,43 @@ test('project skill sync removes only migration-owned and retired recall entries
   for (const block of preservedBlocks) {
     assert.equal(updated.includes(block), true, `must preserve block:\n${block}`);
   }
+});
+
+test('project skill sync preserves a current skill recreated at a historical migrated path', { concurrency: false }, (t) => {
+  const { projectDir, codexHome, skillsRoot } = makeFixture(t);
+  const previousCodexHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  t.after(() => {
+    if (previousCodexHome == null) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
+  });
+
+  const recreatedPath = writeSkill(
+    skillsRoot,
+    'feature-recreated',
+    'current user-owned skill bytes\n',
+  );
+  const recreatedBlock = configEntry(
+    recreatedPath,
+    'custom_key = "preserve-current-skill"',
+  );
+  fs.mkdirSync(codexHome, { recursive: true });
+  fs.writeFileSync(
+    path.join(codexHome, 'config.toml'),
+    `${recreatedBlock}\n`,
+  );
+
+  syncProjectSkillsConfigured(projectDir, {
+    entries: [{
+      id: 'feature-recreated',
+      code: 'MIGRATED',
+      sourcePaths: [path.dirname(recreatedPath)],
+    }],
+  });
+
+  const updated = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+  assert.equal(updated.includes(recreatedBlock), true);
+  assert.equal(fs.readFileSync(recreatedPath, 'utf8'), 'current user-owned skill bytes\n');
 });
 
 test('npm knowledge module is a thin adapter to canonical runtime commands', async () => {
@@ -353,9 +391,12 @@ test('retired apply and recall-template assets have no active readers or placeho
   const npmKnowledgeSources = [
     path.resolve('src/lib/knowledge.js'),
     path.resolve('src/lib/project.js'),
-    path.resolve('src/lib/install.js'),
   ].map((filePath) => fs.readFileSync(filePath, 'utf8')).join('\n');
   assert.doesNotMatch(npmKnowledgeSources, /spectre-apply|recall-template|\{\{REGISTRY\}\}/);
+  assert.doesNotMatch(
+    fs.readFileSync(path.resolve('src/lib/install.js'), 'utf8'),
+    /recall-template|\{\{REGISTRY\}\}/,
+  );
 
   for (const entry of fs.readdirSync(pluginSkills, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -370,12 +411,21 @@ test('retired apply and recall-template assets have no active readers or placeho
 });
 
 test('verifier guidance documents prompt-time delivery and capability-only startup', () => {
-  const guidance = fs.readFileSync(
-    path.resolve('.claude/skills/verify-spectre/SKILL.md'),
-    'utf8',
+  for (const skillRoot of ['.claude', '.agents']) {
+    const guidance = fs.readFileSync(
+      path.resolve(skillRoot, 'skills', 'verify-spectre', 'SKILL.md'),
+      'utf8',
+    );
+    assert.match(guidance, /Claude Code and Codex[\s\S]*UserPromptSubmit/);
+    assert.match(guidance, /additionalContext/);
+    assert.match(guidance, /capability-only SessionStart/i);
+    assert.doesNotMatch(
+      guidance,
+      /Populated registry|Empty registry|registry rows are \*inlined\*|apply source template/,
+    );
+  }
+  assert.match(
+    fs.readFileSync(path.resolve('.agents/skills/verify-spectre/SKILL.md'), 'utf8'),
+    /Codex-facing skill/,
   );
-  assert.match(guidance, /Claude Code and Codex[\s\S]*UserPromptSubmit/);
-  assert.match(guidance, /additionalContext/);
-  assert.match(guidance, /capability-only SessionStart/i);
-  assert.doesNotMatch(guidance, /Populated registry|Empty registry|registry rows are \*inlined\*/);
 });

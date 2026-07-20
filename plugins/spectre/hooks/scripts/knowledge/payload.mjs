@@ -6,6 +6,11 @@ const CODE_CORE_CHARS = 4_000;
 const PUNCTUATION_UNSAFE_CHARS = 9_000;
 // Non-ASCII byte density makes this 9,000-character fixture intentionally unsafe.
 const UNICODE_UNSAFE_CHARS = 9_000;
+// Legal-size unbroken numeric and encoded runs must fail the Codex injection budget.
+const DENSE_DIGIT_UNSAFE_CHARS = 8_000;
+const DENSE_ALPHANUMERIC_UNSAFE_CHARS = 8_000;
+// This mixed run keeps its complete registration frame just below the Codex budget.
+const DENSE_ALPHANUMERIC_PROBE_CHARS = 2_050;
 // Prompt framing always reserves the complete secondary-match allowance.
 const SECONDARY_METADATA_RESERVE_CHARS = 750;
 // Claude's documented 10,000-character cap retains a 1,000-character safety reserve.
@@ -14,18 +19,44 @@ const CLAUDE_RESERVE_CHARS = 1_000;
 // Codex documents roughly 2,500 tokens; retain 250 estimated tokens for host variance.
 const CODEX_ESTIMATED_TOKEN_LIMIT = 2_250;
 const CODEX_TOKEN_RESERVE = 250;
+// Short words use the byte baseline; long runs need explicit tokenizer-density rates.
+const DENSE_ALPHANUMERIC_RUN_MIN_CHARS = 32;
+// Codex tokenizers group decimal digits in runs of no more than three.
+const DENSE_DIGIT_TOKENS_PER_CHAR = 1 / 3;
+// Hash/base64-like runs can approach three tokens per four ASCII characters.
+const DENSE_ALPHANUMERIC_TOKENS_PER_CHAR = 3 / 4;
+const ASCII_BYTE_BASELINE_TOKENS_PER_CHAR = 1 / 4;
 
 export const PAYLOAD_BOUNDARIES = Object.freeze({
   proseCoreChars: PROSE_CORE_CHARS,
   codeCoreChars: CODE_CORE_CHARS,
   punctuationUnsafeChars: PUNCTUATION_UNSAFE_CHARS,
   unicodeUnsafeChars: UNICODE_UNSAFE_CHARS,
+  denseDigitUnsafeChars: DENSE_DIGIT_UNSAFE_CHARS,
+  denseAlphanumericUnsafeChars: DENSE_ALPHANUMERIC_UNSAFE_CHARS,
+  denseAlphanumericProbeChars: DENSE_ALPHANUMERIC_PROBE_CHARS,
   secondaryMetadataReserveChars: SECONDARY_METADATA_RESERVE_CHARS,
   claudeSafeOutputChars: CLAUDE_SAFE_OUTPUT_CHARS,
   claudeReserveChars: CLAUDE_RESERVE_CHARS,
   codexEstimatedTokenLimit: CODEX_ESTIMATED_TOKEN_LIMIT,
   codexTokenReserve: CODEX_TOKEN_RESERVE,
 });
+
+function denseAlphanumericPenalty(content) {
+  let penalty = 0;
+  const runs = content.matchAll(
+    new RegExp(`[A-Za-z0-9]{${DENSE_ALPHANUMERIC_RUN_MIN_CHARS},}`, 'g'),
+  );
+  for (const [run] of runs) {
+    const tokenRate = /^\d+$/.test(run)
+      ? DENSE_DIGIT_TOKENS_PER_CHAR
+      : DENSE_ALPHANUMERIC_TOKENS_PER_CHAR;
+    penalty += run.length * (
+      tokenRate - ASCII_BYTE_BASELINE_TOKENS_PER_CHAR
+    );
+  }
+  return penalty;
+}
 
 function estimateCodexTokens(content) {
   let punctuation = 0;
@@ -37,7 +68,12 @@ function estimateCodexTokens(content) {
   }
 
   const byteBaseline = Buffer.byteLength(content, 'utf8') / 4;
-  return Math.ceil(byteBaseline + punctuation * 0.22 + nonAscii * 0.35);
+  return Math.ceil(
+    byteBaseline +
+    denseAlphanumericPenalty(content) +
+    punctuation * 0.22 +
+    nonAscii * 0.35,
+  );
 }
 
 export function measurePayload(host, framedContent) {

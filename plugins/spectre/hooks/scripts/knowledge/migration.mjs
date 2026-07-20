@@ -147,7 +147,12 @@ function parseLegacyFrontmatter(frontmatter, sourcePath) {
 }
 
 function normalizeLegacyRecord(sourcePath, id, category, triggers) {
-  const content = fs.readFileSync(path.join(sourcePath, 'SKILL.md'), 'utf8');
+  const skillPath = path.join(sourcePath, 'SKILL.md');
+  const sourceBytes = fs.readFileSync(skillPath);
+  const content = sourceBytes.toString('utf8');
+  if (!Buffer.from(content, 'utf8').equals(sourceBytes)) {
+    throw malformed(`${skillPath}: source is not valid UTF-8`);
+  }
   const { frontmatter, body } = splitLegacySkill(content, sourcePath);
   const { fields, metadata } = parseLegacyFrontmatter(frontmatter, sourcePath);
   if (
@@ -333,6 +338,23 @@ function frameForMeasurement(content) {
   ].join('\n');
 }
 
+function matchesCommittedDestination(destinationPath, id, category, triggers) {
+  const skillPath = path.join(destinationPath, 'SKILL.md');
+  if (!fs.existsSync(skillPath)) return false;
+  try {
+    const { record } = parseKnowledgeRecord(skillPath);
+    return (
+      record.id === id &&
+      record.category === category &&
+      snapshotsEqual(record.triggers, triggers) &&
+      record.status === 'active' &&
+      record.version === 1
+    );
+  } catch {
+    return false;
+  }
+}
+
 function classifyGroup(id, rows, storePath) {
   const sourcePaths = [...new Set(rows.map(({ sourcePath }) => sourcePath))];
   const destinationPath = path.join(storePath, 'knowledge', id);
@@ -350,7 +372,19 @@ function classifyGroup(id, rows, storePath) {
     if (rows.some(({ category }) => !CATEGORIES.has(category))) {
       throw malformed(`${id}: invalid category`);
     }
-    if (sourcePaths.some((sourcePath) => !fs.existsSync(path.join(sourcePath, 'SKILL.md')))) {
+    const missingSourcePaths = sourcePaths.filter(
+      (sourcePath) => !fs.existsSync(path.join(sourcePath, 'SKILL.md')),
+    );
+    if (missingSourcePaths.length > 0) {
+      const categories = new Set(rows.map(({ category }) => category));
+      const triggers = mergeTriggers(rows);
+      if (
+        missingSourcePaths.length === sourcePaths.length &&
+        categories.size === 1 &&
+        matchesCommittedDestination(destinationPath, id, rows[0].category, triggers)
+      ) {
+        return { ...base, code: 'ALREADY_MIGRATED' };
+      }
       return { ...base, code: 'SOURCE_MISSING' };
     }
     const categories = new Set(rows.map(({ category }) => category));
@@ -516,7 +550,7 @@ function unresolvedRegistryRows(projectDir) {
     if (!fs.existsSync(registryPath)) continue;
     count += fs.readFileSync(registryPath, 'utf8')
       .split(/\r?\n/)
-      .filter((line) => registryRowId(line) !== null)
+      .filter((line) => line.trim() && !line.startsWith('#'))
       .length;
   }
   return count;

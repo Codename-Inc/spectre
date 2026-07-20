@@ -226,7 +226,10 @@ function migratedNativeSkillPaths(migrationReport) {
       continue;
     }
     for (const sourcePath of entry.sourcePaths ?? []) {
-      paths.add(path.resolve(sourcePath, 'SKILL.md'));
+      const skillPath = path.resolve(sourcePath, 'SKILL.md');
+      if (!fs.existsSync(skillPath)) {
+        paths.add(skillPath);
+      }
     }
   }
   return paths;

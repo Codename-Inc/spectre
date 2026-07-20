@@ -23,10 +23,14 @@ const PROSE_PROMPT =
 const CODE_PROMPT =
   'Apply the knowledge for spectre payload code boundary and reply exactly ' +
   'SPECTRE_CODE_INLINE_OK.';
+const DENSE_PROMPT =
+  'Apply the knowledge for spectre payload dense alphanumeric boundary and reply exactly ' +
+  'SPECTRE_DENSE_INLINE_OK.';
 const NO_MATCH_PROMPT = 'This prompt deliberately matches no Spectre payload fixture.';
 const PRIMARY_SENTINELS = [
   'SPECTRE_PRIMARY_PROSE_6000_V1',
   'SPECTRE_PRIMARY_CODE_4000_V1',
+  'SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1',
 ];
 const EVIDENCE_FIELDS = [
   'primarySentinelVisible',
@@ -108,6 +112,11 @@ async function prepareFixture(fixtureRoot) {
     'export function fixture(value) {\n  return value.trim();\n}\n',
     PAYLOAD_BOUNDARIES.codeCoreChars,
   );
+  const denseAlphanumericCore = repeatToLength(
+    `${PRIMARY_SENTINELS[2]}\n`,
+    'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
+    PAYLOAD_BOUNDARIES.denseAlphanumericProbeChars,
+  );
   writeFixtureRecord(store.storePath, {
     id: 'testing-payload-prose',
     description: 'Prose payload boundary fixture. Use for the real-host inline delivery gate.',
@@ -123,6 +132,15 @@ async function prepareFixture(fixtureRoot) {
     sentinel: PRIMARY_SENTINELS[1],
     requiredResponse: 'SPECTRE_CODE_INLINE_OK',
     core: codeCore,
+  });
+  writeFixtureRecord(store.storePath, {
+    id: 'testing-payload-dense-alphanumeric',
+    description:
+      'Dense alphanumeric payload boundary fixture. Use for the real-host inline delivery gate.',
+    trigger: 'spectre payload dense alphanumeric boundary',
+    sentinel: PRIMARY_SENTINELS[2],
+    requiredResponse: 'SPECTRE_DENSE_INLINE_OK',
+    core: denseAlphanumericCore,
   });
   refreshKnowledgeIndex(store.storePath);
 
@@ -217,6 +235,7 @@ async function prepareFixture(fixtureRoot) {
     prompts: {
       prose: PROSE_PROMPT,
       code: CODE_PROMPT,
+      denseAlphanumeric: DENSE_PROMPT,
       noMatch: NO_MATCH_PROMPT,
     },
     primarySentinels: PRIMARY_SENTINELS,

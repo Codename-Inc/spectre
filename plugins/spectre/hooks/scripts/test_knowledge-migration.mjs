@@ -287,6 +287,16 @@ describe('legacy migration discovery and classification', () => {
         triggers: ['already'],
       }),
     );
+    const missingDir = path.join(storePath, 'knowledge', 'feature-missing');
+    fs.mkdirSync(missingDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(missingDir, 'SKILL.md'),
+      canonicalContent({
+        id: 'feature-missing',
+        category: 'feature',
+        triggers: ['different'],
+      }),
+    );
 
     const before = snapshotTree(projectDir);
     const { classifyLegacyKnowledge } = await loadMigrationModule();
@@ -309,6 +319,7 @@ describe('legacy migration discovery and classification', () => {
     assert.equal(report.grandfatheredClaudeNativeDiscoveryIncomplete, true);
     assert.match(entries.get('feature-conflict').destinationPath, /feature-conflict$/);
     assert.equal(entries.get('feature-already').code, 'ALREADY_MIGRATED');
+    assert.equal(entries.get('feature-missing').code, 'SOURCE_MISSING');
     assert.deepEqual(snapshotTree(projectDir), before);
   });
 });
@@ -480,6 +491,74 @@ describe('legacy migration staged commit and cleanup', () => {
     assert.deepEqual(fs.readFileSync(path.join(sourceDir, 'SKILL.md')), sourceBytes);
   });
 
+  it('preserves non-roundtrippable UTF-8 source bytes as malformed', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    const sourceDir = writeLegacySkill(
+      projectDir,
+      '.claude',
+      'feature-invalid-utf8',
+    );
+    const sourcePath = path.join(sourceDir, 'SKILL.md');
+    const sourceBytes = Buffer.concat([
+      Buffer.from(legacySkillContent({ name: 'feature-invalid-utf8' })),
+      Buffer.from([0xff]),
+    ]);
+    fs.writeFileSync(sourcePath, sourceBytes);
+    const registry = writeRegistry(projectDir, '.claude', [
+      'feature-invalid-utf8|feature|invalid bytes|Use when preserving invalid bytes',
+    ]);
+    const registryBytes = fs.readFileSync(registry);
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    const report = await migrateLegacyKnowledge({ projectDir, storePath });
+
+    assert.equal(report.entries[0].code, 'MALFORMED');
+    assert.deepEqual(fs.readFileSync(sourcePath), sourceBytes);
+    assert.deepEqual(fs.readFileSync(registry), registryBytes);
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.claude', 'skills', 'spectre-recall')),
+      true,
+    );
+  });
+
+  it('preserves malformed registry rows and generated recall beside migrated rows', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    writeLegacySkill(projectDir, '.agents', 'feature-mixed-registry');
+    const malformedRow = '|feature|missing identifier and description';
+    const registry = writeRegistry(projectDir, '.agents', [
+      'feature-mixed-registry|feature|mixed registry|Use when migrating valid rows',
+      malformedRow,
+    ]);
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    const report = await migrateLegacyKnowledge({ projectDir, storePath });
+
+    assert.equal(
+      report.entries.some(({ code }) => code === 'MIGRATED'),
+      true,
+    );
+    assert.equal(
+      report.entries.some(({ code }) => code === 'MALFORMED'),
+      true,
+    );
+    assert.equal(
+      fs.existsSync(path.join(storePath, 'knowledge', 'feature-mixed-registry')),
+      true,
+    );
+    assert.doesNotMatch(fs.readFileSync(registry, 'utf8'), /feature-mixed-registry\|/);
+    assert.match(fs.readFileSync(registry, 'utf8'), /\|feature\|missing identifier and description/);
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall')),
+      true,
+    );
+  });
+
   it('resolves a readable store only when legacy candidates exist', async (t) => {
     const root = makeTmp(t);
     const projectDir = path.join(root, 'workspace', 'project');
@@ -586,6 +665,74 @@ describe('legacy migration recovery and contention', () => {
     );
     assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
     assert.deepEqual(fs.readFileSync(path.join(storePath, 'index.json')), indexBytes);
+  });
+
+  it('resumes cleanup when the committed source was removed before registry cleanup', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    writeLegacySkill(projectDir, '.agents', 'feature-cleanup-resume');
+    const registry = writeRegistry(projectDir, '.agents', [
+      'feature-cleanup-resume|feature|cleanup resume|Use when resuming cleanup',
+    ]);
+    const sourcePath = path.join(
+      projectDir,
+      '.agents',
+      'skills',
+      'feature-cleanup-resume',
+    );
+    const unrelatedPath = path.join(
+      projectDir,
+      '.agents',
+      'skills',
+      'unrelated-workflow',
+      'SKILL.md',
+    );
+    const unrelatedBytes = Buffer.from([0, 10, 13, 255, 42]);
+    fs.mkdirSync(path.dirname(unrelatedPath), { recursive: true });
+    fs.writeFileSync(unrelatedPath, unrelatedBytes);
+    const canonicalPath = path.join(
+      storePath,
+      'knowledge',
+      'feature-cleanup-resume',
+      'SKILL.md',
+    );
+    const reportPath = path.join(storePath, 'migration-report.json');
+    const indexPath = path.join(storePath, 'index.json');
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    await assert.rejects(
+      migrateLegacyKnowledge({
+        projectDir,
+        storePath,
+        afterCanonicalCommit() {
+          throw new Error('injected-before-cleanup');
+        },
+      }),
+      /injected-before-cleanup/,
+    );
+    fs.rmSync(sourcePath, { recursive: true, force: true });
+    const canonicalBytes = fs.readFileSync(canonicalPath);
+    const indexBytes = fs.readFileSync(indexPath);
+    assert.match(fs.readFileSync(registry, 'utf8'), /feature-cleanup-resume\|/);
+
+    const resumed = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.equal(resumed.entries[0].code, 'ALREADY_MIGRATED');
+    assert.equal(fs.existsSync(sourcePath), false);
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall')),
+      false,
+    );
+    assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedBytes);
+    assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
+    assert.deepEqual(fs.readFileSync(indexPath), indexBytes);
+    const reportBytes = fs.readFileSync(reportPath);
+
+    const stable = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.deepEqual(stable, resumed);
+    assert.deepEqual(fs.readFileSync(reportPath), reportBytes);
+    assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedBytes);
   });
 
   it('fails open on a SessionStart lock timeout without writes, then explicit migration completes', async (t) => {

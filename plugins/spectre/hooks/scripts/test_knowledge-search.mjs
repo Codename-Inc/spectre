@@ -1,12 +1,24 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
+import { buildPromptContext } from './knowledge/matcher.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
 
 const SEARCH_MODULE_URL = new URL('./knowledge/search.mjs', import.meta.url);
+const SPECTRE_BIN = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..',
+  'bin',
+  'spectre.js',
+);
 
 async function loadSearchModule() {
   try {
@@ -176,6 +188,54 @@ test('empty search lists the complete active corpus and refreshes direct metadat
     assert.deepEqual(edited.results.map(({ id }) => id), ['feature-editable']);
     assert.equal(edited.results[0].description, 'New queue guidance.');
     assert.deepEqual(edited.results[0].triggers, ['queue retry']);
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test('the emitted secondary search hint resolves its record through the CLI', async () => {
+  const fixture = await makeStore();
+  try {
+    writeRecord(fixture.storePath, {
+      id: 'feature-trigger-overlap',
+      description: 'Use when changing access.',
+      triggers: ['account access flow'],
+    });
+    const framed = buildPromptContext({
+      host: 'claude',
+      primary: {
+        id: 'feature-primary',
+        content: '# Primary\n\nPrimary guidance.',
+      },
+      secondaryMatches: [{
+        id: 'feature-trigger-overlap',
+        description: 'Use when changing access.',
+        matchedTrigger: 'account access flow',
+      }],
+    });
+    const hint = framed.secondaryMetadata.match(
+      /`spectre knowledge search "([^"]+)"`/,
+    );
+    assert.notEqual(hint, null);
+
+    const result = spawnSync(
+      process.execPath,
+      [SPECTRE_BIN, 'knowledge', 'search', hint[1], '--json'],
+      {
+        cwd: fixture.projectDir,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          SPECTRE_HOME: fixture.spectreHome,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      JSON.parse(result.stdout).results.map(({ id }) => id),
+      ['feature-trigger-overlap'],
+    );
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }

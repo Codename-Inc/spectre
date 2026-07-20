@@ -11,17 +11,31 @@ const HOSTS = new Set(['claude', 'codex']);
 const SESSION_SOURCES = new Set(['startup', 'clear', 'compact']);
 const START_MARKER = '<!-- spectre-knowledge:start -->';
 const END_MARKER = '<!-- spectre-knowledge:end -->';
-const CAPABILITY_NOTICE =
-  'spectre: relevant active project knowledge is applied automatically; ' +
-  'search with `spectre knowledge search "<query>"`; capture durable knowledge ' +
-  'with `/spectre:learn`.';
-const CAPABILITY_BODY = [
-  '## SPECTRE Project Knowledge',
-  '',
-  'Relevant active project knowledge is applied automatically when a prompt matches.',
-  'Use `spectre knowledge search "<query>"` for explicit lexical discovery.',
-  'Use `/spectre:learn` to capture durable project knowledge.',
-].join('\n');
+
+function learnCommand(host) {
+  return host === 'codex' ? 'spectre-learn' : '/spectre:learn';
+}
+
+function capabilityNotice(host) {
+  return (
+    'spectre: relevant active project knowledge is applied automatically; ' +
+    'search with `spectre knowledge search "<query>"`; capture durable knowledge ' +
+    `with \`${learnCommand(host)}\`.`
+  );
+}
+
+function capabilityBody(host) {
+  return [
+    '## SPECTRE Project Knowledge',
+    '',
+    'Relevant active project knowledge is applied automatically when a prompt matches.',
+    'Use `spectre knowledge search "<query>"` for explicit lexical discovery.',
+    `Use \`${learnCommand(host)}\` to capture durable project knowledge.`,
+  ].join('\n');
+}
+
+const CAPABILITY_NOTICE = capabilityNotice('claude');
+const CAPABILITY_BODY = capabilityBody('claude');
 
 function parseHost(argv) {
   const index = argv.indexOf('--host');
@@ -56,12 +70,12 @@ function managedBlockPattern() {
   );
 }
 
-function writeCapabilityBlock(projectDir) {
+function writeCapabilityBlock(projectDir, host = 'claude') {
   const overridePath = path.join(projectDir, 'AGENTS.override.md');
   const current = fs.existsSync(overridePath)
     ? fs.readFileSync(overridePath, 'utf8')
     : '';
-  const block = `${START_MARKER}\n${CAPABILITY_BODY}\n${END_MARKER}`;
+  const block = `${START_MARKER}\n${capabilityBody(host)}\n${END_MARKER}`;
   const pattern = managedBlockPattern();
   const updated = pattern.test(current)
     ? current.replace(pattern, `\n${block}\n`)
@@ -104,12 +118,17 @@ async function runSessionStart(input, host) {
     return null;
   }
   const projectDir = projectDirectory(input);
-  await migrateLegacyKnowledge({
+  const migration = await migrateLegacyKnowledge({
     projectDir,
     spectreHome: process.env.SPECTRE_HOME,
     failOpenOnLockTimeout: true,
     lockOptions: { timeoutMs: migrationTimeout() },
   });
+  if (migration.skipped === 'LOCK_TIMEOUT') {
+    process.stderr.write(
+      'spectre SessionStart migration skipped: reason=LOCK_TIMEOUT\n',
+    );
+  }
   const resolved = await resolveProjectStore(projectDir, {
     spectreHome: process.env.SPECTRE_HOME,
     readOnly: true,
@@ -122,10 +141,10 @@ async function runSessionStart(input, host) {
     });
   }
   if (hasProjectSurface(projectDir, resolved.storePath)) {
-    writeCapabilityBlock(projectDir);
+    writeCapabilityBlock(projectDir, host);
   }
   return {
-    systemMessage: CAPABILITY_NOTICE,
+    systemMessage: capabilityNotice(host),
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
     },
@@ -149,6 +168,8 @@ try {
 export {
   CAPABILITY_BODY,
   CAPABILITY_NOTICE,
+  capabilityBody,
+  capabilityNotice,
   hasProjectSurface,
   projectDirectory,
   runSessionStart,

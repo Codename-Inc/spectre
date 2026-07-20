@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { measurePayload } from './payload.mjs';
 import { parseKnowledgeRecord, refreshKnowledgeIndex } from './records.mjs';
-import { resolveProjectStore, withStoreLock } from './store.mjs';
+import { atomicWriteFile, resolveProjectStore, withStoreLock } from './store.mjs';
 
 const RETIRED_NATIVE_RECORD_IDS = new Set(['spectre-recall', 'spectre-find']);
 
@@ -78,6 +78,41 @@ function removeRegistrationStages(storePath) {
   }
 }
 
+function recoverInterruptedRecordReplacements(storePath) {
+  const knowledgeDir = path.join(storePath, 'knowledge');
+  if (!fs.existsSync(knowledgeDir)) return false;
+
+  const backupsByDestination = new Map();
+  for (const entry of fs.readdirSync(knowledgeDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const match = /^(.*)\.previous-(\d+)-(\d+)$/.exec(entry.name);
+    if (!match || match[1] === '') continue;
+    const destinationPath = path.join(knowledgeDir, match[1]);
+    const backups = backupsByDestination.get(destinationPath) || [];
+    backups.push({
+      backupPath: path.join(knowledgeDir, entry.name),
+      timestamp: Number(match[3]),
+    });
+    backupsByDestination.set(destinationPath, backups);
+  }
+
+  for (const [destinationPath, backups] of backupsByDestination) {
+    backups.sort(
+      (left, right) =>
+        right.timestamp - left.timestamp
+        || left.backupPath.localeCompare(right.backupPath),
+    );
+    if (!fs.existsSync(destinationPath)) {
+      fs.renameSync(backups[0].backupPath, destinationPath);
+      backups.shift();
+    }
+    for (const { backupPath } of backups) {
+      fs.rmSync(backupPath, { recursive: true, force: true });
+    }
+  }
+  return backupsByDestination.size > 0;
+}
+
 function beginRecordDirectoryReplacement(destinationPath, stagePath) {
   const backupPath = `${destinationPath}.previous-${process.pid}-${Date.now()}`;
   let backedUp = false;
@@ -142,6 +177,9 @@ export async function registerCanonicalKnowledge(options) {
     'register-knowledge',
     async () => {
       removeRegistrationStages(storePath);
+      if (recoverInterruptedRecordReplacements(storePath)) {
+        refreshKnowledgeIndex(storePath);
+      }
       const stageRoot = path.join(storePath, `.registration-stage-${process.pid}-${Date.now()}`);
       fs.mkdirSync(stageRoot, { recursive: true });
       try {
@@ -149,14 +187,38 @@ export async function registerCanonicalKnowledge(options) {
         copyDirectory(sourceDir, stagedRecordDir);
         const parsed = validateStagedRecord(stagedRecordDir);
         const destinationPath = path.join(storePath, 'knowledge', parsed.record.id);
+        const indexPath = path.join(storePath, 'index.json');
+        const priorIndexBytes = fs.existsSync(indexPath) ? fs.readFileSync(indexPath) : null;
         fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
         const replacement = beginRecordDirectoryReplacement(destinationPath, stagedRecordDir);
         try {
           if (options.afterRecordSwap) options.afterRecordSwap();
           refreshKnowledgeIndex(storePath);
+          if (options.afterIndexRefresh) options.afterIndexRefresh();
           replacement.commit();
         } catch (error) {
-          replacement.rollback();
+          const recoveryErrors = [];
+          try {
+            replacement.rollback();
+          } catch (recoveryError) {
+            recoveryErrors.push(recoveryError);
+          }
+          try {
+            if (priorIndexBytes === null) {
+              fs.rmSync(indexPath, { force: true });
+            } else {
+              atomicWriteFile(indexPath, priorIndexBytes);
+            }
+          } catch (recoveryError) {
+            recoveryErrors.push(recoveryError);
+          }
+          if (recoveryErrors.length > 0 && error && typeof error === 'object') {
+            try {
+              error.registrationRecoveryErrors = recoveryErrors;
+            } catch {
+              // Preserve the original failure even when it cannot carry diagnostics.
+            }
+          }
           throw error;
         }
         return {
@@ -164,14 +226,18 @@ export async function registerCanonicalKnowledge(options) {
           id: parsed.record.id,
           storePath,
           recordPath: path.join(destinationPath, 'SKILL.md'),
-          indexPath: path.join(storePath, 'index.json'),
+          indexPath,
         };
       } catch (error) {
         if (error?.code) throw error;
-        throw codedError(
+        const failure = codedError(
           'KNOWLEDGE_REGISTRATION_FAILED',
           error instanceof Error ? error.message : String(error),
         );
+        if (Array.isArray(error?.registrationRecoveryErrors)) {
+          failure.registrationRecoveryErrors = error.registrationRecoveryErrors;
+        }
+        throw failure;
       } finally {
         fs.rmSync(stageRoot, { recursive: true, force: true });
       }

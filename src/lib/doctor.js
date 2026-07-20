@@ -191,8 +191,8 @@ function inspectRecords(storePath) {
   return { validRecords, invalidRecords };
 }
 
-function legacyRegistryRowCount(projectDir) {
-  let count = 0;
+function legacyRegistryRows(projectDir) {
+  const rows = [];
   for (const nativeRoot of ['.claude', '.agents']) {
     for (const recallName of ['spectre-recall', 'spectre-find']) {
       const registryPath = path.join(
@@ -204,27 +204,30 @@ function legacyRegistryRowCount(projectDir) {
         'registry.toon'
       );
       if (!fs.existsSync(registryPath)) continue;
-      count += fs.readFileSync(registryPath, 'utf8')
+      rows.push(...fs.readFileSync(registryPath, 'utf8')
         .split(/\r?\n/)
         .filter(line => line.trim() && !line.trimStart().startsWith('#'))
-        .length;
+        .map(line => ({
+          id: line.split('|')[0]?.trim() || null,
+          registryPath
+        })));
     }
   }
-  return count;
+  return rows;
 }
 
 function inspectMigration(projectDir, storePath) {
   const reportPath = storePath
     ? path.join(storePath, 'migration-report.json')
     : null;
-  const legacyRows = legacyRegistryRowCount(projectDir);
+  const legacyRows = legacyRegistryRows(projectDir);
   if (!reportPath || !fs.existsSync(reportPath)) {
     return {
-      status: legacyRows > 0 ? 'debt' : 'complete',
+      status: legacyRows.length > 0 ? 'debt' : 'complete',
       reportPath,
-      unresolvedCount: legacyRows,
-      issues: legacyRows > 0
-        ? [{ code: 'UNCLASSIFIED_LEGACY', count: legacyRows }]
+      unresolvedCount: legacyRows.length,
+      issues: legacyRows.length > 0
+        ? [{ code: 'UNCLASSIFIED_LEGACY', count: legacyRows.length }]
         : [],
       grandfatheredClaudeExceptions: []
     };
@@ -242,6 +245,14 @@ function inspectMigration(projectDir, storePath) {
     const issues = report.entries.filter(entry =>
       !RESOLVED_MIGRATION_CODES.has(entry?.code)
     );
+    const reportedIds = new Set(
+      report.entries
+        .map(entry => entry?.id)
+        .filter(id => typeof id === 'string' && id)
+    );
+    const unclassifiedLegacyCount = legacyRows.filter(
+      row => row.id === null || !reportedIds.has(row.id)
+    ).length;
     const grandfatheredClaudeExceptions = issues
       .filter(entry =>
         entry?.code === 'OVERSIZED'
@@ -258,21 +269,26 @@ function inspectMigration(projectDir, storePath) {
         nativeDiscoveryEligible: true
       }));
     return {
-      status: issues.length > 0 ? 'debt' : 'complete',
+      status: issues.length > 0 || unclassifiedLegacyCount > 0 ? 'debt' : 'complete',
       reportPath,
-      unresolvedCount: issues.length,
-      issues: issues.map(entry => ({
-        id: entry.id,
-        code: entry.code,
-        sourcePaths: entry.sourcePaths ?? []
-      })),
+      unresolvedCount: issues.length + unclassifiedLegacyCount,
+      issues: [
+        ...issues.map(entry => ({
+          id: entry.id,
+          code: entry.code,
+          sourcePaths: entry.sourcePaths ?? []
+        })),
+        ...(unclassifiedLegacyCount > 0
+          ? [{ code: 'UNCLASSIFIED_LEGACY', count: unclassifiedLegacyCount }]
+          : [])
+      ],
       grandfatheredClaudeExceptions
     };
   } catch (error) {
     return {
       status: 'invalid',
       reportPath,
-      unresolvedCount: legacyRows,
+      unresolvedCount: legacyRows.length,
       issues: [],
       grandfatheredClaudeExceptions: [],
       error: error instanceof Error ? error.message : String(error)

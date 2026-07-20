@@ -14,7 +14,7 @@ function normalizePhrase(value) {
   return value
     .normalize('NFKC')
     .toLowerCase()
-    .replace(/\p{P}+/gu, ' ')
+    .replace(/[\p{P}\p{S}]+/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
 }

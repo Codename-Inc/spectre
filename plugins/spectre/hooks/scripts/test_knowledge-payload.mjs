@@ -8,6 +8,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..', '..', '..');
 const PAYLOAD_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'payload.mjs');
@@ -19,6 +21,9 @@ const PROSE_PROMPT =
 const CODE_PROMPT =
   'Apply the knowledge for spectre payload code boundary and reply exactly ' +
   'SPECTRE_CODE_INLINE_OK.';
+const DENSE_PROMPT =
+  'Apply the knowledge for spectre payload dense alphanumeric boundary and reply exactly ' +
+  'SPECTRE_DENSE_INLINE_OK.';
 const NO_MATCH_PROMPT = 'This prompt deliberately matches no Spectre payload fixture.';
 
 const REQUIRED_EVIDENCE_FIELDS = [
@@ -70,6 +75,18 @@ function payloadFixtures(boundaries) {
     unicode: repeatToLength(
       'cafe\u0301 naive\u0308 Tokyo:\u6771\u4eac Greek:\u0394\u03bf\u03ba\u03b9\u03bc\u03ae guillemets:\u00ab\u00bb ',
       boundaries.unicodeUnsafeChars,
+    ),
+    denseDigits: repeatToLength(
+      '0123456789',
+      boundaries.denseDigitUnsafeChars,
+    ),
+    denseAlphanumeric: repeatToLength(
+      'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
+      boundaries.denseAlphanumericUnsafeChars,
+    ),
+    denseProbe: repeatToLength(
+      'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
+      boundaries.denseAlphanumericProbeChars,
     ),
   };
 }
@@ -141,6 +158,41 @@ describe('knowledge payload feasibility contract', () => {
     }
   });
 
+  it('rejects unsafe digit and mixed alphanumeric runs while accepting the dense probe', async () => {
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
+    assert.equal(
+      fixtures.denseDigits.length,
+      PAYLOAD_BOUNDARIES.denseDigitUnsafeChars,
+    );
+    assert.equal(
+      fixtures.denseAlphanumeric.length,
+      PAYLOAD_BOUNDARIES.denseAlphanumericUnsafeChars,
+    );
+    assert.equal(
+      fixtures.denseProbe.length,
+      PAYLOAD_BOUNDARIES.denseAlphanumericProbeChars,
+    );
+
+    for (const core of [fixtures.denseDigits, fixtures.denseAlphanumeric]) {
+      const framed = frameCore(core, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars);
+      const first = measurePayload('codex', framed);
+      assert.deepEqual(measurePayload('codex', framed), first);
+      assert.equal(first.ok, false);
+      assert.equal(first.measured > first.limit, true);
+    }
+
+    const probe = measurePayload(
+      'codex',
+      frameCore(
+        fixtures.denseProbe,
+        PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
+      ),
+    );
+    assert.equal(probe.ok, true);
+    assert.equal(probe.measured <= probe.limit, true);
+  });
+
   it('enforces the Claude framing reserve at 9,000 and 9,001 characters', async () => {
     const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
     const emptyFrameLength = frameCore(
@@ -181,10 +233,15 @@ describe('real-host fixture harness contract', () => {
     assert.deepEqual(manifest.commands, expectedCommands);
     assert.equal(manifest.prompts.prose, PROSE_PROMPT);
     assert.equal(manifest.prompts.code, CODE_PROMPT);
+    assert.equal(manifest.prompts.denseAlphanumeric, DENSE_PROMPT);
     assert.equal(manifest.prompts.noMatch, NO_MATCH_PROMPT);
     assert.deepEqual(
       manifest.primarySentinels,
-      ['SPECTRE_PRIMARY_PROSE_6000_V1', 'SPECTRE_PRIMARY_CODE_4000_V1'],
+      [
+        'SPECTRE_PRIMARY_PROSE_6000_V1',
+        'SPECTRE_PRIMARY_CODE_4000_V1',
+        'SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1',
+      ],
     );
     assert.equal(new Set(manifest.primarySentinels).size, manifest.primarySentinels.length);
     assert.equal(manifest.fixtureRoot, fixtureRoot);
@@ -280,5 +337,66 @@ describe('real-host fixture harness contract', () => {
     const reapplied = JSON.parse(invoke(PROSE_PROMPT, 'session-one'));
     assert.match(reapplied.hookSpecificOutput.additionalContext, /SPECTRE_PRIMARY_PROSE_6000_V1/);
     assert.equal(invoke(NO_MATCH_PROMPT, 'session-one'), '');
+  });
+
+  it('frames the accepted dense alphanumeric probe inline for Codex', (t) => {
+    const { manifest } = prepareHostFixture(t);
+    const stdout = execFileSync(
+      process.execPath,
+      [manifest.codexPromptHookPath, '--host', 'codex'],
+      {
+        cwd: manifest.fixtureRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          SPECTRE_HOME: manifest.spectreHome,
+        },
+        input: JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          prompt: DENSE_PROMPT,
+          session_id: 'dense-probe-session',
+          cwd: manifest.fixtureRoot,
+        }),
+      },
+    );
+
+    assert.notEqual(stdout, '', 'dense probe must produce inline hook output');
+    const output = JSON.parse(stdout);
+    assert.match(
+      output.hookSpecificOutput.additionalContext,
+      /SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1/,
+    );
+    assert.match(output.systemMessage, /testing-payload-dense-alphanumeric/);
+  });
+
+  it('accepts the dense probe through the exact registration frame', async (t) => {
+    const { manifest } = prepareHostFixture(t);
+    const projectDir = path.join(manifest.fixtureRoot, 'registration-target');
+    const spectreHome = path.join(manifest.fixtureRoot, 'registration-home');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const recordPath = path.join(
+      manifest.storePath,
+      'knowledge',
+      'testing-payload-dense-alphanumeric',
+      'SKILL.md',
+    );
+
+    let result;
+    let registrationError;
+    try {
+      result = await registerCanonicalKnowledge({
+        projectDir,
+        spectreHome,
+        recordPath,
+        gitRunner() {
+          throw new Error('fixture is intentionally non-Git');
+        },
+      });
+    } catch (error) {
+      registrationError = error;
+    }
+
+    assert.equal(registrationError, undefined, registrationError?.message);
+    assert.equal(result?.id, 'testing-payload-dense-alphanumeric');
   });
 });
