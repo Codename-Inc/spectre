@@ -1,5 +1,222 @@
 # Phase-1 Codex Host Payload Evidence
 
+## Wave 11 Final Verification
+
+**Date:** 2026-07-19 20:09-20:29 PDT (`America/Los_Angeles`)
+**Feature base:** `d43a27f` (`feat(knowledge): sync canonical runtime to codex`)
+**Verifier repair:** `b0f6864` (`fix(verify): validate prompt-time knowledge delivery`)
+**Result:** PASS, with one host-native lifecycle observation marked PARTIAL
+**Fixture root:** `/tmp/spectre-knowledge-hosts-wave11-final-2026-07-19`
+
+This is the final Wave 11 acceptance record and supersedes interim conclusions
+later in this file where they differ. Both real hosts received the production
+prompt-time payload inline. Automated lifecycle tests and direct production
+adapter processes passed for `startup`, `clear`, and `compact`. Actual Codex
+0.144.6 `/compact` is recorded separately as PARTIAL because the host recorded
+compaction but did not dispatch its configured `SessionStart` hook; Spectre
+therefore had no lifecycle event on which to clear the ledger. New real host
+contexts did reapply the primary record.
+
+### Versions
+
+| Item | Value |
+|---|---|
+| Node.js | `v24.18.0` |
+| npm | `11.16.0` |
+| Git | `2.39.5 (Apple Git-154)` |
+| Claude Code | `2.1.215` |
+| Codex CLI | `0.144.6` |
+| Spectre package | `6.0.0` |
+
+### Verification Spine
+
+| Command/gate | Result |
+|---|---|
+| `npm test` | PASS, `143/143` tests in 28 suites |
+| Explicit knowledge/install/sync suite | PASS, `79/79` tests in 16 suites |
+| `npm run sync-codex` | PASS |
+| Second `npm run sync-codex` | PASS, idempotent |
+| `npm run sync-codex -- --check --quiet` | PASS, clean |
+| Verifier gate 1 | PASS, `162/162` structure checks |
+| Verifier gate 2 | PASS, full test suite |
+| Verifier gate 3 | PASS, `10/10` Codex checks |
+| Verifier gate 4 | PASS, `32/32` real CLI checks |
+
+The explicit suite command was:
+
+```bash
+node --test \
+  plugins/spectre/hooks/scripts/test_knowledge-store.mjs \
+  plugins/spectre/hooks/scripts/test_knowledge-record.mjs \
+  plugins/spectre/hooks/scripts/test_knowledge-match.mjs \
+  plugins/spectre/hooks/scripts/test_knowledge-migration.mjs \
+  plugins/spectre/hooks/scripts/test_knowledge-search.mjs \
+  plugins/spectre/hooks/scripts/test_load-knowledge.mjs \
+  plugins/spectre/hooks/scripts/test_user-prompt-submit.mjs \
+  src/main.test.js src/config.test.js src/install.test.js src/pack.test.js \
+  scripts/test_sync-codex.cjs
+```
+
+Gate 4 initially found five stale registry-era assertions. The bounded verifier
+repair changed only `.claude/skills/verify-spectre/scripts/lib.mjs` and
+`gate4_cli.mjs`: it now drives real hook-event JSON and asserts
+capability-only SessionStart plus prompt-time delivery/deduplication. No product
+or generated Codex file changed for that repair.
+
+### Real Host Commands
+
+The final fixture was generated from the production runtime:
+
+```bash
+node scripts/verify-knowledge-hosts.mjs \
+  --fixture-root /tmp/spectre-knowledge-hosts-wave11-final-2026-07-19 \
+  --json
+ln -s /Users/joe/.codex/auth.json \
+  /tmp/spectre-knowledge-hosts-wave11-final-2026-07-19/.codex/auth.json
+```
+
+Claude sessions used the production plugin:
+
+```bash
+SPECTRE_HOME="$FIXTURE/.spectre" claude -p \
+  --plugin-dir /Users/joe/Dev/spectre/plugins/spectre \
+  --permission-mode dontAsk --session-id "$SESSION_ID" "$PROMPT"
+```
+
+Codex sessions used the generated fixture hook configuration:
+
+```bash
+SPECTRE_HOME="$FIXTURE/.spectre" CODEX_HOME="$FIXTURE/.codex" \
+  codex exec --json --ignore-user-config --skip-git-repo-check \
+  --dangerously-bypass-hook-trust -s read-only -C "$FIXTURE" "$PROMPT"
+```
+
+Exact boundary prompts:
+
+```text
+For the spectre payload prose boundary fixture, reply with exactly SPECTRE_PROSE_INLINE_OK and nothing else.
+For the spectre payload code boundary fixture, reply with exactly SPECTRE_CODE_INLINE_OK and nothing else.
+This prompt deliberately matches no Spectre payload fixture.
+```
+
+### Boundary Payload Evidence
+
+| Host/case | Session/thread | Persisted result |
+|---|---|---|
+| Claude prose | `44444444-4444-4444-8444-444444444444` | Two `6,419`-byte contexts: initial and post-reset; repeat emitted none |
+| Claude code | `55555555-5555-4555-8555-555555555555` | One `4,412`-byte context |
+| Claude no-match | `66666666-6666-4666-8666-666666666666` | Zero Spectre contexts/notices |
+| Codex prose | `019f7d83-b1dd-72c0-883b-3a6563dd44f1` | One `6,419`-byte context; same-thread repeat emitted none |
+| Codex code | `019f7d84-59ca-75a2-bb52-3f43b3656571` | One `4,412`-byte context |
+| Codex no-match | `019f7d84-a503-78b1-b159-444b9321737e` | Zero Spectre contexts |
+| Codex new context | `019f7d89-06b3-7993-8a89-08ff83d5c989` | Primary reapplied in a fresh actual interactive context |
+
+Persisted transcript inspection:
+
+```json
+{"case":"claude-prose","payloadCount":2,"bytes":[6419,6419],"sha256":["f4ed29f7107b1bf6c26b65e9e08d2784881423813d249cd142aed2b85b7c87f6","f4ed29f7107b1bf6c26b65e9e08d2784881423813d249cd142aed2b85b7c87f6"]}
+{"case":"codex-prose","payloadCount":1,"bytes":[6419],"sha256":["f4ed29f7107b1bf6c26b65e9e08d2784881423813d249cd142aed2b85b7c87f6"]}
+{"case":"claude-code","payloadCount":1,"bytes":[4412],"sha256":["2b879c4683bb24b836d8114147010972a896b15200fa4754e8902cd684a36473"]}
+{"case":"codex-code","payloadCount":1,"bytes":[4412],"sha256":["2b879c4683bb24b836d8114147010972a896b15200fa4754e8902cd684a36473"]}
+{"case":"claude-no-match","payloadCount":0}
+{"case":"codex-no-match","payloadCount":0}
+```
+
+The Claude and Codex hashes match for each fixture. The persisted inputs end
+with the fixture terminal content and contain no fallback artifact reference.
+No preview, saved-file handoff, or fallback notice was emitted. Terminal/UI
+folding of long hook output did not alter the model input.
+
+### Lifecycle Evidence
+
+| Observation | Result | Evidence |
+|---|---|---|
+| Same-session repeat | PASS | Claude prompt hook stdout was empty; Codex transcripts contain one primary across repeated prompts |
+| Fresh/new context | PASS | Both hosts applied the primary again under a different session/thread ID |
+| Production compact event | PASS | Direct `load-knowledge.mjs --host claude|codex` processes received host-shaped `SessionStart`/`compact`, cleared the addressed ledger, and emitted capability-only output |
+| Automated startup/clear/compact | PASS | Focused adapter tests cover both hosts, addressed and missing-session resets |
+| Actual Claude reset/resume | PASS | Session `4444...` contains two identical primary contexts separated by an empty repeat |
+| Actual Codex `/compact` | PARTIAL | Interactive thread `019f7d89-06b3-7993-8a89-08ff83d5c989` records `compacted` and `context_compacted` but no SessionStart dispatch; its ledger remained |
+
+The Codex PARTIAL result is a host event-delivery limitation, not described as
+a Spectre pass. No transcript polling, fallback reset, or product workaround
+was added. Spectre's event handler behavior is green when the event is
+delivered, and actual new-context reapplication is green.
+
+### Multiple Matches
+
+Four additional active records shared the prose trigger. Fresh real sessions
+were `77777777-7777-4777-8777-777777777777` (Claude) and
+`019f7d8b-50d8-73e2-8b59-0c2647d36350` (Codex).
+
+```json
+{"host":"claude","bytes":6957,"sha256":"8b5ca16e2bf8656b88a79e9d61ae38aa796809e4d51004bfdba8fbd7b939fd3d","secondaryMetadata":3,"omitted":1,"secondaryBodies":0}
+{"host":"codex","bytes":6957,"sha256":"8b5ca16e2bf8656b88a79e9d61ae38aa796809e4d51004bfdba8fbd7b939fd3d","secondaryMetadata":3,"omitted":1,"secondaryBodies":0}
+```
+
+Claude showed
+`spectre: applied testing-payload-prose; 3 also matching; 1 omitted`.
+Both hosts returned `SPECTRE_PROSE_INLINE_OK`.
+
+### Linked Worktree
+
+A record was registered from
+`/tmp/spectre-wave11-linked-20260719-main` and searched/matched from linked
+worktree `/tmp/spectre-wave11-linked-20260719-worktree`. Both resolved the
+canonical store under
+`/tmp/spectre-wave11-linked-home-20260719/projects/tmp/spectre-wave11-linked-20260719-main`.
+Actual Codex thread `019f7d8c-ab77-7092-b30e-36e7c821b483`, whose persisted
+cwd is the linked worktree, received the `403`-byte
+`testing-linked-worktree` context and returned
+`SPECTRE_LINKED_WORKTREE_OK`.
+
+### Non-Git Lifecycle
+
+The non-Git project was `/tmp/spectre-wave11-nongit-20260719`, with canonical
+state under `/tmp/spectre-wave11-nongit-home-20260719`.
+
+1. Project-scope Codex install completed.
+2. `knowledge register` created `testing-nongit-lifecycle` outside the project.
+3. `knowledge search` returned it as an exact phrase match.
+4. Actual Codex threads `019f7d8d-48f3-71a0-a542-e97b0e46fb98` and
+   `019f7d8d-7aba-76e0-bd03-f755fd85fdaf` each returned
+   `SPECTRE_NONGIT_LIFECYCLE_OK`, proving fresh-process reapplication.
+5. Actual Claude `/spectre-learn` registered and re-read
+   `testing-nongit-learn-sentinel` after migrate/search/proposal/registration.
+6. No `.claude/` or `.agents/` learned record appeared in the project.
+7. Project uninstall removed the managed runtime and manifest.
+8. Both canonical records remained after uninstall; no project knowledge copy
+   existed.
+
+The first headless learn attempt used `dontAsk` and correctly stopped because
+Bash was denied. The accepted run used `bypassPermissions` against only the
+isolated fixture home, allowing the skill's real CLI transaction to complete.
+
+### Migration Debt
+
+The legacy fixture
+`feature-grandfathered-wave11` was `10,719` bytes under `.claude/skills` and
+had an allowlisted `spectre-recall/references/registry.toon` row.
+
+```json
+{"code":"OVERSIZED","grandfatheredClaudeNativeDiscovery":true,"canonicalCopy":false,"legacySourcePreserved":true,"registryRowPreserved":true}
+```
+
+`knowledge migrate --json` returned
+`grandfatheredClaudeNativeDiscoveryIncomplete: true`. Doctor JSON reported
+`migration.status: "debt"`, `unresolvedCount: 1`, and
+`nativeDiscovery.status: "grandfathered_claude"`. Human doctor output named
+the record as still eligible for Claude native discovery.
+
+### Final Assessment
+
+Production inline delivery, exact payload preservation, deduplication,
+new-context reapplication, no-match silence, secondary capping, linked
+worktree identity, non-Git learn/register/search/runtime/uninstall behavior,
+and conservative migration debt all passed. The only partial observation is
+native Codex 0.144.6 `/compact`, where the host did not dispatch the hook event
+Spectre requires; the behavior is recorded without broadening product scope.
+
 **Date:** 2026-07-19 17:38 PDT (`America/Los_Angeles`)
 **Result:** PASS
 **Gate:** Phase-1 real-host payload stop gate
