@@ -8,6 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { parseKnowledgeRecord } from './knowledge/records.mjs';
 import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,34 @@ function frameCore(core, secondaryMetadataReserveChars) {
   ].join('\n');
 }
 
+function framePrimary(id, content) {
+  return [
+    `# Spectre applied knowledge: ${id}`,
+    '',
+    content,
+  ].join('\n');
+}
+
+function numericTableRecord(length) {
+  const prefix = [
+    '---',
+    'name: feature-numeric-table',
+    'description: Numeric table boundary fixture.',
+    'metadata:',
+    '  spectre-category: "testing"',
+    '  spectre-triggers: \'["numeric table boundary"]\'',
+    '  spectre-status: "active"',
+    '  spectre-version: "1"',
+    '---',
+    '# Numeric table',
+    '',
+  ].join('\n');
+  return `${prefix}${repeatToLength(
+    '1234567890123456789012345678901 \n',
+    length - prefix.length,
+  )}`;
+}
+
 function payloadFixtures(boundaries) {
   return {
     prose: repeatToLength(
@@ -87,6 +116,9 @@ function payloadFixtures(boundaries) {
     denseProbe: repeatToLength(
       'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
       boundaries.denseAlphanumericProbeChars,
+    ),
+    numericTable: numericTableRecord(
+      boundaries.numericTableUnsafeChars ?? 8_700,
     ),
   };
 }
@@ -191,6 +223,32 @@ describe('knowledge payload feasibility contract', () => {
     );
     assert.equal(probe.ok, true);
     assert.equal(probe.measured <= probe.limit, true);
+  });
+
+  it('rejects aggregate numeric tables below the long dense-run threshold', async (t) => {
+    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
+    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
+    const digitRuns = [...fixtures.numericTable.matchAll(/\d+/g)]
+      .map(([run]) => run.length);
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-numeric-table-'));
+    t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+    const recordDir = path.join(fixtureRoot, 'feature-numeric-table');
+    fs.mkdirSync(recordDir);
+    const skillPath = path.join(recordDir, 'SKILL.md');
+    fs.writeFileSync(skillPath, fixtures.numericTable);
+
+    assert.equal(PAYLOAD_BOUNDARIES.numericTableUnsafeChars, 8_700);
+    assert.equal(PAYLOAD_BOUNDARIES.denseDigitRunMinChars, 4);
+    assert.equal(fixtures.numericTable.length, 8_700);
+    assert.equal(Math.max(...digitRuns), 31);
+    assert.equal(/[A-Za-z0-9]{32,}/.test(fixtures.numericTable), false);
+    assert.equal(parseKnowledgeRecord(skillPath).record.id, 'feature-numeric-table');
+
+    const framed = framePrimary('feature-numeric-table', fixtures.numericTable);
+    const first = measurePayload('codex', framed);
+    assert.deepEqual(measurePayload('codex', framed), first);
+    assert.equal(first.ok, false);
+    assert.equal(first.measured > first.limit, true);
   });
 
   it('enforces the Claude framing reserve at 9,000 and 9,001 characters', async () => {

@@ -37,6 +37,26 @@ function entry(overrides = {}) {
   };
 }
 
+function numericTableRecord(length) {
+  const prefix = [
+    '---',
+    'name: feature-numeric-table',
+    'description: Numeric table boundary fixture.',
+    'metadata:',
+    '  spectre-category: "testing"',
+    '  spectre-triggers: \'["numeric table boundary"]\'',
+    '  spectre-status: "active"',
+    '  spectre-version: "1"',
+    '---',
+    '# Numeric table',
+    '',
+  ].join('\n');
+  const unit = '1234567890123456789012345678901 \n';
+  const remaining = length - prefix.length;
+  return `${prefix}${unit.repeat(Math.ceil(remaining / unit.length))
+    .slice(0, remaining)}`;
+}
+
 describe('exact knowledge trigger matching', () => {
   it('normalizes case, punctuation, NFKC, and whitespace but rejects partial boundaries', async () => {
     const { matchKnowledge } = await loadMatcherModule();
@@ -175,6 +195,26 @@ describe('bounded prompt framing', () => {
       secondaryMatches: [],
     });
 
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'PAYLOAD_LIMIT');
+    assert.equal(result.additionalContext, null);
+    assert.equal(result.measurement.measured > result.measurement.limit, true);
+  });
+
+  it('rejects an unsafe aggregate numeric table during the exact runtime recheck', async () => {
+    const { buildPromptContext } = await loadMatcherModule();
+    const content = numericTableRecord(8_700);
+    const result = buildPromptContext({
+      host: 'codex',
+      primary: {
+        ...entry({ id: 'feature-numeric-table' }),
+        content,
+      },
+      secondaryMatches: [],
+    });
+
+    assert.equal(Math.max(...[...content.matchAll(/\d+/g)]
+      .map(([run]) => run.length)), 31);
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'PAYLOAD_LIMIT');
     assert.equal(result.additionalContext, null);

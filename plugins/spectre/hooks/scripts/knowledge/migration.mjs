@@ -355,6 +355,38 @@ function matchesCommittedDestination(destinationPath, id, category, triggers) {
   }
 }
 
+function matchesCommittedDestinationFromSources(
+  destinationPath,
+  sourcePaths,
+  id,
+  category,
+  triggers,
+) {
+  if (!fs.existsSync(destinationPath) || sourcePaths.length === 0) return false;
+  try {
+    const sourceSnapshots = sourcePaths.map(directorySnapshot);
+    if (
+      sourceSnapshots.some((snapshot) =>
+        !snapshotsEqual(snapshot, sourceSnapshots[0]))
+    ) {
+      return false;
+    }
+    const normalized = normalizeLegacyRecord(
+      sourcePaths[0],
+      id,
+      category,
+      triggers,
+    );
+    const expected = expectedDestinationSnapshot(
+      sourcePaths[0],
+      normalized.content,
+    );
+    return snapshotsEqual(directorySnapshot(destinationPath), expected);
+  } catch {
+    return false;
+  }
+}
+
 function classifyGroup(id, rows, storePath) {
   const sourcePaths = [...new Set(rows.map(({ sourcePath }) => sourcePath))];
   const destinationPath = path.join(storePath, 'knowledge', id);
@@ -376,12 +408,31 @@ function classifyGroup(id, rows, storePath) {
       (sourcePath) => !fs.existsSync(path.join(sourcePath, 'SKILL.md')),
     );
     if (missingSourcePaths.length > 0) {
+      const existingSourcePaths = sourcePaths.filter(
+        (sourcePath) => !missingSourcePaths.includes(sourcePath),
+      );
       const categories = new Set(rows.map(({ category }) => category));
       const triggers = mergeTriggers(rows);
       if (
-        missingSourcePaths.length === sourcePaths.length &&
         categories.size === 1 &&
-        matchesCommittedDestination(destinationPath, id, rows[0].category, triggers)
+        (
+          (
+            existingSourcePaths.length === 0 &&
+            matchesCommittedDestination(
+              destinationPath,
+              id,
+              rows[0].category,
+              triggers,
+            )
+          ) ||
+          matchesCommittedDestinationFromSources(
+            destinationPath,
+            existingSourcePaths,
+            id,
+            rows[0].category,
+            triggers,
+          )
+        )
       ) {
         return { ...base, code: 'ALREADY_MIGRATED' };
       }

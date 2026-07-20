@@ -9,6 +9,8 @@ const UNICODE_UNSAFE_CHARS = 9_000;
 // Legal-size unbroken numeric and encoded runs must fail the Codex injection budget.
 const DENSE_DIGIT_UNSAFE_CHARS = 8_000;
 const DENSE_ALPHANUMERIC_UNSAFE_CHARS = 8_000;
+// Bounded numeric fields can aggregate past the host limit without one long run.
+const NUMERIC_TABLE_UNSAFE_CHARS = 8_700;
 // This mixed run keeps its complete registration frame just below the Codex budget.
 const DENSE_ALPHANUMERIC_PROBE_CHARS = 2_050;
 // Prompt framing always reserves the complete secondary-match allowance.
@@ -21,7 +23,9 @@ const CODEX_ESTIMATED_TOKEN_LIMIT = 2_250;
 const CODEX_TOKEN_RESERVE = 250;
 // Short words use the byte baseline; long runs need explicit tokenizer-density rates.
 const DENSE_ALPHANUMERIC_RUN_MIN_CHARS = 32;
-// Codex tokenizers group decimal digits in runs of no more than three.
+// Four digits distinguish structured numeric fields from ordinary short prose.
+const DENSE_DIGIT_RUN_MIN_CHARS = 4;
+// Decimal fields are conservatively priced at one token per three characters.
 const DENSE_DIGIT_TOKENS_PER_CHAR = 1 / 3;
 // Hash/base64-like runs can approach three tokens per four ASCII characters.
 const DENSE_ALPHANUMERIC_TOKENS_PER_CHAR = 3 / 4;
@@ -34,7 +38,9 @@ export const PAYLOAD_BOUNDARIES = Object.freeze({
   unicodeUnsafeChars: UNICODE_UNSAFE_CHARS,
   denseDigitUnsafeChars: DENSE_DIGIT_UNSAFE_CHARS,
   denseAlphanumericUnsafeChars: DENSE_ALPHANUMERIC_UNSAFE_CHARS,
+  numericTableUnsafeChars: NUMERIC_TABLE_UNSAFE_CHARS,
   denseAlphanumericProbeChars: DENSE_ALPHANUMERIC_PROBE_CHARS,
+  denseDigitRunMinChars: DENSE_DIGIT_RUN_MIN_CHARS,
   secondaryMetadataReserveChars: SECONDARY_METADATA_RESERVE_CHARS,
   claudeSafeOutputChars: CLAUDE_SAFE_OUTPUT_CHARS,
   claudeReserveChars: CLAUDE_RESERVE_CHARS,
@@ -44,15 +50,32 @@ export const PAYLOAD_BOUNDARIES = Object.freeze({
 
 function denseAlphanumericPenalty(content) {
   let penalty = 0;
+  const coveredRanges = [];
   const runs = content.matchAll(
     new RegExp(`[A-Za-z0-9]{${DENSE_ALPHANUMERIC_RUN_MIN_CHARS},}`, 'g'),
   );
-  for (const [run] of runs) {
+  for (const match of runs) {
+    const [run] = match;
+    coveredRanges.push([match.index, match.index + run.length]);
     const tokenRate = /^\d+$/.test(run)
       ? DENSE_DIGIT_TOKENS_PER_CHAR
       : DENSE_ALPHANUMERIC_TOKENS_PER_CHAR;
     penalty += run.length * (
       tokenRate - ASCII_BYTE_BASELINE_TOKENS_PER_CHAR
+    );
+  }
+
+  const digitRuns = content.matchAll(
+    new RegExp(`\\d{${DENSE_DIGIT_RUN_MIN_CHARS},}`, 'g'),
+  );
+  for (const match of digitRuns) {
+    const [run] = match;
+    const runEnd = match.index + run.length;
+    const alreadyCovered = coveredRanges.some(([start, end]) =>
+      match.index >= start && runEnd <= end);
+    if (alreadyCovered) continue;
+    penalty += run.length * (
+      DENSE_DIGIT_TOKENS_PER_CHAR - ASCII_BYTE_BASELINE_TOKENS_PER_CHAR
     );
   }
   return penalty;

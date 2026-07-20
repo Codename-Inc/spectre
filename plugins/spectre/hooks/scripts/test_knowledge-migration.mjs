@@ -735,6 +735,121 @@ describe('legacy migration recovery and contention', () => {
     assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedBytes);
   });
 
+  it('resumes deduplicated cleanup after one identical source was removed', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    const id = 'patterns-deduplicated-resume';
+    const sharedContent = legacySkillContent({
+      name: id,
+      body: '\n# Shared source\n\nIdentical canonical body.\n',
+    });
+    const claudeSource = writeLegacySkill(
+      projectDir,
+      '.claude',
+      id,
+      sharedContent,
+      { 'references/shared.md': 'identical resource\n' },
+    );
+    const agentsSource = writeLegacySkill(
+      projectDir,
+      '.agents',
+      id,
+      sharedContent,
+      { 'references/shared.md': 'identical resource\n' },
+    );
+    const claudeRegistry = writeRegistry(projectDir, '.claude', [
+      `${id}|patterns|shared cleanup|Use when resuming shared cleanup`,
+    ]);
+    const agentsRegistry = writeRegistry(projectDir, '.agents', [
+      `${id}|patterns|deduplicated cleanup|Use when resuming deduplicated cleanup`,
+    ]);
+    const canonicalPath = path.join(storePath, 'knowledge', id, 'SKILL.md');
+    const indexPath = path.join(storePath, 'index.json');
+    const reportPath = path.join(storePath, 'migration-report.json');
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+
+    await assert.rejects(
+      migrateLegacyKnowledge({
+        projectDir,
+        storePath,
+        afterCanonicalCommit() {
+          throw new Error('injected-before-deduplicated-cleanup');
+        },
+      }),
+      /injected-before-deduplicated-cleanup/,
+    );
+    fs.rmSync(claudeSource, { recursive: true, force: true });
+    const canonicalBytes = fs.readFileSync(canonicalPath);
+    const indexBytes = fs.readFileSync(indexPath);
+    assert.match(canonicalBytes.toString('utf8'), /shared cleanup/);
+    assert.match(canonicalBytes.toString('utf8'), /deduplicated cleanup/);
+    assert.match(fs.readFileSync(claudeRegistry, 'utf8'), new RegExp(`${id}\\|`));
+    assert.match(fs.readFileSync(agentsRegistry, 'utf8'), new RegExp(`${id}\\|`));
+
+    const resumed = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.equal(resumed.entries[0].code, 'ALREADY_MIGRATED');
+    assert.equal(fs.existsSync(claudeSource), false);
+    assert.equal(fs.existsSync(agentsSource), false);
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.claude', 'skills', 'spectre-recall')),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall')),
+      false,
+    );
+    assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
+    assert.deepEqual(fs.readFileSync(indexPath), indexBytes);
+    const reportBytes = fs.readFileSync(reportPath);
+
+    const stable = await migrateLegacyKnowledge({ projectDir, storePath });
+    assert.deepEqual(stable, resumed);
+    assert.deepEqual(fs.readFileSync(reportPath), reportBytes);
+  });
+
+  it('keeps a mismatched partial-source destination unresolved', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(path.join(storePath, 'knowledge'), { recursive: true });
+    const id = 'patterns-partial-mismatch';
+    writeLegacySkill(
+      projectDir,
+      '.agents',
+      id,
+      legacySkillContent({
+        name: id,
+        body: '\n# Remaining source\n\nExpected body.\n',
+      }),
+    );
+    writeRegistry(projectDir, '.claude', [
+      `${id}|patterns|first contribution|Use when matching the first source`,
+    ]);
+    writeRegistry(projectDir, '.agents', [
+      `${id}|patterns|second contribution|Use when matching the second source`,
+    ]);
+    const destinationPath = path.join(storePath, 'knowledge', id);
+    fs.mkdirSync(destinationPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(destinationPath, 'SKILL.md'),
+      canonicalContent({
+        id,
+        category: 'patterns',
+        triggers: ['first contribution', 'second contribution'],
+        body: '\n# Different destination\n\nDo not resolve this conflict.\n',
+      }),
+    );
+    const before = snapshotTree(projectDir);
+    const { classifyLegacyKnowledge } = await loadMigrationModule();
+
+    const report = classifyLegacyKnowledge({ projectDir, storePath });
+
+    assert.equal(report.entries[0].code, 'SOURCE_MISSING');
+    assert.deepEqual(snapshotTree(projectDir), before);
+  });
+
   it('fails open on a SessionStart lock timeout without writes, then explicit migration completes', async (t) => {
     const projectDir = path.join(makeTmp(t), 'project');
     const storePath = path.join(makeTmp(t), 'store');
