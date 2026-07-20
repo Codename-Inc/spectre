@@ -537,10 +537,10 @@ export function removeProjectSkillsConfigured(projectDir) {
     return;
   }
 
-  const projectSkillsRoot = path.resolve(projectPaths(projectDir).projectSkillsDir);
   const initialContent = fs.readFileSync(configPath, 'utf8');
+  const retiredPaths = retiredRecallSkillPaths(projectDir);
   const remainingEntries = parseArrayTableEntries(initialContent, 'skills.config').filter(entry =>
-    !(entry.path && path.resolve(entry.path).startsWith(`${projectSkillsRoot}${path.sep}`))
+    !(entry.path && retiredPaths.has(path.resolve(entry.path)))
   );
   let content = removeLegacyProjectSkillTables(removeArrayTableEntries(initialContent, 'skills.config')).trimEnd();
   const renderedEntries = renderSkillsConfigEntries(remainingEntries).trimEnd();
@@ -615,6 +615,10 @@ export function removeSpectreHooksConfigured(runtimeRoot, agents) {
     content = removeScalarKey(content, 'features', 'multi_agent');
   }
 
+  content = content.replace(
+    new RegExp(`^# ${escapeRegExp(MANAGED_CONFIG_MARKER)}\\n?`, 'm'),
+    ''
+  );
   content = removeEmptyTable(content, 'features');
 
   writeConfig(configPath, content);
