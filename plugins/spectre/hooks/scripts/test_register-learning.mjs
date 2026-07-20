@@ -8,6 +8,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCRIPT_PATH = path.join(__dirname, 'register_learning.mjs');
@@ -110,6 +112,25 @@ function findOnlyStore(spectreHome) {
 
 function snapshot(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+}
+
+function snapshotTree(root) {
+  const output = {};
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!fs.existsSync(current)) continue;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(entryPath);
+      else if (entry.isFile()) {
+        output[path.relative(root, entryPath)] = fs.readFileSync(entryPath).toString('base64');
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(output).sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 describe('canonical knowledge registration process', () => {
@@ -325,6 +346,56 @@ describe('canonical knowledge registration process', () => {
           true,
         );
       }
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('restores the prior record directory and index after a post-swap index failure', async () => {
+    const tmp = createTmpDir();
+    try {
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const initial = writeCanonicalProposal(proposals, {
+        id: 'feature-rollback',
+        triggers: ['rollback'],
+        resources: { 'references/prior.md': 'prior resource\n' },
+        body: '\n# Prior\n\nOriginal bytes.\n',
+      });
+      await registerCanonicalKnowledge({
+        projectDir,
+        recordPath: initial,
+        spectreHome,
+      });
+      const storePath = findOnlyStore(spectreHome);
+      const recordDir = path.join(storePath, 'knowledge', 'feature-rollback');
+      const indexPath = path.join(storePath, 'index.json');
+      const priorRecordTree = snapshotTree(recordDir);
+      const priorIndexBytes = snapshot(indexPath);
+
+      const update = writeCanonicalProposal(path.join(proposals, 'update'), {
+        id: 'feature-rollback',
+        triggers: ['rollback update'],
+        resources: { 'references/next.md': 'new resource\n' },
+        body: '\n# Next\n\nNew bytes must not survive failure.\n',
+      });
+
+      await assert.rejects(
+        registerCanonicalKnowledge({
+          projectDir,
+          recordPath: update,
+          spectreHome,
+          afterRecordSwap() {
+            throw new Error('injected-post-swap-index-failure');
+          },
+        }),
+        /injected-post-swap-index-failure/,
+      );
+
+      assert.deepEqual(snapshotTree(recordDir), priorRecordTree);
+      assert.deepEqual(snapshot(indexPath), priorIndexBytes);
     } finally {
       cleanup(tmp);
     }

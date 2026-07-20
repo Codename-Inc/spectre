@@ -78,7 +78,7 @@ function removeRegistrationStages(storePath) {
   }
 }
 
-function replaceRecordDirectory(destinationPath, stagePath) {
+function beginRecordDirectoryReplacement(destinationPath, stagePath) {
   const backupPath = `${destinationPath}.previous-${process.pid}-${Date.now()}`;
   let backedUp = false;
   try {
@@ -87,7 +87,6 @@ function replaceRecordDirectory(destinationPath, stagePath) {
       backedUp = true;
     }
     fs.renameSync(stagePath, destinationPath);
-    if (backedUp) fs.rmSync(backupPath, { recursive: true, force: true });
   } catch (error) {
     fs.rmSync(destinationPath, { recursive: true, force: true });
     if (backedUp && fs.existsSync(backupPath)) {
@@ -95,6 +94,17 @@ function replaceRecordDirectory(destinationPath, stagePath) {
     }
     throw error;
   }
+  return {
+    commit() {
+      if (backedUp) fs.rmSync(backupPath, { recursive: true, force: true });
+    },
+    rollback() {
+      fs.rmSync(destinationPath, { recursive: true, force: true });
+      if (backedUp && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, destinationPath);
+      }
+    },
+  };
 }
 
 function validateStagedRecord(stagePath) {
@@ -140,8 +150,15 @@ export async function registerCanonicalKnowledge(options) {
         const parsed = validateStagedRecord(stagedRecordDir);
         const destinationPath = path.join(storePath, 'knowledge', parsed.record.id);
         fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-        replaceRecordDirectory(destinationPath, stagedRecordDir);
-        refreshKnowledgeIndex(storePath);
+        const replacement = beginRecordDirectoryReplacement(destinationPath, stagedRecordDir);
+        try {
+          if (options.afterRecordSwap) options.afterRecordSwap();
+          refreshKnowledgeIndex(storePath);
+          replacement.commit();
+        } catch (error) {
+          replacement.rollback();
+          throw error;
+        }
         return {
           ok: true,
           id: parsed.record.id,
