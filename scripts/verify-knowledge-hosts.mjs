@@ -10,6 +10,7 @@ import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
+const HOST_PROBE_HOOK = path.join(SCRIPT_DIR, 'knowledge-host-probe-hook.mjs');
 const PROSE_PROMPT =
   'Apply the knowledge for spectre payload prose boundary and reply exactly ' +
   'SPECTRE_PROSE_INLINE_OK.';
@@ -76,6 +77,10 @@ function writeFixtureRecord(storePath, fixture) {
   fs.writeFileSync(path.join(recordDir, 'SKILL.md'), skillContent(fixture));
 }
 
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 async function prepareFixture(fixtureRoot) {
   fs.mkdirSync(fixtureRoot, { recursive: true });
   const spectreHome = path.join(fixtureRoot, '.spectre');
@@ -123,8 +128,40 @@ async function prepareFixture(fixtureRoot) {
     codexRuntimeCopyPath,
     { recursive: true },
   );
+  const codexHooksPath = path.join(codexHome, 'hooks.json');
+  const probeStateRoot = path.join(spectreHome, 'host-probe-state');
+  fs.writeFileSync(
+    codexHooksPath,
+    `${JSON.stringify(
+      {
+        hooks: {
+          UserPromptSubmit: [
+            {
+              matcher: '*',
+              hooks: [
+                {
+                  type: 'command',
+                  command:
+                    `node ${shellQuote(HOST_PROBE_HOOK)} ` +
+                    `--store ${shellQuote(store.storePath)} ` +
+                    '--host codex ' +
+                    `--state-root ${shellQuote(probeStateRoot)}`,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 
-  const date = new Date().toISOString().slice(0, 10);
+  const date = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
   return {
     schemaVersion: 1,
     fixtureRoot,
@@ -132,6 +169,9 @@ async function prepareFixture(fixtureRoot) {
     codexHome,
     storePath: store.storePath,
     codexRuntimeCopyPath,
+    codexHooksPath,
+    hostProbeHookPath: HOST_PROBE_HOOK,
+    probeStateRoot,
     evidencePath: path.join(
       REPO_ROOT,
       'docs',
