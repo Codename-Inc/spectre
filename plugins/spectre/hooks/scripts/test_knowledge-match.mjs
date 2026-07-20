@@ -134,7 +134,10 @@ describe('bounded prompt framing', () => {
     }
     assert.match(framed.additionalContext, /Primary guidance/);
     assert.match(framed.additionalContext, /3 additional matches omitted/);
-    assert.equal(framed.systemMessage, 'spectre: applied feature-primary; 6 also matching');
+    assert.equal(
+      framed.systemMessage,
+      'spectre: applied feature-primary; 3 also matching; 3 omitted',
+    );
     assert.doesNotMatch(framed.secondaryMetadata, /\b(?:applied|loaded)\b/i);
     assert.doesNotMatch(framed.systemMessage, /feature-secondary/);
   });
@@ -153,6 +156,37 @@ describe('bounded prompt framing', () => {
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'PAYLOAD_LIMIT');
     assert.equal(result.additionalContext, null);
+  });
+
+  it('keeps a valid primary when secondary metadata would exceed the host budget', async () => {
+    const { buildPromptContext } = await loadMatcherModule();
+    const primary = {
+      ...entry({ id: 'feature-primary-budget' }),
+      content: 'Primary budget guidance. '.repeat(356),
+    };
+    const secondaryMatches = [
+      entry({
+        id: 'feature-secondary-budget',
+        description: 'Secondary metadata should be omitted when it breaks budget.',
+        matchedTrigger: 'secondary budget trigger',
+      }),
+    ];
+
+    const framed = buildPromptContext({
+      host: 'claude',
+      primary,
+      secondaryMatches,
+    });
+
+    assert.equal(framed.ok, true);
+    assert.match(framed.additionalContext, /Primary budget guidance/);
+    assert.equal(framed.includedSecondary.length, 0);
+    assert.equal(framed.omittedCount, 1);
+    assert.match(framed.secondaryMetadata, /1 additional match omitted/);
+    assert.equal(
+      framed.systemMessage,
+      'spectre: applied feature-primary-budget; 0 also matching; 1 omitted',
+    );
   });
 });
 

@@ -84,6 +84,10 @@ function secondaryLine(match) {
   );
 }
 
+function omittedLine(count) {
+  return `${count} additional ${count === 1 ? 'match' : 'matches'} omitted.`;
+}
+
 function secondaryMetadata(secondaryMatches) {
   const candidates = secondaryMatches.slice(0, MAX_SECONDARY_ENTRIES);
   const included = [];
@@ -94,7 +98,7 @@ function secondaryMetadata(secondaryMatches) {
     const lines = [
       '## Also matching',
       ...tentative.map(secondaryLine),
-      ...(omittedCount > 0 ? [`${omittedCount} additional matches omitted.`] : []),
+      ...(omittedCount > 0 ? [omittedLine(omittedCount)] : []),
     ];
     if (lines.join('\n').length > MAX_SECONDARY_CHARACTERS) break;
     included.push(candidate);
@@ -104,12 +108,64 @@ function secondaryMetadata(secondaryMatches) {
   const lines = [
     '## Also matching',
     ...included.map(secondaryLine),
-    ...(omittedCount > 0 ? [`${omittedCount} additional matches omitted.`] : []),
+    ...(omittedCount > 0 ? [omittedLine(omittedCount)] : []),
   ];
   return {
     included,
     omittedCount,
     content: lines.join('\n'),
+  };
+}
+
+function renderSecondaryMetadata(included, omittedCount) {
+  if (included.length === 0 && omittedCount === 0) return '';
+  return [
+    '## Also matching',
+    ...included.map(secondaryLine),
+    ...(omittedCount > 0 ? [omittedLine(omittedCount)] : []),
+  ].join('\n');
+}
+
+function buildAdditionalContext(primary, secondaryContent = '') {
+  return [
+    `# Spectre applied knowledge: ${primary.id}`,
+    '',
+    primary.content,
+    ...(secondaryContent ? ['', secondaryContent] : []),
+  ].join('\n');
+}
+
+function fitSecondaryMetadata({ host, primary, secondaryMatches }) {
+  const candidates = secondaryMatches.slice(0, MAX_SECONDARY_ENTRIES);
+  const included = [];
+
+  for (const candidate of candidates) {
+    const tentative = [...included, candidate];
+    const omittedCount = secondaryMatches.length - tentative.length;
+    const content = renderSecondaryMetadata(tentative, omittedCount);
+    if (content.length > MAX_SECONDARY_CHARACTERS) break;
+    const measurement = measurePayload(host, buildAdditionalContext(primary, content));
+    if (!measurement.ok) break;
+    included.push(candidate);
+  }
+
+  let omittedCount = secondaryMatches.length - included.length;
+  let content = renderSecondaryMetadata(included, omittedCount);
+  let measurement = measurePayload(host, buildAdditionalContext(primary, content));
+  if (!measurement.ok && included.length === 0 && omittedCount > 0) {
+    content = '';
+    measurement = measurePayload(host, buildAdditionalContext(primary, content));
+  }
+  if (!measurement.ok) {
+    throw new Error('primary frame exceeded payload budget after prior validation');
+  }
+
+  omittedCount = secondaryMatches.length - included.length;
+  return {
+    included,
+    omittedCount,
+    content,
+    measurement,
   };
 }
 
@@ -122,16 +178,10 @@ export function buildPromptContext({ host, primary, secondaryMatches = [] }) {
     throw new TypeError('primary must contain string id and content fields');
   }
 
-  const secondary = secondaryMetadata(secondaryMatches);
-  const additionalContext = [
-    `# Spectre applied knowledge: ${primary.id}`,
-    '',
-    primary.content,
-    '',
-    secondary.content,
-  ].join('\n');
-  const measurement = measurePayload(host, additionalContext);
-  if (!measurement.ok) {
+  const primaryContext = buildAdditionalContext(primary);
+  const primaryMeasurement = measurePayload(host, primaryContext);
+  if (!primaryMeasurement.ok) {
+    const secondary = secondaryMetadata(secondaryMatches);
     return {
       ok: false,
       reason: 'PAYLOAD_LIMIT',
@@ -140,19 +190,23 @@ export function buildPromptContext({ host, primary, secondaryMatches = [] }) {
       secondaryMetadata: secondary.content,
       includedSecondary: secondary.included,
       omittedCount: secondary.omittedCount,
-      measurement,
+      measurement: primaryMeasurement,
     };
   }
 
+  const secondary = fitSecondaryMetadata({ host, primary, secondaryMatches });
+  const additionalContext = buildAdditionalContext(primary, secondary.content);
+  const includedCount = secondary.included.length;
   return {
     ok: true,
     additionalContext,
     systemMessage:
-      `spectre: applied ${primary.id}; ${secondaryMatches.length} also matching`,
+      `spectre: applied ${primary.id}; ${includedCount} also matching` +
+      (secondary.omittedCount > 0 ? `; ${secondary.omittedCount} omitted` : ''),
     secondaryMetadata: secondary.content,
     includedSecondary: secondary.included,
     omittedCount: secondary.omittedCount,
-    measurement,
+    measurement: secondary.measurement,
   };
 }
 
