@@ -8,6 +8,11 @@ import {
   searchCanonicalKnowledge
 } from './lib/knowledge.js';
 import { projectCodexHome } from './lib/paths.js';
+import {
+  registerCanonicalKnowledge,
+  serializeKnowledgeError
+} from '../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
+import { migrateLegacyKnowledge } from '../plugins/spectre/hooks/scripts/knowledge/migration.mjs';
 
 class CliError extends Error {
   constructor(code, message) {
@@ -156,10 +161,46 @@ export async function main(argv) {
     }
 
     if (target === 'register' || target === 'migrate') {
-      throw new CliError(
-        'KNOWLEDGE_COMMAND_NOT_IMPLEMENTED',
-        `spectre knowledge ${target} is recognized but not implemented yet.`
-      );
+      if (target === 'register') {
+        try {
+          const result = await registerCanonicalKnowledge({
+            projectDir: resolveProjectDir(flags),
+            recordPath: flags.get('--record'),
+            lockOptions: flags.get('--lock-timeout-ms')
+              ? { timeoutMs: Number(flags.get('--lock-timeout-ms')), retryDelayMs: 5 }
+              : undefined
+          });
+          if (flags.get('--json')) {
+            process.stdout.write(`${JSON.stringify(result)}\n`);
+          } else {
+            process.stdout.write(`Registered knowledge record ${result.id}\n`);
+          }
+        } catch (error) {
+          const payload = serializeKnowledgeError(error);
+          throw new CliError(payload.code, payload.message);
+        }
+        return;
+      }
+
+      try {
+        const report = await migrateLegacyKnowledge({
+          projectDir: resolveProjectDir(flags),
+          lockOptions: flags.get('--lock-timeout-ms')
+            ? { timeoutMs: Number(flags.get('--lock-timeout-ms')), retryDelayMs: 5 }
+            : undefined
+        });
+        if (flags.get('--json')) {
+          process.stdout.write(`${JSON.stringify({ ok: true, ...report })}\n`);
+        } else {
+          process.stdout.write(`Migrated ${report.entries.length} knowledge entries\n`);
+        }
+      } catch (error) {
+        throw new CliError(
+          error?.code || 'KNOWLEDGE_MIGRATION_FAILED',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+      return;
     }
 
     throw new CliError(

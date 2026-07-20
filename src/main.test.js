@@ -39,6 +39,52 @@ function writeRecord(storePath, {
   );
 }
 
+function writeProposal(root, {
+  id,
+  category = 'feature',
+  description = `Use when applying ${id}`,
+  triggers = [id],
+  body = `\n# ${id}\n\nProposal bytes.\n`,
+}) {
+  const recordDir = path.join(root, id);
+  fs.mkdirSync(recordDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(recordDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${JSON.stringify(id)}`,
+      `description: ${JSON.stringify(description)}`,
+      'metadata:',
+      `  spectre-category: ${JSON.stringify(category)}`,
+      `  spectre-triggers: ${JSON.stringify(JSON.stringify(triggers))}`,
+      '  spectre-status: "active"',
+      '  spectre-version: "1"',
+      '---',
+      body,
+    ].join('\n'),
+  );
+  return recordDir;
+}
+
+function findOnlyStore(spectreHome) {
+  const projectsDir = path.join(spectreHome, 'projects');
+  const stores = [];
+  const pending = [projectsDir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!fs.existsSync(current)) continue;
+    if (fs.existsSync(path.join(current, 'project.json'))) {
+      stores.push(current);
+      continue;
+    }
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) pending.push(path.join(current, entry.name));
+    }
+  }
+  assert.equal(stores.length, 1);
+  return stores[0];
+}
+
 function runCli(args, options = {}) {
   return spawnSync(process.execPath, [CLI_PATH, ...args], {
     cwd: options.cwd || path.resolve('.'),
@@ -129,18 +175,136 @@ test('knowledge CLI returns stable JSON failures, recognizes future mutators, an
   });
   assert.equal(unknown.stderr, '');
 
-  for (const command of ['register', 'migrate']) {
-    const recognized = runCli(['knowledge', command, '--json']);
-    assert.notEqual(recognized.status, 0);
-    const parsed = JSON.parse(recognized.stdout);
-    assert.equal(parsed.ok, false);
-    assert.equal(parsed.code, 'KNOWLEDGE_COMMAND_NOT_IMPLEMENTED');
-    assert.match(parsed.message, new RegExp(`knowledge ${command}`));
-  }
+  const missingRecord = runCli(['knowledge', 'register', '--json']);
+  assert.notEqual(missingRecord.status, 0);
+  assert.equal(JSON.parse(missingRecord.stdout).code, 'MISSING_RECORD');
 
   const installGrammar = runCli(['install', 'unsupported', '--scope', 'project']);
   assert.notEqual(installGrammar.status, 0);
   assert.match(installGrammar.stderr, /Only the Codex target is currently implemented/);
+});
+
+test('knowledge register writes canonical store/index and reports validation errors as JSON', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-main-register-'));
+  try {
+    const projectDir = path.join(root, 'workspace', 'project');
+    const spectreHome = path.join(root, 'spectre-home');
+    const proposals = path.join(root, 'proposals');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const proposal = writeProposal(proposals, {
+      id: 'feature-cli-register',
+      triggers: ['cli register'],
+    });
+
+    const registered = runCli([
+      'knowledge',
+      'register',
+      '--record',
+      proposal,
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], {
+      env: { SPECTRE_HOME: spectreHome },
+    });
+    assert.equal(registered.status, 0, registered.stderr);
+    const parsed = JSON.parse(registered.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.id, 'feature-cli-register');
+    const storePath = findOnlyStore(spectreHome);
+    assert.equal(
+      fs.existsSync(path.join(storePath, 'knowledge', 'feature-cli-register', 'SKILL.md')),
+      true,
+    );
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8')).records.map(({ id }) => id),
+      ['feature-cli-register'],
+    );
+
+    const invalid = writeProposal(path.join(proposals, 'invalid'), {
+      id: 'feature-cli-register',
+      body: `\n${'x'.repeat(9_100)}\n`,
+    });
+    const failed = runCli([
+      'knowledge',
+      'register',
+      '--record',
+      invalid,
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], {
+      env: { SPECTRE_HOME: spectreHome },
+    });
+    assert.notEqual(failed.status, 0);
+    assert.equal(JSON.parse(failed.stdout).code, 'KNOWLEDGE_RECORD_INVALID');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('knowledge migrate runs target-independent migration and lock timeouts serialize as JSON', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-main-migrate-'));
+  try {
+    const projectDir = path.join(root, 'workspace', 'project');
+    const spectreHome = path.join(root, 'spectre-home');
+    fs.mkdirSync(path.join(projectDir, '.agents', 'skills', 'feature-legacy'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, '.agents', 'skills', 'feature-legacy', 'SKILL.md'),
+      '---\nname: feature-legacy\ndescription: Use when applying legacy\nuser-invocable: true\n---\n\n# Legacy\n',
+    );
+    fs.mkdirSync(
+      path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references'),
+      { recursive: true },
+    );
+    fs.writeFileSync(
+      path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon'),
+      'feature-legacy|feature|legacy|Use when applying legacy\n',
+    );
+
+    const migrated = runCli([
+      'knowledge',
+      'migrate',
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], {
+      env: { SPECTRE_HOME: spectreHome },
+    });
+    assert.equal(migrated.status, 0, migrated.stderr);
+    assert.deepEqual(JSON.parse(migrated.stdout).entries.map(({ code }) => code), ['MIGRATED']);
+    const storePath = findOnlyStore(spectreHome);
+
+    fs.writeFileSync(
+      path.join(storePath, '.spectre.lock'),
+      JSON.stringify({
+        pid: process.pid,
+        timestamp: new Date().toISOString(),
+        operation: 'held-by-test',
+      }),
+    );
+    const proposal = writeProposal(path.join(root, 'proposals'), {
+      id: 'feature-timeout',
+      triggers: ['timeout'],
+    });
+    const timeout = runCli([
+      'knowledge',
+      'register',
+      '--record',
+      proposal,
+      '--project-dir',
+      projectDir,
+      '--json',
+      '--lock-timeout-ms',
+      '20',
+    ], {
+      env: { SPECTRE_HOME: spectreHome },
+    });
+    assert.notEqual(timeout.status, 0);
+    assert.equal(JSON.parse(timeout.stdout).code, 'LOCK_TIMEOUT');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('knowledge search treats no matches and a missing store as successful empty results', async () => {

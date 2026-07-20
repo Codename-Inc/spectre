@@ -4,10 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  registerCanonicalKnowledge,
-  serializeKnowledgeError,
-} from './knowledge/registration.mjs';
+import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -24,50 +21,44 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (value === '--record') {
-      args.recordPath = argv[index + 1];
-      index += 1;
-      continue;
-    }
     if (value === '--lock-timeout-ms') {
       args.lockTimeoutMs = Number(argv[index + 1]);
       index += 1;
-      continue;
     }
   }
   return args;
 }
 
-function writeSuccess(result, json) {
-  if (json) {
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    return;
-  }
-  process.stdout.write(`Registered knowledge record ${result.id}\n`);
-}
-
-function writeFailure(error, json) {
-  const payload = serializeKnowledgeError(error);
-  if (json) {
-    process.stdout.write(`${JSON.stringify(payload)}\n`);
-  } else {
-    process.stderr.write(`${payload.message}\n`);
-  }
+function serializeError(error) {
+  return {
+    ok: false,
+    code: error?.code || 'KNOWLEDGE_MIGRATION_FAILED',
+    message: error instanceof Error ? error.message : String(error),
+  };
 }
 
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   try {
-    const result = await registerCanonicalKnowledge({
-      projectDir: args.projectRoot,
-      recordPath: args.recordPath,
+    const report = await migrateLegacyKnowledge({
+      projectDir: path.resolve(args.projectRoot || process.cwd()),
       lockOptions: Number.isFinite(args.lockTimeoutMs)
         ? { timeoutMs: args.lockTimeoutMs, retryDelayMs: 5 }
         : undefined,
     });
-    writeSuccess(result, args.json);
+    const output = { ok: true, ...report };
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(output)}\n`);
+    } else {
+      process.stdout.write(`Migrated ${report.entries.length} knowledge entries\n`);
+    }
   } catch (error) {
-    writeFailure(error, args.json);
+    const payload = serializeError(error);
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+    } else {
+      process.stderr.write(`${payload.message}\n`);
+    }
     process.exitCode = 1;
   }
 }

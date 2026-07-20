@@ -1,22 +1,18 @@
 #!/usr/bin/env node
 
-/**
- * Tests for register_learning.mjs
- *
- * Run with: node --test plugins/spectre/hooks/scripts/test_register-learning.mjs
- */
-
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCRIPT_PATH = path.join(__dirname, 'register_learning.mjs');
+const REGISTER_BIN = path.resolve('plugins/spectre/bin/spectre-register');
+const MIGRATE_BIN = path.resolve('plugins/spectre/bin/spectre-migrate');
 
 function createTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-rl-'));
@@ -26,308 +22,359 @@ function cleanup(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function runScript(args, opts) {
-  opts = opts || {};
-  const env = Object.assign({}, process.env);
-  if (opts.pluginRoot) {
-    env.CLAUDE_PLUGIN_ROOT = opts.pluginRoot;
-  } else {
-    delete env.CLAUDE_PLUGIN_ROOT;
-  }
-
-  try {
-    const stdout = execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
-      env,
-      timeout: 10000,
-      encoding: 'utf8'
-    });
-    return { stdout, exitCode: 0 };
-  } catch (err) {
-    return { stdout: err.stdout || '', stderr: err.stderr || '', exitCode: err.status };
-  }
+function runRegister(args, options = {}) {
+  const result = spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
+    cwd: options.cwd || path.resolve('.'),
+    env: { ...process.env, ...options.env },
+    encoding: 'utf8',
+  });
+  return result;
 }
 
-describe('register_learning', () => {
-  it('creates new registry with entry', () => {
+function runMigrate(args, options = {}) {
+  return spawnSync(MIGRATE_BIN, args, {
+    cwd: options.cwd || path.resolve('.'),
+    env: { ...process.env, ...options.env },
+    encoding: 'utf8',
+  });
+}
+
+function waitForProcess(child) {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+function writeCanonicalProposal(root, {
+  id,
+  category = 'feature',
+  description = `Use when applying ${id}`,
+  triggers = [id],
+  status = 'active',
+  version = '1',
+  body = `\n# ${id}\n\nKeep these bytes.\n`,
+  extraFrontmatter = [],
+  metadata = {},
+  resources = {},
+}) {
+  const recordDir = path.join(root, id);
+  fs.mkdirSync(recordDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(recordDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${JSON.stringify(id)}`,
+      `description: ${JSON.stringify(description)}`,
+      ...extraFrontmatter,
+      'metadata:',
+      ...Object.entries(metadata)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `  ${key}: ${JSON.stringify(value)}`),
+      `  spectre-category: ${JSON.stringify(category)}`,
+      `  spectre-triggers: ${JSON.stringify(JSON.stringify(triggers))}`,
+      `  spectre-status: ${JSON.stringify(status)}`,
+      `  spectre-version: ${JSON.stringify(version)}`,
+      '---',
+    ].join('\n') + body,
+  );
+  for (const [relativePath, bytes] of Object.entries(resources)) {
+    const target = path.join(recordDir, relativePath);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, bytes);
+  }
+  return recordDir;
+}
+
+function findOnlyStore(spectreHome) {
+  const projectsDir = path.join(spectreHome, 'projects');
+  const stores = [];
+  const pending = [projectsDir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!fs.existsSync(current)) continue;
+    if (fs.existsSync(path.join(current, 'project.json'))) {
+      stores.push(current);
+      continue;
+    }
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) pending.push(path.join(current, entry.name));
+    }
+  }
+  assert.equal(stores.length, 1);
+  return stores[0];
+}
+
+function snapshot(filePath) {
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+}
+
+describe('canonical knowledge registration process', () => {
+  it('creates and updates user-level records/resources/index without legacy registry side effects', () => {
     const tmp = createTmpDir();
     try {
-      const result = runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-auth',
-        '--category', 'feature',
-        '--triggers', 'auth, login',
-        '--description', 'Use when working on authentication'
-      ]);
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const nativeSkill = path.join(projectDir, '.claude', 'skills', 'feature-auth', 'SKILL.md');
+      fs.mkdirSync(path.dirname(nativeSkill), { recursive: true });
+      fs.writeFileSync(nativeSkill, '---\nname: feature-auth\ndescription: Original native skill\n---\n\n# Native\n');
+      const record = writeCanonicalProposal(proposals, {
+        id: 'feature-auth',
+        triggers: ['login flow'],
+        metadata: { owner: 'platform' },
+        resources: { 'references/details.md': 'resource bytes\n' },
+      });
 
-      assert.equal(result.exitCode, 0);
-      assert.ok(result.stdout.includes('Registered:'));
+      const created = runRegister([
+        '--project-root', projectDir,
+        '--record', record,
+        '--json',
+      ], {
+        env: { SPECTRE_HOME: spectreHome },
+      });
 
-      const registryPath = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon');
-      assert.ok(fs.existsSync(registryPath));
+      assert.equal(created.status, 0, created.stderr);
+      const parsed = JSON.parse(created.stdout);
+      assert.equal(parsed.ok, true);
+      assert.equal(parsed.id, 'feature-auth');
+      const storePath = findOnlyStore(spectreHome);
+      const canonicalPath = path.join(storePath, 'knowledge', 'feature-auth', 'SKILL.md');
+      assert.equal(fs.existsSync(canonicalPath), true);
+      assert.match(fs.readFileSync(canonicalPath, 'utf8'), /spectre-category: "feature"/);
+      assert.match(fs.readFileSync(canonicalPath, 'utf8'), /owner: "platform"/);
+      assert.deepEqual(
+        fs.readFileSync(path.join(storePath, 'knowledge', 'feature-auth', 'references', 'details.md'), 'utf8'),
+        'resource bytes\n',
+      );
+      assert.deepEqual(
+        JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8')).records.map(({ id }) => id),
+        ['feature-auth'],
+      );
+      assert.equal(
+        fs.existsSync(path.join(projectDir, '.claude', 'skills', 'spectre-recall')),
+        false,
+      );
+      assert.equal(fs.readFileSync(nativeSkill, 'utf8').includes('TRIGGER when:'), false);
 
-      const content = fs.readFileSync(registryPath, 'utf8');
-      assert.ok(content.includes('# SPECTRE Knowledge Registry'));
-      assert.ok(content.includes('feature-auth|feature|auth, login|Use when working on authentication'));
+      const updated = writeCanonicalProposal(proposals, {
+        id: 'feature-auth',
+        triggers: ['login flow', 'oauth callback'],
+        version: '2',
+        body: '\n# Updated\n\nReplacement bytes.\n',
+      });
+      const second = runRegister([
+        '--project-root', projectDir,
+        '--record', updated,
+        '--json',
+      ], {
+        env: { SPECTRE_HOME: spectreHome },
+      });
+      assert.equal(second.status, 0, second.stderr);
+      const index = JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'));
+      assert.deepEqual(index.records[0].triggers, ['login flow', 'oauth callback']);
+      assert.equal(index.records[0].version, 2);
+      assert.match(fs.readFileSync(canonicalPath, 'utf8'), /Replacement bytes/);
     } finally {
       cleanup(tmp);
     }
   });
 
-  it('updates existing entry by skill name', () => {
+  it('rejects invalid, oversized, and host-unsafe proposals without changing prior record or index', () => {
     const tmp = createTmpDir();
     try {
-      // First registration
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-auth',
-        '--category', 'feature',
-        '--triggers', 'auth',
-        '--description', 'Old description'
-      ]);
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const valid = writeCanonicalProposal(proposals, {
+        id: 'feature-safe',
+        triggers: ['safe'],
+      });
+      assert.equal(runRegister([
+        '--project-root', projectDir,
+        '--record', valid,
+        '--json',
+      ], { env: { SPECTRE_HOME: spectreHome } }).status, 0);
+      const storePath = findOnlyStore(spectreHome);
+      const canonicalPath = path.join(storePath, 'knowledge', 'feature-safe', 'SKILL.md');
+      const indexPath = path.join(storePath, 'index.json');
+      const priorRecord = snapshot(canonicalPath);
+      const priorIndex = snapshot(indexPath);
 
-      // Second registration with same skill name
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-auth',
-        '--category', 'feature',
-        '--triggers', 'auth, login, oauth',
-        '--description', 'Updated description'
-      ]);
-
-      const registryPath = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon');
-      const content = fs.readFileSync(registryPath, 'utf8');
-
-      // Should have the updated entry, not the old one
-      assert.ok(content.includes('Updated description'));
-      assert.ok(!content.includes('Old description'));
-
-      // Should only have one entry for feature-auth
-      const entries = content.split('\n').filter(l => l.startsWith('feature-auth|'));
-      assert.equal(entries.length, 1);
+      for (const [name, options, expectedCode] of [
+        ['invalid-top-level', {
+          id: 'feature-safe',
+          extraFrontmatter: ['spectre-category: feature'],
+        }, 'KNOWLEDGE_RECORD_INVALID'],
+        ['oversized', {
+          id: 'feature-safe',
+          body: `\n${'x'.repeat(9_100)}\n`,
+        }, 'KNOWLEDGE_RECORD_INVALID'],
+        ['host-unsafe', {
+          id: 'feature-safe',
+          body: `\n${'!'.repeat(8_300)}\n`,
+        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
+      ]) {
+        const proposal = writeCanonicalProposal(path.join(proposals, name), options);
+        const failed = runRegister([
+          '--project-root', projectDir,
+          '--record', proposal,
+          '--json',
+        ], {
+          env: { SPECTRE_HOME: spectreHome },
+        });
+        assert.notEqual(failed.status, 0, name);
+        assert.equal(JSON.parse(failed.stdout).code, expectedCode);
+        assert.deepEqual(snapshot(canonicalPath), priorRecord, `${name} must preserve record`);
+        assert.deepEqual(snapshot(indexPath), priorIndex, `${name} must preserve index`);
+      }
     } finally {
       cleanup(tmp);
     }
   });
 
-  it('generates recall skill with template', () => {
+  it('times out behind a live store lock without partial writes', () => {
     const tmp = createTmpDir();
-    const pluginRoot = path.join(tmp, 'plugin');
-
-    // Create template
-    const templateDir = path.join(pluginRoot, 'skills', 'spectre-learn', 'references');
-    fs.mkdirSync(templateDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(templateDir, 'recall-template.md'),
-      '# Recall Skill\n\nRegistry:\n{{REGISTRY}}\n\nEnd.\n'
-    );
-
     try {
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-test',
-        '--category', 'feature',
-        '--triggers', 'test',
-        '--description', 'Test skill'
-      ], { pluginRoot });
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const seed = writeCanonicalProposal(proposals, {
+        id: 'feature-lock-seed',
+        triggers: ['seed'],
+      });
+      assert.equal(runRegister([
+        '--project-root', projectDir,
+        '--record', seed,
+        '--json',
+      ], { env: { SPECTRE_HOME: spectreHome } }).status, 0);
+      const storePath = findOnlyStore(spectreHome);
+      fs.writeFileSync(
+        path.join(storePath, '.spectre.lock'),
+        JSON.stringify({
+          pid: process.pid,
+          timestamp: new Date().toISOString(),
+          operation: 'held-by-test',
+        }),
+      );
 
-      const skillPath = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'SKILL.md');
-      assert.ok(fs.existsSync(skillPath));
-
-      const content = fs.readFileSync(skillPath, 'utf8');
-      assert.ok(content.includes('# Recall Skill'));
-      assert.ok(content.includes('feature-test|feature|test|Test skill'));
+      const blockedProposal = writeCanonicalProposal(proposals, {
+        id: 'feature-lock-timeout',
+        triggers: ['timeout'],
+      });
+      const blocked = runRegister([
+        '--project-root', projectDir,
+        '--record', blockedProposal,
+        '--json',
+        '--lock-timeout-ms', '20',
+      ], {
+        env: { SPECTRE_HOME: spectreHome },
+      });
+      assert.notEqual(blocked.status, 0);
+      assert.equal(JSON.parse(blocked.stdout).code, 'LOCK_TIMEOUT');
+      assert.equal(
+        fs.existsSync(path.join(storePath, 'knowledge', 'feature-lock-timeout')),
+        false,
+      );
     } finally {
       cleanup(tmp);
     }
   });
 
-  it('resolves recall template from Codex home when hooks are under spectre runtime', () => {
+  it('serializes concurrent plugin-bin registrations into one complete index', async () => {
     const tmp = createTmpDir();
-    const codexHome = path.join(tmp, 'codex-home');
-    const runtimeRoot = path.join(codexHome, 'spectre');
-
-    const templateDir = path.join(codexHome, 'skills', 'spectre-learn', 'references');
-    fs.mkdirSync(templateDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(templateDir, 'recall-template.md'),
-      '# Codex Recall Skill\n\nRegistry:\n{{REGISTRY}}\n\nEnd.\n'
-    );
-
     try {
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-codex',
-        '--category', 'feature',
-        '--triggers', 'codex',
-        '--description', 'Codex skill'
-      ], { pluginRoot: runtimeRoot });
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const alpha = writeCanonicalProposal(proposals, {
+        id: 'feature-alpha',
+        triggers: ['alpha'],
+      });
+      const beta = writeCanonicalProposal(proposals, {
+        id: 'feature-beta',
+        triggers: ['beta'],
+      });
+      const env = { ...process.env, SPECTRE_HOME: spectreHome };
+      const first = spawn(REGISTER_BIN, [
+        '--project-root', projectDir,
+        '--record', alpha,
+        '--json',
+      ], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const second = spawn(REGISTER_BIN, [
+        '--project-root', projectDir,
+        '--record', beta,
+        '--json',
+      ], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 
-      const skillPath = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'SKILL.md');
-      assert.ok(fs.existsSync(skillPath));
-
-      const content = fs.readFileSync(skillPath, 'utf8');
-      assert.ok(content.includes('# Codex Recall Skill'));
-      assert.ok(content.includes('feature-codex|feature|codex|Codex skill'));
+      const results = await Promise.all([waitForProcess(first), waitForProcess(second)]);
+      assert.deepEqual(results.map(({ status }) => status), [0, 0], JSON.stringify(results));
+      const storePath = findOnlyStore(spectreHome);
+      const index = JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'));
+      assert.deepEqual(index.records.map(({ id }) => id), ['feature-alpha', 'feature-beta']);
+      for (const id of ['feature-alpha', 'feature-beta']) {
+        assert.equal(
+          fs.existsSync(path.join(storePath, 'knowledge', id, 'SKILL.md')),
+          true,
+        );
+      }
     } finally {
       cleanup(tmp);
     }
-  });
-
-  it('fails with missing required arguments', () => {
-    const result = runScript(['--project-root', '/tmp/fake']);
-    assert.notEqual(result.exitCode, 0);
   });
 });
 
-describe('register_learning - trigger migration', () => {
-  it('injects TRIGGER into single-line description', () => {
+describe('plugin migration entry point', () => {
+  it('exposes spectre-migrate for Claude plugin users', () => {
     const tmp = createTmpDir();
     try {
-      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-auth');
-      fs.mkdirSync(skillDir, { recursive: true });
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
-        '---\nname: feature-auth\ndescription: Use when working on authentication\nuser-invocable: false\n---\n\n# Auth Knowledge\n'
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      fs.mkdirSync(path.join(projectDir, '.claude', 'skills', 'feature-legacy'), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDir, '.claude', 'skills', 'feature-legacy', 'SKILL.md'),
+        [
+          '---',
+          'name: feature-legacy',
+          'description: Use when applying legacy',
+          'user-invocable: true',
+          '---',
+          '',
+          '# Legacy',
+          '',
+        ].join('\n'),
+      );
+      fs.mkdirSync(
+        path.join(projectDir, '.claude', 'skills', 'spectre-recall', 'references'),
+        { recursive: true },
+      );
+      fs.writeFileSync(
+        path.join(projectDir, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon'),
+        'feature-legacy|feature|legacy|Use when applying legacy\n',
       );
 
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-auth',
-        '--category', 'feature',
-        '--triggers', 'auth, login',
-        '--description', 'Use when working on authentication'
-      ]);
+      const migrated = runMigrate([
+        '--project-root', projectDir,
+        '--json',
+      ], {
+        env: { SPECTRE_HOME: spectreHome },
+      });
 
-      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
-      assert.ok(content.includes('description: Use when working on authentication TRIGGER when: auth, login'),
-        'Should be single-line with description and trigger');
-      assert.ok(!content.includes('description: |'), 'Should NOT use block scalar');
-      assert.ok(content.includes('# Auth Knowledge'), 'Body should be preserved');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('injects TRIGGER into block scalar description', () => {
-    const tmp = createTmpDir();
-    try {
-      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-release');
-      fs.mkdirSync(skillDir, { recursive: true });
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
-        '---\nname: feature-release\ndescription: |\n  Use when releasing the plugin or bumping versions.\nuser-invocable: true\n---\n\n# Release\n'
+      assert.equal(migrated.status, 0, migrated.stderr);
+      const parsed = JSON.parse(migrated.stdout);
+      assert.equal(parsed.ok, true);
+      assert.deepEqual(parsed.entries.map(({ code }) => code), ['MIGRATED']);
+      assert.equal(
+        fs.existsSync(path.join(findOnlyStore(spectreHome), 'knowledge', 'feature-legacy', 'SKILL.md')),
+        true,
       );
-
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-release',
-        '--category', 'procedures',
-        '--triggers', 'release, version',
-        '--description', 'Use when releasing the plugin or bumping versions.'
-      ]);
-
-      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
-      assert.ok(content.includes('description: Use when releasing the plugin or bumping versions. TRIGGER when: release, version'),
-        'Should collapse block scalar to single-line with trigger');
-      assert.ok(!content.includes('description: |'), 'Block scalar should be removed');
-      assert.ok(content.includes('# Release'), 'Body should be preserved');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('trigger injection is idempotent', () => {
-    const tmp = createTmpDir();
-    try {
-      const skillDir = path.join(tmp, '.claude', 'skills', 'feature-auth');
-      fs.mkdirSync(skillDir, { recursive: true });
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'),
-        '---\nname: feature-auth\ndescription: Use when working on authentication\nuser-invocable: false\n---\n\n# Auth\n'
-      );
-
-      const args = [
-        '--project-root', tmp,
-        '--skill-name', 'feature-auth',
-        '--category', 'feature',
-        '--triggers', 'auth, login',
-        '--description', 'Use when working on authentication'
-      ];
-
-      runScript(args);
-      runScript(args);
-
-      const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
-      const matches = content.match(/TRIGGER when:/g);
-      assert.equal(matches.length, 1, 'Should have exactly one TRIGGER line');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('skips missing skill files gracefully', () => {
-    const tmp = createTmpDir();
-    try {
-      // Register a skill with no SKILL.md on disk
-      const result = runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-missing',
-        '--category', 'feature',
-        '--triggers', 'missing',
-        '--description', 'Nonexistent skill'
-      ]);
-
-      assert.equal(result.exitCode, 0, 'Should not error on missing skill files');
-    } finally {
-      cleanup(tmp);
-    }
-  });
-
-  it('migrates all registry entries on any registration', () => {
-    const tmp = createTmpDir();
-    try {
-      // Create two existing skills without triggers
-      for (const name of ['feature-alpha', 'feature-beta']) {
-        const dir = path.join(tmp, '.claude', 'skills', name);
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, 'SKILL.md'),
-          `---\nname: ${name}\ndescription: Use when working on ${name}\n---\n\n# ${name}\n`
-        );
-      }
-
-      // Seed registry with alpha
-      const registryDir = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'references');
-      fs.mkdirSync(registryDir, { recursive: true });
-      fs.writeFileSync(path.join(registryDir, 'registry.toon'),
-        '# SPECTRE Knowledge Registry\n# Format: skill-name|category|triggers|description\n\n' +
-        'feature-alpha|feature|alpha, first|Use when working on feature-alpha\n' +
-        'feature-beta|feature|beta, second|Use when working on feature-beta\n'
-      );
-
-      // Register a third skill — should trigger migration of alpha and beta too
-      const gammaDir = path.join(tmp, '.claude', 'skills', 'feature-gamma');
-      fs.mkdirSync(gammaDir, { recursive: true });
-      fs.writeFileSync(path.join(gammaDir, 'SKILL.md'),
-        '---\nname: feature-gamma\ndescription: Use when working on gamma\n---\n\n# Gamma\n'
-      );
-
-      runScript([
-        '--project-root', tmp,
-        '--skill-name', 'feature-gamma',
-        '--category', 'feature',
-        '--triggers', 'gamma, third',
-        '--description', 'Use when working on gamma'
-      ]);
-
-      // All three should now have triggers
-      for (const [name, triggers] of [
-        ['feature-alpha', 'alpha, first'],
-        ['feature-beta', 'beta, second'],
-        ['feature-gamma', 'gamma, third']
-      ]) {
-        const content = fs.readFileSync(
-          path.join(tmp, '.claude', 'skills', name, 'SKILL.md'), 'utf8'
-        );
-        assert.ok(content.includes(`TRIGGER when: ${triggers}`),
-          `${name} should have triggers: ${triggers}`);
-      }
     } finally {
       cleanup(tmp);
     }
