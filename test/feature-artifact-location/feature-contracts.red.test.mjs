@@ -19,6 +19,16 @@ const creatorContract = {
   noExtraGate: /never create a separate name-confirmation gate/i,
   existingFeature: /explicitly (?:names|selects) an existing managed feature/i,
 };
+const creatorTenancyContract = {
+  nestedIgnoreCondition:
+    /create `?\.spectre\/\.gitignore`? only when it is absent and the parent repository does not already ignore `?\.spectre\/?`?/i,
+  nestedIgnorePatterns:
+    /ignore patterns for `?manifest\.json`?, `?bin\/`?, and `?handoffs\/`?, while retaining `?!features\/`?/i,
+  preserveRootIgnore:
+    /never (?:silently )?rewrite (?:an arbitrary )?user root `?\.gitignore`?/i,
+  blanketIgnoreWarning:
+    /blanket parent `?\.spectre\/?`? ignore.*warn.*local-only/i,
+};
 
 const continuationResolutionOrder = [
   ['explicit', /explicit feature (?:directory|root) or feature name/i],
@@ -107,6 +117,15 @@ test('creator skills declare no-extra-gate and selected-existing-feature behavio
   }
 });
 
+test('creator skills declare the exact tracked/local tenancy contract', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-scope/SKILL.md',
+    'plugins/spectre/skills/spectre-kickoff/SKILL.md',
+  ]) {
+    assertContract(read(file), creatorTenancyContract, file);
+  }
+});
+
 test('continuation skills declare the three-step resolution order without branch inference', () => {
   for (const file of [
     'plugins/spectre/skills/spectre-plan/SKILL.md',
@@ -188,16 +207,19 @@ test('fresh-repository tenancy keeps features trackable and local state ignored'
     git(root, ['init', '-b', 'main']);
     writeFileSync(join(root, '.gitignore'), read('.gitignore'));
     mkdirSync(join(root, '.spectre', 'features', 'example-feature'), { recursive: true });
+    mkdirSync(join(root, '.spectre', 'bin'), { recursive: true });
     mkdirSync(join(root, '.spectre', 'handoffs', 'main'), { recursive: true });
     writeFileSync(join(root, '.spectre', 'features', 'example-feature', 'feature.json'), '{}\n');
     writeFileSync(join(root, '.spectre', 'manifest.json'), '{}\n');
+    writeFileSync(join(root, '.spectre', 'bin', 'spectre'), '#!/bin/sh\n');
     writeFileSync(join(root, '.spectre', 'handoffs', 'main', 'one_handoff.json'), '{}\n');
 
     const feature = '.spectre/features/example-feature/feature.json';
     const manifest = '.spectre/manifest.json';
+    const launcher = '.spectre/bin/spectre';
     const handoff = '.spectre/handoffs/main/one_handoff.json';
     const ignored = new Set(
-      [feature, manifest, handoff].filter((path) => {
+      [feature, manifest, launcher, handoff].filter((path) => {
         try {
           git(root, ['check-ignore', '-q', path]);
           return true;
@@ -209,6 +231,7 @@ test('fresh-repository tenancy keeps features trackable and local state ignored'
 
     assert.equal(ignored.has(feature), false, `${feature}: must be trackable by default`);
     assert.equal(ignored.has(manifest), true, `${manifest}: must remain local`);
+    assert.equal(ignored.has(launcher), true, `${launcher}: must remain local`);
     assert.equal(ignored.has(handoff), true, `${handoff}: must remain local`);
   } finally {
     rmSync(root, { recursive: true, force: true });

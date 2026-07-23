@@ -102,5 +102,7 @@ tmp/
 .env.local
 .env.*.local
 *.local.json
-.spectre/
+.spectre/manifest.json
+.spectre/bin/
+.spectre/handoffs/
 .memsearch/

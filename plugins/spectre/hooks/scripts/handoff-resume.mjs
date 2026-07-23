@@ -343,13 +343,14 @@ async function main() {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
   // Get branch name
-  const branchName = getGitBranch();
+  const branchName = getGitBranch(projectDir);
 
-  // Find session logs directory
-  const sessionDir = path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs');
-
-  // Find latest handoff
-  const latestHandoff = findLatestHandoff(sessionDir);
+  // Canonical history is the cutover marker. Only fall back while it is absent.
+  const canonicalDir = path.join(projectDir, '.spectre', 'handoffs', branchName);
+  const canonicalHandoff = findLatestHandoff(canonicalDir);
+  const latestHandoff = canonicalHandoff || findLatestHandoff(
+    path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs')
+  );
 
   if (!latestHandoff) {
     // No session to resume - show welcome banner with tips

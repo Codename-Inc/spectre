@@ -24,7 +24,7 @@ Deep research entry point: investigate the codebase and external best practices,
 - When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
 - Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
 - Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing only `{"schema_version":1,"created_at":"<ISO8601>"}`. Do not store a name, branch, status, active pointer, or absolute path.
-- If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
+- Create `.spectre/.gitignore` only when it is absent and the parent repository does not already ignore `.spectre/`; give it ignore patterns for `manifest.json`, `bin/`, and `handoffs/`, while retaining `!features/`. Never silently rewrite an arbitrary user root `.gitignore`. A blanket parent `.spectre/` ignore requires a warning that the selected feature records are local-only.
 - Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
 
 ## Method / guardrails
