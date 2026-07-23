@@ -2597,6 +2597,43 @@ function assertTelemetryAvailability(value, path = "telemetry") {
   }
 }
 
+function assertCountableQuiescence(quiescence, trialId, label = "quiescence") {
+  if (quiescence?.clean !== true) {
+    throw new Error(
+      `counted result ${label} is unclean or contaminated: ${trialId}`,
+    );
+  }
+  for (const stage of ["pre", "continuous", "post"]) {
+    if (
+      quiescence?.[stage]?.clean !== true ||
+      (quiescence?.[stage]?.contaminants?.length ?? 0) > 0
+    ) {
+      throw new Error(
+        `counted result ${label} is unclean or missing samples during ${stage}: ${trialId}`,
+      );
+    }
+  }
+  const sampling = quiescence.sampling;
+  if (
+    quiescence.owned_reviewer_tree_excluded !== true ||
+    sampling?.clean !== true ||
+    !Number.isInteger(sampling?.sample_count) ||
+    sampling.sample_count <= 0 ||
+    !Number.isFinite(sampling?.elapsed_ms) ||
+    sampling.elapsed_ms < 0 ||
+    typeof sampling?.started_at !== "string" ||
+    !Number.isFinite(Date.parse(sampling.started_at)) ||
+    typeof sampling?.ended_at !== "string" ||
+    !Number.isFinite(Date.parse(sampling.ended_at)) ||
+    Date.parse(sampling.ended_at) < Date.parse(sampling.started_at) ||
+    (sampling?.contaminants?.length ?? 0) > 0
+  ) {
+    throw new Error(
+      `counted result ${label} sampling attestation is incomplete, unclean, or contaminated: ${trialId}`,
+    );
+  }
+}
+
 async function loadCountedResults(options) {
   requireOptions(options, ["countedResults", "freeze", "schedule"]);
   const manifestPath = resolve(options.countedResults);
@@ -2747,31 +2784,17 @@ async function loadCountedResults(options) {
         `counted result isolation is unclean or contaminated: ${entry.trial_id}`,
       );
     }
-    if (run.quiescence?.clean !== true) {
-      throw new Error(`counted result quiescence is unclean or contaminated: ${entry.trial_id}`);
-    }
-    for (const stage of ["pre", "continuous", "post"]) {
-      if (
-        run.quiescence?.[stage]?.clean !== true ||
-        (run.quiescence?.[stage]?.contaminants?.length ?? 0) > 0
-      ) {
-        throw new Error(
-          `counted result quiescence is unclean or contaminated during ${stage}: ${entry.trial_id}`,
-        );
-      }
-    }
-    if (
-      run.quiescence?.owned_reviewer_tree_excluded !== true ||
-      run.quiescence?.sampling?.clean !== true ||
-      !Number.isInteger(run.quiescence?.sampling?.sample_count) ||
-      run.quiescence.sampling.sample_count <= 0 ||
-      !Number.isFinite(run.quiescence?.sampling?.elapsed_ms) ||
-      typeof run.quiescence?.sampling?.started_at !== "string" ||
-      typeof run.quiescence?.sampling?.ended_at !== "string" ||
-      (run.quiescence?.sampling?.contaminants?.length ?? 0) > 0
-    ) {
-      throw new Error(
-        `counted result quiescence sampling attestation is unclean or contaminated: ${entry.trial_id}`,
+    assertCountableQuiescence(run.quiescence, entry.trial_id);
+    if (run.repair?.model_rerun === true) {
+      assertCountableQuiescence(
+        run.quiescence?.source,
+        entry.trial_id,
+        "source quiescence",
+      );
+      assertCountableQuiescence(
+        run.quiescence?.repair,
+        entry.trial_id,
+        "repair quiescence",
       );
     }
     assertTelemetryAvailability(run.telemetry);
