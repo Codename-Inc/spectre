@@ -35,10 +35,13 @@ const validReport = `# Task Review
 
 ## Findings
 
-No findings.
+| # | Severity | Lens | Location | Finding | Suggested Edit |
+|---|---|---|---|---|---|
+| 1 | Blocker | Integration + Coverage | tasks.json 0.1.1, 0.1.2, 1.2.3; execute.md Wave Plan | The graph has no pre-migration real-host stop gate: early tasks document or emit a probe but never execute it before migration. | Add real-host verification after 1.2.3 and gate migration on success. |
 
 ## Review Metadata
 
+Timestamp: 2026-07-23T00:00:00Z
 Mode: adversarial
 Reviewer Runtime: ${runtime}
 Reviewer Model: ${model}
@@ -115,11 +118,73 @@ switch (scenario) {
 
 ## Review Metadata
 
+Timestamp: 2026-07-23T00:00:00Z
 Mode: adversarial
 Reviewer Runtime: ${runtime}
 Reviewer Model: ${model}
 Reviewer Effort: ${effort}
 Invocation Route: ${route}
+`,
+    );
+    break;
+  case "historical-markdown-report":
+    await writeFile(
+      reportPath,
+      `# Task Review
+
+## 1. Findings
+
+No findings.
+
+## 4. Review Metadata
+
+- **Timestamp:** 2026-07-23T17:12:00Z
+- **Mode:** adversarial
+- **Reviewer Runtime:** ${runtime}
+- **Reviewer Model:** ${model}
+- **Reviewer Effort:** ${effort}
+- **Invocation Route:** ${route}
+`,
+    );
+    break;
+  case "historical-markdown-scored-report":
+    await writeFile(
+      reportPath,
+      `# Task Review
+
+## 1. Findings
+
+| # | Severity | Lens | Location | Finding | Suggested Edit |
+|---|---|---|---|---|---|
+| 1 | Blocker | Coverage | tasks.json | Missing stop gate. Fingerprint: 47120e3f2db60babc39082e50a7c11207558ebeeb4bfea0df9c862218e6fef42 | Add the gate. |
+
+## 4. Review Metadata
+
+- **Timestamp:** 2026-07-23T17:12:00Z
+- **Mode:** adversarial
+- **Reviewer Runtime:** ${runtime}
+- **Reviewer Model:** ${model}
+- **Reviewer Effort:** ${effort}
+- **Invocation Route:** ${route}
+`,
+    );
+    break;
+  case "historical-markdown-malformed":
+    await writeFile(
+      reportPath,
+      `# Task Review
+
+## 1. Findings
+
+No findings.
+
+## 4. Review Metadata
+
+- **Timestamp:** yesterday
+- **Mode:** adversarial
+- **Reviewer Runtime:** ${runtime}
+- **Reviewer Model:** ${model}
+- **Reviewer Effort:** low
 `,
     );
     break;

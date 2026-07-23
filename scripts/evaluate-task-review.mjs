@@ -6,6 +6,7 @@ import {
   access,
   cp,
   mkdir,
+  mkdtemp,
   open,
   readFile,
   readdir,
@@ -18,6 +19,7 @@ import { constants as fsConstants } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   basename,
+  delimiter,
   dirname,
   isAbsolute,
   join,
@@ -69,6 +71,10 @@ const PROTECTED_INPUTS = [
   "specs/execute.md",
   "specs/tasks.json",
 ];
+const EVALUATOR_REPOSITORY_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -85,6 +91,11 @@ function canonicalJson(value) {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function isWithin(root, target) {
+  const path = relative(resolve(root), resolve(target));
+  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
 async function exists(path) {
@@ -277,8 +288,8 @@ Do not infer correctness from structural token or path presence alone.
 
 Write a Findings table with columns # | Severity | Lens | Location | Finding |
 Suggested Edit, or an explicit "No findings." form. Include Review Metadata
-with Mode, Reviewer Runtime, Reviewer Model, Reviewer Effort, and Invocation
-Route.`;
+with an ISO8601 UTC Timestamp, Mode, Reviewer Runtime, Reviewer Model,
+Reviewer Effort, and Invocation Route.`;
 }
 
 async function loadPrompt(fixtureRoot, variant, taskRoot, reportPath) {
@@ -664,10 +675,31 @@ export function normalizeTelemetry(runtime, events, priceBasis, selector) {
   };
 }
 
+function reportSection(report, title) {
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const heading = new RegExp(
+    `^##\\s+(?:\\d+\\.\\s+)?${escapedTitle}\\s*$`,
+    "im",
+  );
+  const match = heading.exec(report);
+  if (!match) return null;
+  const remainder = report.slice(match.index + match[0].length);
+  const nextHeading = remainder.search(/^##\s+/m);
+  return nextHeading === -1 ? remainder : remainder.slice(0, nextHeading);
+}
+
+function reportMetadataValue(report, label) {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return report.match(
+    new RegExp(
+      `^\\s*(?:[-+*]\\s+)?(?:\\*\\*)?${escapedLabel}\\s*:(?:\\*\\*)?\\s*(.+?)\\s*$`,
+      "im",
+    ),
+  )?.[1]?.trim();
+}
+
 function parseReportFindings(report) {
-  const findingsSection = report.match(
-    /## Findings\s*([\s\S]*?)(?=\n## |\s*$)/i,
-  )?.[1] ?? "";
+  const findingsSection = reportSection(report, "Findings") ?? "";
   if (/^\s*No findings\.\s*$/im.test(findingsSection)) return [];
   const rows = findingsSection
     .split("\n")
@@ -702,21 +734,33 @@ function parseReportFindings(report) {
 
 function validateReport(report, configuration) {
   const failures = [];
-  if (!/## Findings\b/i.test(report)) {
+  const findingsSection = reportSection(report, "Findings");
+  if (findingsSection === null) {
     failures.push("report is missing a Findings section");
   } else if (
-    !/\bNo findings\./i.test(report) &&
+    !/\bNo findings\./i.test(findingsSection) &&
     parseReportFindings(report).length === 0
   ) {
     failures.push("report Findings table is invalid");
   }
   const metadata = {
-    mode: report.match(/^Mode:\s*(.+)$/im)?.[1]?.trim(),
-    runtime: report.match(/^Reviewer Runtime:\s*(.+)$/im)?.[1]?.trim(),
-    model: report.match(/^Reviewer Model:\s*(.+)$/im)?.[1]?.trim(),
-    effort: report.match(/^Reviewer Effort:\s*(.+)$/im)?.[1]?.trim(),
-    route: report.match(/^Invocation Route:\s*(.+)$/im)?.[1]?.trim(),
+    timestamp: reportMetadataValue(report, "Timestamp"),
+    mode: reportMetadataValue(report, "Mode"),
+    runtime: reportMetadataValue(report, "Reviewer Runtime"),
+    model: reportMetadataValue(report, "Reviewer Model"),
+    effort: reportMetadataValue(report, "Reviewer Effort"),
+    route: reportMetadataValue(report, "Invocation Route"),
   };
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(
+      metadata.timestamp ?? "",
+    ) ||
+    Number.isNaN(Date.parse(metadata.timestamp))
+  ) {
+    failures.push(
+      `report metadata timestamp expected an ISO8601 UTC value, found ${JSON.stringify(metadata.timestamp ?? null)}`,
+    );
+  }
   const expected = {
     mode: "adversarial",
     runtime: configuration.runtimeLabel,
@@ -734,6 +778,144 @@ function validateReport(report, configuration) {
   return { valid: failures.length === 0, failures, metadata };
 }
 
+const MATCH_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "against",
+  "also",
+  "and",
+  "are",
+  "before",
+  "but",
+  "does",
+  "for",
+  "from",
+  "has",
+  "have",
+  "into",
+  "its",
+  "not",
+  "only",
+  "that",
+  "the",
+  "their",
+  "then",
+  "this",
+  "through",
+  "with",
+]);
+
+function matchTokens(value) {
+  return new Set(
+    String(value ?? "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .match(/[a-z0-9]+(?:\.[a-z0-9]+)*/g)
+      ?.filter(
+        (token) =>
+          token.length >= 3 &&
+          !MATCH_STOP_WORDS.has(token) &&
+          !/^\d+$/.test(token),
+      ) ?? [],
+  );
+}
+
+function findingReferences(value) {
+  const references = new Set();
+  const text = String(value ?? "").toLowerCase();
+  for (const match of text.matchAll(/\b\d+(?:\.\d+){1,2}\b/g)) {
+    references.add(match[0]);
+  }
+  for (const match of text.matchAll(
+    /\b[a-z0-9_.-]+\.(?:json|md|mjs|cjs|js)\b/g,
+  )) {
+    references.add(match[0]);
+  }
+  for (const match of text.matchAll(/§\s*\d+(?:\.\d+)*/g)) {
+    references.add(match[0].replace(/\s+/g, ""));
+  }
+  return references;
+}
+
+function intersectionSize(left, right) {
+  let count = 0;
+  for (const value of left) {
+    if (right.has(value)) count += 1;
+  }
+  return count;
+}
+
+function semanticMatchScore(oracle, candidate) {
+  if (!oracle.match?.defect_class || !oracle.source_evidence?.finding) {
+    return null;
+  }
+  const candidateText = [
+    candidate.lens,
+    candidate.location,
+    candidate.finding,
+    candidate.suggested_edit,
+  ].join(" ");
+  const candidateTokens = matchTokens(candidateText);
+  const candidateReferences = findingReferences(candidateText);
+  const oracleLensTokens = matchTokens((oracle.match.lens ?? []).join(" "));
+  const candidateLensTokens = matchTokens(candidate.lens);
+  if (intersectionSize(oracleLensTokens, candidateLensTokens) === 0) {
+    return null;
+  }
+
+  const defectTokens = matchTokens(oracle.match.defect_class);
+  const defectCoverage =
+    defectTokens.size === 0
+      ? 0
+      : intersectionSize(defectTokens, candidateTokens) / defectTokens.size;
+  const oracleReferenceText = [
+    ...(oracle.match.locations ?? []),
+    oracle.source_evidence.finding,
+    oracle.source_evidence.suggested_edit,
+  ].join(" ");
+  const oracleReferences = findingReferences(oracleReferenceText);
+  const referenceHits = intersectionSize(
+    oracleReferences,
+    candidateReferences,
+  );
+  const evidenceTokens = matchTokens([
+    oracle.source_evidence.finding,
+    oracle.source_evidence.suggested_edit,
+  ].join(" "));
+  const evidenceHits = intersectionSize(evidenceTokens, candidateTokens);
+  if (
+    defectCoverage < 0.5 ||
+    referenceHits < Math.min(2, oracleReferences.size) ||
+    evidenceHits < 3
+  ) {
+    return null;
+  }
+  return (
+    defectCoverage * 0.5 +
+    (Math.min(referenceHits, 5) / 5) * 0.3 +
+    (Math.min(evidenceHits, 8) / 8) * 0.2
+  );
+}
+
+function routeBlindSemanticMatch(oracleFindings, candidate) {
+  const scored = oracleFindings
+    .flatMap((oracle) => {
+      const score = semanticMatchScore(oracle, candidate);
+      return score === null ? [] : [{ oracle, score }];
+    })
+    .sort((left, right) =>
+      right.score - left.score || left.oracle.id.localeCompare(right.oracle.id),
+    );
+  if (scored.length === 0) return null;
+  if (
+    scored.length > 1 &&
+    Math.abs(scored[0].score - scored[1].score) < 0.05
+  ) {
+    return null;
+  }
+  return scored[0].oracle;
+}
+
 export function scoreFindings({
   oracleFindings,
   candidateFindings,
@@ -743,15 +925,33 @@ export function scoreFindings({
     adjudications.map((record) => [record.candidate_id, record]),
   );
   const oracleByFingerprint = new Map(
-    oracleFindings.map((finding) => [finding.fingerprint, finding]),
+    oracleFindings
+      .filter((finding) => finding.fingerprint)
+      .map((finding) => [finding.fingerprint, finding]),
+  );
+  const oracleById = new Map(
+    oracleFindings.map((finding) => [finding.id, finding]),
   );
   const matchedOracle = new Map();
   const matchedCandidates = new Set();
   const duplicateCandidates = new Set();
   const severityDrift = [];
+  const matches = [];
 
   for (const candidate of candidateFindings) {
-    const oracle = oracleByFingerprint.get(candidate.fingerprint);
+    const adjudication = adjudicationByCandidate.get(candidate.id);
+    const adjudicatedOracle =
+      adjudication?.route_blind === true &&
+      adjudication.disposition === "supported"
+        ? oracleById.get(adjudication.oracle_id)
+        : null;
+    const exactOracle = candidate.fingerprint
+      ? oracleByFingerprint.get(candidate.fingerprint)
+      : null;
+    const oracle =
+      exactOracle ??
+      adjudicatedOracle ??
+      routeBlindSemanticMatch(oracleFindings, candidate);
     if (!oracle) continue;
     if (matchedOracle.has(oracle.id)) {
       duplicateCandidates.add(candidate.id);
@@ -759,6 +959,15 @@ export function scoreFindings({
     }
     matchedOracle.set(oracle.id, candidate);
     matchedCandidates.add(candidate.id);
+    matches.push({
+      candidate_id: candidate.id,
+      oracle_id: oracle.id,
+      method: exactOracle
+        ? "fingerprint"
+        : adjudicatedOracle
+          ? "route-blind-adjudication"
+          : "route-blind-semantic",
+    });
     if (candidate.severity !== oracle.severity) {
       severityDrift.push({
         candidate_id: candidate.id,
@@ -820,6 +1029,7 @@ export function scoreFindings({
   const precisionDenominator = matchedOracle.size + adjudicated.length;
 
   return {
+    matches,
     recall_by_severity: recallBySeverity,
     weighted_recall: totalWeight === 0 ? null : matchedWeight / totalWeight,
     duplicate_count: duplicateCandidates.size,
@@ -962,10 +1172,21 @@ async function runEvaluation(options, hooks = {}) {
 
   let outputCreated = false;
   let stagedAuth = null;
+  let runRoot = null;
   try {
     await mkdir(outputDirectory, { recursive: false });
     outputCreated = true;
-    const workspace = join(outputDirectory, "workspace");
+    runRoot = await mkdtemp(join(tmpdir(), "spectre-task-review-run-"));
+    if (
+      isWithin(EVALUATOR_REPOSITORY_ROOT, runRoot) ||
+      isWithin(outputDirectory, runRoot) ||
+      isWithin(runRoot, outputDirectory)
+    ) {
+      throw new Error(
+        "OS temporary execution root must be outside the repository and evidence output",
+      );
+    }
+    const workspace = join(runRoot, "workspace");
     const taskRoot = join(
       workspace,
       "docs",
@@ -973,10 +1194,20 @@ async function runEvaluation(options, hooks = {}) {
       "main",
       "knowledge-surfacing",
     );
-    const runtimeRoot = join(outputDirectory, "runtime");
+    const evidenceWorkspace = join(outputDirectory, "workspace");
+    const evidenceTaskRoot = join(
+      evidenceWorkspace,
+      "docs",
+      "tasks",
+      "main",
+      "knowledge-surfacing",
+    );
+    const runtimeRoot = join(runRoot, "runtime");
     const claudeHome = join(runtimeRoot, "claude");
     const codexHome = join(runtimeRoot, "codex");
     const spectreHome = join(runtimeRoot, "spectre");
+    const temporaryHome = join(runRoot, "home");
+    const temporaryDirectory = join(runRoot, "tmp");
     const rawDirectory = join(outputDirectory, "raw");
     const reportPath = join(taskRoot, "reviews", "task_review.md");
     await Promise.all([
@@ -984,6 +1215,8 @@ async function runEvaluation(options, hooks = {}) {
       mkdir(claudeHome, { recursive: true }),
       mkdir(codexHome, { recursive: true }),
       mkdir(spectreHome, { recursive: true }),
+      mkdir(temporaryHome, { recursive: true }),
+      mkdir(temporaryDirectory, { recursive: true }),
       mkdir(rawDirectory, { recursive: true }),
       mkdir(dirname(reportPath), { recursive: true }),
     ]);
@@ -1006,6 +1239,18 @@ async function runEvaluation(options, hooks = {}) {
       args: options.reviewerArg,
     });
     const baseEnvironment = cleanEnvironment();
+    for (const [key, value] of Object.entries(baseEnvironment)) {
+      if (key === "PATH") {
+        baseEnvironment.PATH = value
+          .split(delimiter)
+          .filter((entry) => !isWithin(EVALUATOR_REPOSITORY_ROOT, entry))
+          .join(delimiter);
+      } else if (value.includes(EVALUATOR_REPOSITORY_ROOT)) {
+        delete baseEnvironment[key];
+      }
+    }
+    baseEnvironment.HOME = temporaryHome;
+    baseEnvironment.TMPDIR = temporaryDirectory;
     const environment = {
       ...claudeAuthenticationEnvironment(claudeHome, baseEnvironment),
       CODEX_HOME: codexHome,
@@ -1046,6 +1291,9 @@ async function runEvaluation(options, hooks = {}) {
       configuration.runtime === "claude-code" &&
       claudeAuthentication.checked &&
       !claudeAuthentication.logged_in;
+    if (hooks.beforeReviewer) {
+      await hooks.beforeReviewer({ workspace, environment, prompt });
+    }
     const processResult = authenticationBlocked
       ? {
         exitCode: null,
@@ -1119,6 +1367,15 @@ async function runEvaluation(options, hooks = {}) {
         candidateFindings: parseReportFindings(report),
       })
       : null;
+    if (quality && quality.recall_by_severity.Blocker !== 1) {
+      blockedReasons.push(
+        `known Blocker recall must be 100%, found ${
+          quality.recall_by_severity.Blocker == null
+            ? "unavailable"
+            : `${quality.recall_by_severity.Blocker * 100}%`
+        }`,
+      );
+    }
     const validationEnded = performance.now();
     const intervals = {
       preflight_ms: preflightEnded - totalStarted,
@@ -1129,6 +1386,12 @@ async function runEvaluation(options, hooks = {}) {
     const intervalSum = Object.values(intervals).reduce(
       (sum, value) => sum + value,
       0,
+    );
+    await cp(workspace, evidenceWorkspace, { recursive: true });
+    const evidenceReportPath = join(
+      evidenceTaskRoot,
+      "reviews",
+      "task_review.md",
     );
     const result = {
       schema_version: SCHEMA_VERSION,
@@ -1164,8 +1427,15 @@ async function runEvaluation(options, hooks = {}) {
         }),
       },
       isolation: {
-        workspace,
-        task_root: taskRoot,
+        workspace: evidenceWorkspace,
+        task_root: evidenceTaskRoot,
+        execution_workspace: workspace,
+        execution_cwd: workspace,
+        execution_isolated: true,
+        contamination: {
+          live_repository_accessible_from_workspace_ancestors: false,
+          oracle_present: oraclePresent,
+        },
         runtime_homes: {
           claude: claudeHome,
           codex: codexHome,
@@ -1223,7 +1493,9 @@ async function runEvaluation(options, hooks = {}) {
         raw_stderr_sha256: await hashFile(rawStderrPath),
         raw_events: relative(outputDirectory, rawEventsPath),
         raw_events_sha256: await hashFile(rawEventsPath),
-        report: report ? relative(outputDirectory, reportPath) : null,
+        report: report
+          ? relative(outputDirectory, evidenceReportPath)
+          : null,
         report_sha256: report ? sha256(report) : null,
       },
       timing: {
@@ -1259,6 +1531,7 @@ async function runEvaluation(options, hooks = {}) {
     throw error;
   } finally {
     if (stagedAuth) await rm(stagedAuth, { force: true });
+    if (runRoot) await rm(runRoot, { recursive: true, force: true });
     await rm(lockFile, { force: true });
   }
 }
@@ -1295,12 +1568,199 @@ async function summarize(options) {
   return summary;
 }
 
+async function immutableEvidenceSnapshot(sourceDirectory, source) {
+  const paths = {
+    result: join(sourceDirectory, "result.json"),
+  };
+  for (const key of ["raw_stdout", "raw_stderr", "raw_events", "report"]) {
+    const path = source.evidence?.[key];
+    if (path) paths[key] = resolve(sourceDirectory, path);
+  }
+  const hashes = {};
+  for (const [key, path] of Object.entries(paths)) {
+    hashes[key] = await hashFile(path);
+  }
+  return { paths, hashes };
+}
+
+async function repairEvaluation(options) {
+  requireOptions(options, ["sourceResult", "fixture", "outputDir"]);
+  const repairStarted = performance.now();
+  const repairWallStarted = new Date().toISOString();
+  const sourceResultPath = resolve(options.sourceResult);
+  const sourceDirectory = dirname(sourceResultPath);
+  const outputDirectory = resolve(options.outputDir);
+  if (await exists(outputDirectory)) {
+    throw new Error(`output directory already exists: ${outputDirectory}`);
+  }
+  if (basename(sourceResultPath) !== "result.json") {
+    throw new Error("--source-result must point to a result.json file");
+  }
+
+  const sourceResultBytes = await readFile(sourceResultPath);
+  const source = JSON.parse(sourceResultBytes);
+  if (source.status !== "blocked") {
+    throw new Error("repair source must be a blocked evaluation result");
+  }
+  if (
+    source.isolation?.execution_isolated !== true ||
+    source.isolation?.contamination
+      ?.live_repository_accessible_from_workspace_ancestors !== false
+  ) {
+    throw new Error(
+      "repair source lacks an uncontaminated isolated-execution attestation",
+    );
+  }
+  const configuration = VARIANTS[source.variant];
+  if (!configuration) {
+    throw new Error(`unknown source variant: ${source.variant}`);
+  }
+  if (!source.evidence?.report || !source.evidence?.report_sha256) {
+    throw new Error("repair source is missing report evidence");
+  }
+
+  const beforeEvidence = await immutableEvidenceSnapshot(
+    sourceDirectory,
+    source,
+  );
+  if (beforeEvidence.hashes.result !== sha256(sourceResultBytes)) {
+    throw new Error("source result changed while repair was starting");
+  }
+  for (const key of ["raw_stdout", "raw_stderr", "raw_events", "report"]) {
+    if (
+      beforeEvidence.paths[key] &&
+      beforeEvidence.hashes[key] !== source.evidence[`${key}_sha256`]
+    ) {
+      throw new Error(`source ${key.replaceAll("_", " ")} hash mismatch`);
+    }
+  }
+
+  const report = await readFile(beforeEvidence.paths.report, "utf8");
+  const reportValidation = validateReport(report, configuration);
+  const { manifestHash } = await verifyFixture(resolve(options.fixture));
+  if (
+    source.hashes?.fixture_manifest &&
+    source.hashes.fixture_manifest !== manifestHash
+  ) {
+    throw new Error("repair fixture manifest does not match source result");
+  }
+  const oracle = JSON.parse(
+    await readFile(
+      join(resolve(options.fixture), "oracle", "findings.json"),
+      "utf8",
+    ),
+  );
+  const quality = reportValidation.valid
+    ? scoreFindings({
+      oracleFindings: oracle.findings,
+      candidateFindings: parseReportFindings(report),
+    })
+    : null;
+
+  const currentProtectedInputs = await hashProtectedInputs(
+    source.isolation.task_root,
+  );
+  const inputsUnchanged =
+    canonicalJson(currentProtectedInputs) ===
+      canonicalJson(source.protected_inputs.before) &&
+    canonicalJson(currentProtectedInputs) ===
+      canonicalJson(source.protected_inputs.after);
+  const blockedReasons = [
+    ...(source.blocked_reasons ?? []).filter(
+      (reason) =>
+        !/^report (?:is missing|Findings table|metadata)/i.test(reason),
+    ),
+    ...reportValidation.failures,
+  ];
+  if (!inputsUnchanged) {
+    blockedReasons.push("protected input mutation detected during repair");
+  }
+  if (quality?.recall_by_severity?.Blocker !== 1) {
+    blockedReasons.push(
+      `known Blocker recall must be 100%, found ${
+        quality?.recall_by_severity?.Blocker == null
+          ? "unavailable"
+          : `${quality.recall_by_severity.Blocker * 100}%`
+      }`,
+    );
+  }
+
+  const afterEvidence = await immutableEvidenceSnapshot(
+    sourceDirectory,
+    source,
+  );
+  if (
+    canonicalJson(beforeEvidence.hashes) !==
+    canonicalJson(afterEvidence.hashes)
+  ) {
+    throw new Error("source evidence changed during immutable repair");
+  }
+
+  const repairEnded = performance.now();
+  const result = {
+    ...source,
+    id: `${source.id}-repair-1`,
+    trial: `${source.trial}-repair-1`,
+    status: blockedReasons.length === 0 ? "valid" : "blocked",
+    blocked_reasons: blockedReasons,
+    process: {
+      ...source.process,
+      repairs: 1,
+    },
+    validity: {
+      first_pass: false,
+      report: reportValidation.valid,
+      report_failures: reportValidation.failures,
+      inputs_unchanged: inputsUnchanged,
+      allowed_writes: source.validity?.allowed_writes === true &&
+        inputsUnchanged,
+    },
+    quality,
+    evidence: {
+      ...source.evidence,
+      raw_stdout: beforeEvidence.paths.raw_stdout,
+      raw_stderr: beforeEvidence.paths.raw_stderr,
+      raw_events: beforeEvidence.paths.raw_events,
+      report: beforeEvidence.paths.report,
+      source_result: sourceResultPath,
+      source_result_sha256: beforeEvidence.hashes.result,
+    },
+    timing: {
+      ...source.timing,
+      repair_elapsed_ms: repairEnded - repairStarted,
+      derived_at: new Date().toISOString(),
+    },
+    derivation: {
+      kind: "immutable-revalidation",
+      source_result: sourceResultPath,
+      source_result_sha256: beforeEvidence.hashes.result,
+      source_report: beforeEvidence.paths.report,
+      source_report_sha256: beforeEvidence.hashes.report,
+      source_raw_stdout_sha256: beforeEvidence.hashes.raw_stdout,
+      source_raw_stderr_sha256: beforeEvidence.hashes.raw_stderr,
+      source_raw_events_sha256: beforeEvidence.hashes.raw_events,
+      source_total_ms: source.timing.total_ms,
+    },
+    repair: {
+      model_rerun: false,
+      attempts: 1,
+      elapsed_ms: repairEnded - repairStarted,
+      started_at: repairWallStarted,
+      ended_at: new Date().toISOString(),
+    },
+  };
+  await mkdir(outputDirectory, { recursive: false });
+  await atomicWriteJson(join(outputDirectory, "result.json"), result);
+  return result;
+}
+
 export async function runCli(args, hooks = {}) {
   const { command, options } = parseArguments(args);
   if (command === "run") return runEvaluation(options, hooks);
+  if (command === "repair") return repairEvaluation(options);
   if (command === "summarize") return summarize(options);
   throw new Error(
-    "usage: evaluate-task-review.mjs <run|summarize> [options]",
+    "usage: evaluate-task-review.mjs <run|repair|summarize> [options]",
   );
 }
 

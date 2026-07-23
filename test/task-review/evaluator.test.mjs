@@ -6,6 +6,8 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -172,11 +174,9 @@ test("run isolates candidate inputs and homes, excludes oracle, and persists raw
       persistedEvidence,
       /oauth[_-]?token|refresh[_-]?token|api[_-]?key|credentials?\.json/i,
     );
-    assert.equal(
-      (await readdir(
-        authBridge.persisted.isolation.runtime_homes.claude,
-      )).includes(".credentials.json"),
-      false,
+    await assert.rejects(
+      stat(authBridge.persisted.isolation.runtime_homes.claude),
+      /ENOENT/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -288,6 +288,11 @@ test("run blocks timeout, nonzero, missing or invalid reports, input mutation, r
       ["nonzero", "nonzero", /exit 7/i],
       ["missing", "missing-report", /report.*missing/i],
       ["invalid", "invalid-report", /findings|metadata/i],
+      [
+        "historical-malformed",
+        "historical-markdown-malformed",
+        /timestamp|effort|route/i,
+      ],
       ["mutation", "mutate-input", /protected input/i],
     ];
 
@@ -347,6 +352,278 @@ test("run blocks timeout, nonzero, missing or invalid reports, input mutation, r
       }),
       /evaluation lock is held/i,
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts numbered report headings and Markdown list/bold metadata without relaxing values", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-historical-report-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const run = await runEvaluation(
+      root,
+      "historical",
+      "historical-markdown-report",
+    );
+
+    assert.equal(run.persisted.status, "blocked");
+    assert.equal(run.persisted.validity.report, true);
+    assert.deepEqual(run.persisted.validity.report_failures, []);
+    assert.equal(run.persisted.quality.recall_by_severity.Blocker, 0);
+    assert.match(
+      run.persisted.blocked_reasons.join(" "),
+      /Blocker recall.*100%/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps execution workspace and runtime homes outside a requested in-repo evidence directory", async () => {
+  const inRepoRoot = await mkdtemp(
+    join(repositoryRoot, ".task-review-isolation-test-"),
+  );
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const outputDirectory = join(inRepoRoot, "evidence");
+    let reviewerContext;
+    const result = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "baseline-opus-max",
+      "--trial",
+      "in-repo-output",
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(inRepoRoot, "evaluation.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--timeout-ms",
+      "1000",
+    ], {
+      beforeReviewer: (context) => {
+        reviewerContext = context;
+      },
+    });
+
+    assert.equal(result.status, "valid");
+    assert.equal(
+      result.isolation.execution_workspace.startsWith(repositoryRoot),
+      false,
+    );
+    assert.equal(
+      result.isolation.execution_cwd,
+      result.isolation.execution_workspace,
+    );
+    assert.equal(result.isolation.workspace.startsWith(outputDirectory), true);
+    assert.equal(
+      Object.values(result.isolation.runtime_homes).some((path) =>
+        path.startsWith(repositoryRoot),
+      ),
+      false,
+    );
+    assert.doesNotMatch(JSON.stringify(result.process.args), new RegExp(
+      repositoryRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    ));
+    assert.equal(reviewerContext.workspace, result.isolation.execution_workspace);
+    assert.equal(
+      Object.values(reviewerContext.environment).some(
+        (value) =>
+          typeof value === "string" && value.includes(repositoryRoot),
+      ),
+      false,
+    );
+    assert.equal(
+      reviewerContext.environment.HOME.startsWith(repositoryRoot),
+      false,
+    );
+    assert.deepEqual(await readdir(result.isolation.workspace), ["docs"]);
+    await assert.rejects(stat(result.isolation.execution_workspace), /ENOENT/);
+    await assert.rejects(
+      stat(result.isolation.runtime_homes.claude),
+      /ENOENT/,
+    );
+    await assert.rejects(stat(join(outputDirectory, "runtime")), /ENOENT/);
+  } finally {
+    if (previousClaudeBinary === undefined) {
+      delete process.env.CLAUDE_BIN;
+    } else {
+      process.env.CLAUDE_BIN = previousClaudeBinary;
+    }
+    await rm(inRepoRoot, { recursive: true, force: true });
+  }
+});
+
+test("repairs a blocked historical result immutably without rerunning the model and gates on Blocker recall", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-repair-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "source",
+      "historical-markdown-scored-report",
+    );
+    const sourceResultPath = join(source.outputDirectory, "result.json");
+    const blockedSource = {
+      ...source.persisted,
+      status: "blocked",
+      blocked_reasons: [
+        "report is missing a Findings section",
+        "report metadata mode expected \"adversarial\", found null",
+      ],
+      validity: {
+        ...source.persisted.validity,
+        first_pass: false,
+        report: false,
+        report_failures: [
+          "report is missing a Findings section",
+          "report metadata mode expected \"adversarial\", found null",
+        ],
+      },
+      quality: null,
+    };
+    await writeFile(
+      sourceResultPath,
+      `${JSON.stringify(blockedSource, null, 2)}\n`,
+    );
+    const sourceResultBefore = await readFile(sourceResultPath);
+    const sourceReportPath = join(
+      source.outputDirectory,
+      source.persisted.evidence.report,
+    );
+    const sourceReportBefore = await readFile(sourceReportPath);
+
+    const { runCli } = await implementation();
+    const repairedDirectory = join(root, "repaired");
+    const repaired = await runCli([
+      "repair",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--output-dir",
+      repairedDirectory,
+    ]);
+
+    assert.equal(repaired.status, "valid");
+    assert.equal(repaired.validity.first_pass, false);
+    assert.equal(repaired.validity.report, true);
+    assert.equal(repaired.process.repairs, 1);
+    assert.equal(repaired.repair.model_rerun, false);
+    assert.ok(repaired.repair.elapsed_ms >= 0);
+    assert.equal(
+      repaired.derivation.source_total_ms,
+      blockedSource.timing.total_ms,
+    );
+    assert.equal(repaired.quality.recall_by_severity.Blocker, 1);
+    assert.ok(repaired.derivation.source_result_sha256);
+    assert.equal(
+      repaired.derivation.source_report_sha256,
+      blockedSource.evidence.report_sha256,
+    );
+    assert.deepEqual(await readFile(sourceResultPath), sourceResultBefore);
+    assert.deepEqual(await readFile(sourceReportPath), sourceReportBefore);
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(join(repairedDirectory, "result.json"), "utf8"),
+      ),
+      repaired,
+    );
+
+    const missingBlocker = await runEvaluation(
+      root,
+      "source-missing-blocker",
+      "historical-markdown-report",
+    );
+    const missingBlockerResultPath = join(
+      missingBlocker.outputDirectory,
+      "result.json",
+    );
+    const blockedWithoutRecall = {
+      ...missingBlocker.persisted,
+      status: "blocked",
+      blocked_reasons: ["report is missing a Findings section"],
+      validity: {
+        ...missingBlocker.persisted.validity,
+        first_pass: false,
+        report: false,
+        report_failures: ["report is missing a Findings section"],
+      },
+      quality: null,
+    };
+    await writeFile(
+      missingBlockerResultPath,
+      `${JSON.stringify(blockedWithoutRecall, null, 2)}\n`,
+    );
+    const missingBlockerBefore = await readFile(missingBlockerResultPath);
+    const blockedRepair = await runCli([
+      "repair",
+      "--source-result",
+      missingBlockerResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--output-dir",
+      join(root, "repaired-missing-blocker"),
+    ]);
+
+    assert.equal(blockedRepair.status, "blocked");
+    assert.equal(blockedRepair.quality.recall_by_severity.Blocker, 0);
+    assert.match(
+      blockedRepair.blocked_reasons.join(" "),
+      /Blocker recall.*100%/i,
+    );
+    assert.deepEqual(
+      await readFile(missingBlockerResultPath),
+      missingBlockerBefore,
+    );
+
+    const contaminated = await runEvaluation(
+      root,
+      "contaminated-source",
+      "historical-markdown-scored-report",
+    );
+    const contaminatedResultPath = join(
+      contaminated.outputDirectory,
+      "result.json",
+    );
+    const contaminatedSource = {
+      ...contaminated.persisted,
+      status: "blocked",
+      blocked_reasons: ["legacy execution workspace was inside the live repo"],
+      isolation: {
+        ...contaminated.persisted.isolation,
+        execution_isolated: false,
+        contamination: {
+          live_repository_accessible_from_workspace_ancestors: true,
+          oracle_present: false,
+        },
+      },
+    };
+    await writeFile(
+      contaminatedResultPath,
+      `${JSON.stringify(contaminatedSource, null, 2)}\n`,
+    );
+    const contaminatedRepairDirectory = join(root, "contaminated-repair");
+    await assert.rejects(
+      runCli([
+        "repair",
+        "--source-result",
+        contaminatedResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output-dir",
+        contaminatedRepairDirectory,
+      ]),
+      /uncontaminated isolated-execution attestation/i,
+    );
+    await assert.rejects(stat(contaminatedRepairDirectory), /ENOENT/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -497,6 +774,101 @@ test("scores severity recall, weighted recall, duplicates, drift, scope errors, 
     },
   ]);
   assert.equal(score.supported_precision, 3 / 4);
+});
+
+test("route-blind matching recognizes a KS-001 paraphrase without an oracle fingerprint and records severity drift", async () => {
+  const { scoreFindings } = await implementation();
+  const oracle = JSON.parse(
+    await readFile(join(fixtureRoot, "oracle", "findings.json"), "utf8"),
+  );
+  const score = scoreFindings({
+    oracleFindings: oracle.findings,
+    candidateFindings: [
+      {
+        id: "candidate-1",
+        severity: "High",
+        lens: "Integration + Coverage",
+        location:
+          "tasks.json 0.1.1, 0.1.2, 1.2.3; execute.md Wave Plan",
+        finding:
+          "The graph has no pre-migration real-host stop gate: the early tasks document or emit a probe, but never execute it before migration begins.",
+        suggested_edit:
+          "Add a real-host verification task after 1.2.3 and gate migration on its success.",
+      },
+    ],
+  });
+
+  assert.equal(score.recall_by_severity.Blocker, 1);
+  assert.deepEqual(score.severity_drift, [
+    {
+      candidate_id: "candidate-1",
+      oracle_id: "KS-001",
+      expected: "Blocker",
+      observed: "High",
+    },
+  ]);
+  assert.deepEqual(score.matches, [
+    {
+      candidate_id: "candidate-1",
+      oracle_id: "KS-001",
+      method: "route-blind-semantic",
+    },
+  ]);
+
+  const adjudicated = scoreFindings({
+    oracleFindings: [oracle.findings[0]],
+    candidateFindings: [
+      {
+        id: "candidate-ambiguous",
+        severity: "Blocker",
+        lens: "Coverage",
+        location: "tasks.json",
+        finding: "A broad finding requiring blinded human resolution.",
+      },
+    ],
+    adjudications: [
+      {
+        candidate_id: "candidate-ambiguous",
+        oracle_id: "KS-001",
+        route_blind: true,
+        disposition: "supported",
+      },
+    ],
+  });
+  assert.equal(adjudicated.recall_by_severity.Blocker, 1);
+  assert.equal(adjudicated.matches[0].method, "route-blind-adjudication");
+
+  const ambiguous = scoreFindings({
+    oracleFindings: [
+      oracle.findings[0],
+      {
+        ...oracle.findings[0],
+        id: "KS-001-ambiguous-copy",
+        fingerprint: "different-fingerprint",
+      },
+    ],
+    candidateFindings: [
+      {
+        id: "candidate-ambiguous",
+        severity: "Blocker",
+        lens: "Integration + Coverage",
+        location:
+          "tasks.json 0.1.1, 0.1.2, 1.2.3; execute.md Wave Plan",
+        finding:
+          "The graph has no pre-migration real-host stop gate before migration.",
+        suggested_edit:
+          "Add real-host verification after 1.2.3 and gate migration.",
+      },
+    ],
+  });
+  assert.deepEqual(ambiguous.matches, []);
+  assert.deepEqual(ambiguous.unmatched_candidates, [
+    {
+      id: "candidate-ambiguous",
+      status: "unadjudicated",
+      route_blind: false,
+    },
+  ]);
 });
 
 test("summarizes valid runs with medians, ranges, and same-block paired deltas only", async () => {
