@@ -10,20 +10,25 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 
 ## Inputs
 
-- `$ARGUMENTS` — optional path to an execute index or wave/scope hints.
-- Plan-direct input may also provide an explicit readable plan path and optional `target_dir`.
+- `$ARGUMENTS` — optional explicit feature name/root, descendant execute/task/plan artifact, wave/scope hints, plus `--orchestrated` when a parent goal owns the final user-facing handoff.
+- Plan-direct input may also provide an explicit readable plan path and a confirmed canonical feature root.
 - **Structured mode:** an explicit valid execute index with a resolvable `tasks.json`; preserve the existing indexed-task workflow.
 - **Plan-direct mode:** an explicit argument naming another readable plan document; resolve it as `PLAN_SOURCE`. Plan-direct mode never routes to `/spectre:create_tasks`.
-- **No-argument execution:** resolve the default `docs/tasks/{branch}/specs/execute.md`; when that structured artifact or its task detail is missing/malformed, stop and route to `/spectre:create_tasks`.
+- **No-argument execution:** use the feature-resolution order below; otherwise ask for the feature name/path.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = target_dir || docs/tasks/{branch}`.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- When a nested execute artifact is the sole locator, derive `FEATURE_ROOT` from its self-location metadata and physical enclosing feature directory; the physical directory wins on mismatch.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy artifact under `docs/tasks/**` remains a readable input, and existing legacy execute/task status fields may update in place. Do not move or bulk-rewrite it. New canonical documents require a confirmed `.spectre/features/<feature-name>/` root and record the legacy source.
 - Resolve an explicit readable path in precedence order:
   1. If it has execute-index structure and resolves an existing, parseable task detail file by the rules below, set `MODE = structured`, `EXECUTE_INDEX = arg path`, and `TASKS_JSON` to that file.
   2. If it has execute-index structure but task detail cannot be resolved or parsed, keep it in structured mode and use the structured missing-artifact escalation; do not reinterpret a broken execute index as a generic plan.
   3. Otherwise set `MODE = plan-direct` and `PLAN_SOURCE = arg path`. Generic readable-plan detection happens only after structured resolution.
-- With no explicit path, set `MODE = structured` and `EXECUTE_INDEX = {OUT_DIR}/specs/execute.md`.
+- With no explicit work-source path, set `MODE = structured` and `EXECUTE_INDEX = {FEATURE_ROOT}/specs/execute.md`.
 - Resolve structured `TASKS_JSON`:
   1. Use `## Task Detail Source` line `Tasks JSON: <path>` when present.
   2. Else if index basename is `execute.md`, use adjacent `tasks.json`.
@@ -31,7 +36,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
   4. Otherwise stop and ask for the matching task detail JSON path.
 - In structured mode, `SCOPE_DOCS` = existing paths listed in the execute index `## Document Manifest`. In plan-direct mode, `SCOPE_DOCS` = existing readable scope/UX/research paths explicitly referenced by `PLAN_SOURCE`, else an empty list; record them under **Source Plan**.
 - Plan-direct `EXECUTION_STATE`:
-  - When `PLAN_SOURCE` is inside a Spectre task directory, use `{dirname(PLAN_SOURCE)}/execution_state.md`; otherwise use `{OUT_DIR}/execution_state.md`.
+  - Use `{FEATURE_ROOT}/execution_state.md`; if `PLAN_SOURCE` is a legacy input, record its repo-relative path under **Source Plan**.
   - If that path records a different source-plan path, use `{plan-stem}-{short-sha256-of-plan-path}.execution_state.md`.
 - Wave diff per gate: `git diff <parent-of-first-wave-commit>..HEAD`; files-touched manifest; structured mode uses verbatim ACs/context from the selected parent-task slice, while plan-direct mode uses transient verbatim source-anchored plan text for the active-wave workstreams.
 
@@ -40,7 +45,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 **Resolve + load the selected work source.**
 - Structured mode is unchanged: read `EXECUTE_INDEX` whole as the token-efficient orchestration index. Do **not** read `TASKS_JSON` whole; use targeted parsing only for status projection, selected parent-task slices, reviewer criteria/context slices, and status updates. After any JSON write, re-parse `TASKS_JSON` before planning the next wave.
 - Plan-direct mode begins execution without a plan-quality, approval, completeness, or Spectre-format gate. The source plan is the sole requirements authority. Never rewrite the source plan; do not edit, repair, approve, or reject it.
-- Before the first dev dispatch, create or resume `execution_state.md` with exactly these seven sections:
+- Before the first dev dispatch, create or resume `execution_state.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, followed by exactly these seven sections:
   1. **Source Plan** — canonical path; `sha256` of the full source-plan bytes; recorded byte length; Git HEAD at capture; mode; baseline Git SHA; resolved `SCOPE_DOCS`; and pointer-only anchors for objective, boundaries, phases/workstreams, and verification signals. Include the sentence `The source plan is the sole requirements authority.`
   2. **Runtime Status** — pending/running/blocked/done, current and last-completed waves, timestamps, current HEAD, and coarse-map coverage over the source plan. Derive cumulative diff only as `baseline..HEAD`.
   3. **Workstream & Parallelization Map** — one coarse row for every plan-native phase/workstream/work item at initial creation, with source anchor, status, dependencies/shared contracts/change surfaces, and ready/deferred/parallel-safe/sequential rationale. No fixed workstream count is imposed.
@@ -84,11 +89,15 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 7. **Next wave.** Structured mode recomputes pending status from `TASKS_JSON` projections. Plan-direct mode re-reads `EXECUTION_STATE`, clears completed **Active Wave** detail into **Wave History**, and derives only the next safe assignments. Gather prior completion reports into `## Prior-Wave Context`, then repeat.
 
 **Final adversarial code review + validate.** After the mode-specific work projection is `done`/`skipped` and deterministic checks pass, run the expensive review once over the cumulative feature diff:
-- Run `Skill(spectre-code_review)` with `{OUT_DIR} --orchestrated` over the cumulative diff. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
+- Run `Skill(spectre-code_review)` with `{FEATURE_ROOT} --orchestrated` over the cumulative diff. Pass the exact feature root unchanged. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
 - Structured-mode reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and relevant `TASKS_JSON` slices. Plan-direct mode passes the source plan plus relevant execution-state evidence instead of `tasks.json` slices; `PLAN_SOURCE` remains requirements authority and `EXECUTION_STATE` is routing/evidence only. Do not use dev reports or implementer rationale as evidence.
 - Read the saved report. CRITICAL/HIGH findings enter the bounded fix loop; Medium/Low findings are summarized but do not block completion unless the user asks.
-- Then `@spectre:analyst` runs `Skill(spectre-validate)` (`/spectre:validate`) narrowed to cross-wave integration audit, scope-creep audit, and dead-computation sweep over the cumulative diff. Pass `SCOPE_DOCS` plus `TASKS_JSON` in structured mode, or `PLAN_SOURCE` plus relevant `EXECUTION_STATE` sections in plan-direct mode; do not use `execute.md` or derivative state as the validation requirements source.
+- Then `@spectre:analyst` runs `Skill(spectre-validate)` with `{FEATURE_ROOT} --orchestrated`, narrowed to cross-wave integration audit, scope-creep audit, and dead-computation sweep over the cumulative diff. Pass the exact feature root unchanged plus `SCOPE_DOCS` and `TASKS_JSON` in structured mode, or `PLAN_SOURCE` plus relevant `EXECUTION_STATE` sections in plan-direct mode; do not use `execute.md` or derivative state as the validation requirements source.
 - High-priority review or validation gaps → dispatch `@spectre:dev` to fix, rerun deterministic checks, then rerun `Skill(spectre-code_review)` or only the affected validation check.
+- After review/validation is clean or accepted:
+  - Structured mode runs `Skill(spectre-create_test_guide)` with `{FEATURE_ROOT} --orchestrated`.
+  - Plan-direct mode runs `Skill(spectre-create_test_guide)` with `PLAN_SOURCE` and `{FEATURE_ROOT} --orchestrated`.
+  - In both modes, pass the exact feature root unchanged.
 - In plan-direct mode, write each final review, validation, and test-guide result to **Final Quality State** without copying requirements from `PLAN_SOURCE`.
 
 ## Outputs + DONE
@@ -96,7 +105,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 - Complete implementation, committed per structured parent task or plan-direct workstream assignment.
 - Structured mode: `TASKS_JSON` statuses reflect completed/skipped/adapted work and parse after final write.
 - Plan-direct mode: `EXECUTION_STATE` retains pointer-only plan anchors, complete coarse-map/adaptation statuses, wave history, and final quality evidence.
-- `{OUT_DIR}/test_guide.md` or `{OUT_DIR}/testing/{branch}_test_guide.md` from `Skill(spectre-create_test_guide)`.
+- `{FEATURE_ROOT}/testing/test_guide.md` from `Skill(spectre-create_test_guide)`.
 - Completion summary: tasks done · waves · sentinel review counts (`skip`/`wiring`/`risk`) · per-wave fix-loop counts · final review status · validation status · test-guide path · Task Evolution Summary · E2E Gaps Addressed · Unresolved Findings.
 - **Structured DONE:** every structured task is `done`/`skipped`.
 - **Plan-direct DONE:** every plan-native workstream in the initial coarse map plus every recorded adaptation is `done`/`skipped`, and **Runtime Status** states the map's source-plan coverage.

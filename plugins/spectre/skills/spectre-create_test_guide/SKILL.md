@@ -9,15 +9,25 @@ user-invocable: true
 Produce a manual testing guide, scaled to the change, that a human can run to validate the work. Input is the current task's changes; output is one checklist artifact.
 
 ## Inputs
-- `$ARGUMENTS` — optional focus areas to emphasize and an explicit source-plan path.
+- `$ARGUMENTS` — optional explicit feature name/root or descendant artifact, focus areas to emphasize, an explicit source-plan path, and `--orchestrated` when a parent workflow owns the next step.
 - Task context: features added/modified/removed, stack/environment, user personas, integration points/dependencies. Prioritize an explicitly passed source-plan path ahead of literal `plan.md`; otherwise read from canonical artifacts (scope.md, plan.md, tasks.json slices) and the diff. Use `execute.md` only to locate `tasks.json`; do not inline the full task graph.
 
 ## Working Set
-- Read-only: task artifacts under `docs/tasks/{branch}/`, the implemented diff.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical test-guide artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Write the new guide only beneath the confirmed canonical `FEATURE_ROOT` and record the legacy source in its Testing Overview.
+- Read-only: explicitly supplied feature/legacy artifacts and the implemented diff.
 - Write: the single test-guide artifact only.
 
 ## Outputs + DONE
-Write to `{OUT_DIR}/testing/{branch}_test_guide.md` where `branch=$(git rev-parse --abbrev-ref HEAD)` and `OUT_DIR` = user-specified `target_dir` if given, else `docs/tasks/{branch}` (run `mkdir -p "$OUT_DIR/testing"`).
+Write to `{FEATURE_ROOT}/testing/test_guide.md` and begin immediately below the title with:
+
+```text
+Feature: <feature-name>
+Feature Root: .spectre/features/<feature-name>
+```
 
 DONE when:
 - Complexity classified **Simple | Medium | Complex** with a one-line rationale (Simple = smoke/happy-path + quick regression; Medium = edge cases, error handling, basic integration; Complex = advanced scenarios, performance, cross-feature, security).
@@ -40,7 +50,9 @@ Feature-section shape:
 - Each scenario validates one capability end-to-end.
 
 ## Handoff
-- Return the coverage summary in-thread (no extra docs). Close with a one-line Next Steps pointing to `/spectre:clean` or `/spectre:test`.
+- Return the coverage summary in-thread (no extra docs).
+- `--orchestrated` → return the guide path and coverage summary to the caller without user-facing Next Steps.
+- Standalone → recommend `/spectre:proof` when the completed feature has an observable public workflow; recommend `/spectre:test` only for an identified automation gap; recommend `/spectre:clean` only when proof is explicitly deferred. Emit one primary recommendation with its observed reason.
 
 ## Escalate-If
 - Task context is too thin to identify the changed features or personas — ask before guessing.

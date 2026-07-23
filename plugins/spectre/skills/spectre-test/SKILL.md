@@ -10,14 +10,17 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 
 ## Inputs
 
-- `$ARGUMENTS` — optional scope hint or specific files to focus on.
+- `$ARGUMENTS` — optional explicit feature name/root or descendant artifact, scope hint, or specific files to focus on, plus `--orchestrated` when a parent workflow owns the next step.
 - Optional orchestrator-provided risk plan from `spectre-clean`: files already tiered P0-P3 plus batch assignment. When present, use it as the plan for this batch.
-- `target_out_dir` — optional OUT_DIR override.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = target_out_dir || docs/tasks/{branch}`.
-- **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Record to `{OUT_DIR}/working_set.json`.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical testing artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy `docs/tasks/**` artifact remains a readable scope input, but do not move or bulk-rewrite it. Write new testing artifacts only beneath the confirmed canonical `FEATURE_ROOT` and record the legacy source in their scope metadata.
+- **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Record to `{FEATURE_ROOT}/working_set.json`.
 - Baseline-lint all files in the set; map import/dependency edges. All paths absolute from repo root.
 
 ## Method / guardrails
@@ -37,15 +40,18 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 ## Outputs + DONE
 
 - Risk-appropriate behavioral tests added; lint clean; full suite green.
-- `{OUT_DIR}/working_set.json` (scope + risk-tier categorization).
-- Commits: planning/working artifacts first (`docs(test): add test planning artifacts for {branch}`), then code grouped into logical conventional commits (`type(scope): description`; tests bundled with feature or separate, your judgment).
+- `{FEATURE_ROOT}/working_set.json` with `feature` and `feature_root` in its owning metadata object, followed by scope + risk-tier categorization. The equivalent Markdown metadata contract is `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
+- Commits: planning/working artifacts first (`docs(test): add test planning artifacts for {feature-name}`), then code grouped into logical conventional commits (`type(scope): description`; tests bundled with feature or separate, your judgment).
 - **DONE when:** every changed file has a P0–P3 tier from this skill or the orchestrator; plan written/consumed with P3 explicitly SKIP'd; `@spectre:tester` agents dispatched in parallel when running standalone or assigned batches completed when running as a test lead; P0 thorough / P1 key-path / P2 public-surface / P3 no tests; lint + all tests pass; quality spot-checked; changes committed conventionally; no `--no-verify`/`eslint-disable` introduced.
 
 ## Handoff
 
-Report inline: files triaged by tier, tests added per tier, lint/test status, commit list. Then suggest the next command (no wait):
+Report inline: files triaged by tier, tests added per tier, lint/test status, commit list.
 
-- `/spectre:rebase` — tidy history before merge.
+- `--orchestrated` or an orchestrator-provided risk plan → return results to the caller without user-facing Next Steps.
+- Standalone → choose from live state: completed user-observable work not yet acceptance-proven → `/spectre:proof`; remaining uncommitted hygiene → `/spectre:sweep`; clean, proven-or-explicitly-deferred work → `/spectre:rebase`.
+
+Render one primary recommendation with its observed reason; never jump directly to rebase merely because tests passed.
 
 ## Escalate-If
 

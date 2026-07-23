@@ -19,43 +19,59 @@ Level 1 without 2/3 is **dead code that happens to match the description** — n
 
 ## Inputs
 
-- `$ARGUMENTS` — scope docs and/or `tasks.json` to validate against (paths, or "use thread context"). **REQUIRED.** If absent, ask for the scope doc path, the task detail JSON path, or "use thread context" — then wait.
-- Read scope docs in full. For `tasks.json`, extract validation slices from `phases[]` (parent title/description plus child acceptance criteria/context); do not use `execute.md` as the validation source except to locate the JSON path.
+- `$ARGUMENTS` — explicit feature name/root or descendant artifact, scope docs, an explicit plan as a requirement source, and/or `tasks.json` to validate against (paths, or "use thread context"), plus optional `execution_state.md` focus evidence, an immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and `--orchestrated` when a parent workflow owns remediation and the next step. Requirement context is **REQUIRED**. If absent, ask for a scope or plan path, the task detail JSON path, or "use thread context" — then wait.
+- Treat the plan as authoritative when passed. Otherwise use task acceptance slices, scope docs, then usable thread context. Read the authoritative source in full. For `tasks.json`, extract validation slices from `phases[]` (parent title/description plus child acceptance criteria/context); do not use `execute.md` as the validation source except to locate the JSON path.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
-- `OUT_DIR = user-specified path || docs/tasks/{branch}`; report under `{OUT_DIR}/validation/` (`mkdir -p`)
-- the actual code, diff, and task artifacts under `{OUT_DIR}/` — read just-in-time
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical validation artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input; its workflow-owned status fields remain in place for the owning execute workflow, while validation stays read-only. Do not move or bulk-rewrite it. Every new validation document requires a confirmed canonical `.spectre/features/<feature-name>/` root and records the legacy source in its requirement manifest.
+- `VALIDATION_REPORT = {FEATURE_ROOT}/validation/validation_gaps.md`; create its parent directory.
+- Read the actual code, diff, and explicitly supplied requirement artifacts just-in-time.
 
 ## Method / guardrails
 
-- **Chunk into 3–8 validation areas:** one per parent task in `tasks.json`, else one per "In Scope" item in scope.md, else one per discussed feature. Merge small, split large.
+- **Chunk into 3–8 validation areas:** one per parent task in `tasks.json`; derive areas from plan outcomes/workstreams when tasks are absent; else use one per "In Scope" item in scope.md, then one per discussed feature. Merge small, split large.
+- **Execution state is derivative:** `execution_state.md` is evidence/focus only for cross-wave wiring, scope-creep, and dead-computation checks; it is never requirements or acceptance authority.
 - **Dispatch one `@spectre:analyst` per area, ALL in parallel in a single message.** Brief each with: the area, its source requirement (exact text), expected deliverables, branch, and the status enum + evidence + reachability rules below. Subagents return compressed findings in-thread — no per-area files.
 - **Status enum (each requirement):** ✅ **Delivered** (defined AND connected AND reachable) · ⚠️ **Partial** (exists, broken/missing connection) · 🔌 **Dead Code** (exists, zero usage sites) · ❌ **Missing** (does not exist).
 - **Evidence rule (YOU MUST):** every requirement cites **both** a definition site (`file:line`) and a usage site (`file:line`). Definition only, no usage → status is ⚠️ or 🔌, never ✅.
+- **Delivered evidence stays strict:** every Delivered result still needs definition plus usage/reachability evidence.
 - **Reachability + render-backward trace:** for UI features, trace from the final render *backward* — JSX ← variable ← source (hook/prop/computed) ← user action. A broken link anywhere = ⚠️. Grep for *usage* not just definition (`fnName(`, `<Component`, `useHook(`, `prop={`).
 - **Dead-computation + old-path audit:** flag any computed value that never reaches a render (🔌), and any old code path still active after new code replaced it (⚠️, new path bypassed / duplicate data source).
 - **Note scope creep** — anything built beyond the requirements.
 - **Final wiring check before any ✅:** consumer connected? render chain unbroken? old path removed? no orphaned computation? single data source? Any failure downgrades ✅ → ⚠️ and adds a gap task.
 - **No fixes.** Report and hand back.
+- **Candidate pin.** When any candidate field is supplied, require all three; recompute the canonical hash using `git diff --binary --full-index --no-ext-diff --no-color --no-renames` before dispatch and after report creation. Record the unchanged tuple in the report; otherwise return a stale-candidate result.
 
 ## Outputs + DONE
 
-Write `{OUT_DIR}/validation/validation_gaps.md`. Required sections:
+Write `VALIDATION_REPORT`. Required sections:
 
-1. **Summary** — overall status (Complete | Needs Work | Significant Gaps) · {X of Y} delivered · gap count · scope-creep count.
+`VALIDATION_REPORT` begins with its title followed immediately by the Feature/Feature Root metadata below.
+
+0. **Self-location metadata** — immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
+1. **Summary** — overall status (Complete | Needs Work | Significant Gaps) · {X of Y} delivered · gap count · scope-creep count · supplied candidate tuple · any legacy source path.
 2. **Gap Remediation Tasks** — phased by priority (Critical / Medium / Low). Each gap: requirement · current state · gap; each action carries **Produces / Consumed by / Replaces** and verifiable check-box outcomes.
 3. **Scope Creep Review** — items beyond scope (Keep+document / Remove / Discuss) with evidence.
 4. **Validation Coverage** table — Area · Status · Definition · Usage · Render Chain.
 5. **Dead Computations Found** table — Variable · File · Computed By · Should Be Consumed By.
 6. **Old Code Paths Still Active** table — Old Path · Location · Replaced By · Impact.
 
-**DONE when:** validation_gaps.md exists with all six sections; every area has a status from the enum with definition+usage evidence; gaps are actionable (Produces/Consumed-by/Replaces); scope creep noted; no code was modified.
+**DONE when:** validation_gaps.md exists with all six numbered sections plus self-location metadata; every area has a status from the enum with definition+usage evidence; any supplied candidate tuple is recorded and unchanged; gaps are actionable (Produces/Consumed-by/Replaces); scope creep noted; no code was modified.
 
 ## Handoff
 
-Reply to the user with a short summary: status, {X of Y} delivered, gap count, scope-creep count, 1–2 sentence key findings, and the report path. Then suggest the next command inline — typically `/spectre:fix` to remediate gaps, else `/spectre:clean` / `/spectre:test` to continue the loop.
+Return a short summary: status, {X of Y} delivered, gap count, scope-creep count, 1–2 sentence key findings, and the report path.
+
+- `--orchestrated` → return the summary and gap categories to the caller without user-facing Next Steps.
+- Standalone `Needs Work` / `Significant Gaps` → `Next (recommended): /spectre:fix — validation found {gap signal}; rerun /spectre:validate afterward.` Route boundary/requirement ambiguity to `/spectre:scope`; route user-flow/state/copy ambiguity to `/spectre:ux`.
+- Standalone `Complete` → `Next (recommended): /spectre:proof — wiring is delivered, but the public user workflow still needs acceptance evidence.` Use test/clean only when proof is explicitly unnecessary or deferred.
+
+Offer `/spectre:handoff` only when pausing on a standalone validation boundary.
 
 ## Escalate-If
 

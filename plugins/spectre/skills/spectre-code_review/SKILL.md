@@ -10,16 +10,19 @@ Adversarial review of what was just built. A clean-context reviewer tries to fal
 
 ## Inputs
 
-- `$ARGUMENTS` - optional focus guidance, explicit diff/base range, an explicit source-plan path, target `OUT_DIR`, and optional `--orchestrated` when another workflow will consume the report.
+- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, focus guidance, explicit diff/base range, an explicit source-plan path, an optional immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and optional `--orchestrated` when another workflow will consume the report.
 - Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else an explicitly passed source-plan path ahead of literal `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
 - If the work scope is genuinely ambiguous after inspecting artifacts and git state, ask what to review before dispatching.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`).
-- `OUT_DIR = target_dir || docs/tasks/{branch}`; report under `{OUT_DIR}/reviews/`.
-- `REVIEW_REPORT = {OUT_DIR}/reviews/comprehensive_code_review.md`; if it exists, use `comprehensive_code_review_{YYYY-MM-DD_HHMMSS}.md` and never overwrite prior evidence.
-- Build a late-bound review manifest: diff/base range, changed-file summary, in-scope requirement/AC paths, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical review artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Every new review document requires a confirmed canonical `.spectre/features/<feature-name>/` root and records the legacy source in its scope manifest.
+- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/comprehensive_code_review.md`; if it exists, use `comprehensive_code_review_{YYYY-MM-DD_HHMMSS}.md` and never overwrite prior evidence.
+- Build a late-bound review manifest: diff/base range, optional candidate tuple, changed-file summary, in-scope requirement/AC paths, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
 
 ## Method / guardrails
 
@@ -46,7 +49,7 @@ External report metadata is fixed by route: Codex -> Claude Code records `Review
 
 The external reviewer may write only `REVIEW_REPORT`; it may not edit code, tests, plans, tasks, scope docs, or other artifacts. Allow at least 20 minutes before treating the run as hung.
 
-`REVIEW_PROMPT` includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It also includes the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
+`REVIEW_PROMPT` includes the exact feature name/root and says to use that root unchanged without branch or repository-activity rederivation. It also includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It includes the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
 
 **Adversarial lenses**
 
@@ -81,14 +84,17 @@ After either route, verify the report exists, contains every required section, n
 
 Required report sections:
 
-1. **Scope Boundary** - completed work, diff/base, requirements, in-scope files/dependencies/tests, and explicit exclusions.
+`REVIEW_REPORT` begins with its title followed immediately by the Feature/Feature Root metadata below.
+
+0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
+1. **Scope Boundary** - completed work, diff/base, supplied candidate tuple, requirements, in-scope files/dependencies/tests, explicit exclusions, and any legacy source path.
 2. **Verdict** - `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, or `CLEAN`.
 3. **Findings** - table `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Smallest Fix`, ordered CRITICAL to LOW. Say `No findings` when clean; do not pad.
 4. **Coverage Record** - files/paths and tests inspected, plus material areas not verified and why.
 5. **Prioritized Actions** - minimal ordered remediation list, or `None` when clean.
 6. **Review Metadata** - ISO8601 timestamp, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
 
-DONE when the report exists with all six sections; scope is explicit; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings satisfy evidence rules; no code or non-report artifact was modified.
+DONE when the self-locating report exists with all six numbered sections plus metadata; scope and any candidate tuple are explicit and unchanged; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings satisfy evidence rules; no code or non-report artifact was modified.
 
 ## Handoff
 

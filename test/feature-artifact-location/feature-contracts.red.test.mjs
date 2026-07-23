@@ -280,6 +280,157 @@ test('explicit legacy continuation preserves state but routes new documents to a
   );
 });
 
+test('post-plan continuation workflows inherit the exact root from a nested execute artifact', () => {
+  const files = [
+    'plugins/spectre/skills/spectre-execute/SKILL.md',
+    'plugins/spectre/skills/spectre-code_review/SKILL.md',
+    'plugins/spectre/skills/spectre-validate/SKILL.md',
+  ];
+
+  for (const file of files) {
+    const content = read(file);
+    assertContinuationContract(content, file);
+    assert.match(
+      content,
+      /pass(?:es)? the exact feature root unchanged/i,
+      `${file}: missing exact-root propagation`,
+    );
+    assert.match(
+      content,
+      /physical feature directory .*authoritative/i,
+      `${file}: missing physical-directory authority`,
+    );
+    assert.match(
+      content,
+      /repair .*feature(?: name)?\/root metadata .*before (?:continuing|writing|producing)/i,
+      `${file}: missing stale metadata repair`,
+    );
+  }
+
+  const execute = read(files[0]);
+  assert.match(
+    execute,
+    /nested execute artifact .*sole locator.*self-location metadata.*physical enclosing feature directory/i,
+    `${files[0]}: nested execute artifact cannot act as the sole root locator`,
+  );
+  assert.match(
+    execute,
+    /existing legacy .*status fields.*in place/i,
+    `${files[0]}: legacy status updates are not preserved`,
+  );
+
+  for (const file of files.slice(1)) {
+    const content = read(file);
+    assert.match(
+      content,
+      /new (?:review|validation) document.*confirmed canonical.*\.spectre\/features\//i,
+      `${file}: new document is not confined to a confirmed canonical root`,
+    );
+    assert.match(
+      content,
+      /record(?:s)? (?:the )?legacy source/i,
+      `${file}: new document does not record its legacy source`,
+    );
+  }
+
+  const outputContracts = new Map([
+    [files[0], ['execution_state.md']],
+    [files[1], ['REVIEW_REPORT']],
+    [files[2], ['VALIDATION_REPORT']],
+  ]);
+  for (const [file, artifacts] of outputContracts) {
+    const content = read(file);
+    assert.match(content, /Feature: <feature-name>/, `${file}: missing Feature metadata`);
+    assert.match(
+      content,
+      /Feature Root: \.spectre\/features\/<feature-name>/,
+      `${file}: missing Feature Root metadata`,
+    );
+    assert.match(
+      content,
+      /passing any produced artifact.*identif(?:y|ies) the feature name and root/i,
+      `${file}: produced artifacts are not sufficient continuation inputs`,
+    );
+    for (const artifact of artifacts) {
+      assert.match(
+        content,
+        new RegExp(`${artifact.replace('.', '\\.')}[^\\n]*(?:feature|Feature)`),
+        `${file}: ${artifact} does not require self-location metadata`,
+      );
+    }
+  }
+});
+
+test('post-plan continuation workflows forbid branch-derived output roots', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-execute/SKILL.md',
+    'plugins/spectre/skills/spectre-code_review/SKILL.md',
+    'plugins/spectre/skills/spectre-validate/SKILL.md',
+  ]) {
+    const content = read(file);
+    assert.doesNotMatch(
+      content,
+      /OUT_DIR\s*=\s*[^\n]*docs\/tasks\/\{branch\}/,
+      `${file}: still derives its output root from the Git branch`,
+    );
+  }
+});
+
+test('proof and testing workflows emit self-locating artifacts under one exact feature root', () => {
+  const outputContracts = new Map([
+    ['plugins/spectre/skills/spectre-proof/SKILL.md', ['proof.json', 'proof.html']],
+    ['plugins/spectre/skills/spectre-test/SKILL.md', ['working_set.json']],
+    ['plugins/spectre/skills/spectre-create_test_guide/SKILL.md', ['test guide']],
+  ]);
+
+  for (const [file, artifacts] of outputContracts) {
+    const content = read(file);
+    assertContinuationContract(content, file);
+    assert.match(
+      content,
+      /pass(?:es)? the exact feature root unchanged/i,
+      `${file}: missing exact-root propagation`,
+    );
+    assert.match(
+      content,
+      /Feature: <feature-name>/,
+      `${file}: missing Feature metadata contract`,
+    );
+    assert.match(
+      content,
+      /Feature Root: \.spectre\/features\/<feature-name>/,
+      `${file}: missing Feature Root metadata contract`,
+    );
+    assert.match(
+      content,
+      /passing any produced artifact.*identif(?:y|ies) the feature name and root/i,
+      `${file}: produced artifacts are not declared sufficient for continuation`,
+    );
+    for (const artifact of artifacts) {
+      assert.match(
+        content,
+        new RegExp(`${artifact.replace('.', '\\.')}[^\\n]*(?:feature|Feature)`),
+        `${file}: ${artifact} does not require self-location metadata`,
+      );
+    }
+  }
+});
+
+test('proof and testing workflows forbid branch-derived output roots', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-proof/SKILL.md',
+    'plugins/spectre/skills/spectre-test/SKILL.md',
+    'plugins/spectre/skills/spectre-create_test_guide/SKILL.md',
+  ]) {
+    const content = read(file);
+    assert.doesNotMatch(
+      content,
+      /(?:OUT_DIR|FEATURE_ROOT)\s*=\s*[^\n]*docs\/tasks\/\{branch\}/,
+      `${file}: still derives its feature root from the Git branch`,
+    );
+  }
+});
+
 test('fresh-repository tenancy keeps features trackable and local state ignored', () => {
   const root = mkdtempSync(join(tmpdir(), 'spectre-tenancy-red-'));
   try {
