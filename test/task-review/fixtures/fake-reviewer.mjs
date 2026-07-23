@@ -235,12 +235,12 @@ No findings.
 
 ## 4. Review Metadata
 
-- **Timestamp:** 2026-07-23T17:12:00Z
-- **Mode:** adversarial
-- **Reviewer Runtime:** ${runtime}
-- **Reviewer Model:** ${model}
-- **Reviewer Effort:** ${effort}
-- **Invocation Route:** ${route}
+- **Timestamp:** \`2026-07-23T17:12:00Z\`
+- **Mode:** \`adversarial\`
+- **Reviewer Runtime:** \`${runtime}\`
+- **Reviewer Model:** \`${model}\`
+- **Reviewer Effort:** \`${effort}\`
+- **Invocation Route:** \`${route}\`
 `,
     );
     break;

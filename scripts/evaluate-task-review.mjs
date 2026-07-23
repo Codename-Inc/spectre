@@ -1327,12 +1327,15 @@ function reportSection(report, title) {
 
 function reportMetadataValue(report, label) {
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return report.match(
+  const value = report.match(
     new RegExp(
       `^\\s*(?:[-+*]\\s+)?(?:\\*\\*)?${escapedLabel}\\s*:(?:\\*\\*)?\\s*(.+?)\\s*$`,
       "im",
     ),
   )?.[1]?.trim();
+  return /^`[^`\r\n]+`$/.test(value ?? "")
+    ? value.slice(1, -1).trim()
+    : value;
 }
 
 function parseReportFindings(report) {
