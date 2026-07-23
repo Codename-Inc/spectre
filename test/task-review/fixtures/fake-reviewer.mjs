@@ -242,6 +242,28 @@ No findings.
 `,
     );
     break;
+  case "ambiguous-blocker-report":
+    await writeFile(
+      reportPath,
+      `# Task Review
+
+## Findings
+
+| # | Severity | Lens | Location | Finding | Suggested Edit |
+|---|---|---|---|---|---|
+| 1 | High | Semantic Coverage / Integration | plan.md §2.5 and §9 "Phase 1 Succeeds when (c)/(d)" vs tasks.json Phase 0 (0.1.1, 0.1.2) and 1.2.3; the only real-host task 6.2.2; execute.md Wave 0 / Wave 9; tasks.json REQ-017.tasks = ["0.1", "6.2"] | The plan makes a real-host payload probe a hard precondition for migration: §2.5 states "This is a required manual gate… On failure, stop before migration," and §9 Phase 1 succeeds only when "(c) at least one prose-heavy and one code-heavy accepted fixture arrive inline in a real Codex run under the §2.5 protocol; and (d) the dated evidence artifact is saved," with the failure branch stopping "before migration or user-data changes." The task graph never encodes this gate before migration. 0.1.1 only records CLI versions/commands; 0.1.2 only adds RED estimator/fixture tests; 1.2.3 only builds the measurement + verify-knowledge-hosts.mjs generator (its acceptance is test/observable, i.e. harness emission, not an executed real-host run). The sole real-host execution is 6.2.2 (Wave 9), which runs after Phase 2 migration (2.1/2.2, Waves 3–4) and after Phase 5 install-time migration (5.1.3). A fixture that falls back would surface only in the terminal wave, defeating the plan's primary risk mitigation ("make payload feasibility Phase 1… stop for redesign if inline delivery cannot be guaranteed"). Compounding this, REQ-017 maps real-host evidence to 0.1, but 0.1 produces no real-host evidence. | Add a gating subtask under 0.1 (or a real-host observable acceptance criterion on 0.1/1.2) that executes the §2.5 Codex probe on at least one prose and one code boundary fixture, saves the dated verification/host-payload-YYYY-MM-DD.md artifact, and declare it a predecessor of 2.1 in both tasks.json and execute.md. Encode the failure branch ("stop before migration; append measured values + observed behavior to task_context.md") as an explicit exit condition, and correct REQ-017's 0.1 mapping to point at the new gating task. |
+
+## Review Metadata
+
+Timestamp: 2026-07-23T00:00:00Z
+Mode: adversarial
+Reviewer Runtime: ${runtime}
+Reviewer Model: ${model}
+Reviewer Effort: ${effort}
+Invocation Route: ${route}
+`,
+    );
+    break;
   case "historical-markdown-malformed":
     await writeFile(
       reportPath,

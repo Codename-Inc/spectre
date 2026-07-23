@@ -1340,6 +1340,401 @@ test("route-blind matching recognizes a KS-001 paraphrase without an oracle fing
   ]);
 });
 
+test("adjudication-packet emits only route-blind candidate and oracle evidence and rejects contaminated sources", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-adjudication-packet-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "ambiguous-source",
+      "ambiguous-blocker-report",
+    );
+    assert.equal(source.persisted.status, "blocked");
+    assert.equal(source.persisted.validity.report, true);
+    assert.equal(source.persisted.quality.recall_by_severity.Blocker, 0);
+
+    const { runCli } = await implementation();
+    const packetPath = join(root, "adjudication-packet.json");
+    const packet = await runCli([
+      "adjudication-packet",
+      "--source-result",
+      join(source.outputDirectory, "result.json"),
+      "--fixture",
+      fixtureRoot,
+      "--output",
+      packetPath,
+    ]);
+
+    assert.deepEqual(Object.keys(packet).sort(), [
+      "candidates",
+      "oracles",
+      "schema_version",
+      "source",
+    ]);
+    assert.deepEqual(Object.keys(packet.candidates[0]).sort(), [
+      "candidate_id",
+      "edit",
+      "finding",
+      "lens",
+      "location",
+    ]);
+    assert.deepEqual(Object.keys(packet.oracles[0]).sort(), [
+      "match",
+      "oracle_id",
+      "source_evidence",
+    ]);
+    assert.deepEqual(Object.keys(packet.oracles[0].match).sort(), [
+      "defect_class",
+      "lens",
+      "locations",
+    ]);
+    assert.equal(packet.candidates[0].candidate_id, "1");
+    assert.equal(packet.oracles[0].oracle_id, "KS-001");
+    const packetFields = JSON.stringify(packet, (_key, value) => value);
+    for (const forbidden of [
+      '"severity"',
+      '"fingerprint"',
+      '"route"',
+      '"variant"',
+      '"model"',
+      '"runtime"',
+      '"cost"',
+      '"timing"',
+    ]) {
+      assert.equal(packetFields.includes(forbidden), false, forbidden);
+    }
+    assert.deepEqual(
+      JSON.parse(await readFile(packetPath, "utf8")),
+      packet,
+    );
+
+    const contaminatedResultPath = join(
+      source.outputDirectory,
+      "result.json",
+    );
+    await writeFile(
+      contaminatedResultPath,
+      `${JSON.stringify({
+        ...source.persisted,
+        isolation: {
+          ...source.persisted.isolation,
+          contamination: {
+            ...source.persisted.isolation.contamination,
+            oracle_present: true,
+          },
+          oracle_present: true,
+        },
+      }, null, 2)}\n`,
+    );
+    await assert.rejects(
+      runCli([
+        "adjudication-packet",
+        "--source-result",
+        contaminatedResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output",
+        join(root, "contaminated-packet.json"),
+      ]),
+      /clean isolated-execution attestation/i,
+    );
+    await assert.rejects(
+      runCli([
+        "adjudication-packet",
+        "--source-result",
+        contaminatedResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output",
+        packetPath,
+      ]),
+      /already exists/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("adjudicate resolves an ambiguous known Blocker route-blindly while preserving source evidence and severity drift", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-adjudicate-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "ambiguous-source",
+      "ambiguous-blocker-report",
+    );
+    assert.equal(source.persisted.status, "blocked");
+    assert.deepEqual(source.persisted.quality.matches, []);
+    const sourceResultPath = join(source.outputDirectory, "result.json");
+    const sourcePaths = [
+      sourceResultPath,
+      join(source.outputDirectory, source.persisted.evidence.raw_stdout),
+      join(source.outputDirectory, source.persisted.evidence.raw_stderr),
+      join(source.outputDirectory, source.persisted.evidence.raw_events),
+      join(source.outputDirectory, source.persisted.evidence.report),
+    ];
+    const sourceBefore = await Promise.all(
+      sourcePaths.map((path) => readFile(path)),
+    );
+    const adjudicationsPath = join(root, "adjudications.json");
+    await writeFile(
+      adjudicationsPath,
+      `${JSON.stringify([
+        {
+          candidate_id: "1",
+          oracle_id: "KS-001",
+          route_blind: true,
+          disposition: "supported",
+        },
+      ], null, 2)}\n`,
+    );
+
+    const { runCli } = await implementation();
+    const outputDirectory = join(root, "adjudicated");
+    const result = await runCli([
+      "adjudicate",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--adjudications",
+      adjudicationsPath,
+      "--output-dir",
+      outputDirectory,
+    ]);
+
+    assert.equal(result.status, "valid");
+    assert.equal(result.validity.first_pass, false);
+    assert.equal(result.validity.report, true);
+    assert.equal(result.quality.recall_by_severity.Blocker, 1);
+    assert.deepEqual(result.quality.matches, [
+      {
+        candidate_id: "1",
+        oracle_id: "KS-001",
+        method: "route-blind-adjudication",
+      },
+    ]);
+    assert.deepEqual(result.quality.severity_drift, [
+      {
+        candidate_id: "1",
+        oracle_id: "KS-001",
+        expected: "Blocker",
+        observed: "High",
+      },
+    ]);
+    assert.equal(result.blocked_reasons.length, 0);
+    assert.equal(result.derivation.kind, "route-blind-adjudication");
+    assert.ok(result.derivation.source_result_sha256);
+    assert.ok(result.derivation.source_report_sha256);
+    assert.ok(result.derivation.adjudication_packet_sha256);
+    assert.ok(result.derivation.adjudications_sha256);
+    assert.deepEqual(
+      await Promise.all(sourcePaths.map((path) => readFile(path))),
+      sourceBefore,
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(join(outputDirectory, "result.json"), "utf8")),
+      result,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("adjudicate rejects malformed, duplicate, unknown, or route-revealing records without reusing output", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-adjudicate-guard-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "ambiguous-source",
+      "ambiguous-blocker-report",
+    );
+    const sourceResultPath = join(source.outputDirectory, "result.json");
+    const sourceBefore = await readFile(sourceResultPath);
+    const { runCli } = await implementation();
+    const cases = [
+      {
+        name: "malformed",
+        records: [{
+          candidate_id: "",
+          oracle_id: "KS-001",
+          route_blind: true,
+          disposition: "supported",
+        }],
+        error: /malformed candidate id/i,
+      },
+      {
+        name: "duplicate",
+        records: [
+          {
+            candidate_id: "1",
+            oracle_id: "KS-001",
+            route_blind: true,
+            disposition: "supported",
+          },
+          {
+            candidate_id: "1",
+            route_blind: true,
+            disposition: "unsupported",
+          },
+        ],
+        error: /duplicate candidate id/i,
+      },
+      {
+        name: "unknown",
+        records: [{
+          candidate_id: "missing",
+          route_blind: true,
+          disposition: "unsupported",
+        }],
+        error: /unknown candidate id/i,
+      },
+      {
+        name: "unknown-oracle",
+        records: [{
+          candidate_id: "1",
+          oracle_id: "KS-999",
+          route_blind: true,
+          disposition: "supported",
+        }],
+        error: /unknown oracle id/i,
+      },
+      {
+        name: "route-revealing",
+        records: [{
+          candidate_id: "1",
+          oracle_id: "KS-001",
+          route_blind: true,
+          disposition: "supported",
+          reviewer_runtime: "Claude Code",
+        }],
+        error: /forbidden.*runtime|unknown field/i,
+      },
+      {
+        name: "not-route-blind",
+        records: [{
+          candidate_id: "1",
+          oracle_id: "KS-001",
+          route_blind: false,
+          disposition: "supported",
+        }],
+        error: /route_blind.*true/i,
+      },
+    ];
+    for (const item of cases) {
+      const adjudicationsPath = join(root, `${item.name}.json`);
+      await writeFile(
+        adjudicationsPath,
+        `${JSON.stringify(item.records, null, 2)}\n`,
+      );
+      await assert.rejects(
+        runCli([
+          "adjudicate",
+          "--source-result",
+          sourceResultPath,
+          "--fixture",
+          fixtureRoot,
+          "--adjudications",
+          adjudicationsPath,
+          "--output-dir",
+          join(root, item.name),
+        ]),
+        item.error,
+      );
+    }
+    assert.deepEqual(await readFile(sourceResultPath), sourceBefore);
+
+    const supportedPath = join(root, "supported.json");
+    await writeFile(
+      supportedPath,
+      `${JSON.stringify([{
+        candidate_id: "1",
+        oracle_id: "KS-001",
+        route_blind: true,
+        disposition: "supported",
+      }], null, 2)}\n`,
+    );
+    const reusedOutput = join(root, "reused");
+    await mkdir(reusedOutput);
+    await assert.rejects(
+      runCli([
+        "adjudicate",
+        "--source-result",
+        sourceResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--adjudications",
+        supportedPath,
+        "--output-dir",
+        reusedOutput,
+      ]),
+      /output directory already exists/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("adjudicate preserves process, report, and input blockers after resolving quality recall", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-adjudicate-blockers-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "ambiguous-source",
+      "ambiguous-blocker-report",
+    );
+    const sourceResultPath = join(source.outputDirectory, "result.json");
+    const sourceWithProcessFailure = {
+      ...source.persisted,
+      blocked_reasons: [
+        ...source.persisted.blocked_reasons,
+        "reviewer exit 7",
+      ],
+      process: {
+        ...source.persisted.process,
+        exit_code: 7,
+      },
+    };
+    await writeFile(
+      sourceResultPath,
+      `${JSON.stringify(sourceWithProcessFailure, null, 2)}\n`,
+    );
+    const adjudicationsPath = join(root, "adjudications.json");
+    await writeFile(
+      adjudicationsPath,
+      `${JSON.stringify([{
+        candidate_id: "1",
+        oracle_id: "KS-001",
+        route_blind: true,
+        disposition: "supported",
+      }], null, 2)}\n`,
+    );
+
+    const { runCli } = await implementation();
+    const result = await runCli([
+      "adjudicate",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--adjudications",
+      adjudicationsPath,
+      "--output-dir",
+      join(root, "derived"),
+    ]);
+
+    assert.equal(result.quality.recall_by_severity.Blocker, 1);
+    assert.equal(result.status, "blocked");
+    assert.deepEqual(result.blocked_reasons, ["reviewer exit 7"]);
+    assert.equal(result.process.exit_code, 7);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("summarizes valid runs with medians, ranges, and same-block paired deltas only", async () => {
   const { aggregateRuns } = await implementation();
   const summary = aggregateRuns([

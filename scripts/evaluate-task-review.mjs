@@ -30,6 +30,8 @@ import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = "task-review-evaluation-result/v1";
 const AGGREGATE_SCHEMA_VERSION = "task-review-evaluation-summary/v1";
+const ADJUDICATION_PACKET_SCHEMA_VERSION =
+  "task-review-adjudication-packet/v1";
 const SEVERITIES = ["Blocker", "High", "Medium", "Low"];
 const SEVERITY_WEIGHTS = {
   Blocker: 8,
@@ -1697,6 +1699,411 @@ async function immutableEvidenceSnapshot(sourceDirectory, source) {
   return { paths, hashes };
 }
 
+async function loadAdjudicationSource(sourceResultPath, fixtureRoot) {
+  if (basename(sourceResultPath) !== "result.json") {
+    throw new Error("--source-result must point to a result.json file");
+  }
+  const sourceDirectory = dirname(sourceResultPath);
+  const sourceResultBytes = await readFile(sourceResultPath);
+  const source = JSON.parse(sourceResultBytes);
+  if (source.status !== "blocked" || source.validity?.report !== true) {
+    throw new Error(
+      "adjudication source must be a blocked result with a valid report",
+    );
+  }
+  const configuration = VARIANTS[source.variant];
+  if (!configuration) {
+    throw new Error(`unknown source variant: ${source.variant}`);
+  }
+  if (
+    canonicalJson(source.route) !==
+    canonicalJson(expectedRoute(configuration))
+  ) {
+    throw new Error("adjudication source route does not match its variant");
+  }
+  if (!hasCleanIsolationAttestation(source)) {
+    throw new Error(
+      "adjudication source lacks a clean isolated-execution attestation",
+    );
+  }
+
+  const evidence = await immutableEvidenceSnapshot(sourceDirectory, source);
+  if (evidence.hashes.result !== sha256(sourceResultBytes)) {
+    throw new Error("source result changed while adjudication was starting");
+  }
+  for (const [key, path] of Object.entries(evidence.paths)) {
+    if (!isWithin(sourceDirectory, path)) {
+      throw new Error(`source ${key.replaceAll("_", " ")} escapes evidence`);
+    }
+  }
+  for (const key of ["raw_stdout", "raw_stderr", "raw_events", "report"]) {
+    if (!evidence.paths[key] || !source.evidence?.[`${key}_sha256`]) {
+      throw new Error(
+        `adjudication source is missing ${key.replaceAll("_", " ")} evidence`,
+      );
+    }
+    if (
+      evidence.hashes[key] !== source.evidence[`${key}_sha256`]
+    ) {
+      throw new Error(`source ${key.replaceAll("_", " ")} hash mismatch`);
+    }
+  }
+
+  const sourceWorkspace = join(sourceDirectory, "workspace");
+  if (
+    !(await exists(sourceWorkspace)) ||
+    source.isolation?.workspace !== sourceWorkspace ||
+    !isWithin(sourceWorkspace, source.isolation?.task_root ?? "")
+  ) {
+    throw new Error("adjudication source workspace evidence is invalid");
+  }
+  const workspaceFiles = await filesBelow(sourceWorkspace);
+  if (
+    workspaceFiles.some((path) =>
+      /(^|\/)oracle(\/|$)|historical-task-review|findings\.json/i.test(path)
+    )
+  ) {
+    throw new Error("adjudication source workspace contains oracle data");
+  }
+  const currentInputs = await hashProtectedInputs(source.isolation.task_root);
+  if (
+    canonicalJson(currentInputs) !==
+      canonicalJson(source.protected_inputs.before) ||
+    canonicalJson(currentInputs) !==
+      canonicalJson(source.protected_inputs.after)
+  ) {
+    throw new Error("adjudication source protected inputs changed");
+  }
+
+  const { manifestHash } = await verifyFixture(fixtureRoot);
+  if (
+    source.hashes?.fixture_manifest &&
+    source.hashes.fixture_manifest !== manifestHash
+  ) {
+    throw new Error(
+      "adjudication fixture manifest does not match source result",
+    );
+  }
+  const report = await readFile(evidence.paths.report, "utf8");
+  const reportValidation = validateReport(report, configuration);
+  if (!reportValidation.valid) {
+    throw new Error(
+      `adjudication source report is invalid: ${reportValidation.failures.join("; ")}`,
+    );
+  }
+  const oracle = JSON.parse(
+    await readFile(join(fixtureRoot, "oracle", "findings.json"), "utf8"),
+  );
+  return {
+    source,
+    sourceDirectory,
+    evidence,
+    report,
+    candidateFindings: parseReportFindings(report),
+    oracleFindings: oracle.findings,
+    manifestHash,
+  };
+}
+
+function uniqueIds(records, field, label) {
+  const ids = new Set();
+  for (const record of records) {
+    const id = record[field];
+    if (typeof id !== "string" || id.trim() === "") {
+      throw new Error(`malformed ${label} id`);
+    }
+    if (ids.has(id)) {
+      throw new Error(`duplicate ${label} id: ${id}`);
+    }
+    ids.add(id);
+  }
+  return ids;
+}
+
+function buildAdjudicationPacket(sourceData) {
+  const candidateIds = uniqueIds(
+    sourceData.candidateFindings,
+    "id",
+    "candidate",
+  );
+  uniqueIds(sourceData.oracleFindings, "id", "oracle");
+  const score = scoreFindings({
+    oracleFindings: sourceData.oracleFindings,
+    candidateFindings: sourceData.candidateFindings,
+  });
+  const unmatchedCandidateIds = new Set(
+    score.unmatched_candidates
+      .filter(({ status }) => status === "unadjudicated")
+      .map(({ id }) => id),
+  );
+  const unmatchedOracleIds = new Set(
+    score.unmatched_known.map(({ id }) => id),
+  );
+  const candidates = sourceData.candidateFindings
+    .filter(({ id }) =>
+      candidateIds.has(id) && unmatchedCandidateIds.has(id)
+    )
+    .map((finding) => ({
+      candidate_id: finding.id,
+      lens: finding.lens,
+      location: finding.location,
+      finding: finding.finding,
+      edit: finding.suggested_edit,
+    }));
+  const oracles = sourceData.oracleFindings
+    .filter(({ id }) => unmatchedOracleIds.has(id))
+    .map((finding) => ({
+      oracle_id: finding.id,
+      match: {
+        defect_class: finding.match?.defect_class ?? null,
+        lens: finding.match?.lens ?? [],
+        locations: finding.match?.locations ?? [],
+      },
+      source_evidence: {
+        historical_finding_id:
+          finding.source_evidence?.historical_finding_id ?? null,
+        report_location: finding.source_evidence?.report_location ?? null,
+        finding: finding.source_evidence?.finding ?? null,
+        suggested_edit: finding.source_evidence?.suggested_edit ?? null,
+      },
+    }));
+  return {
+    schema_version: ADJUDICATION_PACKET_SCHEMA_VERSION,
+    source: {
+      result_sha256: sourceData.evidence.hashes.result,
+      report_sha256: sourceData.evidence.hashes.report,
+      fixture_manifest_sha256: sourceData.manifestHash,
+    },
+    candidates,
+    oracles,
+  };
+}
+
+async function createAdjudicationPacket(options) {
+  requireOptions(options, ["sourceResult", "fixture", "output"]);
+  const output = resolve(options.output);
+  if (await exists(output)) {
+    throw new Error(`output already exists: ${output}`);
+  }
+  const sourceData = await loadAdjudicationSource(
+    resolve(options.sourceResult),
+    resolve(options.fixture),
+  );
+  const packet = buildAdjudicationPacket(sourceData);
+  const afterEvidence = await immutableEvidenceSnapshot(
+    sourceData.sourceDirectory,
+    sourceData.source,
+  );
+  if (
+    canonicalJson(sourceData.evidence.hashes) !==
+    canonicalJson(afterEvidence.hashes)
+  ) {
+    throw new Error(
+      "source evidence changed during immutable adjudication packet creation",
+    );
+  }
+  await mkdir(dirname(output), { recursive: true });
+  await atomicWriteJson(output, packet);
+  return packet;
+}
+
+function validateAdjudications(records, packet) {
+  if (!Array.isArray(records)) {
+    throw new Error("adjudications JSON must be an array");
+  }
+  const candidateIds = new Set(
+    packet.candidates.map(({ candidate_id }) => candidate_id),
+  );
+  const oracleIds = new Set(
+    packet.oracles.map(({ oracle_id }) => oracle_id),
+  );
+  const seenCandidates = new Set();
+  const seenOracles = new Set();
+  const allowedFields = new Set([
+    "candidate_id",
+    "oracle_id",
+    "route_blind",
+    "disposition",
+  ]);
+  for (const record of records) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error("malformed adjudication record");
+    }
+    for (const field of Object.keys(record)) {
+      if (!allowedFields.has(field)) {
+        if (/route|variant|model|runtime|cost|timing/i.test(field)) {
+          throw new Error(`forbidden adjudication field: ${field}`);
+        }
+        throw new Error(`unknown adjudication field: ${field}`);
+      }
+    }
+    if (
+      typeof record.candidate_id !== "string" ||
+      record.candidate_id.trim() === ""
+    ) {
+      throw new Error("malformed candidate id");
+    }
+    if (!candidateIds.has(record.candidate_id)) {
+      throw new Error(`unknown candidate id: ${record.candidate_id}`);
+    }
+    if (seenCandidates.has(record.candidate_id)) {
+      throw new Error(`duplicate candidate id: ${record.candidate_id}`);
+    }
+    seenCandidates.add(record.candidate_id);
+    if (record.route_blind !== true) {
+      throw new Error("adjudication route_blind must be true");
+    }
+    if (!["supported", "unsupported"].includes(record.disposition)) {
+      throw new Error(
+        "adjudication disposition must be supported or unsupported",
+      );
+    }
+    if (record.disposition === "supported") {
+      if (
+        typeof record.oracle_id !== "string" ||
+        record.oracle_id.trim() === ""
+      ) {
+        throw new Error("malformed oracle id");
+      }
+      if (!oracleIds.has(record.oracle_id)) {
+        throw new Error(`unknown oracle id: ${record.oracle_id}`);
+      }
+      if (seenOracles.has(record.oracle_id)) {
+        throw new Error(`duplicate oracle id: ${record.oracle_id}`);
+      }
+      seenOracles.add(record.oracle_id);
+    } else if (record.oracle_id !== undefined && record.oracle_id !== null) {
+      throw new Error("unsupported adjudication must omit oracle_id");
+    }
+  }
+  return records;
+}
+
+function isQualityResolvableBlocker(reason) {
+  return /^known Blocker recall must be 100%, found /i.test(reason);
+}
+
+async function adjudicateEvaluation(options) {
+  requireOptions(options, [
+    "sourceResult",
+    "fixture",
+    "adjudications",
+    "outputDir",
+  ]);
+  const sourceResultPath = resolve(options.sourceResult);
+  const fixtureRoot = resolve(options.fixture);
+  const adjudicationsPath = resolve(options.adjudications);
+  const outputDirectory = resolve(options.outputDir);
+  if (await exists(outputDirectory)) {
+    throw new Error(`output directory already exists: ${outputDirectory}`);
+  }
+  const sourceDirectory = dirname(sourceResultPath);
+  if (
+    isWithin(sourceDirectory, outputDirectory) ||
+    isWithin(outputDirectory, sourceDirectory)
+  ) {
+    throw new Error("adjudication output must not overlap source evidence");
+  }
+
+  const sourceData = await loadAdjudicationSource(
+    sourceResultPath,
+    fixtureRoot,
+  );
+  const packet = buildAdjudicationPacket(sourceData);
+  const adjudicationsBytes = await readFile(adjudicationsPath);
+  const adjudications = validateAdjudications(
+    JSON.parse(adjudicationsBytes),
+    packet,
+  );
+  const quality = scoreFindings({
+    oracleFindings: sourceData.oracleFindings,
+    candidateFindings: sourceData.candidateFindings,
+    adjudications,
+  });
+  const blockedReasons = (sourceData.source.blocked_reasons ?? [])
+    .filter((reason) => !isQualityResolvableBlocker(reason));
+  if (quality.recall_by_severity.Blocker !== 1) {
+    blockedReasons.push(
+      `known Blocker recall must be 100%, found ${
+        quality.recall_by_severity.Blocker == null
+          ? "unavailable"
+          : `${quality.recall_by_severity.Blocker * 100}%`
+      }`,
+    );
+  }
+
+  const afterEvidence = await immutableEvidenceSnapshot(
+    sourceData.sourceDirectory,
+    sourceData.source,
+  );
+  if (
+    canonicalJson(sourceData.evidence.hashes) !==
+    canonicalJson(afterEvidence.hashes)
+  ) {
+    throw new Error("source evidence changed during immutable adjudication");
+  }
+  const currentInputs = await hashProtectedInputs(
+    sourceData.source.isolation.task_root,
+  );
+  if (
+    canonicalJson(currentInputs) !==
+      canonicalJson(sourceData.source.protected_inputs.before) ||
+    canonicalJson(currentInputs) !==
+      canonicalJson(sourceData.source.protected_inputs.after)
+  ) {
+    throw new Error("source protected inputs changed during adjudication");
+  }
+
+  const result = {
+    ...sourceData.source,
+    id: `${sourceData.source.id}-adjudicated-1`,
+    trial: `${sourceData.source.trial}-adjudicated-1`,
+    status: blockedReasons.length === 0 &&
+        quality.recall_by_severity.Blocker === 1
+      ? "valid"
+      : "blocked",
+    blocked_reasons: blockedReasons,
+    validity: {
+      ...sourceData.source.validity,
+      first_pass: false,
+    },
+    quality,
+    evidence: {
+      ...sourceData.source.evidence,
+      raw_stdout: sourceData.evidence.paths.raw_stdout,
+      raw_stderr: sourceData.evidence.paths.raw_stderr,
+      raw_events: sourceData.evidence.paths.raw_events,
+      report: sourceData.evidence.paths.report,
+      source_result: sourceResultPath,
+      source_result_sha256: sourceData.evidence.hashes.result,
+    },
+    timing: {
+      ...sourceData.source.timing,
+      derived_at: new Date().toISOString(),
+    },
+    derivation: {
+      kind: "route-blind-adjudication",
+      source_result: sourceResultPath,
+      source_result_sha256: sourceData.evidence.hashes.result,
+      source_report: sourceData.evidence.paths.report,
+      source_report_sha256: sourceData.evidence.hashes.report,
+      source_raw_stdout_sha256: sourceData.evidence.hashes.raw_stdout,
+      source_raw_stderr_sha256: sourceData.evidence.hashes.raw_stderr,
+      source_raw_events_sha256: sourceData.evidence.hashes.raw_events,
+      adjudication_packet_sha256: safeHashObject(packet),
+      adjudications: adjudicationsPath,
+      adjudications_sha256: sha256(adjudicationsBytes),
+    },
+    adjudication: {
+      route_blind: true,
+      records: adjudications,
+    },
+  };
+  await mkdir(outputDirectory, { recursive: false });
+  await atomicWriteJson(join(outputDirectory, "result.json"), result);
+  return result;
+}
+
 function expectedRoute(configuration) {
   return {
     primary_runtime: configuration.primaryRuntime,
@@ -2434,13 +2841,17 @@ async function repairEvaluation(options) {
 export async function runCli(args, hooks = {}) {
   const { command, options } = parseArguments(args);
   if (command === "run") return runEvaluation(options, hooks);
+  if (command === "adjudication-packet") {
+    return createAdjudicationPacket(options);
+  }
+  if (command === "adjudicate") return adjudicateEvaluation(options);
   if (command === "repair-model") {
     return repairEvaluationWithModel(options, hooks);
   }
   if (command === "repair") return repairEvaluation(options);
   if (command === "summarize") return summarize(options);
   throw new Error(
-    "usage: evaluate-task-review.mjs <run|repair-model|repair|summarize> [options]",
+    "usage: evaluate-task-review.mjs <run|adjudication-packet|adjudicate|repair-model|repair|summarize> [options]",
   );
 }
 
