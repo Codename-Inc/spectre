@@ -114,13 +114,13 @@ The better your prompt based workflows, the lower the ambiguity, the more AI can
 
 As a former PM I've lived the value of [Canonical Docs](https://naomi.com/canonical-everything-c85441a84e70) (shout out Naomi Gleit). The reasons they work for Humans are the same reasons they work with AI Agents (see 💀 Ambiguity is Death)
 
-In SPECTRE, the **structured workflows** generate some combination of the following canonical docs stored in `docs/tasks/{topic/feature}/specs`
+In SPECTRE, the **structured workflows** generate some combination of the following canonical docs under `.spectre/features/<feature-name>/`:
 
-- `scope.md` - what are we building and importantly what are we NOT building
+- `concepts/scope.md` - what are we building and importantly what are we NOT building
 - `ux.md` - the core user flows and components/layouts/interactions
-- `plan.md` - high level technical design and phasing
-- `execute.md` - compact execution index for wave-based delivery
-- `tasks.json` - canonical task detail used for slicing focused agent assignments
+- `specs/plan.md` - high level technical design and phasing
+- `specs/execute.md` - compact execution index for wave-based delivery
+- `specs/tasks.json` - canonical task detail used for slicing focused agent assignments
 - `reviews/plan_review.md` - independent adversarial plan review for STANDARD/COMPREHENSIVE planning
 - `reviews/task_review.md` - generated task-artifact review for COMPREHENSIVE planning
 - `reviews/comprehensive_code_review.md` - opposing-runtime adversarial code review findings
