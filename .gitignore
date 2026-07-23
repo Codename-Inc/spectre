@@ -5,6 +5,7 @@ grove-logs/
 !/scripts/sync-codex.cjs
 !/scripts/test_sync-codex.cjs
 !/scripts/verify-knowledge-hosts.mjs
+!/scripts/evaluate-task-review.mjs
 !/scripts/translators/
 !/scripts/translators/**
 
