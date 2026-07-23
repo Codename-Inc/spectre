@@ -1176,6 +1176,17 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
         },
       },
       {
+        name: "telemetry field omitted",
+        pattern: /telemetry.*missing.*tokens\.output/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.telemetry.tokens.output;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
         name: "unadjudicated unmatched candidate",
         pattern: /unmatched.*adjudicat|route.blind/i,
         mutate: async ({ root: caseRoot, manifest }) => {
