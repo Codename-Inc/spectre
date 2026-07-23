@@ -10,8 +10,8 @@ Adversarial review of what was just built. A clean-context reviewer tries to fal
 
 ## Inputs
 
-- `$ARGUMENTS` - optional focus guidance, explicit diff/base range, target `OUT_DIR`, and optional `--orchestrated` when another workflow will consume the report.
-- Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
+- `$ARGUMENTS` - optional focus guidance, explicit diff/base range, an explicit source-plan path, target `OUT_DIR`, and optional `--orchestrated` when another workflow will consume the report.
+- Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else an explicitly passed source-plan path ahead of literal `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
 - If the work scope is genuinely ambiguous after inspecting artifacts and git state, ask what to review before dispatching.
 
 ## Working Set

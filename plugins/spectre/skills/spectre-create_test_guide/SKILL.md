@@ -9,8 +9,8 @@ user-invocable: true
 Produce a manual testing guide, scaled to the change, that a human can run to validate the work. Input is the current task's changes; output is one checklist artifact.
 
 ## Inputs
-- `$ARGUMENTS` — optional focus areas to emphasize.
-- Task context: features added/modified/removed, stack/environment, user personas, integration points/dependencies. Read from canonical artifacts (scope.md, plan.md, tasks.json slices) and the diff. Use `execute.md` only to locate `tasks.json`; do not inline the full task graph.
+- `$ARGUMENTS` — optional focus areas to emphasize and an explicit source-plan path.
+- Task context: features added/modified/removed, stack/environment, user personas, integration points/dependencies. Prioritize an explicitly passed source-plan path ahead of literal `plan.md`; otherwise read from canonical artifacts (scope.md, plan.md, tasks.json slices) and the diff. Use `execute.md` only to locate `tasks.json`; do not inline the full task graph.
 
 ## Working Set
 - Read-only: task artifacts under `docs/tasks/{branch}/`, the implemented diff.
