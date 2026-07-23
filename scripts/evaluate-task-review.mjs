@@ -791,8 +791,11 @@ function processSnapshot() {
 
 function heavyProcess(processRecord) {
   const command = processRecord.command ?? "";
+  const claudeMetadataProbe =
+    /(?:^|\/)claude\s+(?:--version|auth\s+status(?:\s+--json)?)\s*$/i
+      .test(command);
   return (
-    /(?:^|\/)claude(?:\s|$)/i.test(command) ||
+    (!claudeMetadataProbe && /(?:^|\/)claude(?:\s|$)/i.test(command)) ||
     /(?:^|\/)codex\s+exec(?:\s|$)/i.test(command) ||
     /\bnode(?:\S*)?\s+--test(?:\s|$)/i.test(command) ||
     /\bnode(?:\S*)?\s+.*(?:scripts\/sync-codex\.cjs|verify-spectre\/scripts\/verify\.mjs)(?:\s|$)/i

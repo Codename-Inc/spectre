@@ -842,6 +842,31 @@ test("quiescence uses injected pre/continuous/post snapshots, excludes the owned
     false,
   );
 
+  const metadataProbes = assessQuiescence({
+    evaluator_pid: 100,
+    reviewer_pid: 200,
+    snapshots: {
+      pre: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+        { pid: 401, ppid: 1, command: "claude --version" },
+        { pid: 402, ppid: 1, command: "claude auth status --json" },
+        { pid: 403, ppid: 1, command: "codex --version" },
+      ],
+      continuous: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+        { pid: 404, ppid: 1, command: "/usr/local/bin/claude --version" },
+      ],
+      post: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+    },
+  });
+  assert.equal(
+    metadataProbes.clean,
+    true,
+    "read-only CLI metadata probes must not invalidate a timed model run",
+  );
+
   const missingSamples = assessQuiescence({
     evaluator_pid: 100,
     reviewer_pid: 200,
