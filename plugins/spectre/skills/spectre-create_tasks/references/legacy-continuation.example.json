@@ -1,0 +1,19 @@
+{
+  "feature": "Example Feature",
+  "feature_root": ".spectre/features/example-feature",
+  "legacy_source": {
+    "path": "docs/tasks/example/specs/tasks.json",
+    "allowed_workflow_status_field": "status",
+    "before_bytes": "{\n  \"id\": \"1.1.1\",\n  \"title\": \"Preserve legacy bytes\",\n  \"status\": \"in_progress\"\n}\n",
+    "after_bytes": "{\n  \"id\": \"1.1.1\",\n  \"title\": \"Preserve legacy bytes\",\n  \"status\": \"done\"\n}\n"
+  },
+  "canonical_output": {
+    "path": "specs/execution_state.md",
+    "feature": "Example Feature",
+    "feature_root": ".spectre/features/example-feature",
+    "source_manifest": {
+      "legacy_source": "docs/tasks/example/specs/tasks.json"
+    }
+  },
+  "migration_performed": false
+}

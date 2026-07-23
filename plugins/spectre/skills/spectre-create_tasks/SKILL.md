@@ -23,7 +23,7 @@ Transform requirements into two execution artifacts: `execute.md` for primary-ag
 - An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for new canonical documents and record the legacy source in the document manifest.
 - Ensure `{FEATURE_ROOT}/specs` exists.
 - Default pair: `EXECUTE_FILE={FEATURE_ROOT}/specs/execute.md`, `DETAIL_FILE={FEATURE_ROOT}/specs/tasks.json`. If either exists for another feature, write a scoped pair with the same basename: `{name}.execute.md` + `{name}.tasks.json`.
-- Reference fixtures: `references/execute.example.md`, `references/tasks.example.json`.
+- Reference fixtures: `references/execute.example.md`, `references/tasks.example.json`, and `references/legacy-continuation.example.json`.
 - Research only if plan/context do not name target files/patterns: dispatch `@spectre:finder`, `@spectre:analyst`, `@spectre:patterns`; fold returns into `task_context.md` `## Technical Research`. Skip for LIGHT or clear single-component scope.
 
 ## Method / guardrails

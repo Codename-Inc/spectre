@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 
@@ -40,6 +40,21 @@ const noContinuationInference =
 
 function read(relativePath) {
   return readFileSync(join(projectRoot, relativePath), 'utf8');
+}
+
+function assertFeatureRelativePath(featureRoot, artifactPath, label) {
+  assert.equal(artifactPath.startsWith('/'), false, `${label}: must not be absolute`);
+  assert.equal(
+    artifactPath === '..' || artifactPath.startsWith(`..${sep}`),
+    false,
+    `${label}: must not escape the feature root`,
+  );
+  const resolvedRoot = resolve(projectRoot, featureRoot);
+  const resolvedArtifact = resolve(resolvedRoot, artifactPath);
+  assert.ok(
+    resolvedArtifact.startsWith(`${resolvedRoot}${sep}`),
+    `${label}: does not resolve beneath ${featureRoot}`,
+  );
 }
 
 function assertContract(text, contract, file) {
@@ -222,7 +237,7 @@ test('external planning reviewers receive the exact inherited root without branc
   }
 });
 
-test('tasks JSON fixture carries feature and feature_root metadata', () => {
+test('tasks JSON fixture carries self-location metadata and resolvable references', () => {
   const file = 'plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json';
   const fixture = JSON.parse(read(file));
   assert.equal(fixture.meta.feature, 'Example Feature', `${file}: missing meta.feature`);
@@ -231,23 +246,98 @@ test('tasks JSON fixture carries feature and feature_root metadata', () => {
     '.spectre/features/example-feature',
     `${file}: missing meta.feature_root`,
   );
+
+  assert.deepEqual(
+    fixture.meta.requirements_trace.map((trace) => trace.source),
+    [
+      'specs/plan.md ## Technical Approach',
+      'concepts/product-scope.md ## Success Criteria',
+    ],
+    `${file}: requirements sources must use feature-root-relative artifact paths`,
+  );
+  for (const [index, trace] of fixture.meta.requirements_trace.entries()) {
+    const artifactPath = trace.source.split(' ## ', 1)[0];
+    assertFeatureRelativePath(
+      fixture.meta.feature_root,
+      artifactPath,
+      `${file}: requirements_trace[${index}].source`,
+    );
+  }
+
+  for (const phase of fixture.phases) {
+    for (const parent of phase.parents) {
+      for (const subtask of parent.subtasks) {
+        for (const [index, context] of subtask.context.entries()) {
+          assert.match(
+            context.path,
+            /^plugins\/spectre\//,
+            `${file}: ${subtask.id}.context[${index}].path must remain repo-relative`,
+          );
+        }
+      }
+    }
+  }
 });
 
-test('execute fixture is self-locating and contains no unresolved legacy artifact roots', () => {
+test('execute fixture is self-locating and resolves every manifest path from its feature root', () => {
   const file = 'plugins/spectre/skills/spectre-create_tasks/references/execute.example.md';
   const content = read(file);
   assert.ok(/^Feature: Example Feature$/m.test(content), `${file}: missing Feature metadata`);
-  assert.ok(
-    /^Feature Root: \.spectre\/features\/example-feature$/m.test(content),
-    `${file}: missing Feature Root metadata`,
+  const featureRoot = content.match(/^Feature Root: (.+)$/m)?.[1];
+  assert.equal(featureRoot, '.spectre/features/example-feature', `${file}: missing Feature Root metadata`);
+
+  const manifestPaths = content
+    .split('\n')
+    .map((line) => line.match(/^- (?:Scope|UX|Prototype|Plan|Research|Tasks JSON): `([^`]+)`$/)?.[1])
+    .filter(Boolean);
+  assert.equal(manifestPaths.length, 6, `${file}: incomplete artifact manifest`);
+  for (const artifactPath of manifestPaths) {
+    assertFeatureRelativePath(featureRoot, artifactPath, `${file}: ${artifactPath}`);
+  }
+});
+
+test('legacy continuation fixture preserves exact source bytes except one allowed status field', () => {
+  const file =
+    'plugins/spectre/skills/spectre-create_tasks/references/legacy-continuation.example.json';
+  assert.match(
+    read('plugins/spectre/skills/spectre-create_tasks/SKILL.md'),
+    /references\/legacy-continuation\.example\.json/,
+    'spectre-create_tasks must name the legacy continuation fixture',
+  );
+  const fixture = JSON.parse(read(file));
+  const legacy = fixture.legacy_source;
+  const output = fixture.canonical_output;
+
+  assert.equal(fixture.feature, 'Example Feature', `${file}: missing feature`);
+  assert.equal(
+    fixture.feature_root,
+    '.spectre/features/example-feature',
+    `${file}: missing feature_root`,
+  );
+  assert.match(legacy.path, /^docs\/tasks\/[^/]+\/.+/, `${file}: legacy source is not repo-relative`);
+  assert.equal(legacy.allowed_workflow_status_field, 'status');
+
+  const before = JSON.parse(legacy.before_bytes);
+  const after = JSON.parse(legacy.after_bytes);
+  assert.notEqual(before.status, after.status, `${file}: status fixture did not change`);
+  assert.equal(
+    legacy.after_bytes.replace(
+      `"status": "${after.status}"`,
+      `"status": "${before.status}"`,
+    ),
+    legacy.before_bytes,
+    `${file}: legacy bytes changed outside the allowed status field`,
   );
 
-  const legacyLines = content
-    .split('\n')
-    .map((line, index) => ({ line: index + 1, text: line }))
-    .filter(({ text }) => text.includes('docs/tasks/'))
-    .map(({ line, text }) => `${file}:${line}: ${text.trim()}`);
-  assert.deepEqual(legacyLines, [], `${file}: unresolved feature artifact references`);
+  assert.equal(output.feature, fixture.feature, `${file}: canonical output feature drift`);
+  assert.equal(output.feature_root, fixture.feature_root, `${file}: canonical output root drift`);
+  assertFeatureRelativePath(fixture.feature_root, output.path, `${file}: canonical_output.path`);
+  assert.equal(
+    output.source_manifest.legacy_source,
+    legacy.path,
+    `${file}: canonical output does not record its legacy source`,
+  );
+  assert.equal(fixture.migration_performed, false, `${file}: fixture must not move or migrate`);
 });
 
 test('producer contract treats the physical feature directory as rename authority', () => {

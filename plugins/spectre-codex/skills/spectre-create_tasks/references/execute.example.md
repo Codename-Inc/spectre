@@ -1,16 +1,20 @@
 # Execute Index — Example Feature
 
+Feature: Example Feature
+Feature Root: .spectre/features/example-feature
+
 ## Document Manifest
 Read these docs before execution:
-- Scope: `docs/tasks/example/concepts/product-scope.md`
-- UX: `docs/tasks/example/specs/user-flows.md`
-- Prototype: `docs/tasks/example/prototypes/example-flow.html`
-- Plan: `docs/tasks/example/specs/plan.md`
-- Research: `docs/tasks/example/task_context.md`
+- Scope: `concepts/product-scope.md`
+- UX: `ux.md`
+- Prototype: `prototypes/example-flow.html`
+- Plan: `specs/plan.md`
+- Research: `task_context.md`
 
 ## Task Detail Source
 Do not read this file whole:
-- Tasks JSON: `docs/tasks/example/specs/tasks.json`
+- Feature Root: `.spectre/features/example-feature`
+- Tasks JSON: `specs/tasks.json`
 
 Use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
 
