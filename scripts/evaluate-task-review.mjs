@@ -30,6 +30,11 @@ import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = "task-review-evaluation-result/v1";
 const AGGREGATE_SCHEMA_VERSION = "task-review-evaluation-summary/v1";
+const PAIRED_AGGREGATE_SCHEMA_VERSION =
+  "task-review-evaluation-summary/v2";
+const SCHEDULE_SCHEMA_VERSION = "task-review-paired-schedule/v1";
+const FREEZE_SCHEMA_VERSION = "task-review-evaluation-freeze/v1";
+const COUNTED_RESULTS_SCHEMA_VERSION = "task-review-counted-results/v1";
 const ADJUDICATION_PACKET_SCHEMA_VERSION =
   "task-review-adjudication-packet/v1";
 const SEVERITIES = ["Blocker", "High", "Medium", "Low"];
@@ -77,6 +82,7 @@ const EVALUATOR_REPOSITORY_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const EVALUATOR_VERSION = "evaluate-task-review/v1";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -113,6 +119,14 @@ async function atomicWriteJson(path, value) {
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`);
   await rename(temporaryPath, path);
+}
+
+async function writeNewJson(path, value, label) {
+  if (await exists(path)) {
+    throw new Error(`${label} output already exists; refusing overwrite: ${path}`);
+  }
+  await mkdir(dirname(path), { recursive: true });
+  await atomicWriteJson(path, value);
 }
 
 async function hashFile(path) {
@@ -187,6 +201,45 @@ function requireOptions(options, names) {
       )} is required`);
     }
   }
+}
+
+function scheduleTrialId(block, sequence, variant) {
+  return `b${String(block).padStart(2, "0")}-s${String(sequence).padStart(
+    2,
+    "0",
+  )}-${variant}-a01`;
+}
+
+function buildSchedule(seed) {
+  const variants = Object.keys(VARIANTS);
+  return {
+    schema_version: SCHEDULE_SCHEMA_VERSION,
+    seed,
+    variants,
+    blocks: [1, 2, 3].map((block) => {
+      const ordered = [...variants].sort((left, right) =>
+        sha256(`${seed}\0${block}\0${left}`).localeCompare(
+          sha256(`${seed}\0${block}\0${right}`),
+        )
+      );
+      return {
+        block,
+        trials: ordered.map((variant, index) => ({
+          sequence: index + 1,
+          variant,
+          trial_id: scheduleTrialId(block, index + 1, variant),
+        })),
+      };
+    }),
+  };
+}
+
+async function createSchedule(options) {
+  requireOptions(options, ["seed", "output"]);
+  const output = resolve(options.output);
+  const schedule = buildSchedule(options.seed);
+  await writeNewJson(output, schedule, "schedule");
+  return schedule;
 }
 
 function cleanEnvironment() {
@@ -462,6 +515,138 @@ async function loadPrompt(fixtureRoot, variant, taskRoot, reportPath) {
     );
 }
 
+async function normalizedPromptHash(fixtureRoot, variant) {
+  const taskRoot = "/TASK_ROOT";
+  const reportPath = "/TASK_ROOT/reviews/task_review.md";
+  const prompt = await loadPrompt(
+    fixtureRoot,
+    variant,
+    taskRoot,
+    reportPath,
+  );
+  return sha256(prompt.replaceAll("\\", "/"));
+}
+
+function gitOutput(args) {
+  const result = spawnSync("git", args, {
+    cwd: EVALUATOR_REPOSITORY_ROOT,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      result.error?.message ||
+        result.stderr?.trim() ||
+        `git ${args.join(" ")} exited ${result.status}`,
+    );
+  }
+  return result.stdout;
+}
+
+async function createFreeze(options) {
+  requireOptions(options, ["fixture", "priceBasis", "output"]);
+  const fixtureRoot = resolve(options.fixture);
+  const priceBasisPath = resolve(options.priceBasis);
+  const output = resolve(options.output);
+  if (await exists(output)) {
+    throw new Error(`freeze output already exists; refusing overwrite: ${output}`);
+  }
+  const { manifest, manifestHash } = await verifyFixture(fixtureRoot);
+  const paths = {
+    canonicalSkill: join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre",
+      "skills",
+      "spectre-task_review",
+      "SKILL.md",
+    ),
+    generatedSkill: join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre-codex",
+      "skills",
+      "spectre-task_review",
+      "SKILL.md",
+    ),
+    canonicalHelper: join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre",
+      "skills",
+      "spectre-task_review",
+      "scripts",
+      "task-review-safety.mjs",
+    ),
+    generatedHelper: join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre-codex",
+      "skills",
+      "spectre-task_review",
+      "scripts",
+      "task-review-safety.mjs",
+    ),
+  };
+  const environment = cleanEnvironment();
+  const claudeVersion = commandVersion(
+    process.env.CLAUDE_BIN || "claude",
+    environment,
+  );
+  const codexVersion = commandVersion(
+    process.env.CODEX_BIN || "codex",
+    environment,
+  );
+  const status = gitOutput(["status", "--porcelain=v1", "--untracked-files=all"]);
+  const dirtyDiff = [
+    gitOutput(["diff", "--binary", "HEAD", "--"]),
+    status,
+  ].join("\0");
+  const promptHashes = {};
+  for (const variant of Object.keys(VARIANTS)) {
+    promptHashes[variant] = await normalizedPromptHash(fixtureRoot, variant);
+  }
+  const freeze = {
+    schema_version: FREEZE_SCHEMA_VERSION,
+    freeze_id: null,
+    versions: {
+      evaluator: EVALUATOR_VERSION,
+      node: process.version,
+      reviewer_clis: {
+        claude: claudeVersion.value,
+        codex: codexVersion.value,
+      },
+    },
+    repository: {
+      commit: gitOutput(["rev-parse", "HEAD"]).trim(),
+      dirty: status.length > 0,
+      dirty_diff_sha256: sha256(dirtyDiff),
+    },
+    hashes: {
+      evaluator: await hashFile(fileURLToPath(import.meta.url)),
+      fixture_manifest: manifestHash,
+      fixture_components: safeHashObject(manifest.components),
+      contracts: {
+        baseline: await hashFile(join(fixtureRoot, "baseline", "contract.json")),
+        candidate: await hashFile(join(fixtureRoot, "candidate", "contract.json")),
+      },
+      price_basis: await hashFile(priceBasisPath),
+      skills: {
+        canonical: await hashFile(paths.canonicalSkill),
+        generated: await hashFile(paths.generatedSkill),
+      },
+      helpers: {
+        canonical: await hashFile(paths.canonicalHelper),
+        generated: await hashFile(paths.generatedHelper),
+      },
+      normalized_prompts: promptHashes,
+    },
+  };
+  freeze.freeze_id = `freeze-${safeHashObject(freeze).slice(0, 16)}`;
+  await writeNewJson(output, freeze, "freeze");
+  return freeze;
+}
+
 export function reviewerCommand(configuration, prompt, workspace, custom) {
   if (custom.command) {
     return {
@@ -538,6 +723,115 @@ function commandVersion(command, environment) {
   };
 }
 
+function processSnapshot() {
+  const result = spawnSync("ps", ["-axo", "pid=,ppid=,command="], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) return [];
+  return result.stdout.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+    return match
+      ? [{
+        pid: Number(match[1]),
+        ppid: Number(match[2]),
+        command: match[3],
+      }]
+      : [];
+  });
+}
+
+function heavyProcess(processRecord) {
+  const command = processRecord.command ?? "";
+  return (
+    /(?:^|\/)claude(?:\s|$)/i.test(command) ||
+    /(?:^|\/)codex\s+exec(?:\s|$)/i.test(command) ||
+    /\bnode(?:\S*)?\s+--test(?:\s|$)/i.test(command) ||
+    /\bevaluate-task-review\.mjs\s+(?:run|repair-model)(?:\s|$)/i.test(command)
+  );
+}
+
+function stageSnapshots(value) {
+  if (!Array.isArray(value)) return [];
+  return Array.isArray(value[0]) ? value : [value];
+}
+
+export function assessQuiescence({
+  evaluator_pid: evaluatorPid,
+  reviewer_pid: reviewerPid,
+  snapshots,
+  sampling = {},
+}) {
+  const ownedRoots = new Set(
+    [evaluatorPid, reviewerPid].filter((pid) => Number.isInteger(pid)),
+  );
+  const assessStage = (rawSnapshots) => {
+    const samples = stageSnapshots(rawSnapshots);
+    const contaminants = new Map();
+    for (const snapshot of samples) {
+      const owned = new Set(ownedRoots);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const processRecord of snapshot) {
+          if (owned.has(processRecord.ppid) && !owned.has(processRecord.pid)) {
+            owned.add(processRecord.pid);
+            changed = true;
+          }
+        }
+      }
+      for (const processRecord of snapshot) {
+        if (!owned.has(processRecord.pid) && heavyProcess(processRecord)) {
+          contaminants.set(
+            processRecord.pid,
+            {
+              pid: processRecord.pid,
+              ppid: processRecord.ppid,
+              command: processRecord.command,
+            },
+          );
+        }
+      }
+    }
+    const values = [...contaminants.values()].sort(
+      (left, right) => left.pid - right.pid,
+    );
+    return {
+      clean: values.length === 0,
+      contaminants: values,
+      samples: samples.length,
+    };
+  };
+  const pre = assessStage(snapshots?.pre);
+  const continuous = assessStage(snapshots?.continuous);
+  const post = assessStage(snapshots?.post);
+  const contaminants = new Map();
+  for (const stage of [pre, continuous, post]) {
+    for (const contaminant of stage.contaminants) {
+      contaminants.set(contaminant.pid, contaminant);
+    }
+  }
+  const clean = pre.clean && continuous.clean && post.clean;
+  return {
+    clean,
+    pre,
+    continuous,
+    post,
+    owned_reviewer_tree_excluded: true,
+    sampling: {
+      clean,
+      sample_count: pre.samples + continuous.samples + post.samples,
+      interval_ms: sampling.interval_ms ?? null,
+      started_at: sampling.started_at ?? null,
+      ended_at: sampling.ended_at ?? null,
+      elapsed_ms: sampling.elapsed_ms ?? null,
+      contaminants: [...contaminants.values()].sort(
+        (left, right) => left.pid - right.pid,
+      ),
+    },
+  };
+}
+
 function runReviewer(command, args, options) {
   return new Promise((resolveRun) => {
     const startedAt = performance.now();
@@ -551,6 +845,7 @@ function runReviewer(command, args, options) {
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    if (options.onSpawn) options.onSpawn(child.pid);
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
@@ -583,6 +878,70 @@ function runReviewer(command, args, options) {
     child.on("close", (exitCode, signal) => {
       finish({ exitCode, signal, error: null });
     });
+  });
+}
+
+async function runReviewerWithQuiescence(command, args, options, hooks = {}) {
+  const takeSnapshot = hooks.processSnapshot ?? processSnapshot;
+  const samplingStarted = performance.now();
+  const samplingStartedAt = new Date().toISOString();
+  const intervalMs = 250;
+  const snapshots = {
+    pre: takeSnapshot("pre"),
+    continuous: [],
+    post: [],
+  };
+  let reviewerPid = null;
+  let interval = null;
+  const processResult = await runReviewer(command, args, {
+    ...options,
+    onSpawn(pid) {
+      reviewerPid = pid;
+      snapshots.continuous.push(takeSnapshot("continuous"));
+      interval = setInterval(() => {
+        snapshots.continuous.push(takeSnapshot("continuous"));
+      }, intervalMs);
+      interval.unref?.();
+    },
+  });
+  if (interval) clearInterval(interval);
+  snapshots.post = takeSnapshot("post");
+  const samplingEnded = performance.now();
+  return {
+    processResult,
+    quiescence: assessQuiescence({
+      evaluator_pid: process.pid,
+      reviewer_pid: reviewerPid,
+      snapshots,
+      sampling: {
+        interval_ms: intervalMs,
+        started_at: samplingStartedAt,
+        ended_at: new Date().toISOString(),
+        elapsed_ms: samplingEnded - samplingStarted,
+      },
+    }),
+  };
+}
+
+function assessQuiescenceWithoutReviewer(takeSnapshot = processSnapshot) {
+  const samplingStarted = performance.now();
+  const samplingStartedAt = new Date().toISOString();
+  const snapshots = {
+    pre: takeSnapshot("pre"),
+    continuous: [],
+    post: takeSnapshot("post"),
+  };
+  const samplingEnded = performance.now();
+  return assessQuiescence({
+    evaluator_pid: process.pid,
+    reviewer_pid: null,
+    snapshots,
+    sampling: {
+      interval_ms: null,
+      started_at: samplingStartedAt,
+      ended_at: new Date().toISOString(),
+      elapsed_ms: samplingEnded - samplingStarted,
+    },
   });
 }
 
@@ -1280,6 +1639,130 @@ function safeHashObject(value) {
   return sha256(canonicalJson(value));
 }
 
+async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
+  const hasFreeze = options.freeze !== undefined;
+  const hasSchedule = options.schedule !== undefined;
+  if (!hasFreeze && !hasSchedule) return null;
+  if (!hasFreeze || !hasSchedule) {
+    throw new Error("paired run requires both --freeze and --schedule");
+  }
+  const freezePath = resolve(options.freeze);
+  const schedulePath = resolve(options.schedule);
+  const [freezeBytes, scheduleBytes] = await Promise.all([
+    readFile(freezePath),
+    readFile(schedulePath),
+  ]);
+  const freeze = JSON.parse(freezeBytes);
+  const schedule = JSON.parse(scheduleBytes);
+  if (freeze.schema_version !== FREEZE_SCHEMA_VERSION) {
+    throw new Error("unsupported freeze manifest");
+  }
+  if (schedule.schema_version !== SCHEDULE_SCHEMA_VERSION) {
+    throw new Error("unsupported paired schedule");
+  }
+  if (canonicalJson(schedule) !== canonicalJson(buildSchedule(schedule.seed))) {
+    throw new Error("paired schedule is not the canonical seed-derived 3x3 schedule");
+  }
+  const scheduledTrials = schedule.blocks.flatMap((block) =>
+    block.trials.map((trial) => ({ ...trial, block: block.block }))
+  );
+  const scheduled = scheduledTrials.find(
+    (trial) => trial.trial_id === options.trial,
+  );
+  if (!scheduled) {
+    throw new Error(`trial is not present in paired schedule: ${options.trial}`);
+  }
+  if (scheduled.variant !== options.variant) {
+    throw new Error("paired schedule trial variant mismatch");
+  }
+  if (
+    options.block !== undefined &&
+    Number(options.block) !== scheduled.block
+  ) {
+    throw new Error("paired schedule trial block mismatch");
+  }
+
+  const { manifest, manifestHash } = await verifyFixture(fixtureRoot);
+  const currentHashes = {
+    evaluator: await hashFile(fileURLToPath(import.meta.url)),
+    fixture_manifest: manifestHash,
+    fixture_components: safeHashObject(manifest.components),
+    baseline_contract: await hashFile(
+      join(fixtureRoot, "baseline", "contract.json"),
+    ),
+    candidate_contract: await hashFile(
+      join(fixtureRoot, "candidate", "contract.json"),
+    ),
+    price_basis: await hashFile(priceBasisPath),
+    canonical_skill: await hashFile(join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre",
+      "skills",
+      "spectre-task_review",
+      "SKILL.md",
+    )),
+    generated_skill: await hashFile(join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre-codex",
+      "skills",
+      "spectre-task_review",
+      "SKILL.md",
+    )),
+    canonical_helper: await hashFile(join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre",
+      "skills",
+      "spectre-task_review",
+      "scripts",
+      "task-review-safety.mjs",
+    )),
+    generated_helper: await hashFile(join(
+      EVALUATOR_REPOSITORY_ROOT,
+      "plugins",
+      "spectre-codex",
+      "skills",
+      "spectre-task_review",
+      "scripts",
+      "task-review-safety.mjs",
+    )),
+    normalized_prompt: await normalizedPromptHash(
+      fixtureRoot,
+      options.variant,
+    ),
+  };
+  const frozenHashes = {
+    evaluator: freeze.hashes?.evaluator,
+    fixture_manifest: freeze.hashes?.fixture_manifest,
+    fixture_components: freeze.hashes?.fixture_components,
+    baseline_contract: freeze.hashes?.contracts?.baseline,
+    candidate_contract: freeze.hashes?.contracts?.candidate,
+    price_basis: freeze.hashes?.price_basis,
+    canonical_skill: freeze.hashes?.skills?.canonical,
+    generated_skill: freeze.hashes?.skills?.generated,
+    canonical_helper: freeze.hashes?.helpers?.canonical,
+    generated_helper: freeze.hashes?.helpers?.generated,
+    normalized_prompt:
+      freeze.hashes?.normalized_prompts?.[options.variant],
+  };
+  for (const [name, current] of Object.entries(currentHashes)) {
+    if (frozenHashes[name] !== current) {
+      throw new Error(`freeze ${name.replaceAll("_", " ")} mismatch`);
+    }
+  }
+  if (freeze.repository?.commit !== gitOutput(["rev-parse", "HEAD"]).trim()) {
+    throw new Error("freeze repository commit mismatch");
+  }
+  return {
+    block: scheduled.block,
+    freezeHash: sha256(freezeBytes),
+    scheduleHash: sha256(scheduleBytes),
+    normalizedPromptHash: currentHashes.normalized_prompt,
+  };
+}
+
 async function runEvaluation(options, hooks = {}) {
   requireOptions(options, [
     "fixture",
@@ -1295,6 +1778,11 @@ async function runEvaluation(options, hooks = {}) {
   const fixtureRoot = resolve(options.fixture);
   const outputDirectory = resolve(options.outputDir);
   const priceBasisPath = resolve(options.priceBasis);
+  const pairedContext = await loadPairedContext(
+    options,
+    fixtureRoot,
+    priceBasisPath,
+  );
   const timeoutMs = Number(options.timeoutMs ?? 1_200_000);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive number");
@@ -1411,22 +1899,28 @@ async function runEvaluation(options, hooks = {}) {
     if (hooks.beforeReviewer) {
       await hooks.beforeReviewer({ workspace, environment, prompt });
     }
-    const processResult = authenticationBlocked
+    const reviewerExecution = authenticationBlocked
       ? {
-        exitCode: null,
-        signal: null,
-        error: null,
-        stdout: "",
-        stderr: "",
-        timedOut: false,
-        skipped: true,
-        durationMs: 0,
+        processResult: {
+          exitCode: null,
+          signal: null,
+          error: null,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          skipped: true,
+          durationMs: 0,
+        },
+        quiescence: assessQuiescenceWithoutReviewer(
+          hooks.processSnapshot ?? processSnapshot,
+        ),
       }
-      : await runReviewer(command.command, command.args, {
+      : await runReviewerWithQuiescence(command.command, command.args, {
         cwd: workspace,
         env: environment,
         timeoutMs,
-      });
+      }, hooks);
+    const { processResult, quiescence } = reviewerExecution;
     const reviewerEnded = performance.now();
     const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
     const rawStderrPath = join(rawDirectory, "reviewer.stderr.txt");
@@ -1493,6 +1987,9 @@ async function runEvaluation(options, hooks = {}) {
         }`,
       );
     }
+    if (pairedContext && !quiescence.clean) {
+      blockedReasons.push("quiescence attestation is unclean or contaminated");
+    }
     const validationEnded = performance.now();
     const intervals = {
       preflight_ms: preflightEnded - totalStarted,
@@ -1515,7 +2012,13 @@ async function runEvaluation(options, hooks = {}) {
       id: options.trial,
       variant: options.variant,
       trial: options.trial,
-      block: options.block ?? null,
+      block: pairedContext?.block ?? options.block ?? null,
+      ...(pairedContext
+        ? {
+          freeze_manifest_sha256: pairedContext.freezeHash,
+          schedule_sha256: pairedContext.scheduleHash,
+        }
+        : {}),
       status: blockedReasons.length === 0 ? "valid" : "blocked",
       blocked_reasons: blockedReasons,
       route: {
@@ -1526,7 +2029,7 @@ async function runEvaluation(options, hooks = {}) {
         invocation_route: configuration.route,
       },
       versions: {
-        evaluator: "evaluate-task-review/v1",
+        evaluator: EVALUATOR_VERSION,
         node: process.version,
         reviewer_cli: version,
       },
@@ -1535,6 +2038,9 @@ async function runEvaluation(options, hooks = {}) {
         fixture_components: safeHashObject(manifest.components),
         contract: contractHash,
         prompt: sha256(prompt),
+        normalized_prompt:
+          pairedContext?.normalizedPromptHash ??
+          await normalizedPromptHash(fixtureRoot, options.variant),
         price_basis: priceBasisHash,
         environment: safeHashObject({
           platform: process.platform,
@@ -1589,6 +2095,7 @@ async function runEvaluation(options, hooks = {}) {
         exclusive: true,
         attestation: lockAttestation,
       },
+      quiescence,
       validity: {
         first_pass: reportValidation.valid,
         report: reportValidation.valid,
@@ -1675,13 +2182,364 @@ async function readRunResults(runsPath) {
   return results;
 }
 
+const PAIRED_METRICS = [
+  { path: ["latency_ms"], read: (run) => run.timing?.total_ms },
+  { path: ["tokens", "input"], telemetry: ["tokens", "input"] },
+  {
+    path: ["tokens", "cached_input"],
+    telemetry: ["tokens", "cached_input"],
+  },
+  { path: ["tokens", "output"], telemetry: ["tokens", "output"] },
+  {
+    path: ["tokens", "reasoning_output"],
+    telemetry: ["tokens", "reasoning_output"],
+  },
+  { path: ["tokens", "total"], telemetry: ["tokens", "total"] },
+  {
+    path: ["cost", "actual_runtime_usd"],
+    telemetry: ["cost", "actual_runtime_usd"],
+    label: "actual",
+  },
+  {
+    path: ["cost", "estimated_token_usd"],
+    telemetry: ["cost", "estimated_token_usd"],
+    label: "estimate",
+  },
+  { path: ["tool_calls"], telemetry: ["tool_calls"] },
+  { path: ["messages"], telemetry: ["messages"] },
+  {
+    path: ["validity", "first_pass"],
+    read: (run) => run.validity?.first_pass === true ? 1 : 0,
+  },
+  { path: ["process", "retries"], read: (run) => run.process?.retries ?? 0 },
+  { path: ["process", "repairs"], read: (run) => run.process?.repairs ?? 0 },
+  {
+    path: ["process", "fallbacks"],
+    read: (run) => run.process?.fallback?.value == null ? 0 : 1,
+  },
+  ...SEVERITIES.map((severity) => ({
+    path: ["quality", "recall_by_severity", severity],
+    read: (run) => run.quality?.recall_by_severity?.[severity],
+  })),
+  {
+    path: ["quality", "weighted_recall"],
+    read: (run) => run.quality?.weighted_recall,
+  },
+  {
+    path: ["quality", "supported_precision"],
+    read: (run) => run.quality?.supported_precision,
+  },
+  {
+    path: ["quality", "duplicates"],
+    read: (run) => run.quality?.duplicate_count,
+  },
+  {
+    path: ["quality", "severity_drift"],
+    read: (run) => run.quality?.severity_drift?.length ?? 0,
+  },
+  {
+    path: ["quality", "false_scope_changes"],
+    read: (run) => run.quality?.false_scope_change_count,
+  },
+  {
+    path: ["quality", "unmatched_findings"],
+    read: (run) =>
+      (run.quality?.unmatched_known?.length ?? 0) +
+      (run.quality?.unmatched_candidates?.length ?? 0),
+  },
+  {
+    path: ["quality", "non_blocker_losses"],
+    read: (run) =>
+      (run.quality?.unmatched_known ?? []).filter(
+        ({ severity }) => severity !== "Blocker",
+      ).length,
+  },
+];
+
+function valueAt(value, path) {
+  let current = value;
+  for (const key of path) current = current?.[key];
+  return current;
+}
+
+function telemetryMetric(run, path) {
+  const direct = valueAt(run.telemetry, path)?.value;
+  if (typeof direct === "number") return direct;
+  const derived = ["source", "repair"].map((part) =>
+    valueAt(run.telemetry?.[part], path)?.value
+  );
+  return derived.some((value) => typeof value === "number")
+    ? derived.reduce(
+      (sum, value) => sum + (typeof value === "number" ? value : 0),
+      0,
+    )
+    : null;
+}
+
+function pairedMetricValue(run, metric) {
+  const value = metric.telemetry
+    ? telemetryMetric(run, metric.telemetry)
+    : metric.read(run);
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function setNested(target, path, value) {
+  let current = target;
+  for (const key of path.slice(0, -1)) {
+    current[key] ??= {};
+    current = current[key];
+  }
+  current[path.at(-1)] = value;
+}
+
+function aggregatePairedRuns(runs) {
+  const variants = {};
+  for (const variant of Object.keys(VARIANTS)) {
+    const variantRuns = runs
+      .filter((run) => run.variant === variant)
+      .sort((left, right) => Number(left.block) - Number(right.block));
+    const aggregate = {};
+    for (const metric of PAIRED_METRICS) {
+      const individual = variantRuns.map((run) =>
+        pairedMetricValue(run, metric)
+      );
+      const available = individual.filter((value) => value !== null);
+      setNested(aggregate, metric.path, {
+        individual,
+        median: median(available),
+        range: available.length === 0
+          ? []
+          : [Math.min(...available), Math.max(...available)],
+        ...(metric.label ? { label: metric.label } : {}),
+      });
+    }
+    variants[variant] = aggregate;
+  }
+
+  const baselineByBlock = new Map(
+    runs
+      .filter((run) => run.variant === "baseline-opus-max")
+      .map((run) => [Number(run.block), run]),
+  );
+  const pairedDeltas = {};
+  for (const variant of Object.keys(VARIANTS).filter(
+    (name) => name !== "baseline-opus-max",
+  )) {
+    pairedDeltas[variant] = runs
+      .filter((run) => run.variant === variant)
+      .sort((left, right) => Number(left.block) - Number(right.block))
+      .map((candidate) => {
+        const baseline = baselineByBlock.get(Number(candidate.block));
+        const deltas = {};
+        for (const metric of PAIRED_METRICS) {
+          const candidateValue = pairedMetricValue(candidate, metric);
+          const baselineValue = pairedMetricValue(baseline, metric);
+          const available =
+            candidateValue !== null && baselineValue !== null;
+          const delta = available ? candidateValue - baselineValue : null;
+          setNested(deltas, metric.path, {
+            candidate: candidateValue,
+            baseline: baselineValue,
+            delta,
+            percent_delta:
+              available && baselineValue !== 0
+                ? (delta / baselineValue) * 100
+                : available
+                  ? 0
+                  : null,
+            ...(metric.label ? { label: metric.label } : {}),
+          });
+        }
+        return { block: Number(candidate.block), deltas };
+      });
+  }
+  return { variants, pairedDeltas };
+}
+
+function assertCanonicalSchedule(schedule) {
+  if (schedule.schema_version !== SCHEDULE_SCHEMA_VERSION) {
+    throw new Error("unsupported paired schedule");
+  }
+  if (canonicalJson(schedule) !== canonicalJson(buildSchedule(schedule.seed))) {
+    throw new Error("schedule must be a canonical seed-derived 3x3 matrix");
+  }
+}
+
+async function loadCountedResults(options) {
+  requireOptions(options, ["countedResults", "freeze", "schedule"]);
+  const manifestPath = resolve(options.countedResults);
+  const freezePath = resolve(options.freeze);
+  const schedulePath = resolve(options.schedule);
+  const [manifestBytes, freezeBytes, scheduleBytes] = await Promise.all([
+    readFile(manifestPath),
+    readFile(freezePath),
+    readFile(schedulePath),
+  ]);
+  const manifest = JSON.parse(manifestBytes);
+  const freeze = JSON.parse(freezeBytes);
+  const schedule = JSON.parse(scheduleBytes);
+  if (manifest.schema_version !== COUNTED_RESULTS_SCHEMA_VERSION) {
+    throw new Error("unsupported counted-results manifest");
+  }
+  if (freeze.schema_version !== FREEZE_SCHEMA_VERSION) {
+    throw new Error("unsupported freeze manifest");
+  }
+  assertCanonicalSchedule(schedule);
+  const freezeHash = sha256(freezeBytes);
+  const scheduleHash = sha256(scheduleBytes);
+  if (manifest.freeze_manifest_sha256 !== freezeHash) {
+    throw new Error("counted-results freeze hash mismatch");
+  }
+  if (manifest.schedule_sha256 !== scheduleHash) {
+    throw new Error("counted-results schedule hash mismatch");
+  }
+  if (!Array.isArray(manifest.results) || manifest.results.length !== 9) {
+    throw new Error("counted-results must contain exactly nine results for a 3x3 matrix");
+  }
+  const expectedTrials = new Map(
+    schedule.blocks.flatMap((block) =>
+      block.trials.map((trial) => [
+        trial.trial_id,
+        { ...trial, block: block.block },
+      ])
+    ),
+  );
+  if (expectedTrials.size !== 9) {
+    throw new Error("paired schedule must contain nine unique trial IDs");
+  }
+  const seenTrials = new Set();
+  const seenPaths = new Set();
+  const runs = [];
+  const manifestDirectory = dirname(manifestPath);
+  for (const entry of manifest.results) {
+    if (
+      typeof entry.trial_id !== "string" ||
+      seenTrials.has(entry.trial_id)
+    ) {
+      throw new Error(`duplicate or malformed counted trial: ${entry.trial_id}`);
+    }
+    if (typeof entry.result !== "string") {
+      throw new Error("counted result path must name an explicit result file");
+    }
+    const resultPath = resolve(manifestDirectory, entry.result);
+    if (
+      isAbsolute(entry.result) ||
+      !isWithin(manifestDirectory, resultPath) ||
+      seenPaths.has(resultPath)
+    ) {
+      throw new Error("duplicate or escaping counted result path");
+    }
+    const information = await stat(resultPath);
+    if (!information.isFile()) {
+      throw new Error("counted result must be an explicit file, not a directory");
+    }
+    const bytes = await readFile(resultPath);
+    if (sha256(bytes) !== entry.sha256) {
+      throw new Error(`counted result immutable hash mismatch: ${entry.trial_id}`);
+    }
+    const run = JSON.parse(bytes);
+    const expected = expectedTrials.get(entry.trial_id);
+    if (!expected) {
+      throw new Error(`counted trial is absent from 3x3 schedule: ${entry.trial_id}`);
+    }
+    if (
+      run.trial !== entry.trial_id ||
+      run.id !== entry.trial_id ||
+      Number(run.block) !== expected.block ||
+      run.variant !== expected.variant
+    ) {
+      throw new Error(`counted result does not match scheduled trial: ${entry.trial_id}`);
+    }
+    if (run.freeze_manifest_sha256 !== freezeHash) {
+      throw new Error(`freeze mismatch for counted trial ${entry.trial_id}`);
+    }
+    if (run.schedule_sha256 !== scheduleHash) {
+      throw new Error(`schedule mismatch for counted trial ${entry.trial_id}`);
+    }
+    if (run.status !== "valid" || run.validity?.report !== true) {
+      throw new Error(`counted result status/report must be valid: ${entry.trial_id}`);
+    }
+    if (run.process?.exit_code !== 0) {
+      throw new Error(`counted result process exit must be 0: ${entry.trial_id}`);
+    }
+    if (run.process?.timed_out === true) {
+      throw new Error(`counted result reviewer timed out: ${entry.trial_id}`);
+    }
+    if (
+      run.validity?.inputs_unchanged !== true ||
+      run.validity?.allowed_writes !== true ||
+      canonicalJson(run.protected_inputs?.before) !==
+        canonicalJson(run.protected_inputs?.after)
+    ) {
+      throw new Error(`counted result input mutation or mismatch: ${entry.trial_id}`);
+    }
+    if (run.quiescence?.clean !== true) {
+      throw new Error(`counted result quiescence is unclean or contaminated: ${entry.trial_id}`);
+    }
+    for (const stage of ["pre", "continuous", "post"]) {
+      if (
+        run.quiescence?.[stage]?.clean !== true ||
+        (run.quiescence?.[stage]?.contaminants?.length ?? 0) > 0
+      ) {
+        throw new Error(
+          `counted result quiescence is unclean or contaminated during ${stage}: ${entry.trial_id}`,
+        );
+      }
+    }
+    if (run.quality?.recall_by_severity?.Blocker !== 1) {
+      throw new Error(`known Blocker recall must be 100%: ${entry.trial_id}`);
+    }
+    const frozenPrompt =
+      freeze.hashes?.normalized_prompts?.[run.variant];
+    if (
+      frozenPrompt &&
+      run.hashes?.normalized_prompt !== frozenPrompt
+    ) {
+      throw new Error(`normalized prompt freeze mismatch: ${entry.trial_id}`);
+    }
+    seenTrials.add(entry.trial_id);
+    seenPaths.add(resultPath);
+    runs.push(run);
+  }
+  if (
+    seenTrials.size !== expectedTrials.size ||
+    [...expectedTrials.keys()].some((trial) => !seenTrials.has(trial))
+  ) {
+    throw new Error("counted-results is missing a variant from the exact 3x3 matrix");
+  }
+  return {
+    runs,
+    manifestHash: sha256(manifestBytes),
+    freezeHash,
+    scheduleHash,
+  };
+}
+
 async function summarize(options) {
-  requireOptions(options, ["runs", "output"]);
-  const runs = await readRunResults(options.runs);
-  const summary = aggregateRuns(runs);
+  if (options.runs !== undefined || options.countedResults === undefined) {
+    throw new Error(
+      "summarize requires a curated --counted-results manifest; recursive --runs discovery is not countable",
+    );
+  }
+  requireOptions(options, ["output"]);
   const output = resolve(options.output);
-  await mkdir(dirname(output), { recursive: true });
-  await atomicWriteJson(output, summary);
+  if (await exists(output)) {
+    throw new Error(`summary output already exists; refusing overwrite: ${output}`);
+  }
+  const counted = await loadCountedResults(options);
+  const { variants, pairedDeltas } = aggregatePairedRuns(counted.runs);
+  const summary = {
+    schema_version: PAIRED_AGGREGATE_SCHEMA_VERSION,
+    counted_results: {
+      manifest_sha256: counted.manifestHash,
+      freeze_manifest_sha256: counted.freezeHash,
+      schedule_sha256: counted.scheduleHash,
+      count: counted.runs.length,
+    },
+    variants,
+    paired_deltas: pairedDeltas,
+  };
+  await writeNewJson(output, summary, "summary");
   return summary;
 }
 
@@ -1707,9 +2565,12 @@ async function loadAdjudicationSource(sourceResultPath, fixtureRoot) {
   const sourceDirectory = dirname(sourceResultPath);
   const sourceResultBytes = await readFile(sourceResultPath);
   const source = JSON.parse(sourceResultBytes);
-  if (source.status !== "blocked" || source.validity?.report !== true) {
+  if (
+    !["valid", "blocked"].includes(source.status) ||
+    source.validity?.report !== true
+  ) {
     throw new Error(
-      "adjudication source must be a blocked result with a valid report",
+      "adjudication source must be an otherwise-valid result with a valid report",
     );
   }
   const configuration = VARIANTS[source.variant];
@@ -2057,8 +2918,12 @@ async function adjudicateEvaluation(options) {
 
   const result = {
     ...sourceData.source,
-    id: `${sourceData.source.id}-adjudicated-1`,
-    trial: `${sourceData.source.trial}-adjudicated-1`,
+    id: sourceData.source.schedule_sha256
+      ? sourceData.source.id
+      : `${sourceData.source.id}-adjudicated-1`,
+    trial: sourceData.source.schedule_sha256
+      ? sourceData.source.trial
+      : `${sourceData.source.trial}-adjudicated-1`,
     status: blockedReasons.length === 0 &&
         quality.recall_by_severity.Blocker === 1
       ? "valid"
@@ -2066,7 +2931,10 @@ async function adjudicateEvaluation(options) {
     blocked_reasons: blockedReasons,
     validity: {
       ...sourceData.source.validity,
-      first_pass: false,
+      first_pass:
+        sourceData.source.status === "valid"
+          ? sourceData.source.validity.first_pass
+          : false,
     },
     quality,
     evidence: {
@@ -2381,22 +3249,31 @@ async function repairEvaluationWithModel(options, hooks = {}) {
     if (hooks.beforeReviewer) {
       await hooks.beforeReviewer({ workspace, environment, prompt });
     }
-    const processResult = authenticationBlocked
+    const reviewerExecution = authenticationBlocked
       ? {
-        exitCode: null,
-        signal: null,
-        error: null,
-        stdout: "",
-        stderr: "",
-        timedOut: false,
-        skipped: true,
-        durationMs: 0,
+        processResult: {
+          exitCode: null,
+          signal: null,
+          error: null,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          skipped: true,
+          durationMs: 0,
+        },
+        quiescence: assessQuiescenceWithoutReviewer(
+          hooks.processSnapshot ?? processSnapshot,
+        ),
       }
-      : await runReviewer(command.command, command.args, {
+      : await runReviewerWithQuiescence(command.command, command.args, {
         cwd: workspace,
         env: environment,
         timeoutMs,
-      });
+      }, hooks);
+    const {
+      processResult,
+      quiescence: repairQuiescence,
+    } = reviewerExecution;
     const reviewerEnded = performance.now();
 
     const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
@@ -2485,6 +3362,24 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         }`,
       );
     }
+    const combinedQuiescence = {
+      ...repairQuiescence,
+      clean:
+        (source.freeze_manifest_sha256
+          ? source.quiescence?.clean === true
+          : source.quiescence?.clean !== false) &&
+        repairQuiescence.clean,
+      source: source.quiescence ?? null,
+      repair: repairQuiescence,
+    };
+    if (
+      source.freeze_manifest_sha256 &&
+      !combinedQuiescence.clean
+    ) {
+      blockedReasons.push(
+        "repair-model quiescence attestation is unclean or contaminated",
+      );
+    }
 
     const afterEvidence = await immutableEvidenceSnapshot(
       sourceDirectory,
@@ -2527,8 +3422,12 @@ async function repairEvaluationWithModel(options, hooks = {}) {
     );
     const result = {
       ...source,
-      id: `${source.id}-repair-model-1`,
-      trial: `${source.trial}-repair-model-1`,
+      id: source.schedule_sha256
+        ? source.id
+        : `${source.id}-repair-model-1`,
+      trial: source.schedule_sha256
+        ? source.trial
+        : `${source.trial}-repair-model-1`,
       status: blockedReasons.length === 0 ? "valid" : "blocked",
       blocked_reasons: blockedReasons,
       route: expectedRoute(configuration),
@@ -2589,6 +3488,7 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         exclusive: true,
         attestation: lockAttestation,
       },
+      quiescence: combinedQuiescence,
       validity: {
         first_pass: false,
         report: reportValidation.valid,
@@ -2784,8 +3684,10 @@ async function repairEvaluation(options) {
   const repairEnded = performance.now();
   const result = {
     ...source,
-    id: `${source.id}-repair-1`,
-    trial: `${source.trial}-repair-1`,
+    id: source.schedule_sha256 ? source.id : `${source.id}-repair-1`,
+    trial: source.schedule_sha256
+      ? source.trial
+      : `${source.trial}-repair-1`,
     status: blockedReasons.length === 0 ? "valid" : "blocked",
     blocked_reasons: blockedReasons,
     process: {
@@ -2841,6 +3743,8 @@ async function repairEvaluation(options) {
 
 export async function runCli(args, hooks = {}) {
   const { command, options } = parseArguments(args);
+  if (command === "schedule") return createSchedule(options);
+  if (command === "freeze") return createFreeze(options);
   if (command === "run") return runEvaluation(options, hooks);
   if (command === "adjudication-packet") {
     return createAdjudicationPacket(options);
@@ -2852,7 +3756,7 @@ export async function runCli(args, hooks = {}) {
   if (command === "repair") return repairEvaluation(options);
   if (command === "summarize") return summarize(options);
   throw new Error(
-    "usage: evaluate-task-review.mjs <run|adjudication-packet|adjudicate|repair-model|repair|summarize> [options]",
+    "usage: evaluate-task-review.mjs <schedule|freeze|run|adjudication-packet|adjudicate|repair-model|repair|summarize> [options]",
   );
 }
 
