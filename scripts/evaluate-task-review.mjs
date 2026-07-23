@@ -210,6 +210,27 @@ function scheduleTrialId(block, sequence, variant) {
   )}-${variant}-a01`;
 }
 
+function pairedAttemptId(trialId, attempt) {
+  if (!Number.isInteger(attempt) || attempt < 1) {
+    throw new Error("--attempt must be a positive integer");
+  }
+  if (!/-a01$/.test(trialId)) {
+    throw new Error(`scheduled trial has no canonical attempt suffix: ${trialId}`);
+  }
+  return trialId.replace(/-a01$/, `-a${String(attempt).padStart(2, "0")}`);
+}
+
+function pairedAttemptNumber(trialId, attemptId) {
+  if (typeof trialId !== "string" || typeof attemptId !== "string") {
+    return null;
+  }
+  const prefix = trialId.match(/^(.*)-a01$/)?.[1];
+  const attempt = attemptId.match(/^(.*)-a([0-9]{2,})$/);
+  if (!prefix || !attempt || attempt[1] !== prefix) return null;
+  const number = Number(attempt[2]);
+  return Number.isSafeInteger(number) && number >= 1 ? number : null;
+}
+
 function buildSchedule(seed) {
   const variants = Object.keys(VARIANTS);
   return {
@@ -1794,6 +1815,10 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
   ) {
     throw new Error("paired schedule trial block mismatch");
   }
+  const attempt = options.attempt === undefined
+    ? 1
+    : Number(options.attempt);
+  const attemptId = pairedAttemptId(scheduled.trial_id, attempt);
 
   const { manifest, manifestHash } = await verifyFixture(fixtureRoot);
   const currentHashes = {
@@ -1897,6 +1922,9 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
   }
   return {
     block: scheduled.block,
+    trialId: scheduled.trial_id,
+    attempt,
+    attemptId,
     freezeHash: sha256(freezeBytes),
     scheduleHash: sha256(scheduleBytes),
     normalizedPromptHash: currentHashes.normalized_prompt,
@@ -1923,6 +1951,11 @@ async function runEvaluation(options, hooks = {}) {
     fixtureRoot,
     priceBasisPath,
   );
+  if (!pairedContext && options.attempt !== undefined) {
+    throw new Error("--attempt is supported only for paired runs");
+  }
+  const scheduledTrialId = pairedContext?.trialId ?? options.trial;
+  const attemptId = pairedContext?.attemptId ?? options.trial;
   const timeoutMs = Number(options.timeoutMs ?? 1_200_000);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive number");
@@ -1938,7 +1971,7 @@ async function runEvaluation(options, hooks = {}) {
   if (hooks.beforeLock) await hooks.beforeLock({ lockFile });
   const lockAttestation = {
     pid: process.pid,
-    trial: options.trial,
+    trial: attemptId,
     variant: options.variant,
     started_at: wallStarted,
   };
@@ -2190,12 +2223,14 @@ async function runEvaluation(options, hooks = {}) {
     );
     const result = {
       schema_version: SCHEMA_VERSION,
-      id: options.trial,
+      id: attemptId,
       variant: options.variant,
-      trial: options.trial,
+      trial: scheduledTrialId,
       block: pairedContext?.block ?? options.block ?? null,
       ...(pairedContext
         ? {
+          attempt_id: attemptId,
+          attempt: pairedContext.attempt,
           freeze_manifest_sha256: pairedContext.freezeHash,
           schedule_sha256: pairedContext.scheduleHash,
         }
@@ -2325,10 +2360,18 @@ async function runEvaluation(options, hooks = {}) {
       const failedAt = performance.now();
       await atomicWriteJson(join(outputDirectory, "result.json"), {
         schema_version: SCHEMA_VERSION,
-        id: options.trial,
+        id: attemptId,
         variant: options.variant,
-        trial: options.trial,
-        block: options.block ?? null,
+        trial: scheduledTrialId,
+        block: pairedContext?.block ?? options.block ?? null,
+        ...(pairedContext
+          ? {
+            attempt_id: attemptId,
+            attempt: pairedContext.attempt,
+            freeze_manifest_sha256: pairedContext.freezeHash,
+            schedule_sha256: pairedContext.scheduleHash,
+          }
+          : {}),
         status: "blocked",
         blocked_reasons: [`evaluator error: ${failure.message}`],
         ...(failedQuiescence ? { quiescence: failedQuiescence } : {}),
@@ -2698,13 +2741,14 @@ function assertCountableQuiescence(quiescence, trialId, label = "quiescence") {
 function assertExclusiveLock(run) {
   const lock = run.lock;
   const attestation = lock?.attestation;
+  const attemptId = run.attempt_id ?? run.trial;
   if (
     lock?.exclusive !== true ||
     typeof lock?.path !== "string" ||
     !isAbsolute(lock.path) ||
     !attestation ||
     !Number.isInteger(attestation.pid) ||
-    attestation.trial !== run.trial ||
+    attestation.trial !== attemptId ||
     attestation.variant !== run.variant ||
     attestation.started_at !== run.timing?.started_at
   ) {
@@ -2720,7 +2764,7 @@ function assertExclusiveLock(run) {
       repairLock?.exclusive !== true ||
       repairLock?.path !== lock.path ||
       repairLock?.attestation?.trial !==
-        `${run.trial}-repair-model-1` ||
+        `${attemptId}-repair-model-1` ||
       repairLock?.attestation?.variant !== run.variant ||
       repairLock?.attestation?.operation !== "repair-model" ||
       !Number.isFinite(
@@ -2863,6 +2907,7 @@ async function loadCountedResults(options) {
     throw new Error("paired schedule must contain nine unique trial IDs");
   }
   const seenTrials = new Set();
+  const seenAttempts = new Set();
   const seenPaths = new Set();
   const lockPaths = new Set();
   const runs = [];
@@ -2873,6 +2918,14 @@ async function loadCountedResults(options) {
       seenTrials.has(entry.trial_id)
     ) {
       throw new Error(`duplicate or malformed counted trial: ${entry.trial_id}`);
+    }
+    if (
+      typeof entry.attempt_id !== "string" ||
+      seenAttempts.has(entry.attempt_id)
+    ) {
+      throw new Error(
+        `duplicate or malformed counted attempt: ${entry.attempt_id}`,
+      );
     }
     if (typeof entry.result !== "string") {
       throw new Error("counted result path must name an explicit result file");
@@ -2898,9 +2951,17 @@ async function loadCountedResults(options) {
     if (!expected) {
       throw new Error(`counted trial is absent from 3x3 schedule: ${entry.trial_id}`);
     }
+    const attempt = pairedAttemptNumber(entry.trial_id, entry.attempt_id);
+    if (attempt === null) {
+      throw new Error(
+        `counted attempt does not belong to scheduled trial: ${entry.trial_id}`,
+      );
+    }
     if (
       run.trial !== entry.trial_id ||
-      run.id !== entry.trial_id ||
+      run.id !== entry.attempt_id ||
+      run.attempt_id !== entry.attempt_id ||
+      run.attempt !== attempt ||
       Number(run.block) !== expected.block ||
       run.variant !== expected.variant
     ) {
@@ -3010,6 +3071,7 @@ async function loadCountedResults(options) {
       throw new Error(`normalized prompt freeze mismatch: ${entry.trial_id}`);
     }
     seenTrials.add(entry.trial_id);
+    seenAttempts.add(entry.attempt_id);
     seenPaths.add(resultPath);
     runs.push(run);
   }
@@ -3699,7 +3761,7 @@ async function repairEvaluationWithModel(options, hooks = {}) {
   }
   const lockAttestation = {
     pid: process.pid,
-    trial: `${source.trial}-repair-model-1`,
+    trial: `${source.attempt_id ?? source.trial}-repair-model-1`,
     variant: source.variant,
     operation: "repair-model",
     started_at: repairWallStarted,

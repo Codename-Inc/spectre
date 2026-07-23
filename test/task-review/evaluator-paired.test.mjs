@@ -150,6 +150,8 @@ function makeRun({
     schema_version: "task-review-evaluation-result/v1",
     id: trialId,
     trial: trialId,
+    attempt_id: trialId,
+    attempt: 1,
     block,
     variant,
     status: "valid",
@@ -397,6 +399,7 @@ async function writeCountedBundle(root, mutate = () => {}) {
       const hash = await writeJson(path, run);
       records.push({
         trial_id: run.trial,
+        attempt_id: run.attempt_id,
         result: relative(root, path),
         sha256: hash,
       });
@@ -511,6 +514,99 @@ test("schedule persists a deterministic seed-derived 3x3 order with unique trial
     );
     assert.deepEqual(await readFile(firstPath), before);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("paired run records a visible later attempt without changing its immutable scheduled slot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-paired-attempt-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  const previousCodexBinary = process.env.CODEX_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  process.env.CODEX_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const freezePath = join(root, "freeze.json");
+    const schedulePath = join(root, "schedule.json");
+    await runCli([
+      "freeze",
+      "--fixture",
+      fixtureRoot,
+      "--price-basis",
+      priceBasisPath,
+      "--output",
+      freezePath,
+    ]);
+    const schedule = await runCli([
+      "schedule",
+      "--seed",
+      "paired-gate-seed-v1",
+      "--output",
+      schedulePath,
+    ]);
+    const scheduled = schedule.blocks
+      .flatMap((block) =>
+        block.trials.map((trial) => ({ ...trial, block: block.block }))
+      )
+      .find((trial) => trial.variant === "baseline-opus-max");
+    const attemptId = scheduled.trial_id.replace(/-a01$/, "-a02");
+    await mkdir(join(root, "runs"));
+    const result = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      scheduled.variant,
+      "--trial",
+      scheduled.trial_id,
+      "--attempt",
+      "2",
+      "--block",
+      String(scheduled.block),
+      "--output-dir",
+      join(root, "runs", attemptId),
+      "--lock-file",
+      join(root, "paired.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--freeze",
+      freezePath,
+      "--schedule",
+      schedulePath,
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "scored-report",
+      "--timeout-ms",
+      "1000",
+    ], {
+      processSnapshot() {
+        return [{
+          pid: process.pid,
+          ppid: 1,
+          command: "node evaluate-task-review.mjs",
+        }];
+      },
+    });
+
+    assert.equal(result.status, "valid");
+    assert.equal(result.trial, scheduled.trial_id);
+    assert.equal(result.id, attemptId);
+    assert.equal(result.attempt_id, attemptId);
+    assert.equal(result.attempt, 2);
+    assert.equal(result.lock.attestation.trial, attemptId);
+    assert.equal(
+      JSON.parse(
+        await readFile(join(root, "runs", attemptId, "result.json"), "utf8"),
+      ).attempt_id,
+      attemptId,
+    );
+  } finally {
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
+    if (previousCodexBinary === undefined) delete process.env.CODEX_BIN;
+    else process.env.CODEX_BIN = previousCodexBinary;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -1108,6 +1204,31 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
         },
       },
       {
+        name: "missing explicit counted attempt",
+        pattern: /malformed.*counted attempt|attempt.*missing/i,
+        mutate: async ({ manifest }) => {
+          delete manifest.results[0].attempt_id;
+        },
+      },
+      {
+        name: "attempt from another scheduled slot",
+        pattern: /attempt.*belong.*scheduled trial/i,
+        mutate: async ({ manifest }) => {
+          manifest.results[0].attempt_id = manifest.results[1].attempt_id;
+        },
+      },
+      {
+        name: "result attempt identity disagrees with manifest",
+        pattern: /does not match scheduled trial/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.attempt = 2;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
         name: "wrong 3x3 matrix",
         pattern: /3x3|three.*blocks|exactly.*nine|missing.*variant/i,
         mutate: async ({ manifest }) => {
@@ -1419,6 +1540,51 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
         );
       });
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize counts one explicit later attempt for a scheduled slot while preserving the earlier artifact", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-counted-attempt-"));
+  try {
+    const { runCli } = await implementation();
+    const bundle = await writeCountedBundle(root, async ({
+      root: caseRoot,
+      manifest,
+    }) => {
+      const entry = manifest.results[0];
+      const sourcePath = join(caseRoot, entry.result);
+      const run = JSON.parse(await readFile(sourcePath, "utf8"));
+      const attemptId = run.trial.replace(/-a01$/, "-a02");
+      run.id = attemptId;
+      run.attempt_id = attemptId;
+      run.attempt = 2;
+      run.lock.attestation.trial = attemptId;
+      const attemptPath = join(caseRoot, "runs", attemptId, "result.json");
+      entry.attempt_id = attemptId;
+      entry.result = relative(caseRoot, attemptPath);
+      entry.sha256 = await writeJson(attemptPath, run);
+    });
+
+    const summary = await summarizeBundle(
+      runCli,
+      bundle,
+      join(root, "summary.json"),
+    );
+    assert.equal(summary.counted_results.count, 9);
+    assert.equal(
+      bundle.manifest.results[0].attempt_id.endsWith("-a02"),
+      true,
+    );
+    await stat(
+      join(
+        root,
+        "runs",
+        bundle.manifest.results[0].trial_id,
+        "result.json",
+      ),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
