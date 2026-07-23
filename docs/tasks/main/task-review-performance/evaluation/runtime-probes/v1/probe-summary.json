@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-23T17:00:22Z",
+  "purpose": "Minimal real structured-event capability probes for task-review evaluator telemetry",
+  "prompt": "Respond with exactly TELEMETRY_PROBE_OK. Do not use tools.",
+  "probes": {
+    "claude": {
+      "binary": "/Users/joe/.local/bin/claude",
+      "version": "2.1.218 (Claude Code)",
+      "command": "claude -p --safe-mode --model opus --effort medium --permission-mode dontAsk --tools \"\" --output-format stream-json --verbose --no-session-persistence \"Respond with exactly TELEMETRY_PROBE_OK. Do not use tools.\"",
+      "flags": {
+        "model": "opus",
+        "resolvedModel": "claude-opus-4-8",
+        "effort": "medium",
+        "outputFormat": "stream-json",
+        "safeMode": true,
+        "tools": [],
+        "sessionPersistence": false
+      },
+      "exitCode": 0,
+      "terminalState": "completed",
+      "result": "TELEMETRY_PROBE_OK",
+      "authentication": {
+        "status": "available",
+        "evidence": "exitCode=0 and result subtype=success"
+      },
+      "rateOrSpend": {
+        "status": "warning",
+        "blocking": false,
+        "evidence": "rate_limit_event.rate_limit_info.status=allowed_warning, rateLimitType=seven_day, utilization=0.8, isUsingOverage=false"
+      },
+      "raw": {
+        "stdout": {
+          "path": "claude.stdout.jsonl",
+          "sha256": "4e5389718be597a34ffd24cf3ec5f5e496bf35616e638082e1ff057cbdd87d8c"
+        },
+        "stderr": {
+          "path": "claude.stderr.txt",
+          "sha256": "131a4adfc54de821471f0185bb17cacf8801ab632139f82fbcf07fa2a7178de6"
+        }
+      },
+      "telemetry": {
+        "tokens": {
+          "status": "observed",
+          "source": "claude.stdout.jsonl result.usage and result.modelUsage",
+          "fields": {
+            "input": {
+              "value": 2,
+              "source": "result.usage.input_tokens"
+            },
+            "cacheCreationInput": {
+              "value": 3923,
+              "source": "result.usage.cache_creation_input_tokens"
+            },
+            "cachedInput": {
+              "value": 0,
+              "source": "result.usage.cache_read_input_tokens"
+            },
+            "output": {
+              "value": 17,
+              "source": "result.usage.output_tokens"
+            },
+            "reasoningOutput": {
+              "value": null,
+              "unavailableReason": "The Claude result event has no reasoning-output token field."
+            },
+            "total": {
+              "value": null,
+              "unavailableReason": "The Claude result event has no native total-token field; the probe does not invent one by summing categories."
+            }
+          }
+        },
+        "cost": {
+          "status": "observed",
+          "source": "claude.stdout.jsonl result.total_cost_usd and result.modelUsage.<model>.costUSD",
+          "fields": {
+            "actualRuntimeUsd": {
+              "value": 0.039665,
+              "source": "result.total_cost_usd"
+            },
+            "estimatedTokenUsd": {
+              "value": null,
+              "unavailableReason": "A separate dated price basis is required; this runtime probe does not estimate cost."
+            }
+          }
+        },
+        "tool_calls": {
+          "status": "observed",
+          "source": "complete claude.stdout.jsonl event scan",
+          "value": 0,
+          "countRule": "Count assistant content blocks with type=tool_use plus native server-tool request counters; this complete stream contains none and reports web_search_requests=0/web_fetch_requests=0."
+        },
+        "messages": {
+          "status": "observed",
+          "source": "claude.stdout.jsonl result.num_turns",
+          "value": 1,
+          "unit": "turns"
+        },
+        "retries": {
+          "status": "unavailable",
+          "reason": "The successful sample exposes no retry counter or retry event. The observed allowed_warning rate-limit event is not treated as a retry."
+        },
+        "timing": {
+          "status": "observed",
+          "source": "claude.stdout.jsonl result timing fields and claude.stderr.txt /usr/bin/time",
+          "fields": {
+            "runtimeDurationMs": {
+              "value": 1004,
+              "source": "result.duration_ms"
+            },
+            "apiDurationMs": {
+              "value": 992,
+              "source": "result.duration_api_ms"
+            },
+            "ttftMs": {
+              "value": 984,
+              "source": "result.ttft_ms"
+            },
+            "externalWallSeconds": {
+              "value": 2.28,
+              "source": "claude.stderr.txt real"
+            }
+          }
+        }
+      }
+    },
+    "codex": {
+      "binary": "/Users/joe/.local/bin/codex",
+      "version": "codex-cli 0.145.0",
+      "command": "codex exec -C \"$PWD\" -m gpt-5.6-sol -c 'model_reasoning_effort=\"medium\"' -s read-only --json --ephemeral --ignore-user-config --ignore-rules --disable hooks \"Respond with exactly TELEMETRY_PROBE_OK. Do not use tools.\"",
+      "flags": {
+        "model": "gpt-5.6-sol",
+        "effort": "medium",
+        "outputFormat": "jsonl",
+        "sandbox": "read-only",
+        "ephemeral": true,
+        "ignoreUserConfig": true,
+        "ignoreRules": true,
+        "hooks": false
+      },
+      "exitCode": 0,
+      "terminalState": "turn.completed",
+      "result": "TELEMETRY_PROBE_OK",
+      "authentication": {
+        "status": "available",
+        "evidence": "exitCode=0 and turn.completed emitted"
+      },
+      "rateOrSpend": {
+        "status": "not_observed",
+        "blocking": false,
+        "evidence": "No rate-limit, spend-limit, or error event appears in the complete structured stream."
+      },
+      "raw": {
+        "stdout": {
+          "path": "codex.stdout.jsonl",
+          "sha256": "8df9d1a0e9e4eb3a1a00ca491447029ab5fbd04fffb314f5b364a2bacba5d7df"
+        },
+        "stderr": {
+          "path": "codex.stderr.txt",
+          "sha256": "80a42e0b93acb3543f81a602a0fffb68d85a837e4db47361dc1387855013db40"
+        }
+      },
+      "telemetry": {
+        "tokens": {
+          "status": "observed",
+          "source": "codex.stdout.jsonl turn.completed.usage",
+          "fields": {
+            "input": {
+              "value": 25665,
+              "source": "turn.completed.usage.input_tokens"
+            },
+            "cachedInput": {
+              "value": 0,
+              "source": "turn.completed.usage.cached_input_tokens"
+            },
+            "cacheWriteInput": {
+              "value": 0,
+              "source": "turn.completed.usage.cache_write_input_tokens"
+            },
+            "output": {
+              "value": 11,
+              "source": "turn.completed.usage.output_tokens"
+            },
+            "reasoningOutput": {
+              "value": 0,
+              "source": "turn.completed.usage.reasoning_output_tokens"
+            },
+            "total": {
+              "value": null,
+              "unavailableReason": "The Codex turn.completed event has no native total-token field; the probe does not invent one by summing categories."
+            }
+          }
+        },
+        "cost": {
+          "status": "unavailable",
+          "reason": "Codex emitted no actual billed-cost field. Estimated token cost requires a separate dated price basis and must remain separately labeled."
+        },
+        "tool_calls": {
+          "status": "observed",
+          "source": "complete codex.stdout.jsonl item event scan",
+          "value": 0,
+          "countRule": "Count item events whose item.type is command_execution, file_change, mcp_tool_call, web_search, or plan_update; the complete stream contains only agent_message."
+        },
+        "messages": {
+          "status": "observed",
+          "source": "complete codex.stdout.jsonl lifecycle/item event scan",
+          "value": 1,
+          "unit": "agent messages",
+          "turns": 1
+        },
+        "retries": {
+          "status": "unavailable",
+          "reason": "Codex emitted no retry counter or retry event in the successful sample; absence is not converted into an inferred retry count."
+        },
+        "timing": {
+          "status": "observed",
+          "source": "codex.stderr.txt /usr/bin/time",
+          "fields": {
+            "nativeRuntimeDurationMs": {
+              "value": null,
+              "unavailableReason": "No native duration field appears in Codex JSONL."
+            },
+            "externalWallSeconds": {
+              "value": 4.23,
+              "source": "codex.stderr.txt real"
+            }
+          }
+        }
+      }
+    }
+  }
+}
