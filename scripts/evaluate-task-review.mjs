@@ -2182,6 +2182,12 @@ async function runEvaluation(options, hooks = {}) {
       "reviews",
       "task_review.md",
     );
+    const telemetry = normalizeTelemetry(
+      configuration.runtime,
+      events,
+      priceBasis,
+      configuration.model,
+    );
     const result = {
       schema_version: SCHEMA_VERSION,
       id: options.trial,
@@ -2254,7 +2260,7 @@ async function runEvaluation(options, hooks = {}) {
         timeout_ms: timeoutMs,
         launched: !processResult.skipped,
         attempts: 1,
-        retries: 0,
+        retries: telemetry.retries.value ?? 0,
         repairs: 0,
         fallback: {
           value: null,
@@ -2278,12 +2284,7 @@ async function runEvaluation(options, hooks = {}) {
         inputs_unchanged: inputsUnchanged,
         allowed_writes: !oraclePresent && inputsUnchanged,
       },
-      telemetry: normalizeTelemetry(
-        configuration.runtime,
-        events,
-        priceBasis,
-        configuration.model,
-      ),
+      telemetry,
       quality,
       evidence: {
         raw_stdout: relative(outputDirectory, rawStdoutPath),
@@ -2694,6 +2695,62 @@ function assertCountableQuiescence(quiescence, trialId, label = "quiescence") {
   }
 }
 
+function assertExclusiveLock(run) {
+  const lock = run.lock;
+  const attestation = lock?.attestation;
+  if (
+    lock?.exclusive !== true ||
+    typeof lock?.path !== "string" ||
+    !isAbsolute(lock.path) ||
+    !attestation ||
+    !Number.isInteger(attestation.pid) ||
+    attestation.trial !== run.trial ||
+    attestation.variant !== run.variant ||
+    attestation.started_at !== run.timing?.started_at
+  ) {
+    throw new Error(
+      `counted result lacks an exclusive timed-run lock attestation: ${run.trial}`,
+    );
+  }
+  if (run.repair?.model_rerun === true) {
+    const repairLock = lock.repair;
+    if (
+      lock.source?.exclusive !== true ||
+      lock.source?.path !== lock.path ||
+      repairLock?.exclusive !== true ||
+      repairLock?.path !== lock.path ||
+      repairLock?.attestation?.trial !==
+        `${run.trial}-repair-model-1` ||
+      repairLock?.attestation?.variant !== run.variant ||
+      repairLock?.attestation?.operation !== "repair-model" ||
+      !Number.isFinite(
+        Date.parse(repairLock?.attestation?.started_at ?? ""),
+      )
+    ) {
+      throw new Error(
+        `counted repaired result lacks source and repair exclusive lock attestations: ${run.trial}`,
+      );
+    }
+  }
+  return lock.path;
+}
+
+function assertLiveRouteIdentity(run, configuration) {
+  if (
+    configuration.runtime === "claude-code" &&
+    (
+      run.authentication?.claude?.checked !== true ||
+      run.authentication?.claude?.logged_in !== true ||
+      typeof run.authentication?.claude?.auth_method !== "string" ||
+      run.authentication.claude.auth_method.trim() === ""
+    )
+  ) {
+    throw new Error(
+      `counted Claude route lacks live authentication identity: ${run.trial}`,
+    );
+  }
+}
+
 async function loadCountedResults(options) {
   requireOptions(options, ["countedResults", "freeze", "schedule"]);
   const manifestPath = resolve(options.countedResults);
@@ -2739,6 +2796,7 @@ async function loadCountedResults(options) {
   }
   const seenTrials = new Set();
   const seenPaths = new Set();
+  const lockPaths = new Set();
   const runs = [];
   const manifestDirectory = dirname(manifestPath);
   for (const entry of manifest.results) {
@@ -2816,6 +2874,8 @@ async function loadCountedResults(options) {
     ) {
       throw new Error(`counted result reviewer CLI version mismatch: ${entry.trial_id}`);
     }
+    assertLiveRouteIdentity(run, configuration);
+    lockPaths.add(assertExclusiveLock(run));
     if (run.status !== "valid" || run.validity?.report !== true) {
       throw new Error(`counted result status/report must be valid: ${entry.trial_id}`);
     }
@@ -2889,6 +2949,33 @@ async function loadCountedResults(options) {
     [...expectedTrials.keys()].some((trial) => !seenTrials.has(trial))
   ) {
     throw new Error("counted-results is missing a variant from the exact 3x3 matrix");
+  }
+  if (lockPaths.size !== 1) {
+    throw new Error(
+      "counted results must share one exclusive timed-run lock path",
+    );
+  }
+  let priorEndedAt = null;
+  const runByTrial = new Map(runs.map((run) => [run.trial, run]));
+  for (const scheduled of schedule.blocks.flatMap((block) =>
+    [...block.trials]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((trial) => ({ ...trial, block: block.block }))
+  )) {
+    const run = runByTrial.get(scheduled.trial_id);
+    const startedAt = Date.parse(run?.timing?.started_at ?? "");
+    const endedAt = Date.parse(run?.timing?.ended_at ?? "");
+    if (
+      !Number.isFinite(startedAt) ||
+      !Number.isFinite(endedAt) ||
+      endedAt < startedAt ||
+      (priorEndedAt !== null && startedAt < priorEndedAt)
+    ) {
+      throw new Error(
+        `counted runs violate scheduled sequential order or overlap: ${scheduled.trial_id}`,
+      );
+    }
+    priorEndedAt = endedAt;
   }
   return {
     runs,
@@ -3529,6 +3616,18 @@ async function repairEvaluationWithModel(options, hooks = {}) {
   const lockFile = resolve(
     options.lockFile ?? join(tmpdir(), "spectre-task-review-evaluation.lock"),
   );
+  if (
+    source.schedule_sha256 &&
+    (
+      source.lock?.exclusive !== true ||
+      typeof source.lock?.path !== "string" ||
+      resolve(source.lock.path) !== lockFile
+    )
+  ) {
+    throw new Error(
+      "paired repair-model must reuse the source exclusive timed-run lock",
+    );
+  }
   const lockAttestation = {
     pid: process.pid,
     trial: `${source.trial}-repair-model-1`,
@@ -3888,7 +3987,9 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         timeout_ms: timeoutMs,
         launched: !processResult.skipped,
         attempts: (source.process?.attempts ?? 1) + 1,
-        retries: source.process?.retries ?? 0,
+        retries:
+          (source.process?.retries ?? 0) +
+          (repairTelemetry.retries.value ?? 0),
         repairs: (source.process?.repairs ?? 0) + 1,
         fallback: source.process?.fallback ?? {
           value: null,
@@ -3899,11 +4000,23 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       authentication: {
         claude: claudeAuthentication,
       },
-      lock: {
-        path: lockFile,
-        exclusive: true,
-        attestation: lockAttestation,
-      },
+      lock: source.schedule_sha256
+        ? {
+          ...source.lock,
+          path: lockFile,
+          exclusive: true,
+          source: source.lock,
+          repair: {
+            path: lockFile,
+            exclusive: true,
+            attestation: lockAttestation,
+          },
+        }
+        : {
+          path: lockFile,
+          exclusive: true,
+          attestation: lockAttestation,
+        },
       quiescence: combinedQuiescence,
       validity: {
         first_pass: false,
