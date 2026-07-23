@@ -118,6 +118,7 @@ function observed(value, label = null) {
 function makeRun({
   block,
   variant,
+  sequence,
   trialId,
   scheduleHash,
   freezeHash,
@@ -138,6 +139,12 @@ function makeRun({
     "specs/tasks.json": "tasks-hash",
   };
   const claudeRoute = variant !== "candidate-sol-medium";
+  const startedAt = new Date(
+    Date.UTC(2026, 6, 23, block, sequence * 2),
+  ).toISOString();
+  const endedAt = new Date(
+    Date.UTC(2026, 6, 23, block, sequence * 2, 1),
+  ).toISOString();
 
   return {
     schema_version: "task-review-evaluation-result/v1",
@@ -226,7 +233,38 @@ function makeRun({
       repairs: variantIndex === 1 && block === 3 ? 1 : 0,
       fallback: observed(variantIndex === 2 && block === 3 ? "native" : null),
     },
+    authentication: {
+      claude: claudeRoute
+        ? {
+          checked: true,
+          logged_in: true,
+          auth_method: "claude.ai",
+          api_provider: "firstParty",
+          source: "default-secure-storage",
+          unavailable_reason: null,
+        }
+        : {
+          checked: false,
+          logged_in: null,
+          auth_method: null,
+          api_provider: null,
+          source: "not-applicable",
+          unavailable_reason: "The selected reviewer runtime is not Claude Code.",
+        },
+    },
+    lock: {
+      path: "/private/tmp/task-review-paired-gate.lock",
+      exclusive: true,
+      attestation: {
+        pid: 1234,
+        trial: trialId,
+        variant,
+        started_at: startedAt,
+      },
+    },
     timing: {
+      started_at: startedAt,
+      ended_at: endedAt,
       total_ms: totalMs,
       intervals: {
         preflight_ms: 5,
@@ -239,6 +277,7 @@ function makeRun({
       tokens: {
         input: observed(inputTokens),
         cached_input: observed(100),
+        cache_write_input: observed(0),
         output: observed(outputTokens),
         reasoning_output: observed(reasoningTokens),
         total: observed(totalTokens),
@@ -249,6 +288,10 @@ function makeRun({
       },
       tool_calls: observed(10 - variantIndex),
       messages: observed(5 + variantIndex),
+      retries: observed(0),
+      timing: {
+        runtime_duration_ms: observed(totalMs - 10),
+      },
     },
     quality: {
       recall_by_severity: {
@@ -332,9 +375,13 @@ async function writeCountedBundle(root, mutate = () => {}) {
       const trialId = schedule.blocks[block - 1].trials.find(
         (trial) => trial.variant === variant,
       ).trial_id;
+      const sequence = schedule.blocks[block - 1].trials.find(
+        (trial) => trial.variant === variant,
+      ).sequence;
       const run = makeRun({
         block,
         variant,
+        sequence,
         trialId,
         scheduleHash,
         freezeHash,
@@ -876,6 +923,45 @@ test("paired quiescence spans preflight through validation and prevents spend wh
   }
 });
 
+test("run persists structured runtime retry events for paired aggregation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-runtime-retry-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const result = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "candidate-opus-medium",
+      "--trial",
+      "runtime-retry",
+      "--output-dir",
+      join(root, "run"),
+      "--lock-file",
+      join(root, "evaluation.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "retry-success",
+      "--timeout-ms",
+      "1000",
+    ]);
+
+    assert.equal(result.status, "valid");
+    assert.equal(result.telemetry.retries.value, 1);
+    assert.equal(
+      result.process.retries,
+      1,
+      "structured retry events must not be summarized as zero",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("adjudication-packet accepts an otherwise-valid source with unmatched candidates and remains route blind", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-review-valid-packet-"));
   await chmod(fakeReviewerPath, 0o755);
@@ -1071,6 +1157,45 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
           const path = join(caseRoot, entry.result);
           const run = JSON.parse(await readFile(path, "utf8"));
           run.versions.reviewer_cli.value = "forged-reviewer";
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing exclusive timed-run lock attestation",
+        pattern: /exclusive.*lock|lock.*attestation/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.lock;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "Claude route without live authentication identity",
+        pattern: /Claude.*auth|authentication.*identity/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results.find(({ trial_id: trialId }) =>
+            trialId.includes("baseline-opus-max")
+          );
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.authentication.claude.logged_in = false;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "runs outside scheduled sequential order",
+        pattern: /sequential.*order|schedule.*timing|overlap/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results.find(({ trial_id: trialId }) =>
+            trialId.startsWith("b01-s01-")
+          );
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.timing.started_at = "2026-07-23T01:59:00.000Z";
+          run.timing.ended_at = "2026-07-23T01:59:01.000Z";
+          run.lock.attestation.started_at = run.timing.started_at;
           entry.sha256 = await writeJson(path, run);
         },
       },

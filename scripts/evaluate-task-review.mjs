@@ -2607,6 +2607,56 @@ function assertTelemetryAvailability(value, path = "telemetry") {
   }
 }
 
+function assertCompleteTelemetry(telemetry, path = "telemetry") {
+  if (
+    telemetry?.source !== undefined ||
+    telemetry?.repair !== undefined
+  ) {
+    if (!telemetry?.source || !telemetry?.repair) {
+      throw new Error(
+        `${path} telemetry is missing source or repair evidence`,
+      );
+    }
+    assertCompleteTelemetry(telemetry.source, `${path}.source`);
+    assertCompleteTelemetry(telemetry.repair, `${path}.repair`);
+    return;
+  }
+
+  const requiredPaths = [
+    ["tokens", "input"],
+    ["tokens", "cached_input"],
+    ["tokens", "cache_write_input"],
+    ["tokens", "output"],
+    ["tokens", "reasoning_output"],
+    ["tokens", "total"],
+    ["cost", "actual_runtime_usd"],
+    ["cost", "estimated_token_usd"],
+    ["tool_calls"],
+    ["messages"],
+    ["retries"],
+    ["timing", "runtime_duration_ms"],
+  ];
+  for (const requiredPath of requiredPaths) {
+    const observation = valueAt(telemetry, requiredPath);
+    if (
+      !observation ||
+      typeof observation !== "object" ||
+      !Object.hasOwn(observation, "value")
+    ) {
+      throw new Error(
+        `${path} telemetry is missing ${requiredPath.join(".")}`,
+      );
+    }
+  }
+  if (telemetry.cost.actual_runtime_usd.label !== "actual") {
+    throw new Error(`${path} telemetry actual cost label is invalid`);
+  }
+  if (telemetry.cost.estimated_token_usd.label !== "estimate") {
+    throw new Error(`${path} telemetry estimated cost label is invalid`);
+  }
+  assertTelemetryAvailability(telemetry, path);
+}
+
 function assertCountableQuiescence(quiescence, trialId, label = "quiescence") {
   if (quiescence?.clean !== true) {
     throw new Error(
@@ -2807,7 +2857,7 @@ async function loadCountedResults(options) {
         "repair quiescence",
       );
     }
-    assertTelemetryAvailability(run.telemetry);
+    assertCompleteTelemetry(run.telemetry);
     if (
       (run.quality?.unmatched_candidates ?? []).some(
         (candidate) =>
