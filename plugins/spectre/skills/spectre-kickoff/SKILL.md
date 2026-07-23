@@ -10,14 +10,25 @@ Deep research entry point: investigate the codebase and external best practices,
 
 ## Inputs
 - `$ARGUMENTS` — the project/feature context (the current command arguments). If empty, ask the user for it before any tools.
+- Optional explicit managed feature name/root or an artifact beneath one.
 - Any docs the user references — read them FULLY in main context (not via subagent): vision, constraints, decisions, open questions.
 
 ## Working set (late-bound — read at runtime, never inline)
 - Codebase, via read-only research agents (see Method).
-- `task_name` derived from context (kebab-case); current git commit/branch for metadata + permalinks.
+- `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved from the input or proposed below; current git commit/branch for metadata + permalinks.
+
+## Feature root contract
+
+- Resolve an explicit feature directory or feature name first, then a supplied artifact beneath the feature root, then one unambiguous feature artifact from the current thread. If unresolved or ambiguous, use the proposal flow below; never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature.
+- For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` in the existing acknowledgement response. Silence on the name accepts it; never create a separate name-confirmation gate.
+- When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
+- Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
+- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing only `{"schema_version":1,"created_at":"<ISO8601>"}`. Do not store a name, branch, status, active pointer, or absolute path.
+- If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
+- Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
 
 ## Method / guardrails
-1. **Acknowledge first.** Open with a reply naming what we're exploring, the decision we're heading toward, and what success looks like. No tool calls in this first turn.
+1. **Acknowledge first.** Open with a reply naming what we're exploring, the proposed feature name/root, the decision we're heading toward, and what success looks like. No tool calls in this first turn.
 2. **Decompose** the project into research areas (components, dirs/files, patterns, data flows, code to extend); track them with TodoWrite.
 3. **Research in parallel**, read-only — locator → analyzer-on-findings → breadth. Spawn follow-ups if a thread is shallow. Use Context7 MCP for central 3rd-party libs.
 
@@ -33,7 +44,7 @@ Deep research entry point: investigate the codebase and external best practices,
 5. **Synthesize → gap → MVP → options.** Connect findings across components with file:line throughout; gap analysis = current capabilities (file refs) vs required, split missing-vs-modify; MVP = core value + minimum slice + what to defer; give 2–3 options each with summary, key decisions, code to leverage (refs), new work, effort, trade-offs; surface decision points and open questions.
 
 ## Outputs + DONE
-Write the kickoff doc to `docs/tasks/{task_name}/kickoff/{task_name}_kickoff.md` (`mkdir -p` first; timestamp-suffix if the file exists). **Save it before presenting** the summary.
+Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mkdir -p` first; timestamp-suffix if the file exists). **Save it before presenting** the summary.
 
 - YAML frontmatter: date, git_commit, branch, repo, topic, tags, status.
 - Required sections, in order: Title · Metadata · Project Context · Research Summary · Detailed Codebase Findings (by area, file:line, snippets) · Code References (table) · Architecture Insights (patterns, conventions, constraints) · External Research (with links) · Gap Analysis · MVP Suggestion · Implementation Options (2–3, with trade-offs) · Decision Points · Open Questions · Related Resources.

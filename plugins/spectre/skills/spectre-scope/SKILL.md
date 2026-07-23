@@ -11,14 +11,24 @@ Turn an unstructured request into clear scope boundaries (IN / OUT / ANTI-SCOPE)
 ## Inputs
 
 - `$ARGUMENTS` — the feature/problem brain-dump. If empty → greet, ask for context, and **WAIT** for the user.
+- Optional explicit managed feature name/root or an artifact beneath one.
 - `FROM_KICKOFF=true` + `KICKOFF_DOC` → read the doc, extract (Core Problem, User Value, Decisions Made, Remaining Ambiguities, Key Code Refs), then **skip grounding + exploration** and go straight to clarifications. Already-grounded.
-- Prior `{OUT_DIR}/concepts/scope.md` → treat as a **re-scope**: read it fully, surface what's already settled, ask only about what's new or changed. scope.md is the **immutable anchor** for downstream phases — never silently narrow or expand it; surface the delta and get user confirmation before rewriting.
+- Prior `{FEATURE_ROOT}/concepts/scope.md` → treat as a **re-scope**: read it fully, surface what's already settled, ask only about what's new or changed. scope.md is the **immutable anchor** for downstream phases — never silently narrow or expand it; surface the delta and get user confirmation before rewriting.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
-- `OUT_DIR = user-specified || docs/tasks/{branch}`
+- `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved from the input or proposed below.
 - captured session or current thread memory for this area, if present
+
+## Feature root contract
+
+- Resolve an explicit feature directory or feature name first, then a supplied artifact beneath the feature root, then one unambiguous feature artifact from the current thread. If unresolved or ambiguous, use the proposal flow below; never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature.
+- For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` alongside the existing boundary response. Silence on the name accepts it; never create a separate name-confirmation gate.
+- When the user explicitly names an existing managed feature, continue or re-scope it under its existing overwrite safeguards. The physical directory is authoritative.
+- Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
+- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing only `{"schema_version":1,"created_at":"<ISO8601>"}`. Do not store a name, branch, status, active pointer, or absolute path.
+- If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
+- Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
 
 ## Method / guardrails
 
@@ -31,7 +41,7 @@ Turn an unstructured request into clear scope boundaries (IN / OUT / ANTI-SCOPE)
 
 ## Outputs + DONE
 
-Write `{OUT_DIR}/concepts/scope.md` (scoped filename if one already exists), user value & boundaries before technical detail, with **all** of:
+Write `{FEATURE_ROOT}/concepts/scope.md` (scoped filename if one already exists), user value & boundaries before technical detail, with **all** of:
 
  1. **The Problem** — pain, impact, current state
  2. **Target Users** — primary, secondary, needs
