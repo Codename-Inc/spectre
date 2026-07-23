@@ -549,6 +549,23 @@ function gitOutput(args) {
   return result.stdout;
 }
 
+function repositoryState() {
+  const status = gitOutput([
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+  ]);
+  const dirtyDiff = [
+    gitOutput(["diff", "--binary", "HEAD", "--"]),
+    status,
+  ].join("\0");
+  return {
+    commit: gitOutput(["rev-parse", "HEAD"]).trim(),
+    dirty: status.length > 0,
+    dirty_diff_sha256: sha256(dirtyDiff),
+  };
+}
+
 async function createFreeze(options) {
   requireOptions(options, ["fixture", "priceBasis", "output"]);
   const fixtureRoot = resolve(options.fixture);
@@ -603,11 +620,7 @@ async function createFreeze(options) {
     process.env.CODEX_BIN || "codex",
     environment,
   );
-  const status = gitOutput(["status", "--porcelain=v1", "--untracked-files=all"]);
-  const dirtyDiff = [
-    gitOutput(["diff", "--binary", "HEAD", "--"]),
-    status,
-  ].join("\0");
+  const repository = repositoryState();
   const promptHashes = {};
   for (const variant of Object.keys(VARIANTS)) {
     promptHashes[variant] = await normalizedPromptHash(fixtureRoot, variant);
@@ -623,11 +636,7 @@ async function createFreeze(options) {
         codex: codexVersion.value,
       },
     },
-    repository: {
-      commit: gitOutput(["rev-parse", "HEAD"]).trim(),
-      dirty: status.length > 0,
-      dirty_diff_sha256: sha256(dirtyDiff),
-    },
+    repository,
     hashes: {
       evaluator: await hashFile(fileURLToPath(import.meta.url)),
       fixture_manifest: manifestHash,
@@ -734,8 +743,16 @@ function processSnapshot() {
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
   });
-  if (result.error || result.status !== 0) return [];
-  return result.stdout.split(/\r?\n/).flatMap((line) => {
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `process snapshot failed: ${
+        result.error?.message ||
+        result.stderr?.trim() ||
+        `ps exited ${result.status}`
+      }`,
+    );
+  }
+  const snapshot = result.stdout.split(/\r?\n/).flatMap((line) => {
     const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
     return match
       ? [{
@@ -745,6 +762,10 @@ function processSnapshot() {
       }]
       : [];
   });
+  if (snapshot.length === 0) {
+    throw new Error("process snapshot failed: ps returned no process records");
+  }
+  return snapshot;
 }
 
 function heavyProcess(processRecord) {
@@ -753,12 +774,15 @@ function heavyProcess(processRecord) {
     /(?:^|\/)claude(?:\s|$)/i.test(command) ||
     /(?:^|\/)codex\s+exec(?:\s|$)/i.test(command) ||
     /\bnode(?:\S*)?\s+--test(?:\s|$)/i.test(command) ||
+    /\bnode(?:\S*)?\s+.*(?:scripts\/sync-codex\.cjs|verify-spectre\/scripts\/verify\.mjs)(?:\s|$)/i
+      .test(command) ||
     /\bevaluate-task-review\.mjs\s+(?:run|repair-model)(?:\s|$)/i.test(command)
   );
 }
 
 function stageSnapshots(value) {
   if (!Array.isArray(value)) return [];
+  if (value.length === 0) return [];
   return Array.isArray(value[0]) ? value : [value];
 }
 
@@ -803,7 +827,7 @@ export function assessQuiescence({
       (left, right) => left.pid - right.pid,
     );
     return {
-      clean: values.length === 0,
+      clean: samples.length > 0 && values.length === 0,
       contaminants: values,
       samples: samples.length,
     };
@@ -949,6 +973,76 @@ function assessQuiescenceWithoutReviewer(takeSnapshot = processSnapshot) {
       elapsed_ms: samplingEnded - samplingStarted,
     },
   });
+}
+
+function startQuiescenceMonitor(hooks = {}) {
+  const takeSnapshot = hooks.processSnapshot ?? processSnapshot;
+  const samplingStarted = performance.now();
+  const samplingStartedAt = new Date().toISOString();
+  const intervalMs = 250;
+  const snapshots = {
+    pre: takeSnapshot("pre"),
+    continuous: [],
+    post: [],
+  };
+  let reviewerPid = null;
+  let samplingError = null;
+  snapshots.continuous.push(takeSnapshot("continuous"));
+  const interval = setInterval(() => {
+    try {
+      snapshots.continuous.push(takeSnapshot("continuous"));
+    } catch (error) {
+      samplingError = error;
+      clearInterval(interval);
+    }
+  }, intervalMs);
+  interval.unref?.();
+  let assessment = null;
+  let finishError = null;
+  let finished = false;
+  const preAssessment = assessQuiescence({
+    evaluator_pid: process.pid,
+    reviewer_pid: null,
+    snapshots: {
+      pre: snapshots.pre,
+      continuous: snapshots.pre,
+      post: snapshots.pre,
+    },
+  });
+  return {
+    preClean: preAssessment.pre.clean,
+    setReviewerPid(pid) {
+      reviewerPid = pid;
+    },
+    finish() {
+      if (finished) {
+        if (finishError) throw finishError;
+        return assessment;
+      }
+      finished = true;
+      clearInterval(interval);
+      try {
+        if (samplingError) throw samplingError;
+        snapshots.post = takeSnapshot("post");
+        const samplingEnded = performance.now();
+        assessment = assessQuiescence({
+          evaluator_pid: process.pid,
+          reviewer_pid: reviewerPid,
+          snapshots,
+          sampling: {
+            interval_ms: intervalMs,
+            started_at: samplingStartedAt,
+            ended_at: new Date().toISOString(),
+            elapsed_ms: samplingEnded - samplingStarted,
+          },
+        });
+        return assessment;
+      } catch (error) {
+        finishError = error;
+        throw error;
+      }
+    },
+  };
 }
 
 function parseJsonLines(raw) {
@@ -1663,9 +1757,6 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
   if (freeze.schema_version !== FREEZE_SCHEMA_VERSION) {
     throw new Error("unsupported freeze manifest");
   }
-  if (freeze.freeze_id !== expectedFreezeId(freeze)) {
-    throw new Error("freeze manifest identity mismatch");
-  }
   if (
     freeze.versions?.evaluator !== EVALUATOR_VERSION ||
     freeze.versions?.node !== process.version
@@ -1767,8 +1858,16 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
       throw new Error(`freeze ${name.replaceAll("_", " ")} mismatch`);
     }
   }
-  if (freeze.repository?.commit !== gitOutput(["rev-parse", "HEAD"]).trim()) {
+  const currentRepository = repositoryState();
+  if (freeze.repository?.commit !== currentRepository.commit) {
     throw new Error("freeze repository commit mismatch");
+  }
+  if (
+    freeze.repository?.dirty !== currentRepository.dirty ||
+    freeze.repository?.dirty_diff_sha256 !==
+      currentRepository.dirty_diff_sha256
+  ) {
+    throw new Error("freeze repository dirty state mismatch");
   }
   const configuration = VARIANTS[options.variant];
   const reviewerBinary = options.reviewerCommand ||
@@ -1785,6 +1884,9 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
     ];
   if (reviewerVersion !== frozenReviewerVersion) {
     throw new Error("freeze reviewer CLI version mismatch");
+  }
+  if (freeze.freeze_id !== expectedFreezeId(freeze)) {
+    throw new Error("freeze manifest identity mismatch");
   }
   return {
     block: scheduled.block,
@@ -1838,9 +1940,13 @@ async function runEvaluation(options, hooks = {}) {
   let outputCreated = false;
   let stagedAuth = null;
   let runRoot = null;
+  let pairedQuiescence = null;
   try {
     await mkdir(outputDirectory, { recursive: false });
     outputCreated = true;
+    pairedQuiescence = pairedContext
+      ? startQuiescenceMonitor(hooks)
+      : null;
     runRoot = await mkdtemp(join(tmpdir(), "spectre-task-review-run-"));
     if (
       isWithin(EVALUATOR_REPOSITORY_ROOT, runRoot) ||
@@ -1930,7 +2036,10 @@ async function runEvaluation(options, hooks = {}) {
     if (hooks.beforeReviewer) {
       await hooks.beforeReviewer({ workspace, environment, prompt });
     }
-    const reviewerExecution = authenticationBlocked
+    const preflightQuiescenceBlocked =
+      pairedQuiescence && !pairedQuiescence.preClean;
+    const reviewerExecution = authenticationBlocked ||
+        preflightQuiescenceBlocked
       ? {
         processResult: {
           exitCode: null,
@@ -1942,16 +2051,34 @@ async function runEvaluation(options, hooks = {}) {
           skipped: true,
           durationMs: 0,
         },
-        quiescence: assessQuiescenceWithoutReviewer(
-          hooks.processSnapshot ?? processSnapshot,
-        ),
+        quiescence: pairedQuiescence
+          ? null
+          : assessQuiescenceWithoutReviewer(
+            hooks.processSnapshot ?? processSnapshot,
+          ),
       }
-      : await runReviewerWithQuiescence(command.command, command.args, {
-        cwd: workspace,
-        env: environment,
-        timeoutMs,
-      }, hooks);
-    const { processResult, quiescence } = reviewerExecution;
+      : pairedQuiescence
+        ? {
+          processResult: await runReviewer(
+            command.command,
+            command.args,
+            {
+              cwd: workspace,
+              env: environment,
+              timeoutMs,
+              onSpawn(pid) {
+                pairedQuiescence.setReviewerPid(pid);
+              },
+            },
+          ),
+          quiescence: null,
+        }
+        : await runReviewerWithQuiescence(command.command, command.args, {
+          cwd: workspace,
+          env: environment,
+          timeoutMs,
+        }, hooks);
+    const { processResult } = reviewerExecution;
     const reviewerEnded = performance.now();
     const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
     const rawStderrPath = join(rawDirectory, "reviewer.stderr.txt");
@@ -1968,6 +2095,10 @@ async function runEvaluation(options, hooks = {}) {
       blockedReasons.push(
         `Claude authentication preflight failed: ${claudeAuthentication.unavailable_reason}`,
       );
+    } else if (preflightQuiescenceBlocked) {
+      blockedReasons.push(
+        "preflight quiescence attestation is unclean or contaminated",
+      );
     } else if (processResult.timedOut) {
       blockedReasons.push(`reviewer timeout after ${timeoutMs}ms`);
     } else if (processResult.error) {
@@ -1976,6 +2107,9 @@ async function runEvaluation(options, hooks = {}) {
       blockedReasons.push(`reviewer exit ${processResult.exitCode}`);
     }
 
+    if (hooks.beforeValidation) {
+      await hooks.beforeValidation({ workspace, environment, prompt });
+    }
     let report = null;
     if (await exists(reportPath)) {
       report = await readFile(reportPath, "utf8");
@@ -2018,6 +2152,10 @@ async function runEvaluation(options, hooks = {}) {
         }`,
       );
     }
+    await cp(workspace, evidenceWorkspace, { recursive: true });
+    const quiescence = pairedQuiescence
+      ? pairedQuiescence.finish()
+      : reviewerExecution.quiescence;
     if (pairedContext && !quiescence.clean) {
       blockedReasons.push("quiescence attestation is unclean or contaminated");
     }
@@ -2032,7 +2170,6 @@ async function runEvaluation(options, hooks = {}) {
       (sum, value) => sum + value,
       0,
     );
-    await cp(workspace, evidenceWorkspace, { recursive: true });
     const evidenceReportPath = join(
       evidenceTaskRoot,
       "reviews",
@@ -2165,6 +2302,17 @@ async function runEvaluation(options, hooks = {}) {
     await atomicWriteJson(join(outputDirectory, "result.json"), result);
     return result;
   } catch (error) {
+    let failure = error;
+    let failedQuiescence = null;
+    if (pairedQuiescence) {
+      try {
+        failedQuiescence = pairedQuiescence.finish();
+      } catch (monitorError) {
+        failure = new Error(
+          `${error.message}; quiescence monitor failed: ${monitorError.message}`,
+        );
+      }
+    }
     if (outputCreated && !(await exists(join(outputDirectory, "result.json")))) {
       const failedAt = performance.now();
       await atomicWriteJson(join(outputDirectory, "result.json"), {
@@ -2174,7 +2322,8 @@ async function runEvaluation(options, hooks = {}) {
         trial: options.trial,
         block: options.block ?? null,
         status: "blocked",
-        blocked_reasons: [`evaluator error: ${error.message}`],
+        blocked_reasons: [`evaluator error: ${failure.message}`],
+        ...(failedQuiescence ? { quiescence: failedQuiescence } : {}),
         timing: {
           clock: "performance.now monotonic milliseconds",
           started_at: wallStarted,
@@ -2183,7 +2332,7 @@ async function runEvaluation(options, hooks = {}) {
         },
       });
     }
-    throw error;
+    throw failure;
   } finally {
     if (stagedAuth) await rm(stagedAuth, { force: true });
     if (runRoot) await rm(runRoot, { recursive: true, force: true });
@@ -2396,6 +2545,58 @@ function assertCanonicalSchedule(schedule) {
   }
 }
 
+function assertCompleteFreeze(freeze) {
+  if (
+    freeze.freeze_id !== expectedFreezeId(freeze) ||
+    freeze.versions?.evaluator !== EVALUATOR_VERSION ||
+    typeof freeze.versions?.node !== "string" ||
+    typeof freeze.versions?.reviewer_clis?.claude !== "string" ||
+    typeof freeze.versions?.reviewer_clis?.codex !== "string" ||
+    !/^[a-f0-9]{40}$/.test(freeze.repository?.commit ?? "") ||
+    typeof freeze.repository?.dirty !== "boolean"
+  ) {
+    throw new Error("freeze manifest is incomplete or evaluator version mismatched");
+  }
+  const hashes = [
+    freeze.repository.dirty_diff_sha256,
+    freeze.hashes?.evaluator,
+    freeze.hashes?.fixture_manifest,
+    freeze.hashes?.fixture_components,
+    freeze.hashes?.contracts?.baseline,
+    freeze.hashes?.contracts?.candidate,
+    freeze.hashes?.price_basis,
+    freeze.hashes?.skills?.canonical,
+    freeze.hashes?.skills?.generated,
+    freeze.hashes?.helpers?.canonical,
+    freeze.hashes?.helpers?.generated,
+    ...Object.keys(VARIANTS).map(
+      (variant) => freeze.hashes?.normalized_prompts?.[variant],
+    ),
+  ];
+  if (hashes.some((hash) => !/^[a-f0-9]{64}$/.test(hash ?? ""))) {
+    throw new Error("freeze manifest is incomplete or missing required hashes");
+  }
+}
+
+function assertTelemetryAvailability(value, path = "telemetry") {
+  if (!value || typeof value !== "object") return;
+  if (Object.hasOwn(value, "value")) {
+    if (
+      value.value === null &&
+      (typeof value.unavailable_reason !== "string" ||
+        value.unavailable_reason.trim() === "")
+    ) {
+      throw new Error(
+        `${path} telemetry is unavailable without an unavailable reason`,
+      );
+    }
+    return;
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    assertTelemetryAvailability(nested, `${path}.${key}`);
+  }
+}
+
 async function loadCountedResults(options) {
   requireOptions(options, ["countedResults", "freeze", "schedule"]);
   const manifestPath = resolve(options.countedResults);
@@ -2415,6 +2616,7 @@ async function loadCountedResults(options) {
   if (freeze.schema_version !== FREEZE_SCHEMA_VERSION) {
     throw new Error("unsupported freeze manifest");
   }
+  assertCompleteFreeze(freeze);
   assertCanonicalSchedule(schedule);
   const freezeHash = sha256(freezeBytes);
   const scheduleHash = sha256(scheduleBytes);
@@ -2487,6 +2689,36 @@ async function loadCountedResults(options) {
     if (run.schedule_sha256 !== scheduleHash) {
       throw new Error(`schedule mismatch for counted trial ${entry.trial_id}`);
     }
+    const configuration = VARIANTS[run.variant];
+    const frozenContract = run.variant === "baseline-opus-max"
+      ? freeze.hashes.contracts.baseline
+      : freeze.hashes.contracts.candidate;
+    if (
+      run.hashes?.fixture_manifest !== freeze.hashes.fixture_manifest ||
+      run.hashes?.fixture_components !== freeze.hashes.fixture_components ||
+      run.hashes?.contract !== frozenContract ||
+      run.hashes?.price_basis !== freeze.hashes.price_basis ||
+      run.hashes?.normalized_prompt !==
+        freeze.hashes.normalized_prompts[run.variant]
+    ) {
+      throw new Error(`fixture freeze mismatch for counted trial ${entry.trial_id}`);
+    }
+    if (
+      canonicalJson(run.route) !== canonicalJson(expectedRoute(configuration))
+    ) {
+      throw new Error(`counted result route mismatch: ${entry.trial_id}`);
+    }
+    const frozenReviewerVersion =
+      freeze.versions.reviewer_clis[
+        configuration.runtime === "claude-code" ? "claude" : "codex"
+      ];
+    if (
+      run.versions?.evaluator !== freeze.versions.evaluator ||
+      run.versions?.node !== freeze.versions.node ||
+      run.versions?.reviewer_cli?.value !== frozenReviewerVersion
+    ) {
+      throw new Error(`counted result reviewer CLI version mismatch: ${entry.trial_id}`);
+    }
     if (run.status !== "valid" || run.validity?.report !== true) {
       throw new Error(`counted result status/report must be valid: ${entry.trial_id}`);
     }
@@ -2504,6 +2736,17 @@ async function loadCountedResults(options) {
     ) {
       throw new Error(`counted result input mutation or mismatch: ${entry.trial_id}`);
     }
+    if (
+      run.isolation?.execution_isolated !== true ||
+      run.isolation?.oracle_present !== false ||
+      run.isolation?.contamination
+          ?.live_repository_accessible_from_workspace_ancestors !== false ||
+      run.isolation?.contamination?.oracle_present !== false
+    ) {
+      throw new Error(
+        `counted result isolation is unclean or contaminated: ${entry.trial_id}`,
+      );
+    }
     if (run.quiescence?.clean !== true) {
       throw new Error(`counted result quiescence is unclean or contaminated: ${entry.trial_id}`);
     }
@@ -2519,11 +2762,28 @@ async function loadCountedResults(options) {
     }
     if (
       run.quiescence?.owned_reviewer_tree_excluded !== true ||
-      run.quiescence?.sampling?.clean === false ||
+      run.quiescence?.sampling?.clean !== true ||
+      !Number.isInteger(run.quiescence?.sampling?.sample_count) ||
+      run.quiescence.sampling.sample_count <= 0 ||
+      !Number.isFinite(run.quiescence?.sampling?.elapsed_ms) ||
+      typeof run.quiescence?.sampling?.started_at !== "string" ||
+      typeof run.quiescence?.sampling?.ended_at !== "string" ||
       (run.quiescence?.sampling?.contaminants?.length ?? 0) > 0
     ) {
       throw new Error(
-        `counted result quiescence attestation is unclean or contaminated: ${entry.trial_id}`,
+        `counted result quiescence sampling attestation is unclean or contaminated: ${entry.trial_id}`,
+      );
+    }
+    assertTelemetryAvailability(run.telemetry);
+    if (
+      (run.quality?.unmatched_candidates ?? []).some(
+        (candidate) =>
+          candidate.route_blind !== true ||
+          !["supported", "unsupported"].includes(candidate.status),
+      )
+    ) {
+      throw new Error(
+        `counted result has unmatched findings without route-blind adjudication: ${entry.trial_id}`,
       );
     }
     if (run.quality?.recall_by_severity?.Blocker !== 1) {
@@ -2861,19 +3121,21 @@ function validateAdjudications(records, packet) {
       );
     }
     if (record.disposition === "supported") {
-      if (
-        typeof record.oracle_id !== "string" ||
-        record.oracle_id.trim() === ""
-      ) {
-        throw new Error("malformed oracle id");
+      if (record.oracle_id !== undefined && record.oracle_id !== null) {
+        if (
+          typeof record.oracle_id !== "string" ||
+          record.oracle_id.trim() === ""
+        ) {
+          throw new Error("malformed oracle id");
+        }
+        if (!oracleIds.has(record.oracle_id)) {
+          throw new Error(`unknown oracle id: ${record.oracle_id}`);
+        }
+        if (seenOracles.has(record.oracle_id)) {
+          throw new Error(`duplicate oracle id: ${record.oracle_id}`);
+        }
+        seenOracles.add(record.oracle_id);
       }
-      if (!oracleIds.has(record.oracle_id)) {
-        throw new Error(`unknown oracle id: ${record.oracle_id}`);
-      }
-      if (seenOracles.has(record.oracle_id)) {
-        throw new Error(`duplicate oracle id: ${record.oracle_id}`);
-      }
-      seenOracles.add(record.oracle_id);
     } else if (record.oracle_id !== undefined && record.oracle_id !== null) {
       throw new Error("unsupported adjudication must omit oracle_id");
     }
@@ -3286,10 +3548,16 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       configuration.runtime === "claude-code" &&
       claudeAuthentication.checked &&
       !claudeAuthentication.logged_in;
+    const repairQuiescenceMonitor = source.freeze_manifest_sha256
+      ? startQuiescenceMonitor(hooks)
+      : null;
     if (hooks.beforeReviewer) {
       await hooks.beforeReviewer({ workspace, environment, prompt });
     }
-    const reviewerExecution = authenticationBlocked
+    const preflightQuiescenceBlocked =
+      repairQuiescenceMonitor && !repairQuiescenceMonitor.preClean;
+    const reviewerExecution = authenticationBlocked ||
+        preflightQuiescenceBlocked
       ? {
         processResult: {
           exitCode: null,
@@ -3301,19 +3569,34 @@ async function repairEvaluationWithModel(options, hooks = {}) {
           skipped: true,
           durationMs: 0,
         },
-        quiescence: assessQuiescenceWithoutReviewer(
-          hooks.processSnapshot ?? processSnapshot,
-        ),
+        quiescence: repairQuiescenceMonitor
+          ? null
+          : assessQuiescenceWithoutReviewer(
+            hooks.processSnapshot ?? processSnapshot,
+          ),
       }
-      : await runReviewerWithQuiescence(command.command, command.args, {
-        cwd: workspace,
-        env: environment,
-        timeoutMs,
-      }, hooks);
-    const {
-      processResult,
-      quiescence: repairQuiescence,
-    } = reviewerExecution;
+      : repairQuiescenceMonitor
+        ? {
+          processResult: await runReviewer(
+            command.command,
+            command.args,
+            {
+              cwd: workspace,
+              env: environment,
+              timeoutMs,
+              onSpawn(pid) {
+                repairQuiescenceMonitor.setReviewerPid(pid);
+              },
+            },
+          ),
+          quiescence: null,
+        }
+        : await runReviewerWithQuiescence(command.command, command.args, {
+          cwd: workspace,
+          env: environment,
+          timeoutMs,
+        }, hooks);
+    const { processResult } = reviewerExecution;
     const reviewerEnded = performance.now();
 
     const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
@@ -3331,6 +3614,10 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       blockedReasons.push(
         `Claude authentication preflight failed: ${claudeAuthentication.unavailable_reason}`,
       );
+    } else if (preflightQuiescenceBlocked) {
+      blockedReasons.push(
+        "repair-model preflight quiescence is unclean or contaminated",
+      );
     } else if (processResult.timedOut) {
       blockedReasons.push(`reviewer timeout after ${timeoutMs}ms`);
     } else if (processResult.error) {
@@ -3339,6 +3626,9 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       blockedReasons.push(`reviewer exit ${processResult.exitCode}`);
     }
 
+    if (hooks.beforeValidation) {
+      await hooks.beforeValidation({ workspace, environment, prompt });
+    }
     const report = await exists(reportPath)
       ? await readFile(reportPath, "utf8")
       : null;
@@ -3402,6 +3692,9 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         }`,
       );
     }
+    const repairQuiescence = repairQuiescenceMonitor
+      ? repairQuiescenceMonitor.finish()
+      : reviewerExecution.quiescence;
     const combinedQuiescence = {
       ...repairQuiescence,
       clean:
