@@ -47,6 +47,8 @@ async function runEvaluation(root, name, scenario, extra = []) {
     name,
     "--output-dir",
     outputDirectory,
+    "--lock-file",
+    join(root, `${name}.lock`),
     "--price-basis",
     priceBasisPath,
     "--reviewer-command",
@@ -215,6 +217,64 @@ test("authenticated real Claude host remains authenticated with isolated config 
       /email|org(?:id|name)|oauth[_-]?token|refresh[_-]?token|api[_-]?key/i,
     );
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Claude command allows only review read tools and Write, persists the report, and keeps missing-report blocked", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-claude-command-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const outputDirectory = join(root, "standard-claude");
+    const persisted = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "baseline-opus-max",
+      "--trial",
+      "standard-claude",
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(root, "standard-claude.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--timeout-ms",
+      "1000",
+    ]);
+
+    assert.equal(persisted.status, "valid");
+    assert.equal(persisted.process.exit_code, 0);
+    assert.equal(persisted.validity.report, true);
+    assert.equal(
+      persisted.process.args[persisted.process.args.indexOf("--tools") + 1],
+      "Read,Glob,Grep,Write",
+    );
+    assert.equal(
+      persisted.process.args[
+        persisted.process.args.indexOf("--allowedTools") + 1
+      ],
+      "Read,Glob,Grep,Write",
+    );
+    assert.equal(persisted.process.args.includes("Bash"), false);
+    assert.equal(persisted.process.args.includes("Edit"), false);
+
+    const missing = await runEvaluation(root, "still-missing", "missing-report");
+    assert.equal(missing.persisted.status, "blocked");
+    assert.match(
+      missing.persisted.blocked_reasons.join(" "),
+      /report.*missing/i,
+    );
+  } finally {
+    if (previousClaudeBinary === undefined) {
+      delete process.env.CLAUDE_BIN;
+    } else {
+      process.env.CLAUDE_BIN = previousClaudeBinary;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });

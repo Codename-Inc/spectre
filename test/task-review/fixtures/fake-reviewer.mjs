@@ -3,6 +3,21 @@
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+if (
+  process.argv[2] === "auth" &&
+  process.argv[3] === "status" &&
+  process.argv.includes("--json")
+) {
+  process.stdout.write(
+    `${JSON.stringify({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      apiProvider: "firstParty",
+    })}\n`,
+  );
+  process.exit(0);
+}
+
 if (process.argv.includes("--version")) {
   process.stdout.write("fake-reviewer 1.0.0\n");
   process.exit(0);
@@ -30,6 +45,40 @@ Reviewer Model: ${model}
 Reviewer Effort: ${effort}
 Invocation Route: ${route}
 `;
+
+if (process.argv.includes("-p")) {
+  const toolsIndex = process.argv.indexOf("--tools");
+  const allowedToolsIndex = process.argv.indexOf("--allowedTools");
+  const permissionIndex = process.argv.indexOf("--permission-mode");
+  const expectedTools = "Read,Glob,Grep,Write";
+  if (
+    !process.argv.includes("--safe-mode") ||
+    toolsIndex === -1 ||
+    process.argv[toolsIndex + 1] !== expectedTools ||
+    allowedToolsIndex === -1 ||
+    process.argv[allowedToolsIndex + 1] !== expectedTools ||
+    permissionIndex === -1 ||
+    process.argv[permissionIndex + 1] !== "dontAsk"
+  ) {
+    process.stderr.write("Claude reviewer command permissions are invalid\n");
+    process.exit(9);
+  }
+  await writeFile(reportPath, validReport);
+  process.stdout.write(
+    `${JSON.stringify({
+      type: "result",
+      subtype: "success",
+      num_turns: 1,
+      usage: {
+        input_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        output_tokens: 1,
+      },
+    })}\n`,
+  );
+  process.exit(0);
+}
 
 switch (scenario) {
   case "early-success":
