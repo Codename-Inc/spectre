@@ -47,8 +47,7 @@ function gitBranch(projectDir) {
   }
 }
 
-function findLatestHandoff(projectDir, branchName) {
-  const sessionDir = path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs');
+function findLatestHandoffInDir(sessionDir) {
   if (!fs.existsSync(sessionDir)) {
     return null;
   }
@@ -65,6 +64,19 @@ function findLatestHandoff(projectDir, branchName) {
     .sort((left, right) => right.mtimeMs - left.mtimeMs);
 
   return files[0]?.fullPath ?? null;
+}
+
+function findLatestHandoff(projectDir, branchName) {
+  const canonicalHandoff = findLatestHandoffInDir(
+    path.join(projectDir, '.spectre', 'handoffs', branchName)
+  );
+  if (canonicalHandoff) {
+    return canonicalHandoff;
+  }
+
+  return findLatestHandoffInDir(
+    path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs')
+  );
 }
 
 function formatList(items, fallback) {
@@ -201,7 +213,9 @@ function buildSessionOverrideContent(handoff, options = {}) {
 
   sections.push(
     '\n### Spectre Notes\n' +
-    '- Preserve Spectre artifact paths under `docs/tasks/{branch}/...`.\n' +
+    '- Store feature artifacts under `.spectre/features/<feature-name>/`.\n' +
+    '- Store branch handoffs under `.spectre/handoffs/{branch-name}/`.\n' +
+    '- Treat `docs/tasks/**` as legacy compatibility only.\n' +
     '- Prefer existing project skills under `.agents/skills/` before rediscovering codebase context.\n' +
     '- Treat `.spectre/manifest.json` as Spectre install metadata.\n' +
     `- **SessionStart Source**: ${source}\n` +

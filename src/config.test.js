@@ -52,6 +52,102 @@ function makeSessionProject() {
   return tmp;
 }
 
+function writeSessionHandoff(sessionDir, fileName, taskName, branchName = 'main') {
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sessionDir, fileName),
+    JSON.stringify({
+      version: '1.1',
+      branch_name: branchName,
+      task_name: taskName,
+      progress_update: {
+        summary: `${taskName} summary`,
+        accomplished: [],
+        next_steps: [],
+        confidence: 'high'
+      },
+      context: {
+        wip_state: 'clean',
+        last_commit: 'abc1234'
+      }
+    }, null, 2)
+  );
+}
+
+test('native SessionStart prefers canonical history and preserves feature and handoff bytes through lifecycle operations', async () => {
+  const tmp = makeProject();
+  const featureSentinel = path.join(tmp, '.spectre', 'features', 'reader-test', 'sentinel.txt');
+  const canonicalDir = path.join(tmp, '.spectre', 'handoffs', 'main');
+  const handoffSentinel = path.join(canonicalDir, 'sentinel.txt');
+  const legacyDir = path.join(tmp, 'docs', 'tasks', 'main', 'session_logs');
+  fs.mkdirSync(path.dirname(featureSentinel), { recursive: true });
+  fs.writeFileSync(featureSentinel, 'feature sentinel bytes\n');
+  fs.mkdirSync(canonicalDir, { recursive: true });
+  fs.writeFileSync(handoffSentinel, 'handoff sentinel bytes\n');
+  writeSessionHandoff(
+    canonicalDir,
+    '2026-07-23-100000_handoff.json',
+    'Canonical native handoff'
+  );
+  writeSessionHandoff(
+    legacyDir,
+    '2026-07-23-120000_handoff.json',
+    'Newer legacy handoff'
+  );
+
+  const {
+    buildSessionStartOutput,
+    installProjectFiles,
+    uninstallProjectFiles
+  } = await import('./lib/project.js');
+
+  installProjectFiles(tmp, 'project');
+  installProjectFiles(tmp, 'project');
+  const output = buildSessionStartOutput(tmp, { source: 'resume' });
+  const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
+  uninstallProjectFiles(tmp);
+
+  assert.match(
+    output.systemMessage,
+    /injected \.spectre\/handoffs\/main\/2026-07-23-100000_handoff\.json/
+  );
+  assert.match(overrideContent, /Canonical native handoff/);
+  assert.doesNotMatch(overrideContent, /Newer legacy handoff/);
+  assert.match(overrideContent, /\.spectre\/features\/<feature-name>\//);
+  assert.match(overrideContent, /\.spectre\/handoffs\/\{branch-name\}\//);
+  assert.match(overrideContent, /docs\/tasks\/\*\*.*legacy compatibility/i);
+  assert.equal(fs.readFileSync(featureSentinel, 'utf8'), 'feature sentinel bytes\n');
+  assert.equal(fs.readFileSync(handoffSentinel, 'utf8'), 'handoff sentinel bytes\n');
+});
+
+test('native SessionStart does not fall back when canonical top-level history is malformed', async () => {
+  const tmp = makeProject();
+  const canonicalDir = path.join(tmp, '.spectre', 'handoffs', 'main');
+  const legacyDir = path.join(tmp, 'docs', 'tasks', 'main', 'session_logs');
+  fs.mkdirSync(canonicalDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(canonicalDir, '2026-07-23-100000_handoff.json'),
+    '{ malformed canonical'
+  );
+  writeSessionHandoff(
+    legacyDir,
+    '2026-07-23-120000_handoff.json',
+    'Legacy must stay hidden'
+  );
+  fs.writeFileSync(
+    path.join(tmp, 'AGENTS.override.md'),
+    '<!-- spectre-session:start -->\nstale\n<!-- spectre-session:end -->\nuser bytes\n'
+  );
+
+  const { buildSessionStartOutput } = await import('./lib/project.js');
+  const output = buildSessionStartOutput(tmp, { source: 'resume' });
+  const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
+
+  assert.doesNotMatch(output.systemMessage, /injected/);
+  assert.doesNotMatch(overrideContent, /spectre-session:start/);
+  assert.match(overrideContent, /user bytes/);
+});
+
 test('SessionStart writes the latest handoff and capability-only knowledge guidance', async () => {
   const tmp = makeSessionProject();
   const { buildSessionStartOutput } = await import('./lib/project.js');

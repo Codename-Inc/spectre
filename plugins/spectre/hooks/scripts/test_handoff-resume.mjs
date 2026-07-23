@@ -57,7 +57,7 @@ function runHook(cwd, opts) {
   try {
     const stdout = execFileSync(process.execPath, [SCRIPT_PATH], {
       env,
-      cwd,
+      cwd: opts.processCwd || cwd,
       timeout: 10000,
       encoding: 'utf8',
       input: opts.stdin || ''
@@ -68,11 +68,120 @@ function runHook(cwd, opts) {
   }
 }
 
+function writeHandoff(sessionDir, fileName, taskName, branchName = 'main') {
+  fs.mkdirSync(sessionDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sessionDir, fileName),
+    JSON.stringify({
+      version: '1.1',
+      timestamp: fileName.replace('_handoff.json', ''),
+      branch_name: branchName,
+      task_name: taskName,
+      progress_update: {
+        summary: `${taskName} summary`,
+        accomplished: [],
+        next_steps: [],
+        decisions: [],
+        blockers: [],
+        confidence: 'high',
+        risks: []
+      },
+      beads: { tasks: [] },
+      context: {}
+    })
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Core tests
 // ──────────────────────────────────────────────────────────────────
 
 describe('HandoffResume', () => {
+  it('reads canonical handoffs for the explicit project branch, including slashed branches', () => {
+    const tmp = createTmpDir();
+    const launcherDir = createTmpDir();
+    try {
+      setupGitRepo(tmp, 'feature/session-start');
+      const canonicalDir = path.join(
+        tmp,
+        '.spectre',
+        'handoffs',
+        'feature',
+        'session-start'
+      );
+      writeHandoff(
+        canonicalDir,
+        '2026-07-23-100000_handoff.json',
+        'Canonical explicit project',
+        'feature/session-start'
+      );
+
+      const result = runHook(tmp, { processCwd: launcherDir });
+      const output = JSON.parse(result.stdout);
+
+      assert.equal(result.exitCode, 0);
+      assert.match(output.systemMessage, /Canonical explicit project/);
+      assert.match(
+        output.systemMessage,
+        /\.spectre\/handoffs\/feature\/session-start\/2026-07-23-100000_handoff\.json/
+      );
+    } finally {
+      cleanup(tmp);
+      cleanup(launcherDir);
+    }
+  });
+
+  it('prefers canonical branch history over a newer matching legacy handoff', () => {
+    const tmp = createTmpDir();
+    try {
+      const legacyDir = setupGitRepo(tmp);
+      const canonicalDir = path.join(tmp, '.spectre', 'handoffs', 'main');
+      writeHandoff(
+        canonicalDir,
+        '2026-07-23-100000_handoff.json',
+        'Canonical wins'
+      );
+      writeHandoff(
+        legacyDir,
+        '2026-07-23-120000_handoff.json',
+        'Newer legacy loses'
+      );
+
+      const result = runHook(tmp);
+      const output = JSON.parse(result.stdout);
+
+      assert.match(output.systemMessage, /Canonical wins/);
+      assert.doesNotMatch(output.systemMessage, /Newer legacy loses/);
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('does not fall back when canonical top-level history is malformed', () => {
+    const tmp = createTmpDir();
+    try {
+      const legacyDir = setupGitRepo(tmp);
+      const canonicalDir = path.join(tmp, '.spectre', 'handoffs', 'main');
+      fs.mkdirSync(canonicalDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(canonicalDir, '2026-07-23-100000_handoff.json'),
+        '{ malformed canonical'
+      );
+      writeHandoff(
+        legacyDir,
+        '2026-07-23-120000_handoff.json',
+        'Legacy must stay hidden'
+      );
+
+      const result = runHook(tmp);
+
+      assert.equal(result.exitCode, 0);
+      assert.equal(result.stdout, '');
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
   it('no session dir shows welcome banner', () => {
     const tmp = createTmpDir();
     try {
