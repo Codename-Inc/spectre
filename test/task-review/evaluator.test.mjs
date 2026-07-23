@@ -36,6 +36,23 @@ async function implementation() {
   return import(`${new URL(`file://${evaluatorPath}`).href}?t=${Date.now()}`);
 }
 
+test("Codex evaluation runs skip the git-repository trust check in isolated workspaces", async () => {
+  const { reviewerCommand } = await implementation();
+  assert.equal(typeof reviewerCommand, "function");
+  const command = reviewerCommand(
+    {
+      runtime: "codex",
+      model: "gpt-5.6-sol",
+      effort: "medium",
+    },
+    "review prompt",
+    "/tmp/isolated-non-git-workspace",
+    {},
+  );
+  assert.equal(command.command, process.env.CODEX_BIN || "codex");
+  assert.ok(command.args.includes("--skip-git-repo-check"));
+});
+
 async function runEvaluation(root, name, scenario, extra = []) {
   const { runCli } = await implementation();
   const outputDirectory = join(root, name);

@@ -462,7 +462,7 @@ async function loadPrompt(fixtureRoot, variant, taskRoot, reportPath) {
     );
 }
 
-function reviewerCommand(configuration, prompt, workspace, custom) {
+export function reviewerCommand(configuration, prompt, workspace, custom) {
   if (custom.command) {
     return {
       command: custom.command,
@@ -509,6 +509,7 @@ function reviewerCommand(configuration, prompt, workspace, custom) {
       "--ephemeral",
       "--ignore-user-config",
       "--ignore-rules",
+      "--skip-git-repo-check",
       "--disable",
       "hooks",
       prompt,
