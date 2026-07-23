@@ -97,23 +97,35 @@ function writeHandoff(sessionDir, fileName, taskName, branchName = 'main') {
 // ──────────────────────────────────────────────────────────────────
 
 describe('HandoffResume', () => {
-  it('reads canonical handoffs for the explicit project branch, including slashed branches', () => {
+  it('maps a raw slashed branch directly and ignores encoded or aliased handoff paths', () => {
     const tmp = createTmpDir();
     const launcherDir = createTmpDir();
     try {
-      setupGitRepo(tmp, 'feature/session-start');
+      setupGitRepo(tmp, 'feature/foo');
       const canonicalDir = path.join(
         tmp,
         '.spectre',
         'handoffs',
         'feature',
-        'session-start'
+        'foo'
       );
       writeHandoff(
         canonicalDir,
         '2026-07-23-100000_handoff.json',
         'Canonical explicit project',
-        'feature/session-start'
+        'feature/foo'
+      );
+      writeHandoff(
+        path.join(tmp, '.spectre', 'handoffs', 'feature%2Ffoo'),
+        '2026-07-23-120000_handoff.json',
+        'Encoded alias must stay hidden',
+        'feature/foo'
+      );
+      writeHandoff(
+        path.join(tmp, '.spectre', 'handoffs', 'feature-foo'),
+        '2026-07-23-130000_handoff.json',
+        'Dashed alias must stay hidden',
+        'feature/foo'
       );
 
       const result = runHook(tmp, { processCwd: launcherDir });
@@ -123,11 +135,40 @@ describe('HandoffResume', () => {
       assert.match(output.systemMessage, /Canonical explicit project/);
       assert.match(
         output.systemMessage,
-        /\.spectre\/handoffs\/feature\/session-start\/2026-07-23-100000_handoff\.json/
+        /\.spectre\/handoffs\/feature\/foo\/2026-07-23-100000_handoff\.json/
       );
+      assert.doesNotMatch(output.systemMessage, /Encoded alias must stay hidden/);
+      assert.doesNotMatch(output.systemMessage, /Dashed alias must stay hidden/);
     } finally {
       cleanup(tmp);
       cleanup(launcherDir);
+    }
+  });
+
+  it('preserves HEAD for detached Git and unknown for a non-Git project', () => {
+    const detached = createTmpDir();
+    const nonGit = createTmpDir();
+    try {
+      setupGitRepo(detached);
+      execSync('git checkout --detach', { cwd: detached, stdio: 'pipe' });
+      writeHandoff(
+        path.join(detached, '.spectre', 'handoffs', 'HEAD'),
+        '2026-07-23-100000_handoff.json',
+        'Detached HEAD handoff',
+        'HEAD'
+      );
+      writeHandoff(
+        path.join(nonGit, '.spectre', 'handoffs', 'unknown'),
+        '2026-07-23-110000_handoff.json',
+        'Non-Git unknown handoff',
+        'unknown'
+      );
+
+      assert.match(JSON.parse(runHook(detached).stdout).systemMessage, /Detached HEAD handoff/);
+      assert.match(JSON.parse(runHook(nonGit).stdout).systemMessage, /Non-Git unknown handoff/);
+    } finally {
+      cleanup(detached);
+      cleanup(nonGit);
     }
   });
 

@@ -148,6 +148,60 @@ test('native SessionStart does not fall back when canonical top-level history is
   assert.match(overrideContent, /user bytes/);
 });
 
+test('native SessionStart maps raw slashed, detached, and non-Git branch identities without aliases', async () => {
+  const slashed = makeProject();
+  execFileSync('git', ['checkout', '-b', 'feature/foo'], { cwd: slashed, stdio: 'ignore' });
+  writeSessionHandoff(
+    path.join(slashed, '.spectre', 'handoffs', 'feature', 'foo'),
+    '2026-07-23-100000_handoff.json',
+    'Native raw slash',
+    'feature/foo'
+  );
+  writeSessionHandoff(
+    path.join(slashed, '.spectre', 'handoffs', 'feature%2Ffoo'),
+    '2026-07-23-120000_handoff.json',
+    'Native encoded alias',
+    'feature/foo'
+  );
+
+  const detached = makeProject();
+  fs.writeFileSync(path.join(detached, 'README.md'), '# fixture\n');
+  execFileSync('git', ['add', 'README.md'], { cwd: detached, stdio: 'ignore' });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=test@example.test', '-c', 'user.name=Test', 'commit', '-m', 'fixture'],
+    { cwd: detached, stdio: 'ignore' }
+  );
+  execFileSync('git', ['checkout', '--detach'], { cwd: detached, stdio: 'ignore' });
+  writeSessionHandoff(
+    path.join(detached, '.spectre', 'handoffs', 'HEAD'),
+    '2026-07-23-100000_handoff.json',
+    'Native detached HEAD',
+    'HEAD'
+  );
+
+  const nonGit = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-nongit-test-'));
+  writeSessionHandoff(
+    path.join(nonGit, '.spectre', 'handoffs', 'unknown'),
+    '2026-07-23-100000_handoff.json',
+    'Native non-Git unknown',
+    'unknown'
+  );
+
+  const { buildSessionStartOutput } = await import('./lib/project.js');
+  const slashedOutput = buildSessionStartOutput(slashed, { source: 'resume' });
+  const detachedOutput = buildSessionStartOutput(detached, { source: 'resume' });
+  const nonGitOutput = buildSessionStartOutput(nonGit, { source: 'resume' });
+
+  assert.match(slashedOutput.systemMessage, /\.spectre\/handoffs\/feature\/foo\//);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(slashed, 'AGENTS.override.md'), 'utf8'),
+    /Native encoded alias/
+  );
+  assert.match(detachedOutput.systemMessage, /\.spectre\/handoffs\/HEAD\//);
+  assert.match(nonGitOutput.systemMessage, /\.spectre\/handoffs\/unknown\//);
+});
+
 test('SessionStart writes the latest handoff and capability-only knowledge guidance', async () => {
   const tmp = makeSessionProject();
   const { buildSessionStartOutput } = await import('./lib/project.js');
