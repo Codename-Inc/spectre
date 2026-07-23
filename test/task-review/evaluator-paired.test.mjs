@@ -226,8 +226,13 @@ function makeRun({
       after: protectedHashes,
     },
     process: {
+      command: claudeRoute ? "claude" : "codex",
+      args: ["review"],
       exit_code: 0,
+      signal: null,
       timed_out: false,
+      timeout_ms: 1200000,
+      launched: true,
       attempts: variantIndex === 1 && block === 2 ? 2 : 1,
       retries: variantIndex === 1 && block === 2 ? 1 : 0,
       repairs: variantIndex === 1 && block === 3 ? 1 : 0,
@@ -1234,6 +1239,61 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
           const run = JSON.parse(await readFile(path, "utf8"));
           run.status = "blocked";
           run.validity.report = false;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing process attempts",
+        pattern: /process.*attempts.*missing/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.process.attempts;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing process retries",
+        pattern: /process.*retries.*missing/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.process.retries;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing process repairs",
+        pattern: /process.*repairs.*missing/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.process.repairs;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing process fallback",
+        pattern: /process.*fallback.*missing/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.process.fallback;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing process launch evidence",
+        pattern: /process.*launched.*missing/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.process.launched;
           entry.sha256 = await writeJson(path, run);
         },
       },
