@@ -12,7 +12,16 @@ import {
 } from "node:path";
 
 const SCHEMA_VERSION = "task-review-safety/v1";
+const STATE_SCHEMA_VERSION = "task-review-state/v1";
+const PROMPT_VERSION = "task-review-prompt/v1";
 const TERMINAL_REFS = new Set(["", "none", "terminal"]);
+const ALL_LENSES = [
+  "coverage",
+  "executability",
+  "integration",
+  "reference-quality",
+];
+const LOCAL_LENSES = ["coverage", "executability"];
 
 function parseArguments(argv) {
   const [operation, ...tokens] = argv;
@@ -403,6 +412,629 @@ async function hashDescriptor(path) {
   };
 }
 
+function hashValue(value) {
+  return createHash("sha256")
+    .update(typeof value === "string" ? value : JSON.stringify(value))
+    .digest("hex");
+}
+
+function canonicalValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalValue(value[key])]),
+    );
+  }
+  return value;
+}
+
+function semanticHash(value) {
+  return hashValue(canonicalValue(value));
+}
+
+function parentEntries(tasks) {
+  const entries = [];
+  for (const phase of Array.isArray(tasks?.phases) ? tasks.phases : []) {
+    for (const parent of Array.isArray(phase?.parents) ? phase.parents : []) {
+      entries.push({
+        phase_id: String(phase?.id ?? ""),
+        parent,
+      });
+    }
+  }
+  return entries;
+}
+
+function selectedProperties(value, names) {
+  return Object.fromEntries(
+    names
+      .filter((name) => Object.hasOwn(value ?? {}, name))
+      .map((name) => [name, value[name]]),
+  );
+}
+
+function remainingProperties(value, known) {
+  return Object.fromEntries(
+    Object.entries(value ?? {}).filter(([name]) => !known.has(name)),
+  );
+}
+
+const KNOWN_PARENT_FIELDS = new Set([
+  "id",
+  "title",
+  "description",
+  "type",
+  "status",
+  "predecessor",
+  "unblocks",
+  "produces",
+  "consumed_by",
+  "replaces",
+  "requirements",
+  "subtasks",
+]);
+const KNOWN_SUBTASK_FIELDS = new Set([
+  "id",
+  "title",
+  "description",
+  "type",
+  "status",
+  "predecessor",
+  "unblocks",
+  "produces",
+  "consumed_by",
+  "replaces",
+  "requirements",
+  "context",
+  "acceptance_criteria",
+]);
+
+function parentSemanticRecord(phaseId, parent) {
+  const subtasks = Array.isArray(parent?.subtasks) ? parent.subtasks : [];
+  const local = {
+    parent: selectedProperties(parent, [
+      "title",
+      "description",
+      "type",
+      "replaces",
+    ]),
+    subtasks: subtasks.map((subtask) => ({
+      id: subtask?.id,
+      ...selectedProperties(subtask, [
+        "title",
+        "description",
+        "type",
+        "replaces",
+        "context",
+        "acceptance_criteria",
+      ]),
+    })),
+  };
+  const outputs = {
+    parent: selectedProperties(parent, ["produces"]),
+    subtasks: subtasks.map((subtask) => ({
+      id: subtask?.id,
+      ...selectedProperties(subtask, ["produces"]),
+    })),
+  };
+  const edges = {
+    parent: selectedProperties(parent, [
+      "predecessor",
+      "unblocks",
+      "consumed_by",
+    ]),
+    subtasks: subtasks.map((subtask) => ({
+      id: subtask?.id,
+      ...selectedProperties(subtask, [
+        "predecessor",
+        "unblocks",
+        "consumed_by",
+      ]),
+    })),
+  };
+  const requirements = {
+    parent: parent?.requirements ?? [],
+    subtasks: subtasks.map((subtask) => ({
+      id: subtask?.id,
+      requirements: subtask?.requirements ?? [],
+    })),
+  };
+  const unknown = {
+    parent: remainingProperties(parent, KNOWN_PARENT_FIELDS),
+    subtasks: subtasks.map((subtask) => ({
+      id: subtask?.id,
+      fields: remainingProperties(subtask, KNOWN_SUBTASK_FIELDS),
+    })),
+  };
+  const consumers = [
+    ...splitReferences(parent?.consumed_by),
+    ...subtasks.flatMap((subtask) =>
+      splitReferences(subtask?.consumed_by),
+    ),
+  ];
+  const predecessor = splitReferences(parent?.predecessor);
+  const unblocks = splitReferences(parent?.unblocks);
+
+  const record = {
+    phase_id: phaseId,
+    local_hash: semanticHash(local),
+    output_hash: semanticHash(outputs),
+    edge_hash: semanticHash(edges),
+    requirement_hash: semanticHash(requirements),
+    unknown_hash: semanticHash(unknown),
+    predecessor,
+    unblocks,
+    consumers,
+    output_reach: [...new Set(consumers)].sort(),
+  };
+  record.semantic_hash = semanticHash(record);
+  return record;
+}
+
+function semanticSnapshot(tasks, sources) {
+  const parents = {};
+  for (const { phase_id: phaseId, parent } of parentEntries(tasks)) {
+    if (typeof parent?.id !== "string" || !parent.id.trim()) {
+      continue;
+    }
+    parents[parent.id] = parentSemanticRecord(phaseId, parent);
+  }
+  return {
+    source_hashes: sources,
+    parents,
+  };
+}
+
+function descriptorMatches(left, right) {
+  if (left == null && right == null) {
+    return true;
+  }
+  return (
+    typeof left?.sha256 === "string" &&
+    typeof right?.sha256 === "string" &&
+    left.sha256 === right.sha256
+  );
+}
+
+function hashesMatchSnapshot(hashes, snapshot) {
+  const sourceEntries = Object.entries(snapshot?.source_hashes ?? {});
+  const parentEntriesValue = Object.entries(snapshot?.parents ?? {});
+  return (
+    sourceEntries.length > 0 &&
+    parentEntriesValue.length > 0 &&
+    sourceEntries.every(([name, descriptor]) =>
+      descriptorMatches(hashes?.sources?.[name], descriptor),
+    ) &&
+    parentEntriesValue.every(
+      ([id, record]) =>
+        hashes?.parents?.[id] === record.semantic_hash,
+    )
+  );
+}
+
+function allParentIds(snapshot) {
+  return Object.keys(snapshot.parents).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function changedSourceReasons(previous, current) {
+  const labels = {
+    plan: "Plan source changed.",
+    scope: "Scope source changed.",
+    requirements: "Requirement source changed.",
+    prd: "PRD source changed.",
+    ux: "UX source changed.",
+    out_of_bounds: "Out-of-Bounds boundary changed.",
+    manifest: "Artifact manifest changed.",
+    coverage: "Requirement coverage map changed.",
+  };
+  return Object.entries(labels)
+    .filter(
+      ([name]) =>
+        !descriptorMatches(
+          previous?.source_hashes?.[name],
+          current?.source_hashes?.[name],
+        ),
+    )
+    .map(([, reason]) => reason);
+}
+
+function directNeighbors(record) {
+  return new Set([
+    ...(record?.predecessor ?? []),
+    ...(record?.unblocks ?? []),
+    ...(record?.consumers ?? []),
+  ]);
+}
+
+function classifyImpact(previous, current) {
+  const parents = allParentIds(current);
+  const previousParents = allParentIds(previous);
+  const full = (reasons) => ({
+    mode: "full",
+    parents,
+    lenses: [...ALL_LENSES],
+    reasons,
+  });
+
+  if (
+    parents.length !== previousParents.length ||
+    parents.some((id, index) => id !== previousParents[index])
+  ) {
+    return {
+      mode: "full",
+      parents: previousParents,
+      lenses: [...ALL_LENSES],
+      reasons: [
+        "Broad parent identity or renumbering changed the task graph.",
+      ],
+    };
+  }
+
+  const globalSourceReasons = changedSourceReasons(previous, current);
+  if (globalSourceReasons.length > 0) {
+    return full(globalSourceReasons);
+  }
+
+  const selectedParents = new Set();
+  const selectedLenses = new Set();
+  const reasons = [];
+  for (const id of parents) {
+    const before = previous.parents[id];
+    const after = current.parents[id];
+    if (before.semantic_hash === after.semantic_hash) {
+      continue;
+    }
+    if (before.phase_id === "0" || after.phase_id === "0") {
+      return full([
+        `Phase-0 global prerequisite ${id} changed.`,
+      ]);
+    }
+    if (before.requirement_hash !== after.requirement_hash) {
+      return full([
+        `Requirement trace for parent ${id} changed.`,
+      ]);
+    }
+    if (before.unknown_hash !== after.unknown_hash) {
+      return full([
+        `Ambiguous unclassified semantic fields changed for parent ${id}.`,
+      ]);
+    }
+    if (
+      before.output_hash !== after.output_hash &&
+      Math.max(
+        before.output_reach?.length ?? 0,
+        after.output_reach?.length ?? 0,
+      ) > 1
+    ) {
+      return full([
+        `Cross-cutting output reachability changed for parent ${id}.`,
+      ]);
+    }
+    if (before.edge_hash !== after.edge_hash) {
+      selectedParents.add(id);
+      for (const neighbor of [
+        ...directNeighbors(before),
+        ...directNeighbors(after),
+      ]) {
+        if (current.parents[neighbor]) {
+          selectedParents.add(neighbor);
+        }
+      }
+      selectedLenses.add("integration");
+      reasons.push(
+        `Graph edge changed for ${id}; selected the parent and direct old/new neighbors.`,
+      );
+    }
+    if (
+      before.local_hash !== after.local_hash ||
+      before.output_hash !== after.output_hash
+    ) {
+      selectedParents.add(id);
+      for (const lens of LOCAL_LENSES) {
+        selectedLenses.add(lens);
+      }
+      reasons.push(
+        `Criterion, context, title, type, or output changed for parent ${id}.`,
+      );
+    }
+    if (
+      before.edge_hash === after.edge_hash &&
+      before.local_hash === after.local_hash &&
+      before.output_hash === after.output_hash
+    ) {
+      return full([
+        `Ambiguous semantic change could not be safely classified for parent ${id}.`,
+      ]);
+    }
+  }
+
+  if (selectedParents.size === 0) {
+    return {
+      mode: "reuse",
+      parents: [],
+      lenses: [],
+      reasons: [
+        "No semantic source changed; prior complete regions may be reused.",
+      ],
+    };
+  }
+  return {
+    mode: "slice",
+    parents: [...selectedParents].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    lenses: [...selectedLenses],
+    reasons,
+  };
+}
+
+function validatePreviousState(state) {
+  if (!state) {
+    return "Previous review state is missing or absent.";
+  }
+  if (state.schema_version !== STATE_SCHEMA_VERSION) {
+    return "Previous review state schema version is incompatible.";
+  }
+  if (state.prompt_version !== PROMPT_VERSION) {
+    return "Previous review prompt version is stale or incompatible.";
+  }
+  if (
+    !state.semantic_snapshot ||
+    !hashesMatchSnapshot(
+      state.post_write_hashes,
+      state.semantic_snapshot,
+    )
+  ) {
+    return "Post-write hash mismatch invalidates previous review state.";
+  }
+  if (state.writeback?.status !== "complete") {
+    return "Previous write-back was interrupted or incomplete.";
+  }
+  if (state.post_check?.status !== "pass") {
+    return "Previous focused post-check failed or is missing.";
+  }
+
+  const findingIds = Array.isArray(state.prior_report?.finding_ids)
+    ? state.prior_report.finding_ids
+    : [];
+  const dispositions = new Map();
+  for (const entry of Array.isArray(state.finding_dispositions)
+    ? state.finding_dispositions
+    : []) {
+    if (
+      typeof entry?.id === "string" &&
+      ["unresolved", "applied", "skipped", "scope-change"].includes(
+        entry.disposition,
+      )
+    ) {
+      dispositions.set(entry.id, entry.disposition);
+    }
+  }
+  if (findingIds.some((id) => !dispositions.has(id))) {
+    return "A prior finding is missing a valid disposition.";
+  }
+  return null;
+}
+
+function findingReuse(state, current, impact) {
+  const findingIds = Array.isArray(state?.prior_report?.finding_ids)
+    ? state.prior_report.finding_ids
+    : [];
+  const dispositionById = new Map(
+    (Array.isArray(state?.finding_dispositions)
+      ? state.finding_dispositions
+      : []
+    ).map((entry) => [entry.id, entry.disposition]),
+  );
+  const unresolvedById = new Map(
+    (Array.isArray(state?.unresolved_findings)
+      ? state.unresolved_findings
+      : []
+    ).map((finding) => [finding.id, finding]),
+  );
+  const reusable = [];
+  const excluded = [];
+
+  for (const id of findingIds) {
+    const finding = unresolvedById.get(id);
+    const region = finding?.affected_region;
+    const sourceHashes = finding?.source_parent_hashes;
+    const unchangedCompleteRegion =
+      dispositionById.get(id) === "unresolved" &&
+      region?.complete === true &&
+      Array.isArray(region.parents) &&
+      region.parents.length > 0 &&
+      region.parents.every(
+        (parentId) =>
+          typeof sourceHashes?.[parentId] === "string" &&
+          sourceHashes[parentId] ===
+            current.parents[parentId]?.semantic_hash,
+      );
+    if (impact.mode !== "full" && unchangedCompleteRegion) {
+      reusable.push(id);
+    } else {
+      excluded.push(id);
+    }
+  }
+
+  return {
+    eligible: reusable.length > 0,
+    finding_ids: reusable,
+    excluded_finding_ids: excluded,
+  };
+}
+
+async function optionalSourceDescriptor(
+  execute,
+  executePath,
+  taskDir,
+  label,
+) {
+  const source = referencedPath(
+    section(execute, "Document Manifest"),
+    label,
+  );
+  const path = await resolveReference(source, executePath, taskDir);
+  return path ? hashDescriptor(path) : null;
+}
+
+async function impactArtifacts(options, preflightResult) {
+  const taskDir = resolve(options["task-dir"]);
+  const executePath = preflightResult.protected_hashes.execute.path;
+  const tasksPath = preflightResult.protected_hashes.tasks.path;
+  const execute = await readFile(executePath, "utf8");
+  const tasks = JSON.parse(await readFile(tasksPath, "utf8"));
+  const sources = {
+    plan: preflightResult.protected_hashes.plan,
+    execute: preflightResult.protected_hashes.execute,
+    tasks: preflightResult.protected_hashes.tasks,
+    scope:
+      preflightResult.protected_hashes.scope ??
+      (await optionalSourceDescriptor(
+        execute,
+        executePath,
+        taskDir,
+        "Scope",
+      )),
+    requirements: await optionalSourceDescriptor(
+      execute,
+      executePath,
+      taskDir,
+      "Requirements",
+    ),
+    prd: await optionalSourceDescriptor(
+      execute,
+      executePath,
+      taskDir,
+      "PRD",
+    ),
+    ux: await optionalSourceDescriptor(
+      execute,
+      executePath,
+      taskDir,
+      "UX",
+    ),
+    out_of_bounds: await optionalSourceDescriptor(
+      execute,
+      executePath,
+      taskDir,
+      "Out-of-Bounds",
+    ),
+    manifest: await optionalSourceDescriptor(
+      execute,
+      executePath,
+      taskDir,
+      "Artifact Manifest",
+    ),
+    coverage: {
+      path: executePath,
+      sha256: hashValue(section(execute, "Requirement Coverage")),
+    },
+  };
+  return { sources, tasks };
+}
+
+async function readPreviousState(path) {
+  try {
+    return {
+      state: JSON.parse(await readFile(resolve(path), "utf8")),
+      error: null,
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { state: null, error: "Previous review state is missing or absent." };
+    }
+    return {
+      state: null,
+      error: `Previous review state is malformed or invalid: ${error.message}`,
+    };
+  }
+}
+
+async function impact(options) {
+  if (!options["previous-state"]) {
+    throw new Error("impact requires --previous-state");
+  }
+  const preflightResult = await preflight(options);
+  if (preflightResult.status !== "pass") {
+    return {
+      ...preflightResult,
+      operation: "impact",
+      preflight: preflightResult,
+    };
+  }
+
+  const { sources, tasks } = await impactArtifacts(
+    options,
+    preflightResult,
+  );
+  const currentSnapshot = semanticSnapshot(tasks, sources);
+  const preReviewHashes = {
+    sources,
+    parents: Object.fromEntries(
+      Object.entries(currentSnapshot.parents).map(([id, record]) => [
+        id,
+        record.semantic_hash,
+      ]),
+    ),
+  };
+  const previousRead = await readPreviousState(
+    options["previous-state"],
+  );
+  const invalidReason =
+    previousRead.error ?? validatePreviousState(previousRead.state);
+  const impactRegion = invalidReason
+    ? {
+        mode: "full",
+        parents: allParentIds(currentSnapshot),
+        lenses: [...ALL_LENSES],
+        reasons: [invalidReason],
+      }
+    : classifyImpact(
+        previousRead.state.semantic_snapshot,
+        currentSnapshot,
+      );
+  impactRegion.reuse = invalidReason
+    ? {
+        eligible: false,
+        finding_ids: [],
+        excluded_finding_ids:
+          previousRead.state?.prior_report?.finding_ids ?? [],
+      }
+    : findingReuse(
+        previousRead.state,
+        currentSnapshot,
+        impactRegion,
+      );
+
+  return {
+    ...resultFor("impact"),
+    preflight: preflightResult,
+    pre_review_hashes: preReviewHashes,
+    impact: impactRegion,
+    proposed_state: {
+      schema_version: STATE_SCHEMA_VERSION,
+      prompt_version: PROMPT_VERSION,
+      pre_review_hashes: preReviewHashes,
+      post_write_hashes: null,
+      semantic_snapshot: currentSnapshot,
+      reviewed_regions: [],
+      prior_report: null,
+      finding_dispositions: [],
+      unresolved_findings: [],
+      impact_reasons: [...impactRegion.reasons],
+      writeback: { status: "pending" },
+      post_check: { status: "pending" },
+    },
+  };
+}
+
 async function preflight(options) {
   const result = resultFor("preflight");
   const taskDir = resolve(options["task-dir"]);
@@ -771,6 +1403,10 @@ async function main() {
     operation = parsed.operation;
     if (operation === "preflight") {
       finish(await preflight(parsed.options));
+      return;
+    }
+    if (operation === "impact") {
+      finish(await impact(parsed.options));
       return;
     }
     if (operation === "validate-report") {

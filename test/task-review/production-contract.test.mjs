@@ -66,6 +66,39 @@ test("production task review owns the explicit medium-effort orchestration seque
   );
 });
 
+test("repeat review is impact-scoped and primary-owned state is persisted only after write-back", () => {
+  const orderedContract = [
+    "Run `task-review-safety.mjs` `preflight`",
+    "Run `task-review-safety.mjs` `impact`",
+    "Construct the semantic review brief",
+    "Launch the selected opposite-runtime command",
+    "Record exactly one disposition",
+    "Write back",
+    "focused post-check",
+    "Atomically persist",
+  ];
+  let previousIndex = -1;
+  for (const phrase of orderedContract) {
+    const index = taskReview.indexOf(phrase, previousIndex + 1);
+    assert.ok(
+      index > previousIndex,
+      `${phrase} must appear in impact/write-back lifecycle order`,
+    );
+    previousIndex = index;
+  }
+
+  assert.match(taskReview, /task_review_state\.json/);
+  assert.match(taskReview, /task-review-state\/v1/);
+  assert.match(taskReview, /unresolved`, `applied`, `skipped`, or `scope-change/);
+  assert.match(taskReview, /post-write hashes and semantic snapshot/);
+  assert.match(taskReview, /Applied findings never enter the reusable set/);
+  assert.match(taskReview, /helper remains read-only and never persists state/);
+  assert.match(
+    taskReview,
+    /Rerun Parents:.*Rerun Lenses:.*Reused Findings:.*Impact Reasons:/s,
+  );
+});
+
 test("production task review keeps semantic judgment with a non-delegating reviewer", () => {
   assert.match(taskReview, /Deterministic \/ mixed \/ semantic ownership/);
   assert.match(taskReview, /Requirement and Out-of-Bounds fidelity/);
