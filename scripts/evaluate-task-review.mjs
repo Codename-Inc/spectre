@@ -3459,9 +3459,13 @@ async function repairEvaluationWithModel(options, hooks = {}) {
   let runRoot = null;
   let stagedAuth = null;
   let outputCreated = false;
+  let repairQuiescenceMonitor = null;
   try {
     await mkdir(outputDirectory, { recursive: false });
     outputCreated = true;
+    repairQuiescenceMonitor = source.freeze_manifest_sha256
+      ? startQuiescenceMonitor(hooks)
+      : null;
     runRoot = await mkdtemp(
       join(tmpdir(), "spectre-task-review-repair-model-"),
     );
@@ -3548,9 +3552,6 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       configuration.runtime === "claude-code" &&
       claudeAuthentication.checked &&
       !claudeAuthentication.logged_in;
-    const repairQuiescenceMonitor = source.freeze_manifest_sha256
-      ? startQuiescenceMonitor(hooks)
-      : null;
     if (hooks.beforeReviewer) {
       await hooks.beforeReviewer({ workspace, environment, prompt });
     }
@@ -3692,6 +3693,26 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         }`,
       );
     }
+    const afterEvidence = await immutableEvidenceSnapshot(
+      sourceDirectory,
+      source,
+    );
+    if (
+      canonicalJson(beforeEvidence.hashes) !==
+      canonicalJson(afterEvidence.hashes)
+    ) {
+      throw new Error("source evidence changed during immutable repair-model");
+    }
+    if (
+      !beforeEvidence.paths.report &&
+      await exists(expectedSourceReportPath)
+    ) {
+      throw new Error("source report appeared during immutable repair-model");
+    }
+
+    const sourceTotalMs = source.timing?.total_ms ?? 0;
+    const evidenceWorkspace = join(outputDirectory, "workspace");
+    await cp(workspace, evidenceWorkspace, { recursive: true });
     const repairQuiescence = repairQuiescenceMonitor
       ? repairQuiescenceMonitor.finish()
       : reviewerExecution.quiescence;
@@ -3713,24 +3734,6 @@ async function repairEvaluationWithModel(options, hooks = {}) {
         "repair-model quiescence attestation is unclean or contaminated",
       );
     }
-
-    const afterEvidence = await immutableEvidenceSnapshot(
-      sourceDirectory,
-      source,
-    );
-    if (
-      canonicalJson(beforeEvidence.hashes) !==
-      canonicalJson(afterEvidence.hashes)
-    ) {
-      throw new Error("source evidence changed during immutable repair-model");
-    }
-    if (
-      !beforeEvidence.paths.report &&
-      await exists(expectedSourceReportPath)
-    ) {
-      throw new Error("source report appeared during immutable repair-model");
-    }
-
     const validationEnded = performance.now();
     const repairIntervals = {
       preflight_ms: preflightEnded - repairStarted,
@@ -3738,9 +3741,6 @@ async function repairEvaluationWithModel(options, hooks = {}) {
       validation_ms: validationEnded - reviewerEnded,
     };
     const repairTotalMs = validationEnded - repairStarted;
-    const sourceTotalMs = source.timing?.total_ms ?? 0;
-    const evidenceWorkspace = join(outputDirectory, "workspace");
-    await cp(workspace, evidenceWorkspace, { recursive: true });
     const evidenceReportPath = join(
       evidenceWorkspace,
       sourceTaskRelative,
@@ -3890,10 +3890,20 @@ async function repairEvaluationWithModel(options, hooks = {}) {
     await atomicWriteJson(join(outputDirectory, "result.json"), result);
     return result;
   } catch (error) {
+    let failure = error;
+    if (repairQuiescenceMonitor) {
+      try {
+        repairQuiescenceMonitor.finish();
+      } catch (monitorError) {
+        failure = new Error(
+          `${error.message}; quiescence monitor failed: ${monitorError.message}`,
+        );
+      }
+    }
     if (outputCreated && !(await exists(join(outputDirectory, "result.json")))) {
       await rm(outputDirectory, { recursive: true, force: true });
     }
-    throw error;
+    throw failure;
   } finally {
     if (stagedAuth) await rm(stagedAuth, { force: true });
     if (runRoot) await rm(runRoot, { recursive: true, force: true });
