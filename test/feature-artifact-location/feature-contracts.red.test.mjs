@@ -20,12 +20,13 @@ const creatorContract = {
   existingFeature: /explicitly (?:names|selects) an existing managed feature/i,
 };
 
-const continuationContract = {
-  explicit: /explicit feature (?:directory|root) or feature name/i,
-  artifact: /supplied artifact beneath (?:a|the) feature (?:directory|root)/i,
-  conversation: /one unambiguous feature artifact .*current (?:conversation|thread)/i,
-  noInference: /never use branch name, modification time, lifecycle completeness, or directory scanning/i,
-};
+const continuationResolutionOrder = [
+  ['explicit', /explicit feature (?:directory|root) or feature name/i],
+  ['artifact', /supplied artifact beneath (?:a|the) feature (?:directory|root)/i],
+  ['conversation', /one unambiguous feature artifact .*current (?:conversation|thread)/i],
+];
+const noContinuationInference =
+  /never use branch name, modification time, lifecycle completeness, or directory scanning/i;
 
 function read(relativePath) {
   return readFileSync(join(projectRoot, relativePath), 'utf8');
@@ -35,6 +36,32 @@ function assertContract(text, contract, file) {
   for (const [clause, pattern] of Object.entries(contract)) {
     assert.ok(pattern.test(text), `${file}: missing ${clause} clause`);
   }
+}
+
+function continuationOrderMismatches(text) {
+  let previousOffset = -1;
+  const mismatches = [];
+  for (const [clause, pattern] of continuationResolutionOrder) {
+    const match = pattern.exec(text);
+    if (!match) {
+      mismatches.push(`missing ${clause} clause`);
+      continue;
+    }
+    if (match.index <= previousOffset) {
+      mismatches.push(`${clause} clause is out of order`);
+    }
+    previousOffset = match.index;
+  }
+  return mismatches;
+}
+
+function assertContinuationContract(text, file) {
+  assert.deepEqual(
+    continuationOrderMismatches(text),
+    [],
+    `${file}: resolution order must be explicit feature → supplied artifact → current-thread artifact`,
+  );
+  assert.ok(noContinuationInference.test(text), `${file}: missing noInference clause`);
 }
 
 function git(cwd, args) {
@@ -53,7 +80,20 @@ test('contract matcher accepts the complete creator and continuation fixture', (
   ].join('\n');
 
   assertContract(fixture, creatorContract, 'synthetic creator');
-  assertContract(fixture, continuationContract, 'synthetic continuation');
+  assertContinuationContract(fixture, 'synthetic continuation');
+});
+
+test('ordered continuation matcher rejects a reordered synthetic contract', () => {
+  const reordered = [
+    'Resolve one unambiguous feature artifact from the current thread.',
+    'Then resolve a supplied artifact beneath the feature root.',
+    'Finally resolve an explicit feature root or feature name.',
+  ].join('\n');
+
+  assert.deepEqual(continuationOrderMismatches(reordered), [
+    'artifact clause is out of order',
+    'conversation clause is out of order',
+  ]);
 });
 
 test('creator skills declare no-extra-gate and selected-existing-feature behavior', () => {
@@ -75,7 +115,7 @@ test('continuation skills declare the three-step resolution order without branch
     'plugins/spectre-codex/skills/spectre-execute/SKILL.md',
   ]) {
     const content = read(file);
-    assertContract(content, continuationContract, file);
+    assertContinuationContract(content, file);
     assert.doesNotMatch(
       content,
       /OUT_DIR\s*=\s*(?:user-specified|target_dir)[^\n]*docs\/tasks\/\{branch\}/,

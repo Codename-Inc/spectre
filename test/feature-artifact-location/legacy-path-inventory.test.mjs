@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import test from 'node:test';
@@ -30,37 +31,98 @@ function scopedFiles() {
 }
 
 function scanLegacyPrefixes(files) {
-  const occurrences = {};
+  const occurrences = [];
   for (const file of files) {
+    const path = relative(projectRoot, file);
     const content = readFileSync(file, 'utf8');
-    const count = [...content.matchAll(legacyPrefixPattern)].length;
-    if (count > 0) {
-      occurrences[relative(projectRoot, file)] = count;
+    const repeatedContexts = new Map();
+    for (const [lineIndex, context] of content.split('\n').entries()) {
+      const matches = [...context.matchAll(legacyPrefixPattern)];
+      if (matches.length === 0) continue;
+
+      const contextIndex = (repeatedContexts.get(context) ?? 0) + 1;
+      repeatedContexts.set(context, contextIndex);
+      const contextHash = createHash('sha256').update(context).digest('hex').slice(0, 12);
+      matches.forEach((match, matchIndex) => {
+        occurrences.push({
+          id: `${contextHash}:${contextIndex}:${matchIndex + 1}`,
+          path,
+          line: lineIndex + 1,
+          column: match.index + 1,
+          context,
+        });
+      });
     }
   }
   return occurrences;
 }
 
 function inventoryMismatches(actual, expected) {
-  const paths = new Set([...Object.keys(actual), ...Object.keys(expected)]);
-  return [...paths]
+  const actualByKey = new Map(actual.map((entry) => [`${entry.path}#${entry.id}`, entry]));
+  const expectedByKey = new Map(
+    Object.entries(expected).flatMap(([path, entries]) =>
+      Object.entries(entries).map(([id, classification]) => [
+        `${path}#${id}`,
+        { path, id, classification },
+      ]),
+    ),
+  );
+  const keys = new Set([...actualByKey.keys(), ...expectedByKey.keys()]);
+  return [...keys]
     .sort()
-    .flatMap((path) => {
-      if (!(path in expected)) return [`${path}: ${actual[path]} unclassified occurrence(s)`];
-      if (!(path in actual)) return [`${path}: allowlist entry is stale`];
-      if (actual[path] !== expected[path].count) {
-        return [`${path}: expected ${expected[path].count}, found ${actual[path]}`];
+    .flatMap((key) => {
+      const found = actualByKey.get(key);
+      const allowed = expectedByKey.get(key);
+      if (!allowed) {
+        return [
+          `${found.path}:${found.line}:${found.column}: unclassified ${found.context.trim()}`,
+        ];
       }
+      if (!found) return [`${allowed.path}#${allowed.id}: allowlist entry is stale`];
       return [];
     });
 }
 
 test('legacy path inventory rejects an unclassified occurrence', () => {
   const mismatches = inventoryMismatches(
-    { 'new-active-default.md': 1 },
+    [{
+      id: 'abc123:1:1',
+      path: 'new-active-default.md',
+      line: 7,
+      column: 3,
+      context: '  docs/tasks/new-default',
+    }],
     {},
   );
-  assert.deepEqual(mismatches, ['new-active-default.md: 1 unclassified occurrence(s)']);
+  assert.deepEqual(mismatches, [
+    'new-active-default.md:7:3: unclassified docs/tasks/new-default',
+  ]);
+});
+
+test('legacy path inventory requires separate classifications in a mixed file', () => {
+  const actual = [
+    { id: 'active:1:1', path: 'mixed.md', line: 1, column: 1, context: 'docs/tasks/active' },
+    { id: 'compat:1:1', path: 'mixed.md', line: 2, column: 1, context: 'docs/tasks/legacy' },
+  ];
+  assert.deepEqual(
+    inventoryMismatches(actual, {
+      'mixed.md': { 'compat:1:1': 'compatibility_clause' },
+    }),
+    ['mixed.md:1:1: unclassified docs/tasks/active'],
+  );
+
+  const expected = {
+    'mixed.md': {
+      'active:1:1': 'active_default',
+      'compat:1:1': 'compatibility_clause',
+    },
+  };
+  assert.deepEqual(inventoryMismatches(actual, expected), []);
+  assert.notEqual(
+    expected['mixed.md']['active:1:1'],
+    expected['mixed.md']['compat:1:1'],
+    'individual occurrences retain independent classifications',
+  );
 });
 
 test('legacy path inventory classifies every scoped occurrence', (t) => {
@@ -69,11 +131,13 @@ test('legacy path inventory classifies every scoped occurrence', (t) => {
   assert.deepEqual(mismatches, []);
 
   const allowedClassifications = new Set(inventory.classifications);
-  for (const [path, entry] of Object.entries(inventory.occurrences)) {
-    assert.ok(
-      allowedClassifications.has(entry.classification),
-      `${path}: unknown classification ${entry.classification}`,
-    );
+  for (const [path, entries] of Object.entries(inventory.occurrences)) {
+    for (const [id, classification] of Object.entries(entries)) {
+      assert.ok(
+        allowedClassifications.has(classification),
+        `${path}#${id}: unknown classification ${classification}`,
+      );
+    }
   }
 
   const scopedText = scopedFiles().map((file) => readFileSync(file, 'utf8')).join('\n');
@@ -81,10 +145,12 @@ test('legacy path inventory classifies every scoped occurrence', (t) => {
     assert.ok(scopedText.includes(literal), `legacy inventory is missing ${form}: ${literal}`);
   }
 
-  const totals = Object.values(inventory.occurrences).reduce((summary, entry) => {
-    summary[entry.classification] = (summary[entry.classification] ?? 0) + entry.count;
-    return summary;
-  }, {});
+  const totals = Object.values(inventory.occurrences)
+    .flatMap((entries) => Object.values(entries))
+    .reduce((summary, classification) => {
+      summary[classification] = (summary[classification] ?? 0) + 1;
+      return summary;
+    }, {});
   t.diagnostic(`classified legacy prefixes: ${JSON.stringify(totals)}`);
   t.diagnostic(`required forms: ${Object.keys(inventory.required_forms).join(', ')}`);
 });
