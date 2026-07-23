@@ -233,7 +233,8 @@ function makeRun({
       timed_out: false,
       timeout_ms: 1200000,
       launched: true,
-      attempts: variantIndex === 1 && block === 2 ? 2 : 1,
+      attempts:
+        variantIndex === 1 && (block === 2 || block === 3) ? 2 : 1,
       retries: variantIndex === 1 && block === 2 ? 1 : 0,
       repairs: variantIndex === 1 && block === 3 ? 1 : 0,
       fallback: observed(variantIndex === 2 && block === 3 ? "native" : null),

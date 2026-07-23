@@ -2735,6 +2735,72 @@ function assertExclusiveLock(run) {
   return lock.path;
 }
 
+function assertCompleteProcess(processEvidence, trialId) {
+  const requiredInteger = (field, minimum) => {
+    const value = processEvidence?.[field];
+    if (!Number.isInteger(value) || value < minimum) {
+      throw new Error(
+        `counted result process ${field} is missing or invalid: ${trialId}`,
+      );
+    }
+  };
+  if (
+    typeof processEvidence?.command !== "string" ||
+    processEvidence.command.trim() === ""
+  ) {
+    throw new Error(
+      `counted result process command is missing or invalid: ${trialId}`,
+    );
+  }
+  if (!Array.isArray(processEvidence.args)) {
+    throw new Error(
+      `counted result process args are missing or invalid: ${trialId}`,
+    );
+  }
+  if (
+    !Object.hasOwn(processEvidence, "signal") ||
+    (
+      processEvidence.signal !== null &&
+      typeof processEvidence.signal !== "string"
+    )
+  ) {
+    throw new Error(
+      `counted result process signal is missing or invalid: ${trialId}`,
+    );
+  }
+  if (
+    typeof processEvidence.timed_out !== "boolean" ||
+    !Number.isFinite(processEvidence.timeout_ms) ||
+    processEvidence.timeout_ms <= 0
+  ) {
+    throw new Error(
+      `counted result process timeout evidence is missing or invalid: ${trialId}`,
+    );
+  }
+  if (processEvidence.launched !== true) {
+    throw new Error(
+      `counted result process launched evidence is missing or invalid: ${trialId}`,
+    );
+  }
+  requiredInteger("attempts", 1);
+  requiredInteger("retries", 0);
+  requiredInteger("repairs", 0);
+  if (
+    !processEvidence.fallback ||
+    typeof processEvidence.fallback !== "object" ||
+    !Object.hasOwn(processEvidence.fallback, "value")
+  ) {
+    throw new Error(
+      `counted result process fallback is missing or invalid: ${trialId}`,
+    );
+  }
+  if (processEvidence.attempts < processEvidence.repairs + 1) {
+    throw new Error(
+      `counted result process attempts do not cover repairs: ${trialId}`,
+    );
+  }
+}
+
 function assertLiveRouteIdentity(run, configuration) {
   if (
     configuration.runtime === "claude-code" &&
@@ -2742,7 +2808,9 @@ function assertLiveRouteIdentity(run, configuration) {
       run.authentication?.claude?.checked !== true ||
       run.authentication?.claude?.logged_in !== true ||
       typeof run.authentication?.claude?.auth_method !== "string" ||
-      run.authentication.claude.auth_method.trim() === ""
+      run.authentication.claude.auth_method.trim() === "" ||
+      typeof run.authentication?.claude?.api_provider !== "string" ||
+      run.authentication.claude.api_provider.trim() === ""
     )
   ) {
     throw new Error(
@@ -2876,6 +2944,7 @@ async function loadCountedResults(options) {
     }
     assertLiveRouteIdentity(run, configuration);
     lockPaths.add(assertExclusiveLock(run));
+    assertCompleteProcess(run.process, entry.trial_id);
     if (run.status !== "valid" || run.validity?.report !== true) {
       throw new Error(`counted result status/report must be valid: ${entry.trial_id}`);
     }
