@@ -144,6 +144,14 @@ async function filesBelow(root) {
   return files.sort();
 }
 
+async function hashFilesBelow(root) {
+  const hashes = {};
+  for (const path of await filesBelow(root)) {
+    hashes[path] = await hashFile(join(root, path));
+  }
+  return hashes;
+}
+
 function parseArguments(args) {
   const [command, ...rest] = args;
   const options = { reviewerArg: [] };
@@ -250,6 +258,118 @@ async function stageCodexAuthentication(codexHome) {
   return destination;
 }
 
+async function prepareReviewerRuntime(
+  runRoot,
+  configuration,
+  reportPath,
+  taskRoot,
+) {
+  const runtimeRoot = join(runRoot, "runtime");
+  const paths = {
+    claudeHome: join(runtimeRoot, "claude"),
+    codexHome: join(runtimeRoot, "codex"),
+    spectreHome: join(runtimeRoot, "spectre"),
+    temporaryHome: join(runRoot, "home"),
+    temporaryDirectory: join(runRoot, "tmp"),
+    xdgConfigHome: join(runRoot, "xdg", "config"),
+    xdgCacheHome: join(runRoot, "xdg", "cache"),
+    xdgDataHome: join(runRoot, "xdg", "data"),
+    xdgStateHome: join(runRoot, "xdg", "state"),
+    xdgRuntimeDirectory: join(runRoot, "xdg", "runtime"),
+  };
+  await Promise.all([
+    mkdir(paths.claudeHome, { recursive: true }),
+    mkdir(paths.codexHome, { recursive: true }),
+    mkdir(paths.spectreHome, { recursive: true }),
+    mkdir(paths.temporaryHome, { recursive: true }),
+    mkdir(paths.temporaryDirectory, { recursive: true }),
+    mkdir(paths.xdgConfigHome, { recursive: true }),
+    mkdir(paths.xdgCacheHome, { recursive: true }),
+    mkdir(paths.xdgDataHome, { recursive: true }),
+    mkdir(paths.xdgStateHome, { recursive: true }),
+    mkdir(paths.xdgRuntimeDirectory, { recursive: true, mode: 0o700 }),
+  ]);
+
+  const baseEnvironment = cleanEnvironment();
+  for (const [key, value] of Object.entries(baseEnvironment)) {
+    if (key === "PATH") {
+      baseEnvironment.PATH = value
+        .split(delimiter)
+        .filter((entry) => !isWithin(EVALUATOR_REPOSITORY_ROOT, entry))
+        .join(delimiter);
+    } else if (value.includes(EVALUATOR_REPOSITORY_ROOT)) {
+      delete baseEnvironment[key];
+    }
+  }
+  const hostHome =
+    typeof process.env.HOME === "string" && isAbsolute(process.env.HOME)
+      ? process.env.HOME
+      : null;
+  const reviewerUsesHostHome =
+    configuration.runtime === "claude-code" && hostHome !== null;
+  baseEnvironment.HOME = reviewerUsesHostHome
+    ? hostHome
+    : paths.temporaryHome;
+  baseEnvironment.TMPDIR = paths.temporaryDirectory;
+  baseEnvironment.TMP = paths.temporaryDirectory;
+  baseEnvironment.TEMP = paths.temporaryDirectory;
+  baseEnvironment.XDG_CONFIG_HOME = paths.xdgConfigHome;
+  baseEnvironment.XDG_CACHE_HOME = paths.xdgCacheHome;
+  baseEnvironment.XDG_DATA_HOME = paths.xdgDataHome;
+  baseEnvironment.XDG_STATE_HOME = paths.xdgStateHome;
+  baseEnvironment.XDG_RUNTIME_DIR = paths.xdgRuntimeDirectory;
+  const environment = {
+    ...claudeAuthenticationEnvironment(paths.claudeHome, baseEnvironment),
+    CODEX_HOME: paths.codexHome,
+    SPECTRE_HOME: paths.spectreHome,
+    TASK_REVIEW_REPORT: reportPath,
+    TASK_REVIEW_WORKSPACE: taskRoot,
+    TASK_REVIEW_RUNTIME: configuration.runtimeLabel,
+    TASK_REVIEW_MODEL: configuration.model,
+    TASK_REVIEW_EFFORT: configuration.effort,
+    TASK_REVIEW_ROUTE: configuration.route,
+  };
+  return {
+    ...paths,
+    baseEnvironment,
+    environment,
+    hostHome,
+    reviewerUsesHostHome,
+    stagedAuth: await stageCodexAuthentication(paths.codexHome),
+  };
+}
+
+function reviewerAuthentication(
+  configuration,
+  customCommand,
+  command,
+  claudeHome,
+  environment,
+) {
+  if (configuration.runtime !== "claude-code") {
+    return {
+      checked: false,
+      logged_in: null,
+      auth_method: null,
+      api_provider: null,
+      source: "not-applicable",
+      unavailable_reason: "The selected reviewer runtime is not Claude Code.",
+    };
+  }
+  if (customCommand) {
+    return {
+      checked: false,
+      logged_in: null,
+      auth_method: null,
+      api_provider: null,
+      source: "default-secure-storage",
+      unavailable_reason:
+        "Custom reviewer command bypassed the real Claude auth preflight.",
+    };
+  }
+  return probeClaudeAuthentication(command, claudeHome, environment);
+}
+
 async function verifyFixture(fixtureRoot) {
   const manifestPath = join(fixtureRoot, "manifest.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -290,6 +410,30 @@ Write a Findings table with columns # | Severity | Lens | Location | Finding |
 Suggested Edit, or an explicit "No findings." form. Include Review Metadata
 with an ISO8601 UTC Timestamp, Mode, Reviewer Runtime, Reviewer Model,
 Reviewer Effort, and Invocation Route.`;
+}
+
+function buildRepairPrompt(taskRoot, reportPath, configuration, timestamp) {
+  return `Perform a report-only repair of an adversarial generated-task review.
+
+TASK_DIR: ${taskRoot}
+EXECUTE_INDEX: ${join(taskRoot, "specs", "execute.md")}
+TASKS_JSON: ${join(taskRoot, "specs", "tasks.json")}
+PLAN: ${join(taskRoot, "specs", "plan.md")}
+REVIEW_REPORT: ${reportPath}
+
+Write only REVIEW_REPORT. Do not write, edit, rename, or delete any other
+file. Read the staged plan, execute index, and task graph, then replace or
+create REVIEW_REPORT with a complete one-pass review. Use a Findings table
+with columns # | Severity | Lens | Location | Finding | Suggested Edit, or
+the explicit "No findings." form.
+
+Use these exact Review Metadata values:
+Timestamp: ${timestamp}
+Mode: adversarial
+Reviewer Runtime: ${configuration.runtimeLabel}
+Reviewer Model: ${configuration.model}
+Reviewer Effort: ${configuration.effort}
+Invocation Route: ${configuration.route}`;
 }
 
 async function loadPrompt(fixtureRoot, variant, taskRoot, reportPath) {
@@ -1155,7 +1299,6 @@ async function runEvaluation(options, hooks = {}) {
   if (await exists(outputDirectory)) {
     throw new Error(`output directory already exists: ${outputDirectory}`);
   }
-
   const totalStarted = performance.now();
   const wallStarted = new Date().toISOString();
   const lockFile = resolve(
@@ -1202,31 +1345,10 @@ async function runEvaluation(options, hooks = {}) {
       "main",
       "knowledge-surfacing",
     );
-    const runtimeRoot = join(runRoot, "runtime");
-    const claudeHome = join(runtimeRoot, "claude");
-    const codexHome = join(runtimeRoot, "codex");
-    const spectreHome = join(runtimeRoot, "spectre");
-    const temporaryHome = join(runRoot, "home");
-    const temporaryDirectory = join(runRoot, "tmp");
-    const xdgConfigHome = join(runRoot, "xdg", "config");
-    const xdgCacheHome = join(runRoot, "xdg", "cache");
-    const xdgDataHome = join(runRoot, "xdg", "data");
-    const xdgStateHome = join(runRoot, "xdg", "state");
-    const xdgRuntimeDirectory = join(runRoot, "xdg", "runtime");
     const rawDirectory = join(outputDirectory, "raw");
     const reportPath = join(taskRoot, "reviews", "task_review.md");
     await Promise.all([
       mkdir(taskRoot, { recursive: true }),
-      mkdir(claudeHome, { recursive: true }),
-      mkdir(codexHome, { recursive: true }),
-      mkdir(spectreHome, { recursive: true }),
-      mkdir(temporaryHome, { recursive: true }),
-      mkdir(temporaryDirectory, { recursive: true }),
-      mkdir(xdgConfigHome, { recursive: true }),
-      mkdir(xdgCacheHome, { recursive: true }),
-      mkdir(xdgDataHome, { recursive: true }),
-      mkdir(xdgStateHome, { recursive: true }),
-      mkdir(xdgRuntimeDirectory, { recursive: true, mode: 0o700 }),
       mkdir(rawDirectory, { recursive: true }),
       mkdir(dirname(reportPath), { recursive: true }),
     ]);
@@ -1248,72 +1370,29 @@ async function runEvaluation(options, hooks = {}) {
       command: options.reviewerCommand,
       args: options.reviewerArg,
     });
-    const baseEnvironment = cleanEnvironment();
-    for (const [key, value] of Object.entries(baseEnvironment)) {
-      if (key === "PATH") {
-        baseEnvironment.PATH = value
-          .split(delimiter)
-          .filter((entry) => !isWithin(EVALUATOR_REPOSITORY_ROOT, entry))
-          .join(delimiter);
-      } else if (value.includes(EVALUATOR_REPOSITORY_ROOT)) {
-        delete baseEnvironment[key];
-      }
-    }
-    const hostHome =
-      typeof process.env.HOME === "string" &&
-      isAbsolute(process.env.HOME)
-        ? process.env.HOME
-        : null;
-    const reviewerUsesHostHome =
-      configuration.runtime === "claude-code" && hostHome !== null;
-    baseEnvironment.HOME = reviewerUsesHostHome
-      ? hostHome
-      : temporaryHome;
-    baseEnvironment.TMPDIR = temporaryDirectory;
-    baseEnvironment.TMP = temporaryDirectory;
-    baseEnvironment.TEMP = temporaryDirectory;
-    baseEnvironment.XDG_CONFIG_HOME = xdgConfigHome;
-    baseEnvironment.XDG_CACHE_HOME = xdgCacheHome;
-    baseEnvironment.XDG_DATA_HOME = xdgDataHome;
-    baseEnvironment.XDG_STATE_HOME = xdgStateHome;
-    baseEnvironment.XDG_RUNTIME_DIR = xdgRuntimeDirectory;
-    const environment = {
-      ...claudeAuthenticationEnvironment(claudeHome, baseEnvironment),
-      CODEX_HOME: codexHome,
-      SPECTRE_HOME: spectreHome,
-      TASK_REVIEW_REPORT: reportPath,
-      TASK_REVIEW_WORKSPACE: taskRoot,
-      TASK_REVIEW_RUNTIME: configuration.runtimeLabel,
-      TASK_REVIEW_MODEL: configuration.model,
-      TASK_REVIEW_EFFORT: configuration.effort,
-      TASK_REVIEW_ROUTE: configuration.route,
-    };
-    stagedAuth = await stageCodexAuthentication(codexHome);
-    const claudeAuthentication =
-      configuration.runtime !== "claude-code"
-        ? {
-          checked: false,
-          logged_in: null,
-          auth_method: null,
-          api_provider: null,
-          source: "not-applicable",
-          unavailable_reason: "The selected reviewer runtime is not Claude Code.",
-        }
-        : options.reviewerCommand
-          ? {
-            checked: false,
-            logged_in: null,
-            auth_method: null,
-            api_provider: null,
-            source: "default-secure-storage",
-            unavailable_reason:
-              "Custom reviewer command bypassed the real Claude auth preflight.",
-          }
-          : probeClaudeAuthentication(
-            command.command,
-            claudeHome,
-            environment,
-          );
+    const reviewerRuntime = await prepareReviewerRuntime(
+      runRoot,
+      configuration,
+      reportPath,
+      taskRoot,
+    );
+    stagedAuth = reviewerRuntime.stagedAuth;
+    const {
+      baseEnvironment,
+      claudeHome,
+      codexHome,
+      environment,
+      hostHome,
+      reviewerUsesHostHome,
+      spectreHome,
+    } = reviewerRuntime;
+    const claudeAuthentication = reviewerAuthentication(
+      configuration,
+      options.reviewerCommand,
+      command.command,
+      claudeHome,
+      environment,
+    );
     if (hooks.debugLog) {
       hooks.debugLog(
         `[🪳 TEMP CLAUDE_AUTH_HOME] host_home_bridge=${hostHome !== null} reviewer_home_keychain_bridge=${reviewerUsesHostHome}`,
@@ -1618,6 +1697,569 @@ async function immutableEvidenceSnapshot(sourceDirectory, source) {
   return { paths, hashes };
 }
 
+function expectedRoute(configuration) {
+  return {
+    primary_runtime: configuration.primaryRuntime,
+    reviewer_runtime: configuration.runtime,
+    model: configuration.model,
+    effort: configuration.effort,
+    invocation_route: configuration.route,
+  };
+}
+
+function hasCleanIsolationAttestation(source) {
+  return (
+    source.isolation?.execution_isolated === true &&
+    source.isolation?.contamination
+      ?.live_repository_accessible_from_workspace_ancestors === false &&
+    source.isolation?.contamination?.oracle_present === false &&
+    source.isolation?.oracle_present === false &&
+    source.validity?.inputs_unchanged === true &&
+    source.validity?.allowed_writes === true &&
+    canonicalJson(source.protected_inputs?.before) ===
+      canonicalJson(source.protected_inputs?.after)
+  );
+}
+
+function workspaceWriteViolations(before, after, allowedPath) {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((path) => path !== allowedPath && before[path] !== after[path])
+    .sort();
+}
+
+async function repairEvaluationWithModel(options, hooks = {}) {
+  requireOptions(options, ["sourceResult", "fixture", "outputDir"]);
+  const repairStarted = performance.now();
+  const repairWallStarted = new Date().toISOString();
+  const sourceResultPath = resolve(options.sourceResult);
+  const sourceDirectory = dirname(sourceResultPath);
+  const fixtureRoot = resolve(options.fixture);
+  const outputDirectory = resolve(options.outputDir);
+  const timeoutMs = Number(options.timeoutMs ?? 1_200_000);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("--timeout-ms must be a positive number");
+  }
+  if (await exists(outputDirectory)) {
+    throw new Error(`output directory already exists: ${outputDirectory}`);
+  }
+  if (
+    isWithin(sourceDirectory, outputDirectory) ||
+    isWithin(outputDirectory, sourceDirectory)
+  ) {
+    throw new Error(
+      "repair-model output directory must not overlap source evidence",
+    );
+  }
+  if (basename(sourceResultPath) !== "result.json") {
+    throw new Error("--source-result must point to a result.json file");
+  }
+
+  const sourceResultBytes = await readFile(sourceResultPath);
+  const source = JSON.parse(sourceResultBytes);
+  if (source.status !== "blocked") {
+    throw new Error("repair-model source must be a blocked evaluation result");
+  }
+  const configuration = VARIANTS[source.variant];
+  if (!configuration) {
+    throw new Error(`unknown source variant: ${source.variant}`);
+  }
+  if (canonicalJson(source.route) !== canonicalJson(expectedRoute(configuration))) {
+    throw new Error("repair-model source route does not match its variant");
+  }
+  if (!hasCleanIsolationAttestation(source)) {
+    throw new Error(
+      "repair-model source lacks a clean isolated-execution attestation",
+    );
+  }
+
+  const beforeEvidence = await immutableEvidenceSnapshot(
+    sourceDirectory,
+    source,
+  );
+  for (const [key, path] of Object.entries(beforeEvidence.paths)) {
+    if (!isWithin(sourceDirectory, path)) {
+      throw new Error(`source ${key.replaceAll("_", " ")} escapes evidence`);
+    }
+  }
+  for (const key of ["raw_stdout", "raw_stderr", "raw_events"]) {
+    if (!beforeEvidence.paths[key] || !source.evidence?.[`${key}_sha256`]) {
+      throw new Error(`repair-model source is missing ${key.replaceAll("_", " ")} evidence`);
+    }
+  }
+  if (beforeEvidence.hashes.result !== sha256(sourceResultBytes)) {
+    throw new Error("source result changed while repair-model was starting");
+  }
+  for (const key of ["raw_stdout", "raw_stderr", "raw_events", "report"]) {
+    if (
+      beforeEvidence.paths[key] &&
+      beforeEvidence.hashes[key] !== source.evidence?.[`${key}_sha256`]
+    ) {
+      throw new Error(`source ${key.replaceAll("_", " ")} hash mismatch`);
+    }
+  }
+
+  const sourceWorkspace = join(sourceDirectory, "workspace");
+  if (
+    !(await exists(sourceWorkspace)) ||
+    source.isolation?.workspace !== sourceWorkspace
+  ) {
+    throw new Error("repair-model source workspace evidence is missing");
+  }
+  const sourceTaskRelative = relative(
+    sourceWorkspace,
+    source.isolation.task_root,
+  );
+  if (
+    sourceTaskRelative.startsWith("..") ||
+    isAbsolute(sourceTaskRelative)
+  ) {
+    throw new Error("repair-model source task root escapes workspace evidence");
+  }
+  const expectedSourceReportPath = join(
+    source.isolation.task_root,
+    "reviews",
+    "task_review.md",
+  );
+  if (
+    beforeEvidence.paths.report &&
+    beforeEvidence.paths.report !== expectedSourceReportPath
+  ) {
+    throw new Error("repair-model source report path is not canonical");
+  }
+  if (
+    !beforeEvidence.paths.report &&
+    await exists(expectedSourceReportPath)
+  ) {
+    throw new Error("repair-model source has an unattested report");
+  }
+  const sourceWorkspaceFiles = await filesBelow(sourceWorkspace);
+  if (
+    sourceWorkspaceFiles.some((path) =>
+      /(^|\/)oracle(\/|$)|historical-task-review|findings\.json/i.test(path)
+    )
+  ) {
+    throw new Error("repair-model source workspace contains oracle data");
+  }
+
+  const { manifest, manifestHash } = await verifyFixture(fixtureRoot);
+  if (
+    source.hashes?.fixture_manifest &&
+    source.hashes.fixture_manifest !== manifestHash
+  ) {
+    throw new Error("repair-model fixture manifest does not match source result");
+  }
+  const contractPath = join(fixtureRoot, configuration.contract);
+  const contractHash = await hashFile(contractPath);
+  if (source.hashes?.contract && source.hashes.contract !== contractHash) {
+    throw new Error("repair-model contract does not match source result");
+  }
+  const priceBasisPath = resolve(
+    options.priceBasis ?? join(fixtureRoot, "pricing", "basis.json"),
+  );
+  const priceBasis = JSON.parse(await readFile(priceBasisPath, "utf8"));
+  const priceBasisHash = await hashFile(priceBasisPath);
+  if (
+    source.hashes?.price_basis &&
+    source.hashes.price_basis !== priceBasisHash
+  ) {
+    throw new Error("repair-model price basis does not match source result");
+  }
+
+  const lockFile = resolve(
+    options.lockFile ?? join(tmpdir(), "spectre-task-review-evaluation.lock"),
+  );
+  const lockAttestation = {
+    pid: process.pid,
+    trial: `${source.trial}-repair-model-1`,
+    variant: source.variant,
+    operation: "repair-model",
+    started_at: repairWallStarted,
+  };
+  if (hooks.beforeLock) await hooks.beforeLock({ lockFile });
+  await acquireLock(lockFile, lockAttestation);
+
+  let runRoot = null;
+  let stagedAuth = null;
+  let outputCreated = false;
+  try {
+    await mkdir(outputDirectory, { recursive: false });
+    outputCreated = true;
+    runRoot = await mkdtemp(
+      join(tmpdir(), "spectre-task-review-repair-model-"),
+    );
+    if (
+      isWithin(EVALUATOR_REPOSITORY_ROOT, runRoot) ||
+      isWithin(outputDirectory, runRoot) ||
+      isWithin(runRoot, outputDirectory)
+    ) {
+      throw new Error(
+        "OS temporary repair root must be outside the repository and evidence output",
+      );
+    }
+
+    const workspace = join(runRoot, "workspace");
+    const taskRoot = join(workspace, sourceTaskRelative);
+    const reportPath = join(taskRoot, "reviews", "task_review.md");
+    await mkdir(taskRoot, { recursive: true });
+    for (const input of PROTECTED_INPUTS) {
+      const destination = join(taskRoot, input);
+      await mkdir(dirname(destination), { recursive: true });
+      await cp(join(source.isolation.task_root, input), destination);
+    }
+    if (beforeEvidence.paths.report) {
+      await mkdir(dirname(reportPath), { recursive: true });
+      await cp(beforeEvidence.paths.report, reportPath);
+    } else {
+      await mkdir(dirname(reportPath), { recursive: true });
+    }
+    const beforeWorkspaceHashes = await hashFilesBelow(workspace);
+    const beforeProtectedInputs = await hashProtectedInputs(taskRoot);
+    if (
+      canonicalJson(beforeProtectedInputs) !==
+        canonicalJson(source.protected_inputs.before)
+    ) {
+      throw new Error(
+        "repair-model staged protected inputs do not match source evidence",
+      );
+    }
+    const oracleBefore = Object.keys(beforeWorkspaceHashes).some((path) =>
+      /(^|\/)oracle(\/|$)|historical-task-review|findings\.json/i.test(path)
+    );
+    if (oracleBefore) {
+      throw new Error("oracle data is present in repair-model workspace");
+    }
+
+    const rawDirectory = join(outputDirectory, "raw");
+    await mkdir(rawDirectory, { recursive: true });
+
+    const requiredTimestamp = new Date().toISOString();
+    const prompt = buildRepairPrompt(
+      taskRoot,
+      reportPath,
+      configuration,
+      requiredTimestamp,
+    );
+    const command = reviewerCommand(configuration, prompt, workspace, {
+      command: options.reviewerCommand,
+      args: options.reviewerArg,
+    });
+    const reviewerRuntime = await prepareReviewerRuntime(
+      runRoot,
+      configuration,
+      reportPath,
+      taskRoot,
+    );
+    stagedAuth = reviewerRuntime.stagedAuth;
+    const {
+      baseEnvironment,
+      claudeHome,
+      codexHome,
+      environment,
+      spectreHome,
+    } = reviewerRuntime;
+    const claudeAuthentication = reviewerAuthentication(
+      configuration,
+      options.reviewerCommand,
+      command.command,
+      claudeHome,
+      environment,
+    );
+    const version = commandVersion(command.command, environment);
+    const preflightEnded = performance.now();
+    const authenticationBlocked =
+      configuration.runtime === "claude-code" &&
+      claudeAuthentication.checked &&
+      !claudeAuthentication.logged_in;
+    if (hooks.beforeReviewer) {
+      await hooks.beforeReviewer({ workspace, environment, prompt });
+    }
+    const processResult = authenticationBlocked
+      ? {
+        exitCode: null,
+        signal: null,
+        error: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        skipped: true,
+        durationMs: 0,
+      }
+      : await runReviewer(command.command, command.args, {
+        cwd: workspace,
+        env: environment,
+        timeoutMs,
+      });
+    const reviewerEnded = performance.now();
+
+    const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
+    const rawStderrPath = join(rawDirectory, "reviewer.stderr.txt");
+    const rawEventsPath = join(rawDirectory, "reviewer.events.jsonl");
+    const { events, rawEvents } = parseJsonLines(processResult.stdout);
+    await Promise.all([
+      writeFile(rawStdoutPath, processResult.stdout),
+      writeFile(rawStderrPath, processResult.stderr),
+      writeFile(rawEventsPath, rawEvents),
+    ]);
+
+    const blockedReasons = [];
+    if (authenticationBlocked) {
+      blockedReasons.push(
+        `Claude authentication preflight failed: ${claudeAuthentication.unavailable_reason}`,
+      );
+    } else if (processResult.timedOut) {
+      blockedReasons.push(`reviewer timeout after ${timeoutMs}ms`);
+    } else if (processResult.error) {
+      blockedReasons.push(`reviewer process error: ${processResult.error}`);
+    } else if (processResult.exitCode !== 0) {
+      blockedReasons.push(`reviewer exit ${processResult.exitCode}`);
+    }
+
+    const report = await exists(reportPath)
+      ? await readFile(reportPath, "utf8")
+      : null;
+    if (report === null) blockedReasons.push("review report is missing");
+    const reportValidation = report
+      ? validateReport(report, configuration)
+      : { valid: false, failures: ["report is missing"], metadata: {} };
+    blockedReasons.push(...reportValidation.failures);
+    if (
+      reportValidation.valid &&
+      reportValidation.metadata.timestamp !== requiredTimestamp
+    ) {
+      blockedReasons.push(
+        `report metadata timestamp expected ${JSON.stringify(requiredTimestamp)}, found ${JSON.stringify(reportValidation.metadata.timestamp ?? null)}`,
+      );
+    }
+
+    const afterProtectedInputs = await hashProtectedInputs(taskRoot);
+    const inputsUnchanged =
+      canonicalJson(beforeProtectedInputs) ===
+      canonicalJson(afterProtectedInputs);
+    if (!inputsUnchanged) {
+      blockedReasons.push("protected input mutation detected during repair-model");
+    }
+    const afterWorkspaceHashes = await hashFilesBelow(workspace);
+    const allowedReportPath = relative(workspace, reportPath);
+    const writeViolations = workspaceWriteViolations(
+      beforeWorkspaceHashes,
+      afterWorkspaceHashes,
+      allowedReportPath,
+    );
+    if (writeViolations.length > 0) {
+      blockedReasons.push(
+        `non-report write detected during repair-model: ${writeViolations.join(", ")}`,
+      );
+    }
+    const oraclePresent = Object.keys(afterWorkspaceHashes).some((path) =>
+      /(^|\/)oracle(\/|$)|historical-task-review|findings\.json/i.test(path)
+    );
+    if (oraclePresent) {
+      blockedReasons.push("oracle data is present in repair-model workspace");
+    }
+
+    // Hidden quality data is loaded only after the reviewer has exited and the
+    // workspace/report-only write boundary has been validated.
+    const oracle = JSON.parse(
+      await readFile(join(fixtureRoot, "oracle", "findings.json"), "utf8"),
+    );
+    const quality = reportValidation.valid
+      ? scoreFindings({
+        oracleFindings: oracle.findings,
+        candidateFindings: parseReportFindings(report),
+      })
+      : null;
+    if (quality?.recall_by_severity?.Blocker !== 1) {
+      blockedReasons.push(
+        `known Blocker recall must be 100%, found ${
+          quality?.recall_by_severity?.Blocker == null
+            ? "unavailable"
+            : `${quality.recall_by_severity.Blocker * 100}%`
+        }`,
+      );
+    }
+
+    const afterEvidence = await immutableEvidenceSnapshot(
+      sourceDirectory,
+      source,
+    );
+    if (
+      canonicalJson(beforeEvidence.hashes) !==
+      canonicalJson(afterEvidence.hashes)
+    ) {
+      throw new Error("source evidence changed during immutable repair-model");
+    }
+    if (
+      !beforeEvidence.paths.report &&
+      await exists(expectedSourceReportPath)
+    ) {
+      throw new Error("source report appeared during immutable repair-model");
+    }
+
+    const validationEnded = performance.now();
+    const repairIntervals = {
+      preflight_ms: preflightEnded - repairStarted,
+      reviewer_ms: reviewerEnded - preflightEnded,
+      validation_ms: validationEnded - reviewerEnded,
+    };
+    const repairTotalMs = validationEnded - repairStarted;
+    const sourceTotalMs = source.timing?.total_ms ?? 0;
+    const evidenceWorkspace = join(outputDirectory, "workspace");
+    await cp(workspace, evidenceWorkspace, { recursive: true });
+    const evidenceReportPath = join(
+      evidenceWorkspace,
+      sourceTaskRelative,
+      "reviews",
+      "task_review.md",
+    );
+    const repairTelemetry = normalizeTelemetry(
+      configuration.runtime,
+      events,
+      priceBasis,
+      configuration.model,
+    );
+    const result = {
+      ...source,
+      id: `${source.id}-repair-model-1`,
+      trial: `${source.trial}-repair-model-1`,
+      status: blockedReasons.length === 0 ? "valid" : "blocked",
+      blocked_reasons: blockedReasons,
+      route: expectedRoute(configuration),
+      versions: {
+        ...source.versions,
+        reviewer_cli: version,
+      },
+      hashes: {
+        ...source.hashes,
+        fixture_components: safeHashObject(manifest.components),
+        repair_contract: contractHash,
+        repair_prompt: sha256(prompt),
+        repair_price_basis: priceBasisHash,
+      },
+      isolation: {
+        workspace: evidenceWorkspace,
+        task_root: join(evidenceWorkspace, sourceTaskRelative),
+        execution_workspace: workspace,
+        execution_cwd: workspace,
+        execution_isolated: true,
+        contamination: {
+          live_repository_accessible_from_workspace_ancestors: false,
+          oracle_present: oraclePresent,
+        },
+        runtime_homes: {
+          claude: claudeHome,
+          codex: codexHome,
+          spectre: spectreHome,
+        },
+        oracle_present: oraclePresent,
+      },
+      protected_inputs: {
+        before: beforeProtectedInputs,
+        after: afterProtectedInputs,
+      },
+      process: {
+        command: command.command,
+        args: command.args,
+        exit_code: processResult.exitCode,
+        signal: processResult.signal,
+        timed_out: processResult.timedOut,
+        timeout_ms: timeoutMs,
+        launched: !processResult.skipped,
+        attempts: (source.process?.attempts ?? 1) + 1,
+        retries: source.process?.retries ?? 0,
+        repairs: (source.process?.repairs ?? 0) + 1,
+        fallback: source.process?.fallback ?? {
+          value: null,
+          unavailable_reason:
+            "No fallback route was configured or attempted by this evaluator run.",
+        },
+      },
+      authentication: {
+        claude: claudeAuthentication,
+      },
+      lock: {
+        path: lockFile,
+        exclusive: true,
+        attestation: lockAttestation,
+      },
+      validity: {
+        first_pass: false,
+        report: reportValidation.valid,
+        report_failures: [
+          ...reportValidation.failures,
+          ...(reportValidation.valid &&
+              reportValidation.metadata.timestamp !== requiredTimestamp
+            ? [
+              `report metadata timestamp expected ${JSON.stringify(requiredTimestamp)}, found ${JSON.stringify(reportValidation.metadata.timestamp ?? null)}`,
+            ]
+            : []),
+        ],
+        inputs_unchanged: inputsUnchanged,
+        allowed_writes:
+          inputsUnchanged && writeViolations.length === 0 && !oraclePresent,
+      },
+      telemetry: {
+        source: source.telemetry ?? null,
+        repair: repairTelemetry,
+      },
+      quality,
+      evidence: {
+        raw_stdout: relative(outputDirectory, rawStdoutPath),
+        raw_stdout_sha256: await hashFile(rawStdoutPath),
+        raw_stderr: relative(outputDirectory, rawStderrPath),
+        raw_stderr_sha256: await hashFile(rawStderrPath),
+        raw_events: relative(outputDirectory, rawEventsPath),
+        raw_events_sha256: await hashFile(rawEventsPath),
+        report: report
+          ? relative(outputDirectory, evidenceReportPath)
+          : null,
+        report_sha256: report ? sha256(report) : null,
+        source_result: sourceResultPath,
+        source_result_sha256: beforeEvidence.hashes.result,
+      },
+      timing: {
+        clock: "performance.now monotonic milliseconds",
+        started_at: source.timing?.started_at ?? repairWallStarted,
+        ended_at: new Date().toISOString(),
+        source_total_ms: sourceTotalMs,
+        repair_total_ms: repairTotalMs,
+        total_ms: sourceTotalMs + repairTotalMs,
+        repair_intervals: repairIntervals,
+      },
+      derivation: {
+        kind: "same-route-report-only",
+        source_result: sourceResultPath,
+        source_result_sha256: beforeEvidence.hashes.result,
+        source_report: beforeEvidence.paths.report ?? null,
+        source_report_sha256: beforeEvidence.hashes.report ?? null,
+        source_raw_stdout_sha256: beforeEvidence.hashes.raw_stdout,
+        source_raw_stderr_sha256: beforeEvidence.hashes.raw_stderr,
+        source_raw_events_sha256: beforeEvidence.hashes.raw_events,
+        source_total_ms: sourceTotalMs,
+      },
+      repair: {
+        kind: "same-route-report-only",
+        model_rerun: true,
+        attempts: 1,
+        elapsed_ms: repairTotalMs,
+        started_at: repairWallStarted,
+        ended_at: new Date().toISOString(),
+        telemetry: repairTelemetry,
+      },
+    };
+    await atomicWriteJson(join(outputDirectory, "result.json"), result);
+    return result;
+  } catch (error) {
+    if (outputCreated && !(await exists(join(outputDirectory, "result.json")))) {
+      await rm(outputDirectory, { recursive: true, force: true });
+    }
+    throw error;
+  } finally {
+    if (stagedAuth) await rm(stagedAuth, { force: true });
+    if (runRoot) await rm(runRoot, { recursive: true, force: true });
+    await rm(lockFile, { force: true });
+  }
+}
+
 async function repairEvaluation(options) {
   requireOptions(options, ["sourceResult", "fixture", "outputDir"]);
   const repairStarted = performance.now();
@@ -1792,10 +2434,13 @@ async function repairEvaluation(options) {
 export async function runCli(args, hooks = {}) {
   const { command, options } = parseArguments(args);
   if (command === "run") return runEvaluation(options, hooks);
+  if (command === "repair-model") {
+    return repairEvaluationWithModel(options, hooks);
+  }
   if (command === "repair") return repairEvaluation(options);
   if (command === "summarize") return summarize(options);
   throw new Error(
-    "usage: evaluate-task-review.mjs <run|repair|summarize> [options]",
+    "usage: evaluate-task-review.mjs <run|repair-model|repair|summarize> [options]",
   );
 }
 

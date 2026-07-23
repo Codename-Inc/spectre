@@ -60,6 +60,10 @@ const model = process.env.TASK_REVIEW_MODEL ?? "opus";
 const effort = process.env.TASK_REVIEW_EFFORT ?? "max";
 const route = process.env.TASK_REVIEW_ROUTE ?? "Codex -> Claude Code";
 
+const prompt = process.argv.at(-1) ?? "";
+const requiredTimestamp = prompt.match(
+  /^Timestamp:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)$/m,
+)?.[1] ?? "2026-07-23T00:00:00Z";
 const validReport = `# Task Review
 
 ## Findings
@@ -70,7 +74,7 @@ const validReport = `# Task Review
 
 ## Review Metadata
 
-Timestamp: 2026-07-23T00:00:00Z
+Timestamp: ${requiredTimestamp}
 Mode: adversarial
 Reviewer Runtime: ${runtime}
 Reviewer Model: ${model}

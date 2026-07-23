@@ -817,6 +817,287 @@ test("repairs a blocked historical result immutably without rerunning the model 
   }
 });
 
+test("repair-model reruns the same route in isolation and derives valid evidence without changing a missing-report source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-model-repair-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const source = await runEvaluation(
+      root,
+      "source-missing-report",
+      "missing-report",
+    );
+    assert.equal(source.persisted.status, "blocked");
+    assert.equal(source.persisted.evidence.report, null);
+    const sourcePaths = [
+      join(source.outputDirectory, "result.json"),
+      join(source.outputDirectory, source.persisted.evidence.raw_stdout),
+      join(source.outputDirectory, source.persisted.evidence.raw_stderr),
+      join(source.outputDirectory, source.persisted.evidence.raw_events),
+    ];
+    const sourceBefore = await Promise.all(
+      sourcePaths.map((path) => readFile(path)),
+    );
+
+    let reviewerContext;
+    const { runCli } = await implementation();
+    const outputDirectory = join(root, "derived");
+    const repaired = await runCli([
+      "repair-model",
+      "--source-result",
+      join(source.outputDirectory, "result.json"),
+      "--fixture",
+      fixtureRoot,
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(root, "repair.lock"),
+      "--timeout-ms",
+      "1000",
+    ], {
+      beforeReviewer: (context) => {
+        reviewerContext = context;
+      },
+    });
+
+    assert.equal(repaired.status, "valid");
+    assert.equal(repaired.variant, source.persisted.variant);
+    assert.deepEqual(repaired.route, source.persisted.route);
+    assert.equal(repaired.process.attempts, 2);
+    assert.equal(repaired.process.repairs, 1);
+    assert.equal(repaired.process.fallback.value, null);
+    assert.equal(repaired.repair.model_rerun, true);
+    assert.equal(repaired.repair.kind, "same-route-report-only");
+    assert.equal(repaired.validity.first_pass, false);
+    assert.equal(repaired.validity.report, true);
+    assert.equal(repaired.validity.inputs_unchanged, true);
+    assert.equal(repaired.validity.allowed_writes, true);
+    assert.equal(repaired.quality.recall_by_severity.Blocker, 1);
+    assert.deepEqual(repaired.telemetry.source, source.persisted.telemetry);
+    assert.equal(repaired.telemetry.repair.cost.actual_runtime_usd.label, "actual");
+    assert.equal(
+      repaired.telemetry.repair.cost.estimated_token_usd.label,
+      "estimate",
+    );
+    assert.equal(
+      repaired.timing.source_total_ms,
+      source.persisted.timing.total_ms,
+    );
+    assert.ok(repaired.timing.repair_total_ms >= 0);
+    assert.equal(
+      repaired.timing.total_ms,
+      repaired.timing.source_total_ms + repaired.timing.repair_total_ms,
+    );
+    assert.ok(repaired.derivation.source_result_sha256);
+    assert.equal(repaired.derivation.source_report_sha256, null);
+    assert.ok(repaired.evidence.raw_stdout_sha256);
+    assert.ok(repaired.evidence.raw_stderr_sha256);
+    assert.ok(repaired.evidence.raw_events_sha256);
+    assert.ok(repaired.evidence.report_sha256);
+    assert.equal(
+      repaired.isolation.execution_workspace.startsWith(repositoryRoot),
+      false,
+    );
+    assert.equal(repaired.isolation.oracle_present, false);
+    assert.equal(
+      Object.values(repaired.isolation.runtime_homes).some((path) =>
+        path.startsWith(repositoryRoot),
+      ),
+      false,
+    );
+    assert.equal(repaired.process.args.includes("--safe-mode"), true);
+    assert.equal(
+      repaired.process.args[repaired.process.args.indexOf("--tools") + 1],
+      "Read,Glob,Grep,Write",
+    );
+    assert.equal(
+      repaired.process.args[
+        repaired.process.args.indexOf("--allowedTools") + 1
+      ],
+      "Read,Glob,Grep,Write",
+    );
+    assert.equal(repaired.process.args.includes("Bash"), false);
+    assert.equal(repaired.process.args.includes("Edit"), false);
+    assert.match(reviewerContext.prompt, /report-only repair/i);
+    assert.match(
+      reviewerContext.prompt,
+      new RegExp(`Reviewer Model: ${source.persisted.route.model}`),
+    );
+    assert.match(
+      reviewerContext.prompt,
+      new RegExp(`Reviewer Effort: ${source.persisted.route.effort}`),
+    );
+    assert.doesNotMatch(reviewerContext.prompt, /oracle|historical findings/i);
+    assert.equal(
+      reviewerContext.workspace,
+      repaired.isolation.execution_workspace,
+    );
+    assert.deepEqual(
+      await Promise.all(sourcePaths.map((path) => readFile(path))),
+      sourceBefore,
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(join(outputDirectory, "result.json"), "utf8")),
+      repaired,
+    );
+    await assert.rejects(
+      stat(repaired.isolation.execution_workspace),
+      /ENOENT/,
+    );
+
+    const invalidSource = await runEvaluation(
+      root,
+      "source-invalid-report",
+      "invalid-report",
+    );
+    const invalidReportPath = join(
+      invalidSource.outputDirectory,
+      invalidSource.persisted.evidence.report,
+    );
+    const invalidReportBefore = await readFile(invalidReportPath);
+    const repairedInvalid = await runCli([
+      "repair-model",
+      "--source-result",
+      join(invalidSource.outputDirectory, "result.json"),
+      "--fixture",
+      fixtureRoot,
+      "--output-dir",
+      join(root, "derived-invalid"),
+      "--lock-file",
+      join(root, "repair-invalid.lock"),
+      "--timeout-ms",
+      "1000",
+    ]);
+    assert.equal(repairedInvalid.status, "valid");
+    assert.deepEqual(await readFile(invalidReportPath), invalidReportBefore);
+  } finally {
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("repair-model rejects contaminated or tampered sources and blocks non-report writes without mutating source evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-model-repair-guard-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const source = await runEvaluation(
+      root,
+      "source-invalid-report",
+      "invalid-report",
+    );
+    const sourceResultPath = join(source.outputDirectory, "result.json");
+    const sourceReportPath = join(
+      source.outputDirectory,
+      source.persisted.evidence.report,
+    );
+    const sourceBefore = {
+      result: await readFile(sourceResultPath),
+      report: await readFile(sourceReportPath),
+      raw: await readFile(
+        join(source.outputDirectory, source.persisted.evidence.raw_stdout),
+      ),
+    };
+    const blocked = await runCli([
+      "repair-model",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--output-dir",
+      join(root, "write-violation"),
+      "--lock-file",
+      join(root, "write-violation.lock"),
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "mutate-input",
+      "--timeout-ms",
+      "1000",
+    ]);
+
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.validity.allowed_writes, false);
+    assert.equal(blocked.validity.inputs_unchanged, false);
+    assert.match(
+      blocked.blocked_reasons.join(" "),
+      /protected input|non-report write/i,
+    );
+    assert.deepEqual(await readFile(sourceResultPath), sourceBefore.result);
+    assert.deepEqual(await readFile(sourceReportPath), sourceBefore.report);
+    assert.deepEqual(
+      await readFile(
+        join(source.outputDirectory, source.persisted.evidence.raw_stdout),
+      ),
+      sourceBefore.raw,
+    );
+
+    const cleanResultBytes = await readFile(sourceResultPath);
+    await writeFile(
+      sourceResultPath,
+      `${JSON.stringify({
+        ...source.persisted,
+        isolation: {
+          ...source.persisted.isolation,
+          contamination: {
+            ...source.persisted.isolation.contamination,
+            oracle_present: true,
+          },
+          oracle_present: true,
+        },
+      }, null, 2)}\n`,
+    );
+    await assert.rejects(
+      runCli([
+        "repair-model",
+        "--source-result",
+        sourceResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output-dir",
+        join(root, "contaminated-output"),
+      ]),
+      /clean isolated-execution attestation/i,
+    );
+    await writeFile(sourceResultPath, cleanResultBytes);
+
+    const tamperedRawPath = join(
+      source.outputDirectory,
+      source.persisted.evidence.raw_stdout,
+    );
+    await writeFile(tamperedRawPath, "tampered\n");
+    await assert.rejects(
+      runCli([
+        "repair-model",
+        "--source-result",
+        sourceResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output-dir",
+        join(root, "tampered-output"),
+      ]),
+      /raw stdout hash mismatch/i,
+    );
+
+    await assert.rejects(
+      runCli([
+        "repair-model",
+        "--source-result",
+        sourceResultPath,
+        "--fixture",
+        fixtureRoot,
+        "--output-dir",
+        join(root, "write-violation"),
+      ]),
+      /output directory already exists/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("normalizes Claude and Codex telemetry without inventing unavailable values", async () => {
   const { normalizeTelemetry } = await implementation();
   const priceBasis = JSON.parse(await readFile(priceBasisPath, "utf8"));
