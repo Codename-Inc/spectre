@@ -84,9 +84,8 @@ if (process.argv.includes("-p")) {
   const permissionIndex = process.argv.indexOf("--permission-mode");
   const expectedTools = "Read,Glob,Grep,Write";
   const reviewerHome = process.env.HOME ?? "";
-  const reviewerRoot = dirname(reviewerHome);
+  const reviewerRoot = dirname(process.env.TMPDIR ?? "");
   const isolatedEnvironmentPaths = [
-    "HOME",
     "TMPDIR",
     "TMP",
     "TEMP",
@@ -121,22 +120,17 @@ if (process.argv.includes("-p")) {
   if (
     homeSensitiveAuth &&
     (
-      await Promise.all(
-        isolatedEnvironmentPaths.map(async (key) => {
-          const value = process.env[key];
-          if (!value || !isWithinReviewerRoot(value)) return false;
-          if (key === "HOME") {
-            try {
-              await access(join(value, homeSensitiveMarker));
-              return false;
-            } catch {
-              // The host-home auth marker must not reach the reviewer HOME.
-            }
-          }
-          return true;
-        }),
-      )
-    ).includes(false)
+      !(await access(join(reviewerHome, homeSensitiveMarker))
+        .then(() => true, () => false)) ||
+      (
+        await Promise.all(
+          isolatedEnvironmentPaths.map(async (key) => {
+            const value = process.env[key];
+            return Boolean(value && isWithinReviewerRoot(value));
+          }),
+        )
+      ).includes(false)
+    )
   ) {
     process.stderr.write("Claude reviewer environment is not isolated\n");
     process.exit(10);

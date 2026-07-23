@@ -185,8 +185,9 @@ test("run isolates candidate inputs and homes, excludes oracle, and persists raw
 });
 
 test("authenticated real Claude host remains authenticated with isolated config and no copied credentials", async (t) => {
+  const realClaudeBinary = process.env.CLAUDE_BIN || "claude";
   const ambient = spawnSync(
-    process.env.CLAUDE_BIN || "claude",
+    realClaudeBinary,
     ["auth", "status", "--json"],
     { encoding: "utf8", timeout: 5_000 },
   );
@@ -196,11 +197,12 @@ test("authenticated real Claude host remains authenticated with isolated config 
   }
 
   const root = await mkdtemp(join(tmpdir(), "task-review-claude-auth-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
   try {
     const { probeClaudeAuthentication } = await implementation();
     assert.equal(typeof probeClaudeAuthentication, "function");
     const result = probeClaudeAuthentication(
-      process.env.CLAUDE_BIN || "claude",
+      realClaudeBinary,
       root,
     );
 
@@ -217,12 +219,62 @@ test("authenticated real Claude host remains authenticated with isolated config 
       JSON.stringify(result),
       /email|org(?:id|name)|oauth[_-]?token|refresh[_-]?token|api[_-]?key/i,
     );
+
+    process.env.CLAUDE_BIN = fakeReviewerPath;
+    let finalReviewerAuth;
+    const outputDirectory = join(root, "constructed-reviewer-env");
+    const run = await (await implementation()).runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "baseline-opus-max",
+      "--trial",
+      "constructed-reviewer-env",
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(root, "constructed-reviewer-env.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--timeout-ms",
+      "1000",
+    ], {
+      beforeReviewer: ({ environment }) => {
+        finalReviewerAuth = spawnSync(
+          realClaudeBinary,
+          ["auth", "status", "--json"],
+          { encoding: "utf8", env: environment, timeout: 5_000 },
+        );
+      },
+    });
+    assert.equal(run.status, "valid");
+    assert.equal(
+      finalReviewerAuth.status,
+      0,
+      finalReviewerAuth.stderr || finalReviewerAuth.stdout,
+    );
+    assert.equal(
+      JSON.parse(finalReviewerAuth.stdout).loggedIn,
+      true,
+    );
+    const persistedResult = await readFile(
+      join(outputDirectory, "result.json"),
+      "utf8",
+    );
+    assert.doesNotMatch(persistedResult, /"HOME"\s*:/);
+    assert.doesNotMatch(
+      persistedResult,
+      /oauth[_-]?token|refresh[_-]?token|api[_-]?key|credentials?\.json/i,
+    );
   } finally {
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("Claude auth preflight uses host HOME while the reviewer keeps isolated homes, temp, and XDG paths", async () => {
+test("Claude auth and reviewer use host HOME while writable runtime, temp, and XDG paths stay isolated", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-review-home-auth-"));
   const hostHome = join(root, "host-home");
   const previousHome = process.env.HOME;
@@ -271,21 +323,24 @@ test("Claude auth preflight uses host HOME while the reviewer keeps isolated hom
     assert.equal(result.process.launched, true);
     assert.match(
       debugMessage,
-      /^\[🪳 TEMP CLAUDE_AUTH_HOME\] host_home_bridge=true reviewer_home_isolated=true$/,
+      /^\[🪳 TEMP CLAUDE_AUTH_HOME\] host_home_bridge=true reviewer_home_keychain_bridge=true$/,
     );
     assert.doesNotMatch(debugMessage, new RegExp(
       hostHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     ));
-    assert.notEqual(reviewerContext.environment.HOME, hostHome);
-    assert.equal(
-      Object.values(reviewerContext.environment).some(
-        (value) =>
-          typeof value === "string" && value.includes(hostHome),
-      ),
-      false,
+    assert.equal(reviewerContext.environment.HOME, hostHome);
+    const reviewerAuth = spawnSync(
+      fakeReviewerPath,
+      ["auth", "status", "--json"],
+      {
+        encoding: "utf8",
+        env: reviewerContext.environment,
+        timeout: 5_000,
+      },
     );
+    assert.equal(reviewerAuth.status, 0);
+    assert.equal(JSON.parse(reviewerAuth.stdout).loggedIn, true);
     for (const key of [
-      "HOME",
       "TMPDIR",
       "TMP",
       "TEMP",
@@ -299,6 +354,10 @@ test("Claude auth preflight uses host HOME while the reviewer keeps isolated hom
       "SPECTRE_HOME",
     ]) {
       assert.ok(reviewerContext.environment[key], `${key} is isolated`);
+      assert.equal(
+        reviewerContext.environment[key].includes(hostHome),
+        false,
+      );
     }
     assert.equal(result.process.args.includes("--safe-mode"), true);
     assert.equal(

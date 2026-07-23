@@ -1264,7 +1264,11 @@ async function runEvaluation(options, hooks = {}) {
       isAbsolute(process.env.HOME)
         ? process.env.HOME
         : null;
-    baseEnvironment.HOME = temporaryHome;
+    const reviewerUsesHostHome =
+      configuration.runtime === "claude-code" && hostHome !== null;
+    baseEnvironment.HOME = reviewerUsesHostHome
+      ? hostHome
+      : temporaryHome;
     baseEnvironment.TMPDIR = temporaryDirectory;
     baseEnvironment.TMP = temporaryDirectory;
     baseEnvironment.TEMP = temporaryDirectory;
@@ -1284,9 +1288,6 @@ async function runEvaluation(options, hooks = {}) {
       TASK_REVIEW_EFFORT: configuration.effort,
       TASK_REVIEW_ROUTE: configuration.route,
     };
-    const authenticationEnvironment = hostHome
-      ? { ...environment, HOME: hostHome }
-      : environment;
     stagedAuth = await stageCodexAuthentication(codexHome);
     const claudeAuthentication =
       configuration.runtime !== "claude-code"
@@ -1311,11 +1312,11 @@ async function runEvaluation(options, hooks = {}) {
           : probeClaudeAuthentication(
             command.command,
             claudeHome,
-            authenticationEnvironment,
+            environment,
           );
     if (hooks.debugLog) {
       hooks.debugLog(
-        `[🪳 TEMP CLAUDE_AUTH_HOME] host_home_bridge=${hostHome !== null} reviewer_home_isolated=${environment.HOME === temporaryHome}`,
+        `[🪳 TEMP CLAUDE_AUTH_HOME] host_home_bridge=${hostHome !== null} reviewer_home_keychain_bridge=${reviewerUsesHostHome}`,
       );
     }
     const version = commandVersion(command.command, environment);
