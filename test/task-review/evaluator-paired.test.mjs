@@ -45,6 +45,25 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function freezeId(freeze) {
+  return `freeze-${
+    sha256(canonicalJson({ ...freeze, freeze_id: null })).slice(0, 16)
+  }`;
+}
+
 async function writeJson(path, value) {
   await mkdir(dirname(path), { recursive: true });
   const bytes = `${JSON.stringify(value, null, 2)}\n`;
@@ -96,7 +115,14 @@ function observed(value, label = null) {
   };
 }
 
-function makeRun({ block, variant, trialId, scheduleHash, freezeHash }) {
+function makeRun({
+  block,
+  variant,
+  trialId,
+  scheduleHash,
+  freezeHash,
+  freeze,
+}) {
   const variantIndex = variants.indexOf(variant);
   const totalMs = [100, 60, 80][variantIndex] + (block - 1) * 10;
   const totalTokens = [1_000, 700, 800][variantIndex] + block * 10;
@@ -111,6 +137,7 @@ function makeRun({ block, variant, trialId, scheduleHash, freezeHash }) {
     "specs/execute.md": "execute-hash",
     "specs/tasks.json": "tasks-hash",
   };
+  const claudeRoute = variant !== "candidate-sol-medium";
 
   return {
     schema_version: "task-review-evaluation-result/v1",
@@ -121,12 +148,65 @@ function makeRun({ block, variant, trialId, scheduleHash, freezeHash }) {
     status: "valid",
     freeze_manifest_sha256: freezeHash,
     schedule_sha256: scheduleHash,
+    versions: {
+      evaluator: freeze.versions.evaluator,
+      node: freeze.versions.node,
+      reviewer_cli: observed(
+        claudeRoute
+          ? freeze.versions.reviewer_clis.claude
+          : freeze.versions.reviewer_clis.codex,
+      ),
+    },
+    route: claudeRoute
+      ? {
+        primary_runtime: "codex",
+        reviewer_runtime: "claude-code",
+        model: "opus",
+        effort: variant === "baseline-opus-max" ? "max" : "medium",
+        invocation_route: "Codex -> Claude Code",
+      }
+      : {
+        primary_runtime: "claude-code",
+        reviewer_runtime: "codex",
+        model: "gpt-5.6-sol",
+        effort: "medium",
+        invocation_route: "Claude Code -> Codex",
+      },
+    hashes: {
+      fixture_manifest: freeze.hashes.fixture_manifest,
+      fixture_components: freeze.hashes.fixture_components,
+      contract:
+        variant === "baseline-opus-max"
+          ? freeze.hashes.contracts.baseline
+          : freeze.hashes.contracts.candidate,
+      prompt: "a".repeat(64),
+      normalized_prompt: freeze.hashes.normalized_prompts[variant],
+      price_basis: freeze.hashes.price_basis,
+      environment: "b".repeat(64),
+    },
     quiescence: {
       clean: true,
       pre: { clean: true, contaminants: [] },
       continuous: { clean: true, contaminants: [], samples: 2 },
       post: { clean: true, contaminants: [] },
       owned_reviewer_tree_excluded: true,
+      sampling: {
+        clean: true,
+        sample_count: 4,
+        interval_ms: 250,
+        started_at: "2026-07-23T00:00:00.000Z",
+        ended_at: "2026-07-23T00:00:01.000Z",
+        elapsed_ms: 1000,
+        contaminants: [],
+      },
+    },
+    isolation: {
+      execution_isolated: true,
+      oracle_present: false,
+      contamination: {
+        live_repository_accessible_from_workspace_ancestors: false,
+        oracle_present: false,
+      },
     },
     validity: {
       first_pass: variantIndex !== 1 || block !== 2,
@@ -191,6 +271,7 @@ function makeRun({ block, variant, trialId, scheduleHash, freezeHash }) {
         (_, index) => ({
           id: `candidate-${index + 1}`,
           status: "supported",
+          route_blind: true,
         }),
       ),
     },
@@ -201,10 +282,48 @@ async function writeCountedBundle(root, mutate = () => {}) {
   const schedulePath = join(root, "schedule.json");
   const scheduleHash = await writeJson(schedulePath, staticSchedule());
   const freezePath = join(root, "freeze.json");
-  const freezeHash = await writeJson(freezePath, {
+  const freeze = {
     schema_version: "task-review-evaluation-freeze/v1",
-    freeze_id: "paired-freeze-v1",
-  });
+    freeze_id: null,
+    versions: {
+      evaluator: "evaluate-task-review/v1",
+      node: process.version,
+      reviewer_clis: {
+        claude: "fake-claude 1.0.0",
+        codex: "fake-codex 1.0.0",
+      },
+    },
+    repository: {
+      commit: "c".repeat(40),
+      dirty: true,
+      dirty_diff_sha256: "d".repeat(64),
+    },
+    hashes: {
+      evaluator: "1".repeat(64),
+      fixture_manifest: "2".repeat(64),
+      fixture_components: "3".repeat(64),
+      contracts: {
+        baseline: "4".repeat(64),
+        candidate: "5".repeat(64),
+      },
+      price_basis: "6".repeat(64),
+      skills: {
+        canonical: "7".repeat(64),
+        generated: "8".repeat(64),
+      },
+      helpers: {
+        canonical: "9".repeat(64),
+        generated: "a".repeat(64),
+      },
+      normalized_prompts: {
+        "baseline-opus-max": "b".repeat(64),
+        "candidate-opus-medium": "c".repeat(64),
+        "candidate-sol-medium": "d".repeat(64),
+      },
+    },
+  };
+  freeze.freeze_id = freezeId(freeze);
+  const freezeHash = await writeJson(freezePath, freeze);
   const records = [];
   const schedule = staticSchedule();
 
@@ -219,6 +338,7 @@ async function writeCountedBundle(root, mutate = () => {}) {
         trialId,
         scheduleHash,
         freezeHash,
+        freeze,
       });
       const path = join(root, "runs", run.trial, "result.json");
       const hash = await writeJson(path, run);
@@ -236,6 +356,7 @@ async function writeCountedBundle(root, mutate = () => {}) {
     scheduleHash,
     freezePath,
     freezeHash,
+    freeze,
     manifest: {
       schema_version: "task-review-counted-results/v1",
       freeze_manifest_sha256: freezeHash,
@@ -247,6 +368,20 @@ async function writeCountedBundle(root, mutate = () => {}) {
   const manifestPath = join(root, "counted-results.json");
   await writeJson(manifestPath, bundle.manifest);
   return { ...bundle, manifestPath };
+}
+
+async function rebindBundleFreeze(bundle, mutateFreeze) {
+  const freeze = JSON.parse(await readFile(bundle.freezePath, "utf8"));
+  await mutateFreeze(freeze);
+  freeze.freeze_id = freezeId(freeze);
+  const freezeHash = await writeJson(bundle.freezePath, freeze);
+  bundle.manifest.freeze_manifest_sha256 = freezeHash;
+  for (const entry of bundle.manifest.results) {
+    const path = join(bundle.root, entry.result);
+    const run = JSON.parse(await readFile(path, "utf8"));
+    run.freeze_manifest_sha256 = freezeHash;
+    entry.sha256 = await writeJson(path, run);
+  }
 }
 
 async function summarizeBundle(runCli, bundle, output) {
@@ -394,6 +529,101 @@ test("freeze persists every immutable comparison input and refuses overwrite", a
       /freeze output already exists|refus(?:e|ing).*overwrite/i,
     );
     assert.deepEqual(await readFile(output), before);
+
+    const schedulePath = join(root, "schedule.json");
+    const schedule = await runCli([
+      "schedule",
+      "--seed",
+      "paired-gate-seed-v1",
+      "--output",
+      schedulePath,
+    ]);
+    const scheduled = schedule.blocks
+      .flatMap((block) =>
+        block.trials.map((trial) => ({ ...trial, block: block.block }))
+      )
+      .find((trial) => trial.variant === "baseline-opus-max");
+
+    const dirtyMismatchPath = join(root, "freeze-dirty-mismatch.json");
+    await writeJson(dirtyMismatchPath, {
+      ...freeze,
+      repository: {
+        ...freeze.repository,
+        dirty_diff_sha256: "f".repeat(64),
+      },
+    });
+    await assert.rejects(
+      runCli([
+        "run",
+        "--fixture",
+        fixtureRoot,
+        "--variant",
+        scheduled.variant,
+        "--trial",
+        scheduled.trial_id,
+        "--block",
+        String(scheduled.block),
+        "--output-dir",
+        join(root, "dirty-mismatch-run"),
+        "--lock-file",
+        join(root, "dirty-mismatch.lock"),
+        "--price-basis",
+        priceBasisPath,
+        "--freeze",
+        dirtyMismatchPath,
+        "--schedule",
+        schedulePath,
+        "--reviewer-command",
+        fakeReviewerPath,
+        "--reviewer-arg",
+        "scored-report",
+        "--timeout-ms",
+        "1000",
+      ]),
+      /freeze repository dirty.*mismatch/i,
+    );
+
+    const versionMismatchPath = join(root, "freeze-version-mismatch.json");
+    await writeJson(versionMismatchPath, {
+      ...freeze,
+      versions: {
+        ...freeze.versions,
+        reviewer_clis: {
+          ...freeze.versions.reviewer_clis,
+          claude: "different-claude-version",
+        },
+      },
+    });
+    await assert.rejects(
+      runCli([
+        "run",
+        "--fixture",
+        fixtureRoot,
+        "--variant",
+        scheduled.variant,
+        "--trial",
+        scheduled.trial_id,
+        "--block",
+        String(scheduled.block),
+        "--output-dir",
+        join(root, "version-mismatch-run"),
+        "--lock-file",
+        join(root, "version-mismatch.lock"),
+        "--price-basis",
+        priceBasisPath,
+        "--freeze",
+        versionMismatchPath,
+        "--schedule",
+        schedulePath,
+        "--reviewer-command",
+        fakeReviewerPath,
+        "--reviewer-arg",
+        "scored-report",
+        "--timeout-ms",
+        "1000",
+      ]),
+      /freeze reviewer CLI version mismatch/i,
+    );
   } finally {
     if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
     else process.env.CLAUDE_BIN = previousClaudeBinary;
@@ -462,6 +692,188 @@ test("quiescence uses injected pre/continuous/post snapshots, excludes the owned
     ),
     false,
   );
+
+  const missingSamples = assessQuiescence({
+    evaluator_pid: 100,
+    reviewer_pid: 200,
+    snapshots: { pre: [], continuous: [], post: [] },
+  });
+  assert.equal(
+    missingSamples.clean,
+    false,
+    "missing process samples must fail closed",
+  );
+
+  const repositoryHeavyWork = assessQuiescence({
+    evaluator_pid: 100,
+    reviewer_pid: 200,
+    snapshots: {
+      pre: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+      continuous: [
+        {
+          pid: 301,
+          ppid: 1,
+          command: "node scripts/sync-codex.cjs --check",
+        },
+        {
+          pid: 302,
+          ppid: 1,
+          command: "node .agents/skills/verify-spectre/scripts/verify.mjs",
+        },
+      ],
+      post: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+    },
+  });
+  assert.equal(repositoryHeavyWork.clean, false);
+  assert.deepEqual(
+    repositoryHeavyWork.continuous.contaminants.map(({ pid }) => pid),
+    [301, 302],
+  );
+});
+
+test("paired quiescence spans preflight through validation and prevents spend when the pre-snapshot is contaminated", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-full-quiescence-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  const previousCodexBinary = process.env.CODEX_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  process.env.CODEX_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const freezePath = join(root, "freeze.json");
+    const schedulePath = join(root, "schedule.json");
+    await runCli([
+      "freeze",
+      "--fixture",
+      fixtureRoot,
+      "--price-basis",
+      priceBasisPath,
+      "--output",
+      freezePath,
+    ]);
+    const schedule = await runCli([
+      "schedule",
+      "--seed",
+      "paired-gate-seed-v1",
+      "--output",
+      schedulePath,
+    ]);
+    const scheduled = schedule.blocks
+      .flatMap((block) =>
+        block.trials.map((trial) => ({ ...trial, block: block.block }))
+      )
+      .find((trial) => trial.variant === "baseline-opus-max");
+    const common = [
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      scheduled.variant,
+      "--trial",
+      scheduled.trial_id,
+      "--block",
+      String(scheduled.block),
+      "--price-basis",
+      priceBasisPath,
+      "--freeze",
+      freezePath,
+      "--schedule",
+      schedulePath,
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "scored-report",
+      "--timeout-ms",
+      "1000",
+    ];
+
+    let phase = "preflight";
+    const preflightBlocked = await runCli([
+      "run",
+      ...common,
+      "--output-dir",
+      join(root, "preflight-contaminated"),
+      "--lock-file",
+      join(root, "preflight.lock"),
+    ], {
+      beforeReviewer() {
+        phase = "reviewer";
+      },
+      processSnapshot() {
+        return [
+          {
+            pid: process.pid,
+            ppid: 1,
+            command: "node evaluate-task-review.mjs",
+          },
+          ...(phase === "preflight"
+            ? [{
+              pid: 9001,
+              ppid: 1,
+              command: "node --test competing.test.mjs",
+            }]
+            : []),
+        ];
+      },
+    });
+    assert.equal(preflightBlocked.status, "blocked");
+    assert.equal(preflightBlocked.quiescence.clean, false);
+    assert.equal(
+      preflightBlocked.process.launched,
+      false,
+      "a dirty pre-snapshot must prevent reviewer spend",
+    );
+
+    phase = "preflight";
+    const validationBlocked = await runCli([
+      "run",
+      ...common,
+      "--output-dir",
+      join(root, "validation-contaminated"),
+      "--lock-file",
+      join(root, "validation.lock"),
+    ], {
+      beforeReviewer() {
+        phase = "reviewer";
+      },
+      async beforeValidation() {
+        phase = "validation";
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 350));
+      },
+      processSnapshot() {
+        return [
+          {
+            pid: process.pid,
+            ppid: 1,
+            command: "node evaluate-task-review.mjs",
+          },
+          ...(phase === "validation"
+            ? [{
+              pid: 9002,
+              ppid: 1,
+              command: "node scripts/sync-codex.cjs --check",
+            }]
+            : []),
+        ];
+      },
+    });
+    assert.equal(validationBlocked.status, "blocked");
+    assert.equal(validationBlocked.quiescence.clean, false);
+    assert.ok(
+      validationBlocked.quiescence.sampling.contaminants.some(
+        ({ pid }) => pid === 9002,
+      ),
+    );
+  } finally {
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
+    if (previousCodexBinary === undefined) delete process.env.CODEX_BIN;
+    else process.env.CODEX_BIN = previousCodexBinary;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("adjudication-packet accepts an otherwise-valid source with unmatched candidates and remains route blind", async () => {
@@ -529,6 +941,31 @@ test("adjudication-packet accepts an otherwise-valid source with unmatched candi
       JSON.stringify(packet),
       /baseline-opus-max|candidate-opus-medium|candidate-sol-medium|Claude Code|Codex ->|-> Codex|gpt-5\.6|"variant"|"route"|"runtime"|"model"|"effort"/i,
     );
+
+    const adjudicationsPath = join(root, "adjudications.json");
+    await writeJson(adjudicationsPath, [
+      {
+        candidate_id: "2",
+        route_blind: true,
+        disposition: "supported",
+      },
+    ]);
+    const adjudicated = await runCli([
+      "adjudicate",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--adjudications",
+      adjudicationsPath,
+      "--output-dir",
+      join(root, "adjudicated"),
+    ]);
+    assert.equal(adjudicated.status, "valid");
+    assert.deepEqual(adjudicated.quality.unmatched_candidates, [
+      { id: "2", status: "supported", route_blind: true },
+    ]);
+    assert.equal(adjudicated.validity.first_pass, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -553,6 +990,24 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
     });
 
     const cases = [
+      {
+        name: "incomplete freeze manifest",
+        pattern: /freeze.*(?:incomplete|helper|hash)/i,
+        mutate: async (bundle) => {
+          await rebindBundleFreeze(bundle, (freeze) => {
+            delete freeze.hashes.helpers;
+          });
+        },
+      },
+      {
+        name: "forged evaluator freeze version",
+        pattern: /freeze.*evaluator|evaluator.*mismatch/i,
+        mutate: async (bundle) => {
+          await rebindBundleFreeze(bundle, (freeze) => {
+            freeze.versions.evaluator = "forged-evaluator/v9";
+          });
+        },
+      },
       {
         name: "duplicate result entries",
         pattern: /duplicate.*(?:trial|result|path)/i,
@@ -587,6 +1042,39 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
         },
       },
       {
+        name: "frozen fixture hash mismatch",
+        pattern: /fixture.*freeze mismatch|freeze.*fixture mismatch/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.hashes.fixture_manifest = "f".repeat(64);
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "frozen route mismatch",
+        pattern: /route.*mismatch/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.route.model = "forged-model";
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "frozen reviewer CLI mismatch",
+        pattern: /reviewer CLI.*mismatch/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.versions.reviewer_cli.value = "forged-reviewer";
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
         name: "unclean quiescence",
         pattern: /quiescen.*(?:unclean|contamin)/i,
         mutate: async ({ root: caseRoot, manifest }) => {
@@ -598,6 +1086,17 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
             clean: false,
             contaminants: [{ pid: 300, command: "node --test" }],
           };
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "missing quiescence sampling evidence",
+        pattern: /quiescen.*sampl/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          delete run.quiescence.sampling;
           entry.sha256 = await writeJson(path, run);
         },
       },
@@ -647,6 +1146,49 @@ test("summarize accepts only a curated immutable 3x3 counted-results manifest an
             ...run.protected_inputs.after,
             "specs/plan.md": "mutated-plan-hash",
           };
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "unclean isolated workspace",
+        pattern: /isolation|oracle|contamin/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.isolation.oracle_present = true;
+          run.isolation.contamination.oracle_present = true;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "telemetry unavailable without a reason",
+        pattern: /telemetry.*unavailable|unavailable.*reason/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.telemetry.tokens.output = {
+            value: null,
+            unavailable_reason: null,
+          };
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "unadjudicated unmatched candidate",
+        pattern: /unmatched.*adjudicat|route.blind/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.quality.unmatched_candidates = [
+            {
+              id: "unresolved-new-finding",
+              status: "unadjudicated",
+              route_blind: false,
+            },
+          ];
           entry.sha256 = await writeJson(path, run);
         },
       },
