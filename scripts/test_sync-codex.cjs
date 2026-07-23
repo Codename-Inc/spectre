@@ -271,6 +271,36 @@ test('spectre-execute uses lightweight sentinel review before final adversarial 
   }
 });
 
+const fixedWorkstreamCapPattern =
+  /(?:\b(?:at most|up to|no more than|max(?:imum)?(?: of)?|limited to)\s+|<=\s*)(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+workstreams?\b/i;
+const planDirectCreateTasksRoutePattern =
+  /(?:in )?plan-direct mode,?\s+(?:(?:must|should|shall|may|will|can|needs? to|has to)\s+)?(?:always\s+|first\s+)?(?:stops?|routes?(?: to)?|invokes?|calls?|runs?|uses?|dispatches?|requires?)[^\n]*spectre-create_tasks/i;
+
+test('plan-direct fixed-workstream guard rejects representative cap forms', () => {
+  for (const forbiddenContract of [
+    'Maximum of 4 workstreams may be dispatched.',
+    'At most four workstreams may be dispatched.',
+  ]) {
+    assert.match(forbiddenContract, fixedWorkstreamCapPattern);
+  }
+
+  assert.doesNotMatch('No fixed workstream count is imposed.', fixedWorkstreamCapPattern);
+});
+
+test('plan-direct create_tasks guard rejects representative invocation forms', () => {
+  for (const forbiddenContract of [
+    'Plan-direct mode must invoke spectre-create_tasks before execution.',
+    'In plan-direct mode, call spectre-create_tasks before execution.',
+  ]) {
+    assert.match(forbiddenContract, planDirectCreateTasksRoutePattern);
+  }
+
+  assert.doesNotMatch(
+    'Plan-direct mode never routes to spectre-create_tasks.',
+    planDirectCreateTasksRoutePattern,
+  );
+});
+
 test('plan-direct execute resolves explicit plans without changing structured defaults', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
@@ -322,7 +352,7 @@ test('plan-direct execute preserves source-plan authority without a completeness
     );
     assert.doesNotMatch(
       execute,
-      /(?:in )?plan-direct mode,?\s+(?:stops?|routes?)[^\n]*spectre-create_tasks/i,
+      planDirectCreateTasksRoutePattern,
     );
   }
 });
@@ -356,8 +386,7 @@ test('plan-direct execute creates lazy durable execution state before dispatch',
     assert.match(execute, /sha256[^\n]*full source-plan bytes/i);
     assert.match(execute, /recorded byte length/i);
     assert.match(execute, /No fixed workstream count is imposed/);
-    assert.doesNotMatch(execute, /at most \d+ workstreams?/i);
-    assert.doesNotMatch(execute, /<=\s*\d+\s+workstreams?/i);
+    assert.doesNotMatch(execute, fixedWorkstreamCapPattern);
     assert.doesNotMatch(
       execute,
       /(?:in )?plan-direct mode,?\s+(?:creates?|generates?|requires?)[^\n]*(?:complete|exhaustive)[^\n]*(?:task graph|subtasks|acceptance criteria)/i,
