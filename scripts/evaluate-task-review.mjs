@@ -234,6 +234,12 @@ function buildSchedule(seed) {
   };
 }
 
+function expectedFreezeId(freeze) {
+  return `freeze-${
+    safeHashObject({ ...freeze, freeze_id: null }).slice(0, 16)
+  }`;
+}
+
 async function createSchedule(options) {
   requireOptions(options, ["seed", "output"]);
   const output = resolve(options.output);
@@ -642,7 +648,7 @@ async function createFreeze(options) {
       normalized_prompts: promptHashes,
     },
   };
-  freeze.freeze_id = `freeze-${safeHashObject(freeze).slice(0, 16)}`;
+  freeze.freeze_id = expectedFreezeId(freeze);
   await writeNewJson(output, freeze, "freeze");
   return freeze;
 }
@@ -1657,6 +1663,15 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
   if (freeze.schema_version !== FREEZE_SCHEMA_VERSION) {
     throw new Error("unsupported freeze manifest");
   }
+  if (freeze.freeze_id !== expectedFreezeId(freeze)) {
+    throw new Error("freeze manifest identity mismatch");
+  }
+  if (
+    freeze.versions?.evaluator !== EVALUATOR_VERSION ||
+    freeze.versions?.node !== process.version
+  ) {
+    throw new Error("freeze evaluator or Node version mismatch");
+  }
   if (schedule.schema_version !== SCHEDULE_SCHEMA_VERSION) {
     throw new Error("unsupported paired schedule");
   }
@@ -1754,6 +1769,22 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
   }
   if (freeze.repository?.commit !== gitOutput(["rev-parse", "HEAD"]).trim()) {
     throw new Error("freeze repository commit mismatch");
+  }
+  const configuration = VARIANTS[options.variant];
+  const reviewerBinary = options.reviewerCommand ||
+    (configuration.runtime === "claude-code"
+      ? process.env.CLAUDE_BIN || "claude"
+      : process.env.CODEX_BIN || "codex");
+  const reviewerVersion = commandVersion(
+    reviewerBinary,
+    cleanEnvironment(),
+  ).value;
+  const frozenReviewerVersion =
+    freeze.versions?.reviewer_clis?.[
+      configuration.runtime === "claude-code" ? "claude" : "codex"
+    ];
+  if (reviewerVersion !== frozenReviewerVersion) {
+    throw new Error("freeze reviewer CLI version mismatch");
   }
   return {
     block: scheduled.block,
@@ -2485,6 +2516,15 @@ async function loadCountedResults(options) {
           `counted result quiescence is unclean or contaminated during ${stage}: ${entry.trial_id}`,
         );
       }
+    }
+    if (
+      run.quiescence?.owned_reviewer_tree_excluded !== true ||
+      run.quiescence?.sampling?.clean === false ||
+      (run.quiescence?.sampling?.contaminants?.length ?? 0) > 0
+    ) {
+      throw new Error(
+        `counted result quiescence attestation is unclean or contaminated: ${entry.trial_id}`,
+      );
     }
     if (run.quality?.recall_by_severity?.Blocker !== 1) {
       throw new Error(`known Blocker recall must be 100%: ${entry.trial_id}`);
