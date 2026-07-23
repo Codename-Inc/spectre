@@ -1,0 +1,199 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
+import test from 'node:test';
+
+const projectRoot = join(import.meta.dirname, '..', '..');
+
+const creatorContract = {
+  proposal: /propose (?:a )?lowercase kebab-case feature name/i,
+  noExtraGate: /never create a separate name-confirmation gate/i,
+  existingFeature: /explicitly (?:names|selects) an existing managed feature/i,
+};
+
+const continuationContract = {
+  explicit: /explicit feature (?:directory|root) or feature name/i,
+  artifact: /supplied artifact beneath (?:a|the) feature (?:directory|root)/i,
+  conversation: /one unambiguous feature artifact .*current (?:conversation|thread)/i,
+  noInference: /never use branch name, modification time, lifecycle completeness, or directory scanning/i,
+};
+
+function read(relativePath) {
+  return readFileSync(join(projectRoot, relativePath), 'utf8');
+}
+
+function assertContract(text, contract, file) {
+  for (const [clause, pattern] of Object.entries(contract)) {
+    assert.ok(pattern.test(text), `${file}: missing ${clause} clause`);
+  }
+}
+
+function git(cwd, args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+test('contract matcher accepts the complete creator and continuation fixture', () => {
+  const fixture = [
+    'Propose a lowercase kebab-case feature name.',
+    'Never create a separate name-confirmation gate.',
+    'When the user explicitly names an existing managed feature, continue it.',
+    'Resolve an explicit feature directory or feature name.',
+    'Then resolve a supplied artifact beneath the feature root.',
+    'Then resolve one unambiguous feature artifact from the current conversation.',
+    'Never use branch name, modification time, lifecycle completeness, or directory scanning.',
+  ].join('\n');
+
+  assertContract(fixture, creatorContract, 'synthetic creator');
+  assertContract(fixture, continuationContract, 'synthetic continuation');
+});
+
+test('creator skills declare no-extra-gate and selected-existing-feature behavior', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-scope/SKILL.md',
+    'plugins/spectre/skills/spectre-kickoff/SKILL.md',
+    'plugins/spectre-codex/skills/spectre-scope/SKILL.md',
+    'plugins/spectre-codex/skills/spectre-kickoff/SKILL.md',
+  ]) {
+    assertContract(read(file), creatorContract, file);
+  }
+});
+
+test('continuation skills declare the three-step resolution order without branch inference', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-plan/SKILL.md',
+    'plugins/spectre/skills/spectre-execute/SKILL.md',
+    'plugins/spectre-codex/skills/spectre-plan/SKILL.md',
+    'plugins/spectre-codex/skills/spectre-execute/SKILL.md',
+  ]) {
+    const content = read(file);
+    assertContract(content, continuationContract, file);
+    assert.doesNotMatch(
+      content,
+      /OUT_DIR\s*=\s*(?:user-specified|target_dir)[^\n]*docs\/tasks\/\{branch\}/,
+      `${file}: still derives the active feature root from the Git branch`,
+    );
+  }
+});
+
+test('tasks JSON fixture carries feature and feature_root metadata', () => {
+  const file = 'plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json';
+  const fixture = JSON.parse(read(file));
+  assert.equal(fixture.meta.feature, 'Example Feature', `${file}: missing meta.feature`);
+  assert.equal(
+    fixture.meta.feature_root,
+    '.spectre/features/example-feature',
+    `${file}: missing meta.feature_root`,
+  );
+});
+
+test('execute fixture is self-locating and contains no unresolved legacy artifact roots', () => {
+  const file = 'plugins/spectre/skills/spectre-create_tasks/references/execute.example.md';
+  const content = read(file);
+  assert.ok(/^Feature: Example Feature$/m.test(content), `${file}: missing Feature metadata`);
+  assert.ok(
+    /^Feature Root: \.spectre\/features\/example-feature$/m.test(content),
+    `${file}: missing Feature Root metadata`,
+  );
+
+  const legacyLines = content
+    .split('\n')
+    .map((line, index) => ({ line: index + 1, text: line }))
+    .filter(({ text }) => text.includes('docs/tasks/'))
+    .map(({ line, text }) => `${file}:${line}: ${text.trim()}`);
+  assert.deepEqual(legacyLines, [], `${file}: unresolved feature artifact references`);
+});
+
+test('producer contract treats the physical feature directory as rename authority', () => {
+  const file = 'plugins/spectre/skills/spectre-create_tasks/SKILL.md';
+  const content = read(file);
+  assert.ok(
+    /physical feature directory .*authoritative/i.test(content),
+    `${file}: missing physical-directory authority`,
+  );
+  assert.ok(
+    /repair .*feature(?: name)?\/root metadata .*before (?:continuing|writing)/i.test(content),
+    `${file}: missing rename reconciliation`,
+  );
+});
+
+test('explicit legacy continuation preserves state but routes new documents to a feature root', () => {
+  const file = 'plugins/spectre/skills/spectre-execute/SKILL.md';
+  const content = read(file);
+  assert.ok(
+    /explicit legacy artifact.*readable input/i.test(content),
+    `${file}: missing explicit legacy-input clause`,
+  );
+  assert.ok(
+    /existing legacy .*status fields.*in place/i.test(content),
+    `${file}: missing legacy status-mutation clause`,
+  );
+  assert.ok(
+    /new canonical documents?.*\.spectre\/features\//i.test(content),
+    `${file}: missing canonical-write boundary`,
+  );
+});
+
+test('fresh-repository tenancy keeps features trackable and local state ignored', () => {
+  const root = mkdtempSync(join(tmpdir(), 'spectre-tenancy-red-'));
+  try {
+    git(root, ['init', '-b', 'main']);
+    writeFileSync(join(root, '.gitignore'), read('.gitignore'));
+    mkdirSync(join(root, '.spectre', 'features', 'example-feature'), { recursive: true });
+    mkdirSync(join(root, '.spectre', 'handoffs', 'main'), { recursive: true });
+    writeFileSync(join(root, '.spectre', 'features', 'example-feature', 'feature.json'), '{}\n');
+    writeFileSync(join(root, '.spectre', 'manifest.json'), '{}\n');
+    writeFileSync(join(root, '.spectre', 'handoffs', 'main', 'one_handoff.json'), '{}\n');
+
+    const feature = '.spectre/features/example-feature/feature.json';
+    const manifest = '.spectre/manifest.json';
+    const handoff = '.spectre/handoffs/main/one_handoff.json';
+    const ignored = new Set(
+      [feature, manifest, handoff].filter((path) => {
+        try {
+          git(root, ['check-ignore', '-q', path]);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    assert.equal(ignored.has(feature), false, `${feature}: must be trackable by default`);
+    assert.equal(ignored.has(manifest), true, `${manifest}: must remain local`);
+    assert.equal(ignored.has(handoff), true, `${handoff}: must remain local`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('public documentation labels every legacy path with its compatibility status', () => {
+  const docs = readdirSync(join(projectRoot, 'docs'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => join(projectRoot, 'docs', entry.name));
+  const files = [join(projectRoot, 'README.md'), ...docs];
+  const unlabeled = files.flatMap((file) =>
+    readFileSync(file, 'utf8')
+      .split('\n')
+      .map((line, index) => ({ line, lineNumber: index + 1 }))
+      .filter(({ line }) => /docs\/(?:active_)?tasks\//.test(line))
+      .filter(({ line }) => !/\b(?:legacy|compatibility)\b/i.test(line))
+      .map(({ line, lineNumber }) =>
+        `${relative(projectRoot, file)}:${lineNumber}: ${line.trim()}`,
+      ),
+  );
+
+  assert.deepEqual(
+    unlabeled,
+    [],
+    `unlabeled active legacy paths:\n${unlabeled.join('\n')}`,
+  );
+});
