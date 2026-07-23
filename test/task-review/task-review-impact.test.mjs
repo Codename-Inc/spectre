@@ -282,10 +282,10 @@ function assertReason(result, pattern) {
   assert.match(JSON.stringify(result.output?.impact?.reasons ?? []), pattern);
 }
 
-function assertFull(result, reason) {
+function assertFull(result, reason, expectedParents = ALL_PARENTS) {
   assertImpactAvailable(result);
   assert.equal(result.output.impact.mode, "full");
-  assertSet(result.output.impact.parents, ALL_PARENTS, "whole graph parents");
+  assertSet(result.output.impact.parents, expectedParents, "whole graph parents");
   assertSet(result.output.impact.lenses, ALL_LENSES, "whole graph lenses");
   assertReason(result, reason);
 }
@@ -545,6 +545,7 @@ const globalMutationCases = [
   },
   {
     name: "broad parent renumbering forces whole-graph review",
+    expectedParents: ["0.1", "9.1", "9.2", "9.3", "2.1"],
     mutate: async (fixture) => {
       await mutateTasks(fixture, (tasks) => {
         for (const phase of tasks.phases) {
@@ -598,7 +599,11 @@ for (const mutation of globalMutationCases) {
     await withFixture(async (fixture) => {
       await bootstrapState(fixture);
       await mutation.mutate(fixture);
-      assertFull(runImpact(fixture), mutation.reason);
+      assertFull(
+        runImpact(fixture),
+        mutation.reason,
+        mutation.expectedParents,
+      );
     });
   });
 }

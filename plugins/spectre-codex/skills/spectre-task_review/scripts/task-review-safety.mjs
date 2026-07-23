@@ -668,7 +668,7 @@ function classifyImpact(previous, current) {
   ) {
     return {
       mode: "full",
-      parents: previousParents,
+      parents,
       lenses: [...ALL_LENSES],
       reasons: [
         "Broad parent identity or renumbering changed the task graph.",
