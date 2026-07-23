@@ -175,6 +175,30 @@ switch (scenario) {
     );
     await writeFile(reportPath, validReport);
     break;
+  case "retry-success":
+    process.stdout.write(
+      `${JSON.stringify({
+        type: "retry",
+        attempt: 1,
+      })}\n`,
+    );
+    process.stdout.write(
+      `${JSON.stringify({
+        type: "result",
+        subtype: "success",
+        num_turns: 1,
+        total_cost_usd: 0.25,
+        usage: {
+          input_tokens: 10,
+          cache_creation_input_tokens: 2,
+          cache_read_input_tokens: 3,
+          output_tokens: 4,
+        },
+        duration_ms: 5,
+      })}\n`,
+    );
+    await writeFile(reportPath, validReport);
+    break;
   case "quiet-success":
     await writeFile(reportPath, validReport);
     break;
