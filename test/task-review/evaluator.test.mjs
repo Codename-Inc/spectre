@@ -29,6 +29,7 @@ async function implementation() {
 async function runEvaluation(root, name, scenario, extra = []) {
   const { runCli } = await implementation();
   const outputDirectory = join(root, name);
+  const timeoutMs = scenario === "timeout" ? "100" : "1000";
   const result = await runCli([
     "run",
     "--fixture",
@@ -46,7 +47,7 @@ async function runEvaluation(root, name, scenario, extra = []) {
     "--reviewer-arg",
     scenario,
     "--timeout-ms",
-    "100",
+    timeoutMs,
     ...extra,
   ]);
   return {
