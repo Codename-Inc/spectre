@@ -639,6 +639,10 @@ test("freeze persists every immutable comparison input and refuses overwrite", a
     assert.match(freeze.repository.commit, /^[a-f0-9]{40}$/);
     assert.equal(typeof freeze.repository.dirty, "boolean");
     assert.match(freeze.repository.dirty_diff_sha256, shaPattern);
+    assert.equal(
+      freeze.repository.comparison_binding,
+      "protected-input-hashes",
+    );
 
     for (const path of [
       ["hashes", "evaluator"],
@@ -693,44 +697,50 @@ test("freeze persists every immutable comparison input and refuses overwrite", a
       )
       .find((trial) => trial.variant === "baseline-opus-max");
 
-    const dirtyMismatchPath = join(root, "freeze-dirty-mismatch.json");
-    await writeJson(dirtyMismatchPath, {
+    const provenanceDriftPath = join(root, "freeze-provenance-drift.json");
+    const provenanceDrift = {
       ...freeze,
       repository: {
         ...freeze.repository,
+        commit: "0".repeat(40),
+        dirty: !freeze.repository.dirty,
         dirty_diff_sha256: "f".repeat(64),
       },
-    });
-    await assert.rejects(
-      runCli([
-        "run",
-        "--fixture",
-        fixtureRoot,
-        "--variant",
-        scheduled.variant,
-        "--trial",
-        scheduled.trial_id,
-        "--block",
-        String(scheduled.block),
-        "--output-dir",
-        join(root, "dirty-mismatch-run"),
-        "--lock-file",
-        join(root, "dirty-mismatch.lock"),
-        "--price-basis",
-        priceBasisPath,
-        "--freeze",
-        dirtyMismatchPath,
-        "--schedule",
-        schedulePath,
-        "--reviewer-command",
-        fakeReviewerPath,
-        "--reviewer-arg",
-        "scored-report",
-        "--timeout-ms",
-        "1000",
-      ]),
-      /freeze repository dirty.*mismatch/i,
+    };
+    provenanceDrift.freeze_id = freezeId(provenanceDrift);
+    await writeJson(provenanceDriftPath, provenanceDrift);
+    const provenanceDriftRun = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      scheduled.variant,
+      "--trial",
+      scheduled.trial_id,
+      "--block",
+      String(scheduled.block),
+      "--output-dir",
+      join(root, "provenance-drift-run"),
+      "--lock-file",
+      join(root, "provenance-drift.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--freeze",
+      provenanceDriftPath,
+      "--schedule",
+      schedulePath,
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "scored-report",
+      "--timeout-ms",
+      "1000",
+    ]);
+    assert.equal(
+      provenanceDriftRun.freeze_manifest_sha256,
+      sha256(await readFile(provenanceDriftPath)),
     );
+    assert.equal(provenanceDriftRun.trial, scheduled.trial_id);
 
     const versionMismatchPath = join(root, "freeze-version-mismatch.json");
     await writeJson(versionMismatchPath, {

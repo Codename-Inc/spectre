@@ -642,6 +642,7 @@ async function createFreeze(options) {
     environment,
   );
   const repository = repositoryState();
+  repository.comparison_binding = "protected-input-hashes";
   const promptHashes = {};
   for (const variant of Object.keys(VARIANTS)) {
     promptHashes[variant] = await normalizedPromptHash(fixtureRoot, variant);
@@ -1896,16 +1897,15 @@ async function loadPairedContext(options, fixtureRoot, priceBasisPath) {
       throw new Error(`freeze ${name.replaceAll("_", " ")} mismatch`);
     }
   }
-  const currentRepository = repositoryState();
-  if (freeze.repository?.commit !== currentRepository.commit) {
-    throw new Error("freeze repository commit mismatch");
-  }
   if (
-    freeze.repository?.dirty !== currentRepository.dirty ||
-    freeze.repository?.dirty_diff_sha256 !==
-      currentRepository.dirty_diff_sha256
+    !/^[a-f0-9]{40}$/.test(freeze.repository?.commit ?? "") ||
+    typeof freeze.repository?.dirty !== "boolean" ||
+    !/^[a-f0-9]{64}$/.test(
+      freeze.repository?.dirty_diff_sha256 ?? "",
+    ) ||
+    freeze.repository?.comparison_binding !== "protected-input-hashes"
   ) {
-    throw new Error("freeze repository dirty state mismatch");
+    throw new Error("freeze repository provenance is invalid");
   }
   const configuration = VARIANTS[options.variant];
   const reviewerBinary = options.reviewerCommand ||
