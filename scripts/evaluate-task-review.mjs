@@ -1208,6 +1208,11 @@ async function runEvaluation(options, hooks = {}) {
     const spectreHome = join(runtimeRoot, "spectre");
     const temporaryHome = join(runRoot, "home");
     const temporaryDirectory = join(runRoot, "tmp");
+    const xdgConfigHome = join(runRoot, "xdg", "config");
+    const xdgCacheHome = join(runRoot, "xdg", "cache");
+    const xdgDataHome = join(runRoot, "xdg", "data");
+    const xdgStateHome = join(runRoot, "xdg", "state");
+    const xdgRuntimeDirectory = join(runRoot, "xdg", "runtime");
     const rawDirectory = join(outputDirectory, "raw");
     const reportPath = join(taskRoot, "reviews", "task_review.md");
     await Promise.all([
@@ -1217,6 +1222,11 @@ async function runEvaluation(options, hooks = {}) {
       mkdir(spectreHome, { recursive: true }),
       mkdir(temporaryHome, { recursive: true }),
       mkdir(temporaryDirectory, { recursive: true }),
+      mkdir(xdgConfigHome, { recursive: true }),
+      mkdir(xdgCacheHome, { recursive: true }),
+      mkdir(xdgDataHome, { recursive: true }),
+      mkdir(xdgStateHome, { recursive: true }),
+      mkdir(xdgRuntimeDirectory, { recursive: true, mode: 0o700 }),
       mkdir(rawDirectory, { recursive: true }),
       mkdir(dirname(reportPath), { recursive: true }),
     ]);
@@ -1249,8 +1259,20 @@ async function runEvaluation(options, hooks = {}) {
         delete baseEnvironment[key];
       }
     }
+    const hostHome =
+      typeof process.env.HOME === "string" &&
+      isAbsolute(process.env.HOME)
+        ? process.env.HOME
+        : null;
     baseEnvironment.HOME = temporaryHome;
     baseEnvironment.TMPDIR = temporaryDirectory;
+    baseEnvironment.TMP = temporaryDirectory;
+    baseEnvironment.TEMP = temporaryDirectory;
+    baseEnvironment.XDG_CONFIG_HOME = xdgConfigHome;
+    baseEnvironment.XDG_CACHE_HOME = xdgCacheHome;
+    baseEnvironment.XDG_DATA_HOME = xdgDataHome;
+    baseEnvironment.XDG_STATE_HOME = xdgStateHome;
+    baseEnvironment.XDG_RUNTIME_DIR = xdgRuntimeDirectory;
     const environment = {
       ...claudeAuthenticationEnvironment(claudeHome, baseEnvironment),
       CODEX_HOME: codexHome,
@@ -1262,6 +1284,9 @@ async function runEvaluation(options, hooks = {}) {
       TASK_REVIEW_EFFORT: configuration.effort,
       TASK_REVIEW_ROUTE: configuration.route,
     };
+    const authenticationEnvironment = hostHome
+      ? { ...environment, HOME: hostHome }
+      : environment;
     stagedAuth = await stageCodexAuthentication(codexHome);
     const claudeAuthentication =
       configuration.runtime !== "claude-code"
@@ -1283,7 +1308,16 @@ async function runEvaluation(options, hooks = {}) {
             unavailable_reason:
               "Custom reviewer command bypassed the real Claude auth preflight.",
           }
-          : probeClaudeAuthentication(command.command, claudeHome, environment);
+          : probeClaudeAuthentication(
+            command.command,
+            claudeHome,
+            authenticationEnvironment,
+          );
+    if (hooks.debugLog) {
+      hooks.debugLog(
+        `[🪳 TEMP CLAUDE_AUTH_HOME] host_home_bridge=${hostHome !== null} reviewer_home_isolated=${environment.HOME === temporaryHome}`,
+      );
+    }
     const version = commandVersion(command.command, environment);
     const preflightEnded = performance.now();
 

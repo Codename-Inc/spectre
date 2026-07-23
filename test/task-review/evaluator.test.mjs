@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -217,6 +218,134 @@ test("authenticated real Claude host remains authenticated with isolated config 
       /email|org(?:id|name)|oauth[_-]?token|refresh[_-]?token|api[_-]?key/i,
     );
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Claude auth preflight uses host HOME while the reviewer keeps isolated homes, temp, and XDG paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-home-auth-"));
+  const hostHome = join(root, "host-home");
+  const previousHome = process.env.HOME;
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  const previousHomeSensitiveAuth =
+    process.env.TASK_REVIEW_FAKE_HOME_SENSITIVE_AUTH;
+  await mkdir(hostHome);
+  await writeFile(join(hostHome, ".home-sensitive-auth"), "present\n");
+  await chmod(fakeReviewerPath, 0o755);
+  process.env.HOME = hostHome;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  process.env.TASK_REVIEW_FAKE_HOME_SENSITIVE_AUTH = "1";
+
+  try {
+    const { runCli } = await implementation();
+    let reviewerContext;
+    let debugMessage;
+    const outputDirectory = join(root, "evidence");
+    const result = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "baseline-opus-max",
+      "--trial",
+      "home-sensitive-auth",
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(root, "home-sensitive-auth.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--timeout-ms",
+      "1000",
+    ], {
+      beforeReviewer: (context) => {
+        reviewerContext = context;
+      },
+      debugLog: (message) => {
+        debugMessage = message;
+      },
+    });
+
+    assert.equal(result.status, "valid");
+    assert.equal(result.authentication.claude.logged_in, true);
+    assert.equal(result.process.launched, true);
+    assert.match(
+      debugMessage,
+      /^\[🪳 TEMP CLAUDE_AUTH_HOME\] host_home_bridge=true reviewer_home_isolated=true$/,
+    );
+    assert.doesNotMatch(debugMessage, new RegExp(
+      hostHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    ));
+    assert.notEqual(reviewerContext.environment.HOME, hostHome);
+    assert.equal(
+      Object.values(reviewerContext.environment).some(
+        (value) =>
+          typeof value === "string" && value.includes(hostHome),
+      ),
+      false,
+    );
+    for (const key of [
+      "HOME",
+      "TMPDIR",
+      "TMP",
+      "TEMP",
+      "XDG_CONFIG_HOME",
+      "XDG_CACHE_HOME",
+      "XDG_DATA_HOME",
+      "XDG_STATE_HOME",
+      "XDG_RUNTIME_DIR",
+      "CLAUDE_CONFIG_DIR",
+      "CODEX_HOME",
+      "SPECTRE_HOME",
+    ]) {
+      assert.ok(reviewerContext.environment[key], `${key} is isolated`);
+    }
+    assert.equal(result.process.args.includes("--safe-mode"), true);
+    assert.equal(
+      result.process.args.includes("--dangerously-skip-permissions"),
+      false,
+    );
+    assert.equal(result.process.args.includes("--add-dir"), false);
+    assert.equal(
+      result.process.args[result.process.args.indexOf("--tools") + 1],
+      "Read,Glob,Grep,Write",
+    );
+    assert.equal(
+      result.process.args[
+        result.process.args.indexOf("--allowedTools") + 1
+      ],
+      "Read,Glob,Grep,Write",
+    );
+    const persistedEvidence = [
+      await readFile(join(outputDirectory, "result.json"), "utf8"),
+      await readFile(
+        join(outputDirectory, "raw", "reviewer.stdout.jsonl"),
+        "utf8",
+      ),
+      await readFile(
+        join(outputDirectory, "raw", "reviewer.stderr.txt"),
+        "utf8",
+      ),
+    ].join("\n");
+    assert.doesNotMatch(
+      persistedEvidence,
+      new RegExp(hostHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.doesNotMatch(
+      persistedEvidence,
+      /oauth[_-]?token|refresh[_-]?token|api[_-]?key|credentials?\.json/i,
+    );
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
+    if (previousHomeSensitiveAuth === undefined) {
+      delete process.env.TASK_REVIEW_FAKE_HOME_SENSITIVE_AUTH;
+    } else {
+      process.env.TASK_REVIEW_FAKE_HOME_SENSITIVE_AUTH =
+        previousHomeSensitiveAuth;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });

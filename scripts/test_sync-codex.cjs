@@ -454,9 +454,23 @@ test('plan-direct goal composition resumes execute before proof from durable sta
   }
 });
 
-test('review gates pin high-effort opposing models and retain native fallback', () => {
+test('review gates pin route-specific opposing models and retain native fallback', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillNames = ['spectre-plan_review', 'spectre-task_review', 'spectre-code_review'];
+  const routes = {
+    'spectre-plan_review': {
+      claudeModel: 'opus',
+      effort: 'high',
+    },
+    'spectre-task_review': {
+      claudeModel: 'opus',
+      effort: 'medium',
+    },
+    'spectre-code_review': {
+      claudeModel: 'fable',
+      effort: 'high',
+    },
+  };
 
   for (const rootName of ['spectre', 'spectre-codex']) {
     for (const skillName of skillNames) {
@@ -470,20 +484,39 @@ test('review gates pin high-effort opposing models and retain native fallback', 
       );
       const skill = fs.readFileSync(skillPath, 'utf8');
 
-      assert.match(skill, /claude -p --model fable --effort high/);
+      const { claudeModel, effort } = routes[skillName];
+      assert.match(skill, new RegExp(`claude -p --model ${claudeModel} --effort ${effort}`));
       assert.match(
         skill,
-        /codex exec -C "\$PWD" -m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
+        new RegExp(
+          `codex exec -C "\\$PWD" -m gpt-5\\.6-sol -c 'model_reasoning_effort="${effort}"'`,
+        ),
       );
-      assert.match(skill, /unavailable opposing runtimes never block completion/);
+      assert.match(skill, /unavailable opposing runtimes never block completion/i);
       assert.match(skill, /Native fallback/);
       assert.match(skill, /Reviewer Model:/);
       assert.match(skill, /Reviewer Effort:/);
       assert.match(skill, /Invocation Route:/);
-      assert.match(skill, /Reviewer Model: fable/);
+      assert.match(skill, new RegExp(`Reviewer Model: ${claudeModel}`));
+      assert.match(skill, new RegExp(`Reviewer Effort: ${effort}`));
       assert.match(skill, /Invocation Route: Codex -> Claude Code/);
       assert.match(skill, /Reviewer Model: gpt-5\.6-sol/);
       assert.match(skill, /Invocation Route: Claude Code -> Codex/);
+
+      if (skillName === 'spectre-plan_review') {
+        assert.match(skill, /Allow up to 20 minutes for completion/);
+        assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
+        assert.doesNotMatch(skill, /at least 20 minutes/);
+      } else if (skillName === 'spectre-task_review') {
+        assert.match(skill, /task-review-safety\.mjs` `preflight/);
+        assert.match(skill, /task-review-safety\.mjs` `validate-report/);
+        assert.match(skill, /one repair attempt/);
+        assert.match(skill, /focused post-check/);
+        assert.match(skill, /Adversarial mode:.*does not delegate/);
+        assert.match(skill, /Allow up to 20 minutes for completion/);
+        assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
+        assert.doesNotMatch(skill, /at least 20 minutes|do not stop early/i);
+      }
     }
   }
 });

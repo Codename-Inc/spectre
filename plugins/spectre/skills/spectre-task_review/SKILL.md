@@ -1,6 +1,6 @@
 ---
 name: "spectre-task_review"
-description: "Adversarial review of generated execute.md + tasks.json against a reviewed plan using a pinned high-effort opposite runtime, with a same-contract native fallback. Checks translation, criteria, RED pairing, dependencies, waves, and alignment. Do NOT review plan quality, finished code, or change scope."
+description: "Adversarial review of generated execute.md + tasks.json against a reviewed plan using a pinned medium-effort opposite runtime, with consumer-safety preflight and a same-contract native fallback. Checks translation, criteria, RED pairing, dependencies, waves, and alignment. Do NOT review plan quality, finished code, or change scope."
 user-invocable: true
 ---
 
@@ -20,6 +20,7 @@ Generated-task review: verify that `spectre-create_tasks` faithfully compiled th
 - `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `TASK_DIR = {arg path} || docs/tasks/{branch}`.
 - Resolve `EXECUTE_INDEX` as arg path or `{TASK_DIR}/specs/execute.md`; resolve `TASKS_JSON` from its `Task Detail Source`, adjacent `tasks.json`, or sibling `.tasks.json`.
 - `REVIEW_REPORT = {TASK_DIR}/reviews/task_review.md`; `mkdir -p`; if it exists, write `task_review_{YYYY-MM-DD_HHMMSS}.md`.
+- `PREFLIGHT_JSON = {TASK_DIR}/reviews/task_review_safety.json`; the primary writes this helper evidence and passes it back for protected-hash validation.
 - Parse `TASKS_JSON` before review and after every write. Use targeted projections/slices for reviewer briefs; do not inline the whole task graph unless it is genuinely small.
 
 ## Scope Boundary
@@ -28,43 +29,66 @@ Task review may improve translation only: coverage, criteria, dependencies, wave
 
 ## Method / guardrails
 
-**External-first selection**
-1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
-2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
-3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@spectre:reviewer`; unavailable opposing runtimes never block completion.
-4. Primary-agent self-review is prohibited except compiling explicit fallback subagent returns.
-5. Do not probe for startup commands. Use exactly the recipe below.
+**Primary-owned orchestration**
+1. Resolve `SAFETY_HELPER` as this skill's adjacent `scripts/task-review-safety.mjs`. Run `task-review-safety.mjs` `preflight` before constructing the reviewer brief:
+   ```bash
+   node "$SAFETY_HELPER" preflight --task-dir "$TASK_DIR" --execute "$EXECUTE_INDEX" --json > "$PREFLIGHT_JSON"
+   ```
+   Exit `2` stops reviewer launch and surfaces the enumerated hard failures. Exit `3` surfaces an internal helper failure and does not fabricate safety. Incidental advisories are included compactly in the brief, but advisories never block reviewer launch.
+2. If current runtime is Codex and `command -v claude` succeeds, select Claude Code. If current runtime is Claude Code and `command -v codex` succeeds, select Codex.
+3. Launch the selected opposite-runtime command as a long-running process and poll it until it completes. Allow up to 20 minutes for completion; quiet output or completion before that maximum is not failure.
+4. Run `task-review-safety.mjs` `validate-report` against `REVIEW_REPORT` and the protected hashes in `PREFLIGHT_JSON`:
+   ```bash
+   node "$SAFETY_HELPER" validate-report --task-dir "$TASK_DIR" --report "$REVIEW_REPORT" --protected-hashes "$PREFLIGHT_JSON" --json
+   ```
+5. If the report is missing or invalid, use the same external CLI for one repair attempt that may edit only `REVIEW_REPORT`, then validate again.
+6. If the opposite CLI is missing, exits non-zero, exceeds the launcher maximum, or still fails report validation, record the terminal reason and use the native fallback. Unavailable opposing runtimes never block completion.
+7. Read `REVIEW_REPORT` fully, apply scope-safe findings through the write-back contract, then run the focused post-check. After a successful post-check, the primary atomically persists any review-state payload using post-write hashes. Interrupted write-back, hash mismatch, missing finding disposition, or failed post-check invalidates that state. The primary owns all reviewer-launch, repair, fallback, write-back, and state-persistence decisions; no production runner owns them.
+8. Primary-agent self-review is prohibited except validating and persisting an explicit native fallback return.
+9. Do not probe for startup commands. Use exactly the recipe below.
 
 **Opposite-runtime initiation recipe**
 
 From Codex primary:
 ```bash
-claude -p --model fable --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+claude -p --model opus --effort medium --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
 ```bash
-codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
+codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="medium"' -s workspace-write "$REVIEW_PROMPT"
 ```
 
-External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: fable`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
+External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: medium`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: medium`, `Invocation Route: Claude Code -> Codex`.
 
 Run from repo root. The reviewer may write only REVIEW_REPORT; it may not edit plan, scope docs, `execute.md`, or `tasks.json`.
 
-`REVIEW_PROMPT` includes: TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself."
+`REVIEW_PROMPT` includes: TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, compact preflight advisories, semantic review region, write permission limited to REVIEW_REPORT, required report sections, and required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`). It directs the reviewer to use the four lenses as a semantic checklist, explain a concrete execution/correctness consequence for any mechanical imperfection it reports, and avoid redoing the consumer-safety checks.
+
+Do not pass launcher timeout or duration guidance to the reviewer or its workers.
+
+**Deterministic / mixed / semantic ownership**
+
+| Owner | Responsibilities |
+|---|---|
+| Consumer-safety helper | Required artifact resolution; task JSON parse; sliced parent uniqueness/resolution; task-detail source, index, wave, and declared dependency resolution; dependency cycles; minimum report validity; protected-input hashes |
+| Mixed evidence | Compact incidental advisories discovered by the hard parse/reference work; the reviewer decides whether they have a concrete semantic consequence |
+| Semantic reviewer | Requirement and Out-of-Bounds fidelity; Acceptance-criterion adequacy and falsifiability; Genuine RED behavior; Real producer/consumer meaning and missing functional dependencies; Reference relevance; task sizing; Severity and scope-safe classification |
+
+Count drift, anchor quality, optional headings/metadata, criterion/status enum irregularities, and incomplete producer/consumer declarations do not block launch unless they cause one of the closed consumer-safety failures. Do not add a separate exhaustive advisory scan.
 
 **Review lenses**
 
 | Lens | Fallback agent | Finds |
 |---|---|---|
-| Coverage | `@spectre:analyst` | every plan Verification signal maps to a `test`/`observable`/`state` AC; every in-scope requirement is represented; no Out-of-Bounds task exists |
-| Executability | `@spectre:reviewer` | RED pairing for behavior changes, executable AC wording, subtask size cap, no mid-task scope judgment |
-| Integration graph | `@spectre:patterns` | predecessor/unblocks, produces/consumed_by/replaces, Phase 0 dependency verification, no orphaned outputs |
-| Index alignment | `@spectre:finder` | `execute.md` manifest/source/summary/waves/parent index match `tasks.json`; referenced files and context anchors exist |
+| Coverage | `@spectre:analyst` | missing or mistranslated plan verification and Out-of-Bounds obligations |
+| Executability | `@spectre:reviewer` | criteria that do not prove behavior, weak RED pairing, oversized tasks, or mid-task scope judgment |
+| Integration graph | `@spectre:patterns` | actual dependency, ordering, or wiring mistakes rather than string symmetry alone |
+| Reference quality | `@spectre:finder` | context that is insufficient or irrelevant; imperfect anchors are advisory unless they create a concrete execution failure |
 
-- **Adversarial mode:** one opposite-runtime pass using the four lenses as checklist.
+- **Adversarial mode:** one opposite-runtime pass using the four lenses as a checklist; it does not delegate.
 - **Full mode:** opposite-runtime reviewer fans out one worker per lens only with pinned-model inheritance; otherwise the pinned parent reviews all four lenses, then writes the report.
-- **Native fallback:** dispatch one clean-context `@spectre:reviewer` with the same artifact manifest, scope boundary, lenses, severity rules, evidence requirements, and report schema from `REVIEW_PROMPT`. In full mode this single reviewer evaluates every lens itself; it does not delegate. Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged. Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
+- **Native fallback:** dispatch one clean-context `@spectre:reviewer` with the same artifact manifest, scope boundary, lenses, severity rules, evidence requirements, and report schema from `REVIEW_PROMPT`. In full mode this single reviewer evaluates every lens itself; it does not delegate. Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged, then rerun `validate-report`. Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
 - Severity: **Blocker**, **High**, **Medium**, **Low**, **Scope Change Required**.
 
 **Write-back**
@@ -72,7 +96,7 @@ Run from repo root. The reviewer may write only REVIEW_REPORT; it may not edit p
 - `--auto-apply scope-safe`: apply scope-safe Blocker+High, plus Medium/Low only when unambiguous and translation-only. Never apply Scope Change Required.
 - Otherwise present findings and ask `all` / `blockers` / `1,3,5` / `skip`; wait.
 - Edit only `TASKS_JSON` and affected `EXECUTE_INDEX` rows. Preserve task ids when possible; if parent ids/titles/dependencies/waves change, update `Wave Plan` + `Parent Task Index` in the same pass.
-- Re-parse JSON after every write and re-check: no Out-of-Bounds task, all plan Verification signals map to criteria, criteria use only `test`/`observable`/`state`, producer outputs have consumers, execute index matches JSON.
+- Re-parse JSON after every write, run the focused post-check through `task-review-safety.mjs` `preflight`, and confirm applied findings did not violate the Scope Boundary. A failed post-check invalidates the write-back state and must be surfaced.
 
 ## Outputs + DONE
 
@@ -81,6 +105,8 @@ Run from repo root. The reviewer may write only REVIEW_REPORT; it may not edit p
 2. **Coverage Summary** - plan signals covered/missing; Out-of-Bounds violations, if any.
 3. **Index Alignment Summary** - `execute.md` vs `tasks.json` status.
 4. **Review Metadata** - reviewed artifacts, auto-apply mode, ISO8601 timestamp, `Mode:`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
+
+The closed consumer-safety report gate requires a confined/readable report, a parseable Findings table or explicit no-findings form, location/finding/edit fields, required route metadata, and unchanged protected hashes. Missing Coverage or Index Alignment summaries request repair or become an advisory unless the primary cannot determine what to apply; they do not silently expand the helper's hard-failure set.
 
 DONE when the report exists before edits; every finding has a location + concrete suggested edit; runtime/model/effort/route metadata is recorded; any native fallback reason is recorded; applied edits touch only `TASKS_JSON` and affected `EXECUTE_INDEX` rows; JSON parses; scope-change recommendations are left unapplied; post-edit self-check passes.
 

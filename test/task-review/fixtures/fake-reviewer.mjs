@@ -1,13 +1,42 @@
 #!/usr/bin/env node
 
-import { appendFile, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  access,
+  appendFile,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
+
+const homeSensitiveAuth =
+  process.env.TASK_REVIEW_FAKE_HOME_SENSITIVE_AUTH === "1";
+const homeSensitiveMarker = ".home-sensitive-auth";
 
 if (
   process.argv[2] === "auth" &&
   process.argv[3] === "status" &&
   process.argv.includes("--json")
 ) {
+  if (homeSensitiveAuth) {
+    try {
+      await access(join(process.env.HOME ?? "", homeSensitiveMarker));
+    } catch {
+      process.stdout.write(
+        `${JSON.stringify({
+          loggedIn: false,
+          authMethod: "none",
+          apiProvider: "firstParty",
+        })}\n`,
+      );
+      process.exit(1);
+    }
+  }
   process.stdout.write(
     `${JSON.stringify({
       loggedIn: true,
@@ -54,6 +83,29 @@ if (process.argv.includes("-p")) {
   const allowedToolsIndex = process.argv.indexOf("--allowedTools");
   const permissionIndex = process.argv.indexOf("--permission-mode");
   const expectedTools = "Read,Glob,Grep,Write";
+  const reviewerHome = process.env.HOME ?? "";
+  const reviewerRoot = dirname(reviewerHome);
+  const isolatedEnvironmentPaths = [
+    "HOME",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_RUNTIME_DIR",
+    "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+    "SPECTRE_HOME",
+  ];
+  const isWithinReviewerRoot = (path) => {
+    const difference = relative(resolve(reviewerRoot), resolve(path));
+    return (
+      difference === "" ||
+      (!difference.startsWith("..") && !isAbsolute(difference))
+    );
+  };
   if (
     !process.argv.includes("--safe-mode") ||
     toolsIndex === -1 ||
@@ -65,6 +117,29 @@ if (process.argv.includes("-p")) {
   ) {
     process.stderr.write("Claude reviewer command permissions are invalid\n");
     process.exit(9);
+  }
+  if (
+    homeSensitiveAuth &&
+    (
+      await Promise.all(
+        isolatedEnvironmentPaths.map(async (key) => {
+          const value = process.env[key];
+          if (!value || !isWithinReviewerRoot(value)) return false;
+          if (key === "HOME") {
+            try {
+              await access(join(value, homeSensitiveMarker));
+              return false;
+            } catch {
+              // The host-home auth marker must not reach the reviewer HOME.
+            }
+          }
+          return true;
+        }),
+      )
+    ).includes(false)
+  ) {
+    process.stderr.write("Claude reviewer environment is not isolated\n");
+    process.exit(10);
   }
   await writeFile(reportPath, validReport);
   process.stdout.write(
