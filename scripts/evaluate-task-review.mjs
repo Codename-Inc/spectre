@@ -923,18 +923,25 @@ async function runReviewerWithQuiescence(command, args, options, hooks = {}) {
   };
   let reviewerPid = null;
   let interval = null;
+  let samplingError = null;
   const processResult = await runReviewer(command, args, {
     ...options,
     onSpawn(pid) {
       reviewerPid = pid;
       snapshots.continuous.push(takeSnapshot("continuous"));
       interval = setInterval(() => {
-        snapshots.continuous.push(takeSnapshot("continuous"));
+        try {
+          snapshots.continuous.push(takeSnapshot("continuous"));
+        } catch (error) {
+          samplingError = error;
+          clearInterval(interval);
+        }
       }, intervalMs);
       interval.unref?.();
     },
   });
   if (interval) clearInterval(interval);
+  if (samplingError) throw samplingError;
   snapshots.post = takeSnapshot("post");
   const samplingEnded = performance.now();
   return {
@@ -2550,8 +2557,11 @@ function assertCompleteFreeze(freeze) {
     freeze.freeze_id !== expectedFreezeId(freeze) ||
     freeze.versions?.evaluator !== EVALUATOR_VERSION ||
     typeof freeze.versions?.node !== "string" ||
+    freeze.versions.node.trim() === "" ||
     typeof freeze.versions?.reviewer_clis?.claude !== "string" ||
+    freeze.versions.reviewer_clis.claude.trim() === "" ||
     typeof freeze.versions?.reviewer_clis?.codex !== "string" ||
+    freeze.versions.reviewer_clis.codex.trim() === "" ||
     !/^[a-f0-9]{40}$/.test(freeze.repository?.commit ?? "") ||
     typeof freeze.repository?.dirty !== "boolean"
   ) {
