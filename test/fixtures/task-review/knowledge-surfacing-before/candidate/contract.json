@@ -1,0 +1,44 @@
+{
+  "schema_version": "task-review-candidate-contract/v1",
+  "contract_version": "task-review-medium-candidates/v1",
+  "fixture_id": "knowledge-surfacing-before",
+  "prompt_contract_version": "semantic-non-sharded/v1",
+  "variants": [
+    {
+      "id": "candidate-opus-medium/v1",
+      "primary_runtime": "codex",
+      "reviewer_runtime": "claude-code",
+      "model": "opus",
+      "effort": "medium",
+      "invocation_route": "Codex -> Claude Code"
+    },
+    {
+      "id": "candidate-sol-medium/v1",
+      "primary_runtime": "claude-code",
+      "reviewer_runtime": "codex",
+      "model": "gpt-5.6-sol",
+      "effort": "medium",
+      "invocation_route": "Claude Code -> Codex"
+    }
+  ],
+  "behavior": {
+    "mode": "adversarial",
+    "semantic_passes": 1,
+    "sharded": false,
+    "candidate_prompt_excludes": [
+      "oracle findings",
+      "historical task-review report",
+      "minimum-duration guidance",
+      "timeout guidance",
+      "token-volume guidance",
+      "delegation instructions"
+    ],
+    "candidate_workspace_source": "input/",
+    "immutable_inputs": true
+  },
+  "cost_contract": {
+    "runtime_reported_cost": "store unchanged and label actual",
+    "public_price_cost": "compute separately and label estimate",
+    "missing_values": "null with unavailable reason"
+  }
+}

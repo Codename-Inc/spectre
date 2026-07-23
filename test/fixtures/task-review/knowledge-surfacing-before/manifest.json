@@ -1,0 +1,83 @@
+{
+  "schema_version": "task-review-fixture-manifest/v1",
+  "fixture_id": "knowledge-surfacing-before",
+  "frozen_at": "2026-07-23",
+  "candidate_visible_root": "input/",
+  "graph_counts": {
+    "phases": 7,
+    "parent_tasks": 13,
+    "subtasks": 32,
+    "waves": 10
+  },
+  "severity_counts": {
+    "Blocker": 1,
+    "High": 5,
+    "Medium": 15,
+    "Low": 19
+  },
+  "provenance": {
+    "source": "Claude Code JSONL transcript",
+    "session_id": "93f2254b-013a-42f2-a5cb-ef37e828a9f4",
+    "source_transcript": "/Users/joe/.claude/projects/-Users-joe-Dev-spectre/93f2254b-013a-42f2-a5cb-ef37e828a9f4.jsonl",
+    "source_transcript_sha256": "1a6bd3a786accc56d0b2a83e40564f52f0d0bb8afa338d19a4fc633acbddab9c",
+    "recovered_records": {
+      "input/specs/plan.md": "tool result at JSONL line 30",
+      "input/specs/execute.md": "tool result at JSONL line 16",
+      "input/specs/tasks.json": "tool result at JSONL line 28",
+      "oracle/historical-task-review.md": "Write payload at JSONL line 92",
+      "baseline/contract.json": "historical prompt at JSONL line 5"
+    }
+  },
+  "schema_versions": {
+    "task_graph": 1,
+    "finding_oracle": "task-review-finding-oracle/v1",
+    "baseline_contract": "task-review-baseline-contract/v1",
+    "candidate_contract": "task-review-candidate-contract/v1",
+    "price_basis": "task-review-price-basis/v1"
+  },
+  "isolation": {
+    "candidate_visible_paths": [
+      "input/specs/plan.md",
+      "input/specs/execute.md",
+      "input/specs/tasks.json"
+    ],
+    "hidden_paths": [
+      "oracle/findings.json",
+      "oracle/historical-task-review.md"
+    ]
+  },
+  "components": {
+    "baseline/contract.json": {
+      "bytes": 4808,
+      "sha256": "e4ce6cb44494c93bc69779c4c9f9e951d7754a61a69ece30f067b7701681fe29"
+    },
+    "candidate/contract.json": {
+      "bytes": 1307,
+      "sha256": "5301cad867edd1a1f75357d0307062c4030a2283037d2ed2aaea8ecbef6a5235"
+    },
+    "input/specs/execute.md": {
+      "bytes": 5820,
+      "sha256": "19b3d3466e4c052ca36e34f86d45ce625c5ac6807c18daa9bc3b3464bffbb8e9"
+    },
+    "input/specs/plan.md": {
+      "bytes": 40359,
+      "sha256": "c2d5b7f1752049678faefda6a468e856b643eb436ef7b9ecddc0efb90f627f3b"
+    },
+    "input/specs/tasks.json": {
+      "bytes": 76859,
+      "sha256": "acfe7359988ce13d7ef96872295a699c6bef381b755440bbd5baf0e7273f4b04"
+    },
+    "oracle/findings.json": {
+      "bytes": 50653,
+      "sha256": "9ed89539d3b816140f518bbf98439ae7a5bd9c51b3397ad5ae0c531423976683"
+    },
+    "oracle/historical-task-review.md": {
+      "bytes": 29063,
+      "sha256": "3ca1569ea9a369fdd5d2b86d1be3a65c7f199465e48171a9ea79ba0f67e173a5"
+    },
+    "pricing/basis.json": {
+      "bytes": 1588,
+      "sha256": "930586ea79a15c7a8c549ff74605aca5125aafcf375ed257cde97195ab8bc929"
+    }
+  }
+}

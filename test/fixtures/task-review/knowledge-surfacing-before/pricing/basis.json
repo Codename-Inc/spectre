@@ -1,0 +1,42 @@
+{
+  "schema_version": "task-review-price-basis/v1",
+  "basis_version": "public-prices-2026-07-23/v1",
+  "retrieved_at": "2026-07-23",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "runtime_reported_cost": {
+    "kind": "actual",
+    "rule": "Persist a runtime-reported total unchanged when exposed; do not reconstruct or relabel it."
+  },
+  "public_price_estimate": {
+    "kind": "estimate",
+    "rule": "Estimate from recorded public token rates only; never label the estimate as subscription spend or actual billed cost.",
+    "rates": [
+      {
+        "runtime": "claude-code",
+        "selector": "opus",
+        "resolved_model": "claude-opus-4-8",
+        "provider": "Anthropic API",
+        "input": 5,
+        "cache_write_5m": 6.25,
+        "cache_write_1h": 10,
+        "cached_input": 0.5,
+        "output": 25,
+        "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "alias_source": "https://code.claude.com/docs/en/model-config#model-aliases",
+        "notes": "Claude Code opus resolves to Opus 4.8 on the Anthropic API as retrieved; record the runtime-resolved model for every run."
+      },
+      {
+        "runtime": "codex",
+        "selector": "gpt-5.6-sol",
+        "resolved_model": "gpt-5.6-sol",
+        "provider": "OpenAI API",
+        "input": 5,
+        "cached_input": 0.5,
+        "output": 30,
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+        "notes": "Prompts above 272K input tokens use the documented 2x input and 1.5x output multipliers for the full request."
+      }
+    ]
+  }
+}

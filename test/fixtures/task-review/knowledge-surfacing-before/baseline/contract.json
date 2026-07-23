@@ -1,0 +1,42 @@
+{
+  "schema_version": "task-review-baseline-contract/v1",
+  "contract_version": "baseline-opus-max/v1",
+  "fixture_id": "knowledge-surfacing-before",
+  "purpose": "Evaluation-only proxy for the historical pre-optimization task-review behavior.",
+  "route": {
+    "runtime": "claude-code",
+    "model": "opus",
+    "effort": "max",
+    "mode": "adversarial",
+    "primary_runtime": "codex",
+    "invocation_route": "Codex -> Claude Code",
+    "approved_proxy_for": {
+      "runtime": "claude-code",
+      "observed_model": "fable",
+      "observed_effort": "high",
+      "reason": "Fable was rate-limited or otherwise unsuitable for evaluation."
+    }
+  },
+  "historical_prompt": {
+    "preserved": true,
+    "source_transcript_line": 5,
+    "sha256": "a3a93614f4a7583ed7fecd090597e8d0b301ab7889909c0702ebed066299cdc9",
+    "text": "Perform an adversarial generated-task review.\n\nTASK_DIR: docs/tasks/main/knowledge-surfacing\nEXECUTE_INDEX: docs/tasks/main/knowledge-surfacing/specs/execute.md\nTASKS_JSON: docs/tasks/main/knowledge-surfacing/specs/tasks.json\nPLAN: docs/tasks/main/knowledge-surfacing/specs/plan.md\nREVIEW_REPORT: docs/tasks/main/knowledge-surfacing/reviews/task_review.md\nMODE: adversarial\nAUTO-APPLY REQUESTED BY ORCHESTRATOR: scope-safe, but you must only write the review report. The primary agent will apply edits.\n\nArtifact manifest from execute.md:\n- Present canonical scope: docs/tasks/main/concepts/scope.md\n- Present technical context/selected design: docs/tasks/main/knowledge-surfacing/task_context.md\n- Present reviewed plan: docs/tasks/main/knowledge-surfacing/specs/plan.md\n- Present plan review: docs/tasks/main/knowledge-surfacing/reviews/plan_review.md\n- Present execute index and tasks JSON at the paths above\n- Absent scoped PRD and UX artifacts\n\nScope Boundary: improve translation only: coverage, typed executable criteria, RED pairing, task sizing, dependencies, waves, context anchors, producer/consumer wiring, and execute/JSON alignment. Do not add, remove, narrow, expand, or reinterpret canonical scope. Scope problems are Scope Change Required and must remain unapplied.\n\nWrite permission is limited to REVIEW_REPORT. Do not edit plan, scope, context, execute.md, tasks.json, or any repository source file.\n\nReview all four lenses:\n1. Coverage: every plan Verification signal maps to a test/observable/state acceptance criterion; every in-scope requirement is represented; no Out-of-Bounds task exists.\n2. Executability: behavior changes have preceding RED tasks; every criterion is executable; subtasks stay under the file/LOC/concern size cap and require no mid-task scope judgment.\n3. Integration graph: predecessor/unblocks, produces/consumed_by/replaces, Phase 0, migration-before-cleanup ordering, no orphaned outputs, and valid parallel waves.\n4. Index alignment: execute.md manifest/source/counts/waves/parent index exactly match tasks.json; every existing-file context path and anchor is accurate; explicitly new paths are labeled as new.\n\nSeverity values: Blocker, High, Medium, Low, Scope Change Required. Blocker/High must be execution-blocking under this translation contract.\n\nRequired report sections:\n1. Findings: Markdown table with columns # | Severity | Lens | Location | Finding | Suggested Edit. Every finding needs a concrete location and suggested edit.\n2. Coverage Summary: plan signals covered/missing and Out-of-Bounds violations.\n3. Index Alignment Summary: execute.md versus tasks.json status.\n4. Review Metadata: reviewed artifacts, auto-apply mode, ISO8601 timestamp, Mode: adversarial, Reviewer Runtime: Claude Code, Reviewer Model: fable, Reviewer Effort: high, Invocation Route: Codex -> Claude Code.\n\nParse tasks.json. Use targeted projections and slices when possible rather than treating the graph as prose. This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself.",
+    "observed_behavior": {
+      "minimum_duration_language": true,
+      "delegated_lenses": 4,
+      "reviewer_report_only_write_boundary": true
+    },
+    "allowed_instrumentation_changes": [
+      "isolated workspace and runtime homes",
+      "raw event capture",
+      "monotonic end-to-end timing",
+      "report persistence and immutable-input validation"
+    ]
+  },
+  "cost_contract": {
+    "runtime_reported_cost": "store unchanged and label actual",
+    "public_price_cost": "compute separately and label estimate",
+    "missing_values": "null with unavailable reason"
+  }
+}

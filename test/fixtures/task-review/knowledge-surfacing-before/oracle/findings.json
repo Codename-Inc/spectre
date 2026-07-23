@@ -1,0 +1,907 @@
+{
+  "schema_version": "task-review-finding-oracle/v1",
+  "fixture_id": "knowledge-surfacing-before",
+  "description": "Route-blind matching oracle recovered from the historical task-review report. It is evaluation-only and must never be copied into candidate workspaces.",
+  "source_report_sha256": "3ca1569ea9a369fdd5d2b86d1be3a65c7f199465e48171a9ea79ba0f67e173a5",
+  "fingerprint_contract": {
+    "algorithm": "sha256",
+    "canonical_fields": [
+      "defect_class",
+      "normalized lens",
+      "normalized affected locations",
+      "severity band"
+    ],
+    "adjudication": "Use fingerprints for exact defect identity first. Blindly adjudicate paraphrases and unmatched findings without route or variant metadata."
+  },
+  "severity_counts": {
+    "Blocker": 1,
+    "High": 5,
+    "Medium": 15,
+    "Low": 19
+  },
+  "findings": [
+    {
+      "id": "KS-001",
+      "severity": "Blocker",
+      "fingerprint": "47120e3f2db60babc39082e50a7c11207558ebeeb4bfea0df9c862218e6fef42",
+      "fingerprint_key": "{\"defect_class\":\"missing-pre-migration-real-host-stop-gate\",\"lens\":\"integration + coverage\",\"locations\":[\"tasks.json phases 0–2 (0.1.1, 0.1.2, 1.2.3) vs 2.1.2/4.2.3/5.1.3/6.2.2; execute.md wave plan\"],\"severity\":\"Blocker\"}",
+      "match": {
+        "defect_class": "missing-pre-migration-real-host-stop-gate",
+        "lens": [
+          "Integration",
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json phases 0–2 (0.1.1, 0.1.2, 1.2.3) vs 2.1.2/4.2.3/5.1.3/6.2.2; execute.md Wave Plan"
+        ],
+        "severity_band": "Blocker"
+      },
+      "source_evidence": {
+        "historical_finding_id": 1,
+        "report_location": "Findings table row 1",
+        "finding": "Plan §2.5 (\"On failure, stop before migration\") and Phase 1 Succeeds-when (c)/(d) require a real Codex run proving one prose-heavy and one code-heavy accepted fixture arrive inline, with a dated evidence artifact, BEFORE migration or user-data changes. No task executes this: 0.1.1 only *documents* commands/observations, 0.1.2 is RED tests, 1.2.3's ACs only require the harness to *emit* commands/manifest. Real-host execution first happens at 6.2.2 (wave 9) — after the migration engine (2.1.2, wave 3) is wired to user data via SessionStart (4.2.3, wave 5) and install/update (5.1.3, wave 6). Plan Phase 1 bullet \"Run a minimal real Claude/Codex hook probe\" maps to no task. execute.md's wave-0 rationale and slicing rule (\"Preserve … the Phase 0 payload stop gate\") describe a gate the graph does not contain.",
+        "suggested_edit": "Insert Verification subtask **1.2.4 \"Execute Phase-1 real-host payload probe\"** (predecessor 1.2.3; consumed_by 2.1.1). ACs: (observable) one accepted prose and one accepted code fixture arrive inline in a real Codex run per §2.5 with no preview/saved-file/truncation/fallback notice; (state) dated `docs/tasks/main/knowledge-surfacing/verification/host-payload-YYYY-MM-DD.md` saved; (state) on any fallback, execution stops before Phase 2 and measured estimator values + observed behavior are appended to `task_context.md`. Gate 2.1 on it and insert a wave between wave-2 and wave-3 in execute.md. Note the sub-dependency: the probe must install the runtime into the Codex fixture, so give 1.2.4 a minimal copy path independent of the full recursive translator (or pull a minimal nested-sync step forward from 6.1.2). Update REQ-017 tasks to include the new gate."
+      }
+    },
+    {
+      "id": "KS-002",
+      "severity": "High",
+      "fingerprint": "dc1238fab7457259b39df2a5f25c5062dce26e118b2bc540a048535615e4437b",
+      "fingerprint_key": "{\"defect_class\":\"consumer-ordered-before-command-producers\",\"lens\":\"integration\",\"locations\":[\"tasks.json 3.1 (pred \\\"1.2\\\", wave 3), 3.1.3, 2.2.2 (wave 4), 2.1.2 (wave 3)\"],\"severity\":\"High\"}",
+      "match": {
+        "defect_class": "consumer-ordered-before-command-producers",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 3.1 (pred \"1.2\", wave 3), 3.1.3, 2.2.2 (wave 4), 2.1.2 (wave 3)"
+        ],
+        "severity_band": "High"
+      },
+      "source_evidence": {
+        "historical_finding_id": 2,
+        "report_location": "Findings table row 2",
+        "finding": "3.1.3 produces `spectre knowledge search|register|migrate` routing and its AC requires `src/main.test.js` to pass for **all three** subcommands — but `registerKnowledge` lands in 2.2.2 (wave 4, after 3.1) and `migrateLegacyKnowledge` in 2.1.2 (wave 3, parallel, unordered). Also asymmetric: 2.2.2 `consumed_by` lists 3.1, but parent 2.2 `unblocks` (\"3.2, 4.2, 5.1\") omits 3.1.",
+        "suggested_edit": "Preferred: split 3.1.3 into search-only routing (stays wave 3) and a new \"wire register/migrate routing\" subtask ordered after 2.2.2 (under 5.1 or a new parent). Alternative: add 2.2 to 3.1's predecessor, add 3.1 to 2.2's unblocks, move 3.1 to wave 5 and re-cascade. Either way, reconcile 2.2.2 consumed_by with the parent graph."
+      }
+    },
+    {
+      "id": "KS-003",
+      "severity": "High",
+      "fingerprint": "b5a223d54f76a878af1bb627dd6fd7d4257122bc8f4a5f77814105b1382cd3a5",
+      "fingerprint_key": "{\"defect_class\":\"artifact-deleted-before-all-runtime-consumers\",\"lens\":\"integration\",\"locations\":[\"tasks.json 4.2.3 (wave 5) vs 3.2.2 (wave 5, parallel) and 5.1.1/5.1.2 (wave 6)\"],\"severity\":\"High\"}",
+      "match": {
+        "defect_class": "artifact-deleted-before-all-runtime-consumers",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 4.2.3 (wave 5) vs 3.2.2 (wave 5, parallel) and 5.1.1/5.1.2 (wave 6)"
+        ],
+        "severity_band": "High"
+      },
+      "source_evidence": {
+        "historical_finding_id": 3,
+        "report_location": "Findings table row 3",
+        "finding": "4.2.3's AC \"spectre-apply removed only after all runtime, manifest, and test references are gone\" is unsatisfiable at wave 5. Verified references that outlive it: `plugins/spectre/skills/spectre-recall/SKILL.md` (rewritten by *parallel* 3.2.2 — no edge, despite 3.2.2 consumed_by listing 4.2); `src/lib/knowledge.js:83,160` reads `spectre-apply/SKILL.md` at install time and `src/install.test.js:62` asserts it (cut over only in 5.1.x, wave 6); `.claude/skills/verify-spectre/references/expected-skills.txt:8` lists `spectre-apply` and no task updates it, yet 6.2.1 requires the verify-spectre gates to pass. Deleting at wave 5 breaks install runtime and two gates mid-plan.",
+        "suggested_edit": "Add 3.2 to 4.2's predecessor (makes 3.2.2→4.2 symmetric). Move the *file deletion* of `spectre-apply/SKILL.md` into a new subtask ordered after 5.1.2 (e.g. under 5.2 or as 6.1.0) whose ACs include purging the verify-spectre expected-skills references (`.claude` and `.agents` copies) and regenerating the mirror. Leave 4.2.3 removing runtime/manifest wiring only; update 6.1.1's \"obsolete apply removal\" fixture context."
+      }
+    },
+    {
+      "id": "KS-004",
+      "severity": "High",
+      "fingerprint": "df0931d40d83d3fbe35ed5d29efef0ea6dd96b198780be6f0e78107dcac12dbd",
+      "fingerprint_key": "{\"defect_class\":\"template-deleted-before-npm-consumers\",\"lens\":\"integration\",\"locations\":[\"tasks.json 3.2.1 ac3 / 3.2.2 (wave 5) vs 5.1.1/5.1.2 (wave 6)\"],\"severity\":\"High\"}",
+      "match": {
+        "defect_class": "template-deleted-before-npm-consumers",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 3.2.1 AC3 / 3.2.2 (wave 5) vs 5.1.1/5.1.2 (wave 6)"
+        ],
+        "severity_band": "High"
+      },
+      "source_evidence": {
+        "historical_finding_id": 4,
+        "report_location": "Findings table row 4",
+        "finding": "3.2.2 deletes `spectre-learn/references/recall-template.md` at wave 5, but npm-side readers survive until wave 6: `src/lib/knowledge.js:74-76` (`recallTemplatePath` used by `ensureKnowledgeFiles`) and `src/install.test.js:77`. The precondition in 3.2.1's own AC (\"after all generation references are removed\") cannot hold; deletion at wave 5 breaks install/update and install tests until 5.1 lands.",
+        "suggested_edit": "Move the physical template deletion into 5.1.2 (or a post-5.1.2 subtask with predecessor 5.1.2); 3.2.2 drops only the skill's references. Update 3.2.1 AC3 to require deletion after the `src/lib/knowledge.js` references are gone, and update 3.2.2's produces text."
+      }
+    },
+    {
+      "id": "KS-005",
+      "severity": "High",
+      "fingerprint": "96687783b241d1b66120315975812a06099683dcf8df6ebb8877fd0b232109b9",
+      "fingerprint_key": "{\"defect_class\":\"undefined-skill-contract-test-harness\",\"lens\":\"executability\",\"locations\":[\"tasks.json 3.2.1 (and 3.2.2 ac1)\"],\"severity\":\"High\"}",
+      "match": {
+        "defect_class": "undefined-skill-contract-test-harness",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 3.2.1 (and 3.2.2 AC1)"
+        ],
+        "severity_band": "High"
+      },
+      "source_evidence": {
+        "historical_finding_id": 5,
+        "report_location": "Findings table row 5",
+        "finding": "3.2.1 produces \"failing static and workflow assertions\" for skill contracts, but no skill-contract test harness exists anywhere in the repo (verified), plan §13 names no such test file, and \"workflow assertions\" against LLM-executed prose skills are not machine-falsifiable. The implementer must invent both the mechanism and the location — guaranteed drift.",
+        "suggested_edit": "In 3.2.1 produces, name `plugins/spectre/hooks/scripts/test_skill-contracts.mjs` (matches the `npm test` glob) and define the assertions as concrete text checks: learn/recall SKILL.md must NOT contain `.claude/skills` write paths, `registry.toon`, `{{REGISTRY}}`, or `recall-template.md` references; MUST contain `spectre knowledge search`, the dual size-gate retry loop, and the `~/.spectre/projects` store path; `references/recall-template.md` must not exist (timing per finding 4). Drop or redefine \"workflow assertions\" as these static checks."
+      }
+    },
+    {
+      "id": "KS-006",
+      "severity": "High",
+      "fingerprint": "6ca00e2c46705f28c99d159814b1bda1bbd9c54da35477ff2487f06fbfeadd1b",
+      "fingerprint_key": "{\"defect_class\":\"missing-phase-real-host-verification\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 4.2 (4.2.2/4.2.3); execute.md wave-5\"],\"severity\":\"High\"}",
+      "match": {
+        "defect_class": "missing-phase-real-host-verification",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 4.2 (4.2.2/4.2.3); execute.md wave-5"
+        ],
+        "severity_band": "High"
+      },
+      "source_evidence": {
+        "historical_finding_id": 6,
+        "report_location": "Findings table row 6",
+        "finding": "Plan Phase 4 Succeeds-when ends \"…and the §2.5 real-host protocol records equivalent inline behavior within host limits.\" No 4.x task carries a real-host criterion; the clause is silently deferred to 6.2.2 (wave 9), so installer cutover (5.x) is built on unverified real hook behavior and the phase gate cannot be satisfied by the tasks in its phase.",
+        "suggested_edit": "Add an observable AC to 4.2.2 or a Verification subtask 4.2.4: \"The §2.5 protocol, run against the completed resolver, records equivalent inline primary content and notice on real Claude and Codex within host limits, appended to the dated evidence artifact.\" Gate 5.1 on it."
+      }
+    },
+    {
+      "id": "KS-007",
+      "severity": "Medium",
+      "fingerprint": "a656cd50fd4e67dd94da4093502d86fd4b3dc94445832547f983c9aa3548d6aa",
+      "fingerprint_key": "{\"defect_class\":\"context-anchor-wrong-document-registration-search\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json 2.2.2 context[2] and 3.2.2 context[2]\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "context-anchor-wrong-document-registration-search",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json 2.2.2 context[2] and 3.2.2 context[2]"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 7,
+        "report_location": "Findings table row 7",
+        "finding": "Anchor \"Registration and search\" cited in plan.md does not exist there (0 grep matches); the heading lives in task_context.md (`### 5. Registration and search`). Implementers grepping plan.md find nothing.",
+        "suggested_edit": "Change path to `docs/tasks/main/knowledge-surfacing/task_context.md` anchor `5. Registration and search`, or keep plan.md with anchor `2.7 SessionStart and explicit search`."
+      }
+    },
+    {
+      "id": "KS-008",
+      "severity": "Medium",
+      "fingerprint": "f757174f0fceb28c73dbba35f058d280a7448c8341ad7733e28a8a0b866b4a8d",
+      "fingerprint_key": "{\"defect_class\":\"context-anchor-wrong-document-learning-recall\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json 3.1.2 context[2]\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "context-anchor-wrong-document-learning-recall",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json 3.1.2 context[2]"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 8,
+        "report_location": "Findings table row 8",
+        "finding": "Anchor \"Learning, recall, and search\" cited in plan.md does not exist there; it is a task_context.md Selected Design heading (line ~373).",
+        "suggested_edit": "Change path to task_context.md anchor `Learning, recall, and search`, or plan.md anchor `2.7 SessionStart and explicit search`."
+      }
+    },
+    {
+      "id": "KS-009",
+      "severity": "Medium",
+      "fingerprint": "b9335d168dfdd2acc855fdeae2fc250651e9fd22c6573eff1fd3289a181eb66e",
+      "fingerprint_key": "{\"defect_class\":\"context-anchor-wrong-document-codex-package\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json 6.1.3 context[2]\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "context-anchor-wrong-document-codex-package",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json 6.1.3 context[2]"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 9,
+        "report_location": "Findings table row 9",
+        "finding": "Anchor \"Codex mirror/package\" cited in plan.md does not exist there; it is a row in task_context.md §9 Verification spine.",
+        "suggested_edit": "Change path to task_context.md anchor `Codex mirror/package`, or plan.md anchor `Phase 6: Generation, package, and release verification`."
+      }
+    },
+    {
+      "id": "KS-010",
+      "severity": "Medium",
+      "fingerprint": "157a01d602f9be9740014cf57e8280e0336fb834853da281fbdc9a837dba1d41",
+      "fingerprint_key": "{\"defect_class\":\"declared-consumer-lacks-dependency-edge\",\"lens\":\"integration\",\"locations\":[\"tasks.json 3.1.2 consumed_by (\\\"3.1.3, 3.2, 4.1\\\")\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "declared-consumer-lacks-dependency-edge",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 3.1.2 consumed_by (\"3.1.3, 3.2, 4.1\")"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 10,
+        "report_location": "Findings table row 10",
+        "finding": "3.1.2 claims matcher parent 4.1 as a consumer, but 3.1 and 4.1 run in parallel in wave 3 with no edge. Plan separates search ranking from the trigger matcher, and 4.1's secondary entries embed only a textual CLI search hint — the edge is either false or a missing ordering.",
+        "suggested_edit": "Remove 4.1 from 3.1.2's consumed_by (preferred). If the matcher genuinely imports the search module, add 3.1 to 4.1's predecessor and re-wave instead."
+      }
+    },
+    {
+      "id": "KS-011",
+      "severity": "Medium",
+      "fingerprint": "096ccc258d1369175d546500e0594745617287e144fb8fb8e95c8494391d5964",
+      "fingerprint_key": "{\"defect_class\":\"generated-mirror-delayed-after-nested-runtime-files\",\"lens\":\"executability\",\"locations\":[\"tasks.json 6.1.2 (wave 8) vs 1.1.2 (wave 1) / 4.2.2 (wave 5); scripts/translators/hooks.cjs:20\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "generated-mirror-delayed-after-nested-runtime-files",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 6.1.2 (wave 8) vs 1.1.2 (wave 1) / 4.2.2 (wave 5); scripts/translators/hooks.cjs:20"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 11,
+        "report_location": "Findings table row 11",
+        "finding": "Nested `knowledge/*.mjs` modules land at wave 1 but recursive translation lands at wave 8. Verified: `listRuntimeMjsFiles` is flat, so `npm run sync-codex -- --check` stays green while the Codex mirror silently lacks the runtime, and from wave 5 the generated hooks carry an unrewritten `--host claude`. CLAUDE.md's sync-after-every-change workflow gives false confidence in waves 1–7.",
+        "suggested_edit": "Either move 6.1.1+6.1.2 earlier (they depend only on the `knowledge/` directory contract), or add an explicit note to 1.1.2, 4.2.2, and 5.1.3: \"Generated `plugins/spectre-codex` is known-incomplete until 6.1.2; sync --check green does not imply mirror completeness.\""
+      }
+    },
+    {
+      "id": "KS-012",
+      "severity": "Medium",
+      "fingerprint": "0ad8c235d095d36c41eb0affa9837893ddf907764c87a86fbab16280b9b92e49",
+      "fingerprint_key": "{\"defect_class\":\"missing-concurrent-writer-acceptance-criterion\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 2.2.2 acceptance_criteria\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "missing-concurrent-writer-acceptance-criterion",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 2.2.2 acceptance_criteria"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 12,
+        "report_location": "Findings table row 12",
+        "finding": "Plan §5 \"Atomic registration\" includes \"concurrent writers yield one complete record and a rebuildable index\" — no criterion asserts that end state (lock semantics and injected-failure atomicity are covered; the two-writer outcome is not).",
+        "suggested_edit": "Add test AC to 2.2.2: \"Two concurrent registration attempts against one store serialize: exactly one complete committed record and a valid rebuildable index; the losing writer returns a lock-timeout error, not a partial write.\""
+      }
+    },
+    {
+      "id": "KS-013",
+      "severity": "Medium",
+      "fingerprint": "c5f902da8d0412275b4df75c442bfc9b7a7202164044a78cf96864adab2ff25a",
+      "fingerprint_key": "{\"defect_class\":\"red-fixture-missing-pre-rename-failure\",\"lens\":\"executability\",\"locations\":[\"tasks.json 1.1.1 vs 1.1.2 ac3\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "red-fixture-missing-pre-rename-failure",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 1.1.1 vs 1.1.2 AC3"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 13,
+        "report_location": "Findings table row 13",
+        "finding": "RED gap: 1.1.2's \"injected failure before rename leaves prior canonical JSON bytes unchanged\" has no corresponding fixture demanded of 1.1.1 (identity/collision/lock only), so the Build criterion can be greened without a failing test ever existing.",
+        "suggested_edit": "Add test AC to 1.1.1: \"A fixture injects a failure between temp-file write and rename in `test_knowledge-store.mjs` and asserts prior `project.json`/`index.json` bytes are unchanged.\""
+      }
+    },
+    {
+      "id": "KS-014",
+      "severity": "Medium",
+      "fingerprint": "77b8c77cf49c004fd1282f4fac39676b912bffd7fc7f6a335a24684d1ea8fddb",
+      "fingerprint_key": "{\"defect_class\":\"red-fixture-missing-lock-timeout\",\"lens\":\"executability\",\"locations\":[\"tasks.json 2.2.1 vs 2.2.2 ac1\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "red-fixture-missing-lock-timeout",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 2.2.1 vs 2.2.2 AC1"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 14,
+        "report_location": "Findings table row 14",
+        "finding": "RED gap: 2.2.2 AC1 includes \"lock timeout\" among passing registration cases, but 2.2.1 requires only \"atomic retries\" — no lock-timeout error-path test is demanded of the RED task.",
+        "suggested_edit": "Add to 2.2.1: \"A held store lock makes registration return a lock-timeout error without partial writes (RED until implemented).\""
+      }
+    },
+    {
+      "id": "KS-015",
+      "severity": "Medium",
+      "fingerprint": "27cba88f97a0277da091acb7ef23eb2b7f722033a3019c8b9e34887fc3629fee",
+      "fingerprint_key": "{\"defect_class\":\"unsafe-fixture-definition-depends-on-future-evidence\",\"lens\":\"executability\",\"locations\":[\"tasks.json 1.2.3 ac2\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "unsafe-fixture-definition-depends-on-future-evidence",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 1.2.3 AC2"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 15,
+        "report_location": "Findings table row 15",
+        "finding": "\"Known unsafe fixtures are rejected\" is undefined at execution time — unsafety is only knowable after a real host run shows fallback, which (finding 1) has no owning task before 1.2.3 is judged done.",
+        "suggested_edit": "Define in 1.2.3: unsafe = framed output exceeding 9,000 chars (Claude) or the recorded Codex estimator budget constant; constants + measured rationale live in the payload module and are asserted by tests. Pair with new 1.2.4 (finding 1) to validate the constants against reality."
+      }
+    },
+    {
+      "id": "KS-016",
+      "severity": "Medium",
+      "fingerprint": "38065daa1bc344069d373a0883190447bfc241caa21369eadfb1be17550d4d9e",
+      "fingerprint_key": "{\"defect_class\":\"missing-named-payload-boundary-constant\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 1.2.3\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "missing-named-payload-boundary-constant",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 1.2.3"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 16,
+        "report_location": "Findings table row 16",
+        "finding": "Plan §2.5 requires the measured accepted boundary for every fixture class to be \"recorded as a named constant with rationale\" — present only in 1.2.3's produces, unenforced by any AC, so it can be silently dropped.",
+        "suggested_edit": "Add state AC to 1.2.3: \"Each fixture class's measured accepted boundary is a named constant with a rationale comment; tests reference the constants, not literals.\""
+      }
+    },
+    {
+      "id": "KS-017",
+      "severity": "Medium",
+      "fingerprint": "71542c7f4b407076621e70c4e3d5ebdaff672541efd5a420a40b211e38e81902",
+      "fingerprint_key": "{\"defect_class\":\"unnamed-migration-entry-point\",\"lens\":\"executability\",\"locations\":[\"tasks.json 2.2.2 produces\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "unnamed-migration-entry-point",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 2.2.2 produces"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 17,
+        "report_location": "Findings table row 17",
+        "finding": "\"Plugin bin entry points for register and migrate\": the migrate bin filename is unspecified, and verified there is no `plugins/spectre-codex/bin/` and no bin translator in `scripts/sync-codex.cjs` — implementer must make a scope judgment about Codex-side bin syncing.",
+        "suggested_edit": "Name `plugins/spectre/bin/spectre-migrate` in produces and add a state AC: \"Codex-side callers use `spectre knowledge register|migrate` via the npm CLI only; no bin syncing is added to the translator.\""
+      }
+    },
+    {
+      "id": "KS-018",
+      "severity": "Medium",
+      "fingerprint": "322dd7717108e62fb813e5e4857a6aca962e80ee7f7d6fc7f3faa1ca7aaf4a2f",
+      "fingerprint_key": "{\"defect_class\":\"non-git-workflow-verification-deferred\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 3.2.2 acceptance_criteria\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "non-git-workflow-verification-deferred",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 3.2.2 acceptance_criteria"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 18,
+        "report_location": "Findings table row 18",
+        "finding": "Plan Phase 3 Succeeds-when (\"`/spectre:learn` can create/update a non-Git record outside the repository, rejects both size-limit failures until repaired, and recall finds it through the lexical CLI\") is testable at Phase 3 (register + search exist) but is represented only as static skill-text assertions; the executable proof first appears at 6.2.x, three waves later.",
+        "suggested_edit": "Add test AC to 3.2.2: \"An integration fixture in a non-Git temp directory registers a record via the canonical register path outside the repository, a 9,001-char and a host-unsafe proposal are rejected until repaired, and `spectre knowledge search` finds the committed record.\""
+      }
+    },
+    {
+      "id": "KS-019",
+      "severity": "Medium",
+      "fingerprint": "1186abda4399864891606b23a7f3110cee8eea4a18fa656e93a370ca71b3c029",
+      "fingerprint_key": "{\"defect_class\":\"integration-fixture-scope-undefined\",\"lens\":\"executability\",\"locations\":[\"tasks.json 6.2.1 ac3\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "integration-fixture-scope-undefined",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 6.2.1 AC3"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 19,
+        "report_location": "Findings table row 19",
+        "finding": "\"Isolated Git, linked-worktree, and non-Git integration fixtures pass migration, match, search, install, doctor, and uninstall checks\" — no prior task produces a composite fixture suite of that shape, so a Verification-type task would have to author tests, i.e. unpaired mid-task scope invention at the final gate.",
+        "suggested_edit": "Reword AC3 to enumerate the actual suites (test_knowledge-store/record/match/migration/search.mjs, test_load-knowledge.mjs, the UserPromptSubmit process tests, src/main.test.js, src/config.test.js, src/install.test.js, src/pack.test.js, scripts/test_sync-codex.cjs), or add the composite fixtures to 5.2.1's produces."
+      }
+    },
+    {
+      "id": "KS-020",
+      "severity": "Medium",
+      "fingerprint": "dd9bc8a00a653554d1bc4c992c32ddcf2b783935c39c89b9a55ff6b65f6ea270",
+      "fingerprint_key": "{\"defect_class\":\"migration-output-missing-incomplete-isolation-state\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 2.1.2 / 5.2.2\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "migration-output-missing-incomplete-isolation-state",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 2.1.2 / 5.2.2"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 20,
+        "report_location": "Findings table row 20",
+        "finding": "Plan §2.8/§5 require \"migration output **and** doctor\" to state that native-discovery isolation is incomplete while any grandfathered oversized `.claude/skills` record exists. Doctor is covered; no criterion puts the statement in the migration report/output itself.",
+        "suggested_edit": "Add state AC to 2.1.2: \"While any grandfathered oversized `.claude/skills` record exists, the migration report/output states Claude native-discovery isolation is incomplete, alongside the `OVERSIZED` entry.\""
+      }
+    },
+    {
+      "id": "KS-021",
+      "severity": "Medium",
+      "fingerprint": "bab2dc2fbea24c04fdb4b90f91a0a89708df3d4fbbd34cefc18aedcb5863fb6d",
+      "fingerprint_key": "{\"defect_class\":\"oversized-multi-concern-subtasks\",\"lens\":\"executability\",\"locations\":[\"tasks.json 1.1.2, 2.1.2, 5.1.3 (size cap)\"],\"severity\":\"Medium\"}",
+      "match": {
+        "defect_class": "oversized-multi-concern-subtasks",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 1.1.2, 2.1.2, 5.1.3 (size cap)"
+        ],
+        "severity_band": "Medium"
+      },
+      "source_evidence": {
+        "historical_finding_id": 21,
+        "report_location": "Findings table row 21",
+        "finding": "Oversized multi-concern subtasks (est. 400–550 LOC each): 1.1.2 = identity resolution + collision expansion + `withStoreLock`/stale recovery + atomic writes + `src/lib/paths.js` adapter; 2.1.2 = 8-code classification + staging + atomic commit + cleanup ordering + crash-resume + contention + report; 5.1.3 = config filtering + install/update migration integration. (4.2.3 is also oversized; its split is part of finding 3.)",
+        "suggested_edit": "Split: 1.1.2a identity/store/`project.json`/atomic-write helper vs 1.1.2b locking + `src/lib/paths.js` adapter. 2.1.2a discovery/classification/prospective report (zero mutation) vs 2.1.2b staged copy/commit/cleanup/crash-resume/lock behavior. 5.1.3a config.js filtering (config tests) vs 5.1.3b install.js migration + idempotency + user-scope no-store rule (install tests)."
+      }
+    },
+    {
+      "id": "KS-022",
+      "severity": "Low",
+      "fingerprint": "da744d2e6619bbe130d4c4c6c4a82936c30616410e92be749a1db2a0c282bb42",
+      "fingerprint_key": "{\"defect_class\":\"derived-index-version-edit-uncovered\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 1.2.2 ac3\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "derived-index-version-edit-uncovered",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 1.2.2 AC3"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 22,
+        "report_location": "Findings table row 22",
+        "finding": "Plan §5 derived-index signal includes a direct **version** edit changing the next prompt result; AC3 tests only trigger/status edits.",
+        "suggested_edit": "Extend 1.2.2 AC3 to \"editing a trigger, status, or version\"; optionally add a 4.1.1 fixture asserting an edited version changes dedupe outcome."
+      }
+    },
+    {
+      "id": "KS-023",
+      "severity": "Low",
+      "fingerprint": "668a0f9ebb126ad53810a915aef333faa8eba0c3e4cbe1ce5bc55a231ddd4b0f",
+      "fingerprint_key": "{\"defect_class\":\"secondary-entry-required-fields-uncovered\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 4.1.3 / 4.1.1\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "secondary-entry-required-fields-uncovered",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 4.1.3 / 4.1.1"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 23,
+        "report_location": "Findings table row 23",
+        "finding": "Secondary entries' required fields (ID, matched trigger, short description, CLI search hint — plan §2.6 step 9) are unenforced; only caps and labeling are tested.",
+        "suggested_edit": "Add to 4.1.1 AC3 or 4.1.3 AC1: \"each secondary entry contains knowledge ID, matched trigger, short description, and a CLI search hint.\""
+      }
+    },
+    {
+      "id": "KS-024",
+      "severity": "Low",
+      "fingerprint": "e6221defdb9b7410521a53a4d6cf61acb3dc748fdbb6c11d0ce9af30345c9d2d",
+      "fingerprint_key": "{\"defect_class\":\"session-start-ordering-uncovered\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 4.2.2 ac3\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "session-start-ordering-uncovered",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 4.2.2 AC3"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 24,
+        "report_location": "Findings table row 24",
+        "finding": "\"Preserve bootstrap/handoff ordering in hooks.json\" is context-note-only; no AC asserts preserved SessionStart ordering.",
+        "suggested_edit": "Extend 4.2.2 AC3: \"…and the SessionStart bootstrap→handoff ordering in `hooks.json` is unchanged.\""
+      }
+    },
+    {
+      "id": "KS-025",
+      "severity": "Low",
+      "fingerprint": "bb518219faa98a084ba9dea6e1a716ec57b12c6d9343b2e4dc3786ced57d79c6",
+      "fingerprint_key": "{\"defect_class\":\"non-git-uninstall-no-repository-files-uncovered\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 6.2.2 ac3\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "non-git-uninstall-no-repository-files-uncovered",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 6.2.2 AC3"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 25,
+        "report_location": "Findings table row 25",
+        "finding": "Plan §13 non-Git scenario includes restart and \"uninstall without creating repository knowledge files\"; AC3 records only \"non-Git learn/search/match\".",
+        "suggested_edit": "Extend AC3: \"…non-Git learn/register/search/match/restart/uninstall with confirmation no knowledge files were created inside the repository…\""
+      }
+    },
+    {
+      "id": "KS-026",
+      "severity": "Low",
+      "fingerprint": "e81af233808d9b1062080e570531879528437074b5a77a18194284f87fc3c5b3",
+      "fingerprint_key": "{\"defect_class\":\"migration-issue-codes-not-enumerated\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 2.1.1 ac3\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "migration-issue-codes-not-enumerated",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 2.1.1 AC3"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 26,
+        "report_location": "Findings table row 26",
+        "finding": "\"Exact stable issue codes\" does not name the eight plan codes (`MIGRATED`…`SOURCE_MISSING`), leaving the enumerated add-only contract re-inventable.",
+        "suggested_edit": "Embed the eight code names in 2.1.1 AC3 (or a fixture manifest) and assert add-only stability within schemaVersion 1."
+      }
+    },
+    {
+      "id": "KS-027",
+      "severity": "Low",
+      "fingerprint": "7ed50c2d4911ddc37e7d3e0cddef8ea5c2eff34e48cebd4e2b0bd40c724df105",
+      "fingerprint_key": "{\"defect_class\":\"conditional-recall-removal-uncovered\",\"lens\":\"coverage\",\"locations\":[\"tasks.json 2.1.x\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "conditional-recall-removal-uncovered",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json 2.1.x"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 27,
+        "report_location": "Findings table row 27",
+        "finding": "Plan §12 step 8 (\"remove generated recall only when no unresolved registry rows remain\") has no covering criterion; 5.1.3 AC2 covers Codex config entries, not conditional recall-file removal.",
+        "suggested_edit": "Add fixture/AC to 2.1.1/2.1.2: \"generated recall files are removed only when zero unresolved registry rows remain; with unresolved rows present, recall files persist.\""
+      }
+    },
+    {
+      "id": "KS-028",
+      "severity": "Low",
+      "fingerprint": "b6d430eb00921e41bb2ee1377bc96b82a82058b4872085ca89d2be971f3120a7",
+      "fingerprint_key": "{\"defect_class\":\"test-output-path-not-discoverable\",\"lens\":\"executability\",\"locations\":[\"tasks.json 4.2.1 produces; package.json scripts.test\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "test-output-path-not-discoverable",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 4.2.1 produces; package.json scripts.test"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 28,
+        "report_location": "Findings table row 28",
+        "finding": "UserPromptSubmit process tests have no named file, and the `npm test` glob only discovers **flat** `plugins/spectre/hooks/scripts/test_*.mjs` — a nested `knowledge/test_*.mjs` file would silently never run (6.1.1's \"nested test exclusion\" language invites nesting).",
+        "suggested_edit": "Name `plugins/spectre/hooks/scripts/test_user-prompt-submit.mjs` in 4.2.1 produces; add a note to RED tasks that hook tests must live flat to be discovered."
+      }
+    },
+    {
+      "id": "KS-029",
+      "severity": "Low",
+      "fingerprint": "8b29b94b6612a3be5ba55489bd34cbdfc94f944521657771c917b19231932481",
+      "fingerprint_key": "{\"defect_class\":\"red-search-fixture-missing-direct-edit\",\"lens\":\"executability\",\"locations\":[\"tasks.json 3.1.1 vs 3.1.2 ac1\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "red-search-fixture-missing-direct-edit",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 3.1.1 vs 3.1.2 AC1"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 29,
+        "report_location": "Findings table row 29",
+        "finding": "RED gap: 3.1.2 requires \"direct-edit freshness\" search tests, but 3.1.1's fixture list omits them (1.2.1 covers direct edits at index level only, not through search).",
+        "suggested_edit": "Add to 3.1.1 state AC: \"Fixtures include a direct trigger/description edit that changes the next search result without re-registration.\""
+      }
+    },
+    {
+      "id": "KS-030",
+      "severity": "Low",
+      "fingerprint": "f0f1f75f53c25c0f2755d8e3a280eefd98a0b13109f733e6acc5e088874055ac",
+      "fingerprint_key": "{\"defect_class\":\"unnamed-npm-adapter-test-home\",\"lens\":\"executability\",\"locations\":[\"tasks.json 5.1.1 produces\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "unnamed-npm-adapter-test-home",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 5.1.1 produces"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 30,
+        "report_location": "Findings table row 30",
+        "finding": "Npm-side \"knowledge/project\" adapter tests have no existing or named home (`src/config.test.js`/`src/install.test.js` exist; a knowledge/project test file does not).",
+        "suggested_edit": "Name `src/knowledge.test.js`, or state \"extend src/config.test.js and src/install.test.js only.\""
+      }
+    },
+    {
+      "id": "KS-031",
+      "severity": "Low",
+      "fingerprint": "a534692c31de440a1919b488e21f0a3dcb5839a9dde3975e9932ad1b67a5f9c6",
+      "fingerprint_key": "{\"defect_class\":\"workflow-preservation-criteria-underspecified\",\"lens\":\"executability\",\"locations\":[\"tasks.json 3.2.2 context[0] note\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "workflow-preservation-criteria-underspecified",
+        "lens": [
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 3.2.2 context[0] note"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 31,
+        "report_location": "Findings table row 31",
+        "finding": "\"Preserve proposal gate and capture quality while changing storage\" forces unanchored judgment about which spectre-learn prose is load-bearing.",
+        "suggested_edit": "Enumerate what must survive as state criteria: proposal/approval gate, category taxonomy, pre-write dedupe search step."
+      }
+    },
+    {
+      "id": "KS-032",
+      "severity": "Low",
+      "fingerprint": "36ac5a3f6a790b32da3436ef6757687d16c6223d00a841967e3ac53518fd0863",
+      "fingerprint_key": "{\"defect_class\":\"requirements-trace-source-range-wrong\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json meta.requirements_trace req-004\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "requirements-trace-source-range-wrong",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json meta.requirements_trace REQ-004"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 32,
+        "report_location": "Findings table row 32",
+        "finding": "Source \"scope.md Success Criteria 17-19\" misattributes: SC 17–18 are migration criteria (owned by REQ-012); the record/lifecycle substance maps to SC 19 (and arguably SC 12). Task coverage itself is correct.",
+        "suggested_edit": "Change source to \"scope.md Success Criteria 12, 19\"."
+      }
+    },
+    {
+      "id": "KS-033",
+      "severity": "Low",
+      "fingerprint": "933bc3014c6d21835b4f7fb9ebf56ea44b2e45e8165309825a31b8e4348fb5c4",
+      "fingerprint_key": "{\"defect_class\":\"requirements-trace-heading-and-owner-wrong\",\"lens\":\"index alignment + coverage\",\"locations\":[\"tasks.json meta.requirements_trace req-017\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "requirements-trace-heading-and-owner-wrong",
+        "lens": [
+          "Index alignment",
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json meta.requirements_trace REQ-017"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 33,
+        "report_location": "Findings table row 33",
+        "finding": "Source \"plan.md Verification and Testing Strategy\" is a composite phantom heading (actual: §5 and §13), and citing task 0.1 as producing real-host evidence masks finding 1 (0.1 produces only a baseline doc and RED tests).",
+        "suggested_edit": "Rewrite source as \"plan.md 5. Verification — How We Know This Works and 13. Testing Strategy\"; after adding 1.2.4, set tasks to [\"0.1\", \"1.2\", \"4.2\", \"6.2\"]."
+      }
+    },
+    {
+      "id": "KS-034",
+      "severity": "Low",
+      "fingerprint": "70e5ab96942151e94ee0531dd8e2ac08600b6df7ab39e5c57ffc448286b733c9",
+      "fingerprint_key": "{\"defect_class\":\"out-of-bounds-positive-control-surface-dropped\",\"lens\":\"coverage\",\"locations\":[\"tasks.json meta.out_of_bounds item 4\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "out-of-bounds-positive-control-surface-dropped",
+        "lens": [
+          "Coverage"
+        ],
+        "locations": [
+          "tasks.json meta.out_of_bounds item 4"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 34,
+        "report_location": "Findings table row 34",
+        "finding": "Plan §6.4's second clause (\"direct canonical record edits remain the control surface\") was dropped; prohibition unchanged but the positive control-surface statement is load-bearing executor context.",
+        "suggested_edit": "Restore the full sentence."
+      }
+    },
+    {
+      "id": "KS-035",
+      "severity": "Low",
+      "fingerprint": "6d3cec49059904cec7f830f8c7ea2895d9d59959d81b0c2676831dc9efb1ed6f",
+      "fingerprint_key": "{\"defect_class\":\"producer-consumer-context-half-wired\",\"lens\":\"integration\",\"locations\":[\"tasks.json 0.1.1 consumed_by / 4.2.2 context\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "producer-consumer-context-half-wired",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 0.1.1 consumed_by / 4.2.2 context"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 35,
+        "report_location": "Findings table row 35",
+        "finding": "0.1.1's baseline is claimed consumed by 4.2.2, but 4.2.2's context omits `verification/runtime-baseline.md` — half-declared wiring (ordering itself is fine).",
+        "suggested_edit": "Add the baseline path to 4.2.2's context, or drop 4.2.2 from 0.1.1's consumed_by."
+      }
+    },
+    {
+      "id": "KS-036",
+      "severity": "Low",
+      "fingerprint": "b5dd90064689d4c57bd43170ad1f2cf207e52d71b3548735cfb927499226c47f",
+      "fingerprint_key": "{\"defect_class\":\"consumed-by-mixes-task-id-and-free-text\",\"lens\":\"integration\",\"locations\":[\"tasks.json 6.2.1 / 6.2.2 consumed_by\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "consumed-by-mixes-task-id-and-free-text",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json 6.2.1 / 6.2.2 consumed_by"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 36,
+        "report_location": "Findings table row 36",
+        "finding": "6.2.1's consumed_by mixes a real ID with free text (\"6.2.2 and release decision\") — a hazard for the mechanical `jq`/`node -e` slicing execute.md mandates. 6.2.2's pure-terminal phrasing is acceptable.",
+        "suggested_edit": "Normalize to \"6.2.2, terminal (release decision)\" and \"terminal (release approval)\" so ID lists stay machine-separable."
+      }
+    },
+    {
+      "id": "KS-037",
+      "severity": "Low",
+      "fingerprint": "4bcb6f2265918ac9d6e349924f7cf23b43f290da73de26fb5f391faff6956b92",
+      "fingerprint_key": "{\"defect_class\":\"consumed-by-mixes-parent-and-subtask-granularity\",\"lens\":\"integration\",\"locations\":[\"tasks.json consumed_by fields throughout\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "consumed-by-mixes-parent-and-subtask-granularity",
+        "lens": [
+          "Integration"
+        ],
+        "locations": [
+          "tasks.json consumed_by fields throughout"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 37,
+        "report_location": "Findings table row 37",
+        "finding": "Mixed granularity (some parent-level \"2.1, 3.1\", some subtask-level \"1.2.3, 4.2.2\") makes mechanical symmetry checks against `unblocks` unreliable.",
+        "suggested_edit": "Normalize to parent-level; keep subtask IDs only where precision matters (0.1.1→1.2.3/6.2.2)."
+      }
+    },
+    {
+      "id": "KS-038",
+      "severity": "Low",
+      "fingerprint": "043f2657301c2b8273247cacab0e894d8c60159fe07d70fc3443c6ca3627d5e3",
+      "fingerprint_key": "{\"defect_class\":\"context-anchor-heading-mismatch\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json 6.2.1 context[1]\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "context-anchor-heading-mismatch",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json 6.2.1 context[1]"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 38,
+        "report_location": "Findings table row 38",
+        "finding": "`.agents/skills/verify-spectre/SKILL.md` exists but literal anchor \"verification gates\" does not; the heading is \"The gates\".",
+        "suggested_edit": "Change anchor to `The gates`."
+      }
+    },
+    {
+      "id": "KS-039",
+      "severity": "Low",
+      "fingerprint": "02bc67d4195931772bb4e999795ec11e00f4cd584ac0363169caf90716fc09f7",
+      "fingerprint_key": "{\"defect_class\":\"future-artifacts-not-labeled-produced-later\",\"lens\":\"index alignment\",\"locations\":[\"tasks.json 6.2.2 context[0]/[1]\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "future-artifacts-not-labeled-produced-later",
+        "lens": [
+          "Index alignment"
+        ],
+        "locations": [
+          "tasks.json 6.2.2 context[0]/[1]"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 39,
+        "report_location": "Findings table row 39",
+        "finding": "`scripts/verify-knowledge-hosts.mjs` and `verification/runtime-baseline.md` do not exist today and 6.2.2's notes read as if they do (1.2.3 labels the baseline correctly; 6.2.2 does not).",
+        "suggested_edit": "Append \"produced by task 1.2.3\" and \"produced by task 0.1.1\" to the respective notes."
+      }
+    },
+    {
+      "id": "KS-040",
+      "severity": "Low",
+      "fingerprint": "a70e039874fcf72034dffec532f8d5cf9cbd0a071022d5f8134b0e89d729b9ed",
+      "fingerprint_key": "{\"defect_class\":\"produced-artifact-path-ambiguous\",\"lens\":\"index alignment + executability\",\"locations\":[\"tasks.json 0.1.1 produces\"],\"severity\":\"Low\"}",
+      "match": {
+        "defect_class": "produced-artifact-path-ambiguous",
+        "lens": [
+          "Index alignment",
+          "Executability"
+        ],
+        "locations": [
+          "tasks.json 0.1.1 produces"
+        ],
+        "severity_band": "Low"
+      },
+      "source_evidence": {
+        "historical_finding_id": 40,
+        "report_location": "Findings table row 40",
+        "finding": "Relative path `verification/runtime-baseline.md` while consumers cite `docs/tasks/main/knowledge-surfacing/verification/runtime-baseline.md`; a fresh implementer could create a repo-root `verification/`.",
+        "suggested_edit": "Use the full path in 0.1.1 produces."
+      }
+    }
+  ]
+}

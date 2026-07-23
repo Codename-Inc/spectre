@@ -1,0 +1,1657 @@
+{
+  "meta": {
+    "feature": "Deterministic Project Knowledge Surfacing",
+    "generated_at": "2026-07-19T18:02:05Z",
+    "schema_version": 1,
+    "objective": "Replace registry-dependent native learned skills with a readable user-level knowledge store, deterministic prompt-time injection, lexical search, and lossless cross-runtime migration.",
+    "scope": {
+      "in_scope": [
+        "Equivalent Claude Code and Codex prompt-time knowledge behavior",
+        "Readable user-level project stores for Git and non-Git directories",
+        "Canonical skill-shaped records, lifecycle metadata, and a disposable index",
+        "Exact trigger matching with one primary injection and bounded secondary metadata",
+        "A 9,000-character core ceiling plus stricter host payload validation",
+        "Atomic registration, shared-store coordination, and session deduplication",
+        "Lexical search plus learn and recall workflow integration",
+        "Conservative migration of registry-allowlisted legacy knowledge",
+        "Capability-only SessionStart behavior and native learned-skill retirement",
+        "Install, doctor, uninstall, generation, packaging, and real-host verification"
+      ],
+      "out_of_scope": [
+        "Semantic, vector, embedding, QMD, local-model, or LLM-reranked matching",
+        "Automated contradiction detection, pruning, curation, lifecycle transitions, or quality scoring",
+        "Repository graduation and pull-request maintenance of knowledge",
+        "Automatic relocation or a relocation command for moved non-Git directories",
+        "Automatic repair, rewrite, split, or winner selection for ambiguous legacy records"
+      ]
+    },
+    "out_of_bounds": [
+      "Do not add semantic search, embeddings, QMD, a local model, or LLM reranking.",
+      "Do not add a daemon, database, SQLite store, filesystem watcher, or background service.",
+      "Do not add automated contradiction analysis, pruning, lifecycle transitions, usage scoring, or overnight curation.",
+      "Do not add a lifecycle or status CLI or UI.",
+      "Do not add repository graduation, commit automation, or pull-request workflows for knowledge.",
+      "Do not add output sharding, multi-hook payload splitting, or preview/file fallback as a delivery strategy.",
+      "Do not auto-merge, rewrite, split, delete, or choose between divergent or oversized legacy records.",
+      "Do not hand-edit generated `plugins/spectre-codex` files or introduce a second runtime implementation under `src/lib`."
+    ],
+    "requirements_trace": [
+      {
+        "id": "REQ-001",
+        "description": "Claude Code and Codex provide equivalent automatic surfacing and visible notice behavior.",
+        "source": "scope.md Success Criteria 1, 15",
+        "tasks": ["0.1", "4.2", "6.2"]
+      },
+      {
+        "id": "REQ-002",
+        "description": "Canonical learned knowledge lives outside the repository and native skill discovery by default.",
+        "source": "scope.md Success Criteria 2",
+        "tasks": ["1.1", "2.2", "3.2", "5.1"]
+      },
+      {
+        "id": "REQ-003",
+        "description": "Project stores use readable paths with canonical-root identity, optional Git enrichment, worktree convergence, collision expansion, and manual recovery for moved non-Git stores.",
+        "source": "scope.md Success Criteria 3-7 and Decision 18",
+        "tasks": ["1.1", "6.2"]
+      },
+      {
+        "id": "REQ-004",
+        "description": "Skill-shaped records enforce schema, lifecycle values, active-only automatic matching, and direct-edit-aware index freshness.",
+        "source": "scope.md Success Criteria 17-19",
+        "tasks": ["1.2", "4.1"]
+      },
+      {
+        "id": "REQ-005",
+        "description": "SessionStart contains only compact capability and search guidance.",
+        "source": "scope.md Success Criterion 8",
+        "tasks": ["4.2"]
+      },
+      {
+        "id": "REQ-006",
+        "description": "Active declared triggers are matched deterministically without a model download.",
+        "source": "scope.md Success Criteria 9, 20",
+        "tasks": ["4.1", "4.2"]
+      },
+      {
+        "id": "REQ-007",
+        "description": "The primary record is injected directly, secondary matches stay bounded, and the user sees an accurate concise notice.",
+        "source": "scope.md Success Criteria 10, 11, 15",
+        "tasks": ["1.2", "4.1", "4.2", "6.2"]
+      },
+      {
+        "id": "REQ-008",
+        "description": "Core records are at most 9,000 characters and registration rejects records that fail storage or host payload limits while allowing focused resources.",
+        "source": "scope.md Success Criteria 12-14",
+        "tasks": ["0.1", "1.2", "2.2", "3.2"]
+      },
+      {
+        "id": "REQ-009",
+        "description": "Applied `id@version` values deduplicate within a session and reset on startup, clear, or compact.",
+        "source": "task_context.md Selected Design: Prompt-time delivery",
+        "tasks": ["4.1", "4.2"]
+      },
+      {
+        "id": "REQ-010",
+        "description": "Users and agents can search the complete active corpus through a dependency-free human or JSON CLI.",
+        "source": "scope.md Success Criterion 16",
+        "tasks": ["3.1", "3.2"]
+      },
+      {
+        "id": "REQ-011",
+        "description": "Learn and recall use canonical search, resources, validation, and registration rather than generated recall/native learned-skill dispatch.",
+        "source": "task_context.md Selected Design: Learning, recall, and search",
+        "tasks": ["2.2", "3.1", "3.2"]
+      },
+      {
+        "id": "REQ-012",
+        "description": "Eligible legacy records migrate losslessly and idempotently while oversized, malformed, divergent, or conflicting inputs remain untouched and reported.",
+        "source": "scope.md Success Criteria 17-18",
+        "tasks": ["2.1", "2.2", "5.1", "5.2"]
+      },
+      {
+        "id": "REQ-013",
+        "description": "Successfully migrated records leave native discovery while grandfathered oversized Claude records are reported honestly.",
+        "source": "task_context.md Selected Design: Migration and lifecycle integration",
+        "tasks": ["2.2", "5.1", "5.2"]
+      },
+      {
+        "id": "REQ-014",
+        "description": "Shared-store writes are coordinated and atomic while prompt hooks remain fail-open under contention or corruption.",
+        "source": "task_context.md Hard stops and plan.md Atomic writes and concurrency",
+        "tasks": ["1.1", "1.2", "2.1", "4.2"]
+      },
+      {
+        "id": "REQ-015",
+        "description": "Install, update, doctor, and uninstall integrate the resolver and preserve canonical and unresolved knowledge.",
+        "source": "plan.md Phase 5",
+        "tasks": ["5.1", "5.2"]
+      },
+      {
+        "id": "REQ-016",
+        "description": "The Codex mirror remains generated and the packed artifact contains the complete canonical runtime.",
+        "source": "plan.md Phase 6",
+        "tasks": ["6.1"]
+      },
+      {
+        "id": "REQ-017",
+        "description": "Automated and real-host evidence proves inline delivery, parity, dedupe, reset, no-match silence, migration, and non-Git behavior.",
+        "source": "plan.md Verification and Testing Strategy",
+        "tasks": ["0.1", "6.2"]
+      }
+    ],
+    "architecture_context": {
+      "where_this_fits": [
+        "Canonical runtime logic is authored under `plugins/spectre/hooks/scripts/knowledge/`.",
+        "Canonical records live under `~/.spectre/projects/<readable-path>/knowledge/<id>/`.",
+        "Claude and Codex hook scripts are thin adapters over the same dependency-free Node modules.",
+        "The Codex plugin under `plugins/spectre-codex` is generated by `npm run sync-codex`."
+      ],
+      "technical_approach": [
+        "Build store identity, schema, index, locking, and payload gates before migrating user data.",
+        "Use registry rows only as a migration allowlist; never scan arbitrary native skills as learned knowledge.",
+        "Match exact normalized trigger phrases inside `UserPromptSubmit`, inject one full primary, and expose bounded secondary metadata.",
+        "Keep SessionStart constant-size and use it for capability guidance, dedupe reset, and idempotent migration.",
+        "Expose target-independent search/register/migrate commands and route npm-side integration to the canonical runtime."
+      ],
+      "key_decisions": [
+        "Git enriches identity but never gates learning or search.",
+        "Moved non-Git directories allocate a new store and preserve the old store for manual recovery.",
+        "The index is disposable and direct edits are detected at prompt/search time.",
+        "The 9,000-character core ceiling is separate from stricter framed host payload validation.",
+        "Ambiguous or oversized legacy records remain untouched.",
+        "No new third-party package is introduced."
+      ]
+    },
+    "coverage_summary": {
+      "requirements_extracted": 17,
+      "requirements_with_task_coverage": 17,
+      "phases": 7,
+      "parent_tasks": 13,
+      "subtasks": 32
+    }
+  },
+  "phases": [
+    {
+      "id": "0",
+      "title": "Runtime Feasibility",
+      "summary": "Lock host capabilities and create the executable payload gate before persistent data changes.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "0.1",
+          "title": "Host and payload feasibility baseline",
+          "description": "Verify current host contracts and establish RED boundary fixtures plus a reproducible real-host protocol.",
+          "status": "pending",
+          "predecessor": "none",
+          "unblocks": "1.1",
+          "subtasks": [
+            {
+              "id": "0.1.1",
+              "title": "Record runtime and packaging baseline",
+              "type": "Verification",
+              "status": "pending",
+              "produces": "`verification/runtime-baseline.md` with current CLI versions, hook limits, plugin dependency constraints, and exact fixture launch commands",
+              "consumed_by": "0.1.2, 1.2.3, 4.2.2, 6.2.2",
+              "replaces": "Unrecorded assumptions about host output limits and standalone plugin dependency resolution",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.5 Payload budget feasibility gate",
+                  "note": "Defines the quantitative and manual gate."
+                },
+                {
+                  "path": "package.json",
+                  "anchor": "dependencies",
+                  "note": "Confirms the existing dependency set and package surface."
+                },
+                {
+                  "path": "plugins/spectre/hooks/hooks.json",
+                  "anchor": "SessionStart",
+                  "note": "Canonical host hook manifest to probe."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "observable",
+                  "text": "`claude --version`, `codex --version`, `node --version`, and optional `git --version` outputs are recorded with the test date."
+                },
+                {
+                  "type": "state",
+                  "text": "The baseline documents exact Claude and Codex interactive fixture commands plus the inline/no-fallback observations required to pass."
+                },
+                {
+                  "type": "state",
+                  "text": "The baseline records that no new third-party runtime package is approved."
+                }
+              ]
+            },
+            {
+              "id": "0.1.2",
+              "title": "Add RED payload boundary and host-harness tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing payload-boundary tests and fixture-harness assertions for prose, code, punctuation, Unicode, framing reserve, and host manifests",
+              "consumed_by": "1.2.3, 6.2.2",
+              "replaces": "Narrative-only payload feasibility checks",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Real-host payload protocol",
+                  "note": "Specifies fixture generation and evidence."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/test_load-knowledge.mjs",
+                  "anchor": "SessionStart hook tests",
+                  "note": "Canonical process-test style for hook JSON."
+                },
+                {
+                  "path": "scripts/test_sync-codex.cjs",
+                  "anchor": "hook generation tests",
+                  "note": "Pattern for isolated generated-runtime fixtures."
+                }
+              ],
+              "predecessor": "0.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "New payload tests fail because `measurePayload` and the fixture harness do not yet exist."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures encode minimum accepted prose and code cores of 6,000 and 4,000 characters plus punctuation-heavy and Unicode boundary cases."
+                },
+                {
+                  "type": "test",
+                  "text": "Harness tests require unique primary sentinels, exact prompts, CLI commands, and no-fallback evidence fields."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "title": "Canonical Store Foundation",
+      "summary": "Implement readable project identity, atomic storage, record validation, indexing, and payload measurement.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "1.1",
+          "title": "Project identity and store transactions",
+          "description": "Resolve Git and non-Git projects to readable user-level stores and coordinate shared writers safely.",
+          "status": "pending",
+          "predecessor": "0.1",
+          "unblocks": "1.2",
+          "subtasks": [
+            {
+              "id": "1.1.1",
+              "title": "Add RED identity, collision, and locking tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing tests for canonical roots, optional Git identity, worktrees, readable collisions, moved non-Git policy, and lock boundaries",
+              "consumed_by": "1.1.2",
+              "replaces": "Project-local recall-path assumptions",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.2 Readable project identity",
+                  "note": "Authoritative identity and move policy."
+                },
+                {
+                  "path": "src/lib/paths.js",
+                  "anchor": "projectPaths",
+                  "note": "Current project-local path contract to replace."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/lib.mjs",
+                  "anchor": "runtime helpers",
+                  "note": "Existing hook utility style that must remain intact."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Identity tests fail before `resolveProjectIdentity` and `resolveProjectStore` exist."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures cover non-Git, absent or malformed Git, linked worktrees, symlinks, same-name collisions, leftward expansion, and moved non-Git preservation."
+                },
+                {
+                  "type": "test",
+                  "text": "Lock fixtures cover immediate acquisition, acquire-within-wait, timeout, dead-PID recovery, and timestamp-expired recovery."
+                }
+              ]
+            },
+            {
+              "id": "1.1.2",
+              "title": "Implement readable stores and atomic transactions",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Canonical store/identity module plus Spectre-home path adapters with exclusive locks and atomic replacement",
+              "consumed_by": "1.2, 2.1, 3.1, 4.1, 4.2, 5.1",
+              "replaces": "Repository-local knowledge identity and uncoordinated direct writes",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new store and identity module",
+                  "note": "Canonical dependency-free runtime location."
+                },
+                {
+                  "path": "src/lib/paths.js",
+                  "anchor": "projectPaths",
+                  "note": "Npm-side path adapter to extend."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.4 Atomic writes and concurrency",
+                  "note": "Lock timing, stale recovery, and fail-open rules."
+                }
+              ],
+              "predecessor": "1.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "All identity, worktree, collision, moved non-Git, and lock boundary tests pass without requiring Git."
+                },
+                {
+                  "type": "state",
+                  "text": "Normal store paths contain readable parent/project segments and no generated opaque ID or hash."
+                },
+                {
+                  "type": "test",
+                  "text": "An injected failure before rename leaves prior canonical JSON bytes unchanged."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "1.2",
+          "title": "Record, index, and payload contracts",
+          "description": "Make skill-shaped records canonical, indexes disposable, and host payload acceptance measurable.",
+          "status": "pending",
+          "predecessor": "1.1",
+          "unblocks": "2.1, 3.1, 4.1",
+          "subtasks": [
+            {
+              "id": "1.2.1",
+              "title": "Add RED record and index tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing schema, lifecycle, size, direct-edit, stale-index, corrupt-index, and reader-race tests",
+              "consumed_by": "1.2.2",
+              "replaces": "Pipe-delimited registry parsing and trigger description mutation",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.3 Canonical record and disposable index",
+                  "note": "Defines record and index shapes."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "parseFrontmatter",
+                  "note": "Current ad hoc parser to retire."
+                },
+                {
+                  "path": "src/lib/knowledge.js",
+                  "anchor": "knowledgeRegistryHeader",
+                  "note": "Current duplicate registry contract to replace."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Record tests fail for missing canonical parser, lifecycle validation, and index refresh behavior."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures include 8,999, 9,000, and 9,001 character cores, all four lifecycle values, duplicate keys, mismatched IDs, resources, and malformed delimiters."
+                },
+                {
+                  "type": "test",
+                  "text": "A fixture that mutates a record between index and content reads requires one verified reread and silent skip on persistent mismatch."
+                }
+              ]
+            },
+            {
+              "id": "1.2.2",
+              "title": "Implement canonical records and disposable index",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Constrained frontmatter record codec, SHA-256 fingerprints, validation, and read-through index refresh",
+              "consumed_by": "1.2.3, 2.1, 2.2, 3.1, 4.1",
+              "replaces": "`registry.toon` as runtime authority and registration-only freshness",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new record and index module",
+                  "note": "Shared runtime implementation."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "updateRegistry",
+                  "note": "Legacy authority being replaced."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Canonical record and disposable index",
+                  "note": "Schema and freshness contract."
+                }
+              ],
+              "predecessor": "1.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Schema, lifecycle, size, direct-edit, stale/corrupt index, and reader-race tests pass."
+                },
+                {
+                  "type": "state",
+                  "text": "Only valid active records enter the automatic match set while non-active valid records remain canonical."
+                },
+                {
+                  "type": "test",
+                  "text": "Deleting `index.json` and editing a trigger or status changes the next read result after rebuild."
+                }
+              ]
+            },
+            {
+              "id": "1.2.3",
+              "title": "Implement payload measurement and fixture harness",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Host payload measurement, named fixture boundaries, and `scripts/verify-knowledge-hosts.mjs` fixture generator",
+              "consumed_by": "2.1, 2.2, 4.1, 4.2, 6.2",
+              "replaces": "Character-limit-only registration and unverifiable real-host checks",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.5 Payload budget feasibility gate",
+                  "note": "Quantitative acceptance and stop conditions."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/verification/runtime-baseline.md",
+                  "anchor": "host commands and limits",
+                  "note": "Runtime facts produced by task 0.1.1."
+                },
+                {
+                  "path": "scripts/test_sync-codex.cjs",
+                  "anchor": "isolated runtime fixtures",
+                  "note": "Canonical fixture setup style."
+                }
+              ],
+              "predecessor": "1.2.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Payload tests pass for prose, code, punctuation, Unicode, primary framing, and the maximum secondary reserve."
+                },
+                {
+                  "type": "test",
+                  "text": "Every curated prose core through 6,000 characters and code core through 4,000 characters is accepted while known unsafe fixtures are rejected."
+                },
+                {
+                  "type": "observable",
+                  "text": "The harness emits an isolated manifest, exact prompts, unique sentinels, resolved Claude/Codex commands, and a dated evidence path."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "title": "Lossless Migration",
+      "summary": "Move only unambiguous registry-allowlisted learnings and preserve every unresolved source.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "2.1",
+          "title": "Legacy migration engine",
+          "description": "Classify both native roots and commit eligible records without data loss.",
+          "status": "pending",
+          "predecessor": "1.2",
+          "unblocks": "2.2",
+          "subtasks": [
+            {
+              "id": "2.1.1",
+              "title": "Add RED migration matrix tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing migration tests for allowlists, duplicates, divergence, resources, oversize, malformed sources, conflicts, crashes, and contention",
+              "consumed_by": "2.1.2",
+              "replaces": "Unverified destructive migration assumptions",
+              "context": [
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.8 Conservative migration",
+                  "note": "Classification and cleanup ordering."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "skillBaseDir",
+                  "note": "Legacy single-root behavior that misses divergence."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/load-knowledge.mjs",
+                  "anchor": "oldRegistryPath",
+                  "note": "Supported historical `spectre-find` path."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Migration tests fail before registry-allowlisted classification and staged commit exist."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures cover `.claude`, `.agents`, historical recall, identical duplicates, divergent IDs, oversized payloads, malformed rows, missing sources, canonical conflicts, resources, and unrelated skills."
+                },
+                {
+                  "type": "test",
+                  "text": "Fixtures require exact stable issue codes and a crash-resume case with canonical bytes committed but legacy cleanup incomplete."
+                }
+              ]
+            },
+            {
+              "id": "2.1.2",
+              "title": "Implement staged idempotent migration",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Shared migration engine and atomic `migration-report.json` with stable classification codes",
+              "consumed_by": "2.2, 4.2, 5.1, 5.2",
+              "replaces": "Native-root selection and implicit migration through registry regeneration",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new migration module",
+                  "note": "Canonical migration implementation."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "12. Migration Plan",
+                  "note": "Commit, cleanup, rerun, and rollback ordering."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "migrateAllTriggers",
+                  "note": "Legacy mutation path to replace."
+                }
+              ],
+              "predecessor": "2.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "The full migration matrix passes and reruns produce identical canonical bytes and stable issue codes."
+                },
+                {
+                  "type": "state",
+                  "text": "Divergent, oversized, malformed, missing, and conflicting sources remain byte-identical in place."
+                },
+                {
+                  "type": "test",
+                  "text": "A concurrent SessionStart lock timeout returns cleanly without partial writes and a later explicit migration completes."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2.2",
+          "title": "Atomic registration and migration entry points",
+          "description": "Replace legacy registry generation with canonical registration and expose the idempotent migrator to all required callers.",
+          "status": "pending",
+          "predecessor": "2.1",
+          "unblocks": "3.2, 4.2, 5.1",
+          "subtasks": [
+            {
+              "id": "2.2.1",
+              "title": "Add RED registration adapter tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing process tests for canonical register/migrate commands, size repair failures, atomic retries, and no registry/native-description mutation",
+              "consumed_by": "2.2.2",
+              "replaces": "Tests that expect generated recall and `TRIGGER when:` mutation",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "main",
+                  "note": "Legacy command entry to replace."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/test_register-learning.mjs",
+                  "anchor": "registration tests",
+                  "note": "Existing registration process-test pattern."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.4 Atomic writes and concurrency",
+                  "note": "All-or-nothing registration behavior."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Registration tests fail until canonical store writes, payload validation, and index commit replace registry generation."
+                },
+                {
+                  "type": "test",
+                  "text": "A 9,001-character or host-unsafe proposal fails without modifying the prior record or index."
+                },
+                {
+                  "type": "state",
+                  "text": "Tests forbid regenerated recall files and `TRIGGER when:` edits after successful registration."
+                }
+              ]
+            },
+            {
+              "id": "2.2.2",
+              "title": "Replace registration and wire migration commands",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Canonical registration adapter plus plugin bin entry points for register and migrate",
+              "consumed_by": "3.1, 3.2, 4.2, 5.1",
+              "replaces": "`registry.toon` updates, generated recall, and native description mutation",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/register_learning.mjs",
+                  "anchor": "main",
+                  "note": "Keep the stable entry path while replacing behavior."
+                },
+                {
+                  "path": "plugins/spectre/bin/spectre-register",
+                  "anchor": "command wrapper",
+                  "note": "Existing Claude workflow adapter."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Registration and search",
+                  "note": "Canonical register and retry contract."
+                }
+              ],
+              "predecessor": "2.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Registration process tests pass for create, update, invalid retry, lock timeout, and atomic index refresh."
+                },
+                {
+                  "type": "state",
+                  "text": "Successful registration writes only the resolved user-level record, resources, metadata, and derived index."
+                },
+                {
+                  "type": "test",
+                  "text": "Repeated migrate invocation is idempotent and preserves every unresolved legacy source."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Search and Skill Workflows",
+      "summary": "Expose explicit lexical discovery and move learn/recall to canonical records.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "3.1",
+          "title": "Knowledge CLI and lexical search",
+          "description": "Add target-independent search/register/migrate grammar and deterministic active-corpus search.",
+          "status": "pending",
+          "predecessor": "1.2",
+          "unblocks": "3.2, 5.1",
+          "subtasks": [
+            {
+              "id": "3.1.1",
+              "title": "Add RED CLI and search tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing `src/main.test.js` and search tests for grammar, ranking, empty query, JSON output, explicit project paths, and invalid stores",
+              "consumed_by": "3.1.2, 3.1.3",
+              "replaces": "Codex-target-only CLI coverage and model-mediated registry search",
+              "context": [
+                {
+                  "path": "src/main.js",
+                  "anchor": "main",
+                  "note": "Current target-required grammar."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-recall/SKILL.md",
+                  "anchor": "Method / guardrails",
+                  "note": "Current registry/native skill search behavior."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.7 SessionStart and explicit search",
+                  "note": "CLI and ranking contract."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Tests fail because `spectre knowledge search|register|migrate` grammar and search implementation do not exist."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures cover active-only results, exact phrase, trigger overlap, description overlap, stable ID ties, empty query, human output, JSON output, and no store."
+                },
+                {
+                  "type": "test",
+                  "text": "A no-network guard fails if search attempts to launch a model or access the network."
+                }
+              ]
+            },
+            {
+              "id": "3.1.2",
+              "title": "Implement deterministic lexical search",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Shared active-corpus search module with stable human and JSON result data",
+              "consumed_by": "3.1.3, 3.2, 4.1",
+              "replaces": "Injected-registry and generated-recall search",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new search module",
+                  "note": "Shared dependency-free search implementation."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-recall/SKILL.md",
+                  "anchor": "Inputs",
+                  "note": "Legacy search inputs being retired."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Learning, recall, and search",
+                  "note": "Active-only lexical behavior."
+                }
+              ],
+              "predecessor": "3.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Search tests pass for ranking, stable ties, direct-edit freshness, empty query, human output, JSON output, and invalid records."
+                },
+                {
+                  "type": "state",
+                  "text": "Search reads the complete active canonical corpus and does not depend on SessionStart context."
+                }
+              ]
+            },
+            {
+              "id": "3.1.3",
+              "title": "Add target-independent knowledge commands",
+              "type": "Build",
+              "status": "pending",
+              "produces": "`spectre knowledge search|register|migrate` CLI routing and structured JSON errors",
+              "consumed_by": "3.2, 5.1, 6.2",
+              "replaces": "CLI grammar that rejects every non-Codex target",
+              "context": [
+                {
+                  "path": "src/main.js",
+                  "anchor": "parseArgs and main",
+                  "note": "Command routing to extend."
+                },
+                {
+                  "path": "src/lib/knowledge.js",
+                  "anchor": "knowledge functions",
+                  "note": "Npm-side adapter boundary."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "11. API Design",
+                  "note": "CLI error and empty-result contracts."
+                }
+              ],
+              "predecessor": "3.1.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "`src/main.test.js` passes for all three subcommands, `--project-dir`, `--json`, unknown commands, and existing Codex install grammar."
+                },
+                {
+                  "type": "state",
+                  "text": "JSON failures contain `ok: false`, a stable code, and a human message; search with no matches exits successfully."
+                },
+                {
+                  "type": "test",
+                  "text": "Existing install, update, uninstall, and doctor CLI tests remain green."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "3.2",
+          "title": "Learn and recall workflow cutover",
+          "description": "Make skills use canonical search/register paths and focused resources, then remove generated recall artifacts.",
+          "status": "pending",
+          "predecessor": "2.2, 3.1",
+          "unblocks": "6.1",
+          "subtasks": [
+            {
+              "id": "3.2.1",
+              "title": "Add RED skill-contract assertions",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing static and workflow assertions for canonical paths, pre-write search, size repair loops, resources, and CLI recall",
+              "consumed_by": "3.2.2",
+              "replaces": "Assertions for project-native skill writes and generated recall",
+              "context": [
+                {
+                  "path": "plugins/spectre/skills/spectre-learn/SKILL.md",
+                  "anchor": "Inputs and Outputs + DONE",
+                  "note": "Legacy path and registry contract."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-recall/SKILL.md",
+                  "anchor": "Inputs and Method / guardrails",
+                  "note": "Legacy injected-registry behavior."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.7 SessionStart and explicit search",
+                  "note": "Replacement workflow contract."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Assertions fail while learn references `.claude/skills`, registry generation, or lacks both storage and payload repair gates."
+                },
+                {
+                  "type": "test",
+                  "text": "Assertions fail while recall requires an injected registry or `Skill({learned-id})` dispatch."
+                },
+                {
+                  "type": "state",
+                  "text": "The test requires deletion of the recall template after all generation references are removed."
+                }
+              ]
+            },
+            {
+              "id": "3.2.2",
+              "title": "Rewrite learn and recall around canonical knowledge",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Updated learn/recall skills and removed generated-recall template",
+              "consumed_by": "4.2, 6.1, 6.2",
+              "replaces": "Native learned-skill writes, injected-registry recall, and recall-template generation",
+              "context": [
+                {
+                  "path": "plugins/spectre/skills/spectre-learn/SKILL.md",
+                  "anchor": "Method / guardrails",
+                  "note": "Preserve proposal gate and capture quality while changing storage."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-recall/SKILL.md",
+                  "anchor": "Outputs + DONE",
+                  "note": "Replace native skill load with CLI discovery and canonical read."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Registration and search",
+                  "note": "Canonical search, resources, registration, and retry rules."
+                }
+              ],
+              "predecessor": "3.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Skill-contract tests pass with no repository-native learned-skill, registry, generated recall, or template references."
+                },
+                {
+                  "type": "state",
+                  "text": "Learn requires canonical search before UPDATE/APPEND/CREATE and retries until storage and host payload validation pass."
+                },
+                {
+                  "type": "state",
+                  "text": "Recall uses `spectre knowledge search` and reads selected canonical records without a model or network dependency."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "title": "Prompt-Time Delivery",
+      "summary": "Implement deterministic matching, bounded framing, dedupe, and cross-runtime hook adapters.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "4.1",
+          "title": "Matcher, framing, and session ledger",
+          "description": "Rank exact trigger matches, build truthful bounded payloads, and suppress repeated `id@version` delivery.",
+          "status": "pending",
+          "predecessor": "1.2",
+          "unblocks": "4.2",
+          "subtasks": [
+            {
+              "id": "4.1.1",
+              "title": "Add RED matcher and dedupe tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing normalization, phrase-boundary, ranking, framing, secondary-cap, lifecycle, and session-ledger tests",
+              "consumed_by": "4.1.2, 4.1.3",
+              "replaces": "Model-compliance trigger matching",
+              "context": [
+                {
+                  "path": "plugins/spectre/skills/spectre-apply/SKILL.md",
+                  "anchor": "Registry and Rule",
+                  "note": "Behavior moving from model instructions to code."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/task_context.md",
+                  "anchor": "Prompt-time delivery",
+                  "note": "Approved ranking, secondary, and notice design."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.6 Deterministic prompt matching",
+                  "note": "Normalization and dedupe contract."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Tests fail before exact normalized phrase matching and longest-trigger/stable-ID ranking exist."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures cover case, punctuation, NFKC, whitespace, phrase boundaries, overlaps, inactive records, stable ties, and already-applied versions."
+                },
+                {
+                  "type": "test",
+                  "text": "Fixtures enforce at most three secondary entries and 750 characters and forbid labeling secondary records as applied."
+                }
+              ]
+            },
+            {
+              "id": "4.1.2",
+              "title": "Implement exact matching and stable ranking",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Shared prompt normalization, active-record matching, and deterministic ranking",
+              "consumed_by": "4.1.3, 4.2",
+              "replaces": "Agent interpretation of registry trigger rows",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new matching module",
+                  "note": "Canonical code-owned resolver."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-apply/SKILL.md",
+                  "anchor": "The Rule",
+                  "note": "Legacy compliance dependency being removed."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Deterministic prompt matching",
+                  "note": "Required normalization and ordering."
+                }
+              ],
+              "predecessor": "4.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Normalization, phrase-boundary, lifecycle exclusion, overlap, and deterministic ranking tests pass."
+                },
+                {
+                  "type": "state",
+                  "text": "Ranking uses longest normalized matched trigger then stable knowledge ID and no semantic/model signal."
+                }
+              ]
+            },
+            {
+              "id": "4.1.3",
+              "title": "Implement bounded framing and session ledger",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Primary/secondary payload framing and per-host/session `id@version` ledger",
+              "consumed_by": "4.2, 6.2",
+              "replaces": "Unbounded registry startup context and repeated native skill loads",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/knowledge/",
+                  "anchor": "new framing and session logic",
+                  "note": "Shared payload and dedupe behavior."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.5 Payload budget feasibility gate",
+                  "note": "Final frame must pass host measurement."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/task_context.md",
+                  "anchor": "Prompt-time delivery",
+                  "note": "Approved full-primary and bounded-secondary contract."
+                }
+              ],
+              "predecessor": "4.1.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Framing tests pass for one primary, capped secondary metadata, omitted counts, and final host budget recheck."
+                },
+                {
+                  "type": "test",
+                  "text": "The same `id@version` is skipped within a session, a version increment reapplies, and missing session IDs create no shared ledger."
+                },
+                {
+                  "type": "state",
+                  "text": "The visible notice names only the applied primary and reports secondary count without claiming secondary content was loaded."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "4.2",
+          "title": "UserPromptSubmit and capability-only SessionStart",
+          "description": "Wire shared prompt logic into both hosts, reset dedupe on lifecycle events, and retire registry startup context.",
+          "status": "pending",
+          "predecessor": "2.2, 4.1",
+          "unblocks": "5.1, 6.1",
+          "subtasks": [
+            {
+              "id": "4.2.1",
+              "title": "Add RED hook process tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing stdin/stdout tests for UserPromptSubmit and SessionStart across match, no-match, repeat, reset, malformed, missing-session, lock-timeout, and migration cases",
+              "consumed_by": "4.2.2, 4.2.3",
+              "replaces": "SessionStart-only registry injection tests",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/test_load-knowledge.mjs",
+                  "anchor": "SessionStart tests",
+                  "note": "Existing isolated hook process pattern."
+                },
+                {
+                  "path": "plugins/spectre/hooks/hooks.json",
+                  "anchor": "hooks",
+                  "note": "Event manifest to extend."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Hook output",
+                  "note": "Required status and additionalContext shape."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "UserPromptSubmit tests fail because the adapter and event registration do not exist."
+                },
+                {
+                  "type": "test",
+                  "text": "SessionStart tests fail while output contains registry rows, learned content, `{{REGISTRY}}`, or lacks session reset behavior."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures cover absent store read-only behavior, malformed input fail-open, lock-held migration skip, and startup/clear/compact with and without `session_id`."
+                }
+              ]
+            },
+            {
+              "id": "4.2.2",
+              "title": "Implement cross-runtime UserPromptSubmit adapter",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Canonical `user-prompt-submit.mjs` and `hooks.json` event registration with host argument rewriting contract",
+              "consumed_by": "5.1, 5.2, 6.1, 6.2",
+              "replaces": "Registry matching delegated to the model",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/hooks.json",
+                  "anchor": "SessionStart",
+                  "note": "Preserve ordering while adding one independent prompt group."
+                },
+                {
+                  "path": "plugins/spectre/hooks/scripts/handoff-resume.mjs",
+                  "anchor": "hook JSON output",
+                  "note": "Canonical hook input/output process style."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.6 Deterministic prompt matching",
+                  "note": "Adapter flow and fail-open behavior."
+                }
+              ],
+              "predecessor": "4.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Claude and Codex golden process tests produce equivalent primary content and notice structure for the same store and prompt."
+                },
+                {
+                  "type": "test",
+                  "text": "No-match, absent-store, invalid-record, malformed-input, and internal-error cases emit no injected context and return without blocking the prompt."
+                },
+                {
+                  "type": "state",
+                  "text": "The canonical manifest contains exactly one Spectre UserPromptSubmit resolver and does not rely on event matchers for prompt text."
+                }
+              ]
+            },
+            {
+              "id": "4.2.3",
+              "title": "Cut SessionStart to capability, reset, and migration",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Capability-only SessionStart handler with stdin session reset and idempotent migration; obsolete apply skill removed",
+              "consumed_by": "5.1, 5.2, 6.1, 6.2",
+              "replaces": "Registry/application injection into `AGENTS.override.md` and `spectre-apply` compliance guidance",
+              "context": [
+                {
+                  "path": "plugins/spectre/hooks/scripts/load-knowledge.mjs",
+                  "anchor": "buildKnowledgeOverrideBody and main",
+                  "note": "Registry/startup behavior to replace."
+                },
+                {
+                  "path": "plugins/spectre/skills/spectre-apply/SKILL.md",
+                  "anchor": "Registry and Rule",
+                  "note": "Obsolete model-compliance surface to remove."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.7 SessionStart and explicit search",
+                  "note": "Constant-size policy and lifecycle duties."
+                }
+              ],
+              "predecessor": "4.2.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "SessionStart tests pass with compact capability/search text and no registry row, record content, or placeholder."
+                },
+                {
+                  "type": "test",
+                  "text": "Startup, clear, and compact reset the addressed session; missing `session_id` clears all project ledgers; migration lock timeout fails open."
+                },
+                {
+                  "type": "state",
+                  "text": "`plugins/spectre/skills/spectre-apply/SKILL.md` is removed only after all runtime, manifest, and test references are gone."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "title": "Installer and Diagnostics",
+      "summary": "Route npm-side behavior to the canonical runtime and preserve user knowledge through lifecycle operations.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "5.1",
+          "title": "Npm adapters, config, and install/update",
+          "description": "Remove duplicate knowledge authority, initialize/migrate project stores, and retire only managed native learned skills.",
+          "status": "pending",
+          "predecessor": "2.2, 3.1, 4.2",
+          "unblocks": "5.2",
+          "subtasks": [
+            {
+              "id": "5.1.1",
+              "title": "Add RED npm integration tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing knowledge/project/config/install tests for canonical adapters, migration, native filtering, user/project scope, and unrelated-state preservation",
+              "consumed_by": "5.1.2, 5.1.3",
+              "replaces": "Tests expecting repository-local registry/recall and all-project-skill registration",
+              "context": [
+                {
+                  "path": "src/lib/knowledge.js",
+                  "anchor": "ensureKnowledgeFiles and buildKnowledgeOverrideBody",
+                  "note": "Duplicate npm-side authority to retire."
+                },
+                {
+                  "path": "src/lib/config.js",
+                  "anchor": "syncProjectSkillsConfigured",
+                  "note": "Current all-skill registration behavior."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Phase 5: Codex install/config/doctor integration",
+                  "note": "Required install and preservation behavior."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Tests fail while npm knowledge/project helpers generate registry/application overrides or install skips canonical migration."
+                },
+                {
+                  "type": "state",
+                  "text": "Fixtures distinguish successfully migrated, unresolved oversized/divergent, workflow, and unrelated native skills."
+                },
+                {
+                  "type": "test",
+                  "text": "Config tests require only successfully migrated/retired managed entries to disappear while unrelated entries remain byte-equivalent."
+                }
+              ]
+            },
+            {
+              "id": "5.1.2",
+              "title": "Replace npm knowledge and project authority",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Npm-side knowledge/project adapters to canonical runtime and capability-only SessionStart output",
+              "consumed_by": "5.1.3, 5.2, 6.1",
+              "replaces": "Parallel registry, recall, and override implementation in `src/lib`",
+              "context": [
+                {
+                  "path": "src/lib/knowledge.js",
+                  "anchor": "knowledge registry functions",
+                  "note": "Replace with canonical adapters."
+                },
+                {
+                  "path": "src/lib/project.js",
+                  "anchor": "syncKnowledgeOverride and buildSessionStartOutput",
+                  "note": "Make installer output capability-only."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.1 One canonical runtime, thin host adapters",
+                  "note": "Single-authority requirement."
+                }
+              ],
+              "predecessor": "5.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Knowledge/project tests pass with no registry generation, recall generation, or learned-content override construction."
+                },
+                {
+                  "type": "state",
+                  "text": "`src/lib/knowledge.js` contains adapters or shared command invocation only and no second record/index/matcher contract."
+                }
+              ]
+            },
+            {
+              "id": "5.1.3",
+              "title": "Integrate migration with config and install/update",
+              "type": "Integration",
+              "status": "pending",
+              "produces": "Project install/update migration and precise Codex native skill filtering",
+              "consumed_by": "5.2, 6.1, 6.2",
+              "replaces": "Install-time project-local recall initialization and indiscriminate project skill configuration",
+              "context": [
+                {
+                  "path": "src/lib/config.js",
+                  "anchor": "syncProjectSkillsConfigured",
+                  "note": "Filter only retired managed knowledge."
+                },
+                {
+                  "path": "src/lib/install.js",
+                  "anchor": "installCodex",
+                  "note": "Project install/update integration point."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.8 Conservative migration",
+                  "note": "Successful and unresolved native discovery rules."
+                }
+              ],
+              "predecessor": "5.1.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Fresh install, upgrade, and reinstall tests pass for Git and non-Git project scopes with idempotent migration."
+                },
+                {
+                  "type": "test",
+                  "text": "Successfully migrated learned and generated recall entries leave Codex config while workflow, unrelated, and unresolved legacy entries remain."
+                },
+                {
+                  "type": "state",
+                  "text": "User-scope install does not create a project store unless a project knowledge operation is requested."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5.2",
+          "title": "Doctor and uninstall preservation",
+          "description": "Report resolver/store/migration truthfully and remove only managed runtime integration.",
+          "status": "pending",
+          "predecessor": "5.1",
+          "unblocks": "6.1",
+          "subtasks": [
+            {
+              "id": "5.2.1",
+              "title": "Add RED doctor and uninstall tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing diagnostics and preservation tests for resolver/trust, store/index validity, migration debt, grandfathered Claude discovery, and uninstall",
+              "consumed_by": "5.2.2",
+              "replaces": "Doctor checks limited to SessionStart hook presence",
+              "context": [
+                {
+                  "path": "src/lib/doctor.js",
+                  "anchor": "runDoctor",
+                  "note": "Current diagnostics surface."
+                },
+                {
+                  "path": "src/install.test.js",
+                  "anchor": "doctor and uninstall assertions",
+                  "note": "Existing integration-test home."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Grandfathered exception reporting",
+                  "note": "Honest incomplete-isolation requirement."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Doctor tests fail until absent, disabled, or untrusted resolver state and invalid store/index state are reported."
+                },
+                {
+                  "type": "test",
+                  "text": "A grandfathered oversized `.claude/skills` fixture must be reported as still eligible for Claude native discovery."
+                },
+                {
+                  "type": "state",
+                  "text": "Uninstall fixtures include canonical records, unresolved legacy records, unrelated hooks/config, and managed runtime files."
+                }
+              ]
+            },
+            {
+              "id": "5.2.2",
+              "title": "Implement truthful diagnostics and preservation",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Doctor resolver/store/debt diagnostics and uninstall behavior that preserves canonical and unresolved knowledge",
+              "consumed_by": "6.1, 6.2",
+              "replaces": "SessionStart-only doctor status and project-local knowledge cleanup assumptions",
+              "context": [
+                {
+                  "path": "src/lib/doctor.js",
+                  "anchor": "runDoctor",
+                  "note": "Add hook trust, store, index, and debt fields."
+                },
+                {
+                  "path": "src/lib/install.js",
+                  "anchor": "uninstallCodex",
+                  "note": "Remove managed runtime/config only."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Install/doctor/uninstall",
+                  "note": "Verification and preservation contract."
+                }
+              ],
+              "predecessor": "5.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Doctor tests pass for active, absent, disabled/untrusted, malformed index, invalid record, migration debt, and grandfathered discovery states."
+                },
+                {
+                  "type": "test",
+                  "text": "Uninstall removes managed hooks/runtime/config while preserving `~/.spectre/projects`, unresolved legacy records, and unrelated user state."
+                },
+                {
+                  "type": "observable",
+                  "text": "Human and JSON doctor output distinguish complete native-discovery retirement from grandfathered Claude exceptions."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Generation and End-to-End Verification",
+      "summary": "Regenerate Codex assets, prove package completeness, and capture automated plus real-host evidence.",
+      "status": "pending",
+      "parents": [
+        {
+          "id": "6.1",
+          "title": "Codex generation and package integrity",
+          "description": "Recursively generate the canonical runtime and verify packed installs without hand-edited mirror logic.",
+          "status": "pending",
+          "predecessor": "3.2, 4.2, 5.2",
+          "unblocks": "6.2",
+          "subtasks": [
+            {
+              "id": "6.1.1",
+              "title": "Add RED recursive sync and package tests",
+              "type": "RED",
+              "status": "pending",
+              "produces": "Failing nested-runtime sync, host-argument rewrite, stale nested file, test exclusion, obsolete apply removal, and packed-artifact tests",
+              "consumed_by": "6.1.2, 6.1.3",
+              "replaces": "Flat top-level runtime generation coverage",
+              "context": [
+                {
+                  "path": "scripts/translators/hooks.cjs",
+                  "anchor": "listRuntimeMjsFiles and removeStaleFiles",
+                  "note": "Flat traversal and keep-set behavior to extend."
+                },
+                {
+                  "path": "scripts/test_sync-codex.cjs",
+                  "anchor": "hook translator tests",
+                  "note": "Canonical generated-parity test location."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Phase 6: Generation, package, and release verification",
+                  "note": "Generated ownership and package criteria."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Sync tests fail while nested `knowledge/*.mjs` modules are not copied and `--host claude` is not rewritten."
+                },
+                {
+                  "type": "test",
+                  "text": "Fixtures require nested `test_*.mjs` exclusion and removal of stale generated nested files and obsolete `spectre-apply`."
+                },
+                {
+                  "type": "test",
+                  "text": "Pack tests fail unless the tarball contains every runtime module, hook manifest, CLI surface, and updated workflow skill."
+                }
+              ]
+            },
+            {
+              "id": "6.1.2",
+              "title": "Implement recursive hook generation",
+              "type": "Build",
+              "status": "pending",
+              "produces": "Recursive canonical runtime translation with nested keep-set and host argument rewriting",
+              "consumed_by": "6.1.3, 6.2",
+              "replaces": "Flat top-level `.mjs` copy logic",
+              "context": [
+                {
+                  "path": "scripts/translators/hooks.cjs",
+                  "anchor": "listRuntimeMjsFiles, translate, removeStaleFiles",
+                  "note": "Extend without changing generated ownership."
+                },
+                {
+                  "path": "scripts/test_sync-codex.cjs",
+                  "anchor": "translator fixtures",
+                  "note": "RED contract from task 6.1.1."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "2.1 One canonical runtime, thin host adapters",
+                  "note": "Recursive and host-specific generation rules."
+                }
+              ],
+              "predecessor": "6.1.1",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "Translator tests pass for nested copy, nested stale removal, nested test exclusion, and `--host codex` rewriting."
+                },
+                {
+                  "type": "state",
+                  "text": "No runtime logic is authored directly under `plugins/spectre-codex`."
+                }
+              ]
+            },
+            {
+              "id": "6.1.3",
+              "title": "Regenerate and verify the packed runtime",
+              "type": "Integration",
+              "status": "pending",
+              "produces": "Generated Codex mirror plus passing sync and packed-install evidence",
+              "consumed_by": "6.2",
+              "replaces": "Stale generated registry/apply runtime files",
+              "context": [
+                {
+                  "path": "scripts/sync-codex.cjs",
+                  "anchor": "translator orchestration",
+                  "note": "Only supported mirror generation path."
+                },
+                {
+                  "path": "src/pack.test.js",
+                  "anchor": "packed artifact assertions",
+                  "note": "Package completeness gate."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Codex mirror/package",
+                  "note": "Generated and package verification signal."
+                }
+              ],
+              "predecessor": "6.1.2",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "`npm run sync-codex` followed by `scripts/test_sync-codex.cjs` leaves no generated drift."
+                },
+                {
+                  "type": "test",
+                  "text": "Packed-artifact tests install into isolated HOME, CODEX_HOME, and SPECTRE_HOME roots and find every required runtime file."
+                },
+                {
+                  "type": "state",
+                  "text": "Generated registry/recall/apply artifacts absent from the canonical source are absent from the mirror and tarball."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "6.2",
+          "title": "Automated and real-host acceptance",
+          "description": "Run the full verification spine and save dated evidence for both current hosts.",
+          "status": "pending",
+          "predecessor": "6.1",
+          "unblocks": "terminal",
+          "subtasks": [
+            {
+              "id": "6.2.1",
+              "title": "Run the complete automated verification spine",
+              "type": "Verification",
+              "status": "pending",
+              "produces": "Passing full test, sync, pack, verifier, migration, CLI, hook, install, doctor, and uninstall results",
+              "consumed_by": "6.2.2 and release decision",
+              "replaces": "Partial hook/installer-only validation",
+              "context": [
+                {
+                  "path": "package.json",
+                  "anchor": "scripts.test and scripts.sync-codex",
+                  "note": "Primary automated commands."
+                },
+                {
+                  "path": ".agents/skills/verify-spectre/SKILL.md",
+                  "anchor": "verification gates",
+                  "note": "Repository-wide Spectre verification contract."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "5. Verification — How We Know This Works",
+                  "note": "Every major change needs a falsifiable signal."
+                }
+              ],
+              "predecessor": "none",
+              "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "`npm test` passes with all new and existing tests."
+                },
+                {
+                  "type": "test",
+                  "text": "`npm run sync-codex` is idempotent and the full verify-spectre non-release gates pass."
+                },
+                {
+                  "type": "test",
+                  "text": "Isolated Git, linked-worktree, and non-Git integration fixtures pass migration, match, search, install, doctor, and uninstall checks."
+                }
+              ]
+            },
+            {
+              "id": "6.2.2",
+              "title": "Execute and record real-host acceptance",
+              "type": "Verification",
+              "status": "pending",
+              "produces": "Dated `verification/host-payload-YYYY-MM-DD.md` evidence for Claude and Codex",
+              "consumed_by": "Final implementation approval and release workflow",
+              "replaces": "Unproven real-session knowledge delivery",
+              "context": [
+                {
+                  "path": "scripts/verify-knowledge-hosts.mjs",
+                  "anchor": "fixture manifest and printed commands",
+                  "note": "Executable manual protocol generator."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/verification/runtime-baseline.md",
+                  "anchor": "host commands and limits",
+                  "note": "Pinned runtime facts and commands."
+                },
+                {
+                  "path": "docs/tasks/main/knowledge-surfacing/specs/plan.md",
+                  "anchor": "Real-host payload protocol",
+                  "note": "Required scenarios and observations."
+                }
+              ],
+              "predecessor": "6.2.1",
+              "acceptance_criteria": [
+                {
+                  "type": "observable",
+                  "text": "Claude and Codex each show the same primary sentinel content and equivalent concise notice for the same store and prompt."
+                },
+                {
+                  "type": "observable",
+                  "text": "Accepted prose and code boundary records arrive inline with no preview, saved-file path, truncation, or fallback notice."
+                },
+                {
+                  "type": "state",
+                  "text": "The dated artifact records repeat dedupe, new/clear/compact reapplication, no-match silence, multiple-match caps, linked-worktree resolution, non-Git learn/search/match, migration debt, and CLI/version evidence."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
