@@ -271,6 +271,160 @@ test('spectre-execute uses lightweight sentinel review before final adversarial 
   }
 });
 
+test('plan-direct execute resolves explicit plans without changing structured defaults', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const execute = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-execute', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const structuredMode = execute.indexOf('Structured mode');
+    const planDirectMode = execute.indexOf('Plan-direct mode');
+
+    assert.match(
+      execute,
+      /Structured mode:[^\n]*execute index[^\n]*resolvable `tasks\.json`/i,
+    );
+    assert.match(execute, /Plan-direct mode:[^\n]*another readable plan document/i);
+    assert.ok(structuredMode !== -1);
+    assert.ok(planDirectMode > structuredMode);
+    assert.match(
+      execute,
+      /No-argument execution[^\n]*default `docs\/tasks\/\{branch\}\/specs\/execute\.md`/i,
+    );
+    assert.match(execute, /Plan-direct mode never routes to `spectre-create_tasks`/);
+    assert.doesNotMatch(
+      execute,
+      /Required default artifact:[^\n]*If absent\s*→\s*stop,\s*route to `spectre-create_tasks`/i,
+    );
+  }
+});
+
+test('plan-direct execute preserves source-plan authority without a completeness gate', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const execute = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-execute', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+
+    assert.match(execute, /The source plan is the sole requirements authority/);
+    assert.match(
+      execute,
+      /begins execution without a plan-quality, approval, completeness, or Spectre-format gate/i,
+    );
+    assert.match(execute, /never (?:edit|rewrite|repair|approve|reject) the source plan/i);
+    assert.doesNotMatch(
+      execute,
+      /(?:in )?plan-direct mode,?\s+(?:requires?|runs?|routes?)[^\n]*(?:plan completeness|plan approval|plan review|task review)/i,
+    );
+    assert.doesNotMatch(
+      execute,
+      /(?:in )?plan-direct mode,?\s+(?:stops?|routes?)[^\n]*spectre-create_tasks/i,
+    );
+  }
+});
+
+test('plan-direct execute creates lazy durable execution state before dispatch', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const requiredSections = [
+    'Source Plan',
+    'Runtime Status',
+    'Workstream & Parallelization Map',
+    'Active Wave',
+    'Wave History',
+    'Plan-Backed Adaptations',
+    'Final Quality State',
+  ];
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const execute = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-execute', 'SKILL.md'),
+      'utf8',
+    );
+
+    assert.match(execute, /`execution_state\.md`/);
+    for (const section of requiredSections) {
+      assert.match(execute, new RegExp(section));
+    }
+    assert.match(execute, /before the first dev dispatch/i);
+    assert.match(execute, /updates? it after every dispatch\/gate\/adaptation/i);
+    assert.match(execute, /one coarse row for every plan-native/i);
+    assert.match(execute, /Active Wave[^\n]*only the currently dispatchable bounded assignments/i);
+    assert.match(execute, /sha256[^\n]*full source-plan bytes/i);
+    assert.match(execute, /recorded byte length/i);
+    assert.match(execute, /No fixed workstream count is imposed/);
+    assert.doesNotMatch(execute, /at most \d+ workstreams?/i);
+    assert.doesNotMatch(execute, /<=\s*\d+\s+workstreams?/i);
+    assert.doesNotMatch(
+      execute,
+      /(?:in )?plan-direct mode,?\s+(?:creates?|generates?|requires?)[^\n]*(?:complete|exhaustive)[^\n]*(?:task graph|subtasks|acceptance criteria)/i,
+    );
+  }
+});
+
+test('plan-direct quality gates use the explicit plan and derivative execution evidence', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const readSkill = (skillName) => fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md'),
+      'utf8',
+    );
+    const execute = readSkill('spectre-execute');
+    const codeReview = readSkill('spectre-code_review');
+    const validate = readSkill('spectre-validate');
+    const proof = readSkill('spectre-proof');
+    const testGuide = readSkill('spectre-create_test_guide');
+
+    assert.match(execute, /verbatim source-anchored plan text for the active-wave workstreams/i);
+    assert.match(
+      execute,
+      /source plan plus relevant execution-state evidence instead of `tasks\.json` slices/i,
+    );
+    assert.match(codeReview, /explicit(?:ly passed)? source-plan path/i);
+    assert.match(
+      codeReview,
+      /explicit(?:ly passed)? source-plan path[^\n]*(?:ahead of|before)[^\n]*`plan\.md`/i,
+    );
+    assert.match(validate, /explicit arbitrary plan as a requirement source/i);
+    assert.match(validate, /plan as authoritative when passed/i);
+    assert.match(proof, /explicitly passed source plan[^\n]*acceptance source/i);
+    assert.match(testGuide, /explicit(?:ly passed)? source-plan path/i);
+    assert.match(
+      testGuide,
+      /explicit(?:ly passed)? source-plan path[^\n]*(?:ahead of|before)[^\n]*`plan\.md`/i,
+    );
+  }
+});
+
+test('plan-direct goal composition resumes execute before proof from durable state', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const goal = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-goal', 'SKILL.md'),
+      'utf8',
+    );
+    const executeIndex = goal.indexOf('Skill(spectre-execute)');
+    const proofIndex = goal.indexOf('Skill(spectre-proof)');
+
+    assert.match(goal, /source plan plus (?:its )?`execution_state\.md`/i);
+    assert.match(goal, /resume from durable `execution_state\.md` plus proof state/i);
+    assert.match(goal, /invoke `?Skill\(spectre-execute\)`? with the source-plan path/i);
+    assert.match(goal, /`?Skill\(spectre-proof\)`? with the same output directory/i);
+    assert.match(goal, /require only readable plan\/runtime inputs/i);
+    assert.ok(executeIndex !== -1);
+    assert.ok(proofIndex > executeIndex);
+    assert.doesNotMatch(
+      goal,
+      /(?:in )?plan-direct mode,?\s+(?:requires?|validates?)[^\n]*(?:complete|approved|reviewed)[^\n]*plan/i,
+    );
+  }
+});
+
 test('review gates pin high-effort opposing models and retain native fallback', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillNames = ['spectre-plan_review', 'spectre-task_review', 'spectre-code_review'];
