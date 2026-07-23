@@ -1,0 +1,796 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = join(testDirectory, "..", "..");
+const evaluatorPath = join(repositoryRoot, "scripts", "evaluate-task-review.mjs");
+const fakeReviewerPath = join(
+  testDirectory,
+  "fixtures",
+  "fake-reviewer.mjs",
+);
+const fixtureRoot = join(
+  testDirectory,
+  "..",
+  "fixtures",
+  "task-review",
+  "knowledge-surfacing-before",
+);
+const priceBasisPath = join(fixtureRoot, "pricing", "basis.json");
+const variants = [
+  "baseline-opus-max",
+  "candidate-opus-medium",
+  "candidate-sol-medium",
+];
+const shaPattern = /^[a-f0-9]{64}$/;
+
+async function implementation() {
+  return import(`${new URL(`file://${evaluatorPath}`).href}?t=${Date.now()}`);
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function writeJson(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const bytes = `${JSON.stringify(value, null, 2)}\n`;
+  await writeFile(path, bytes);
+  return sha256(bytes);
+}
+
+function staticSchedule() {
+  const ordering = [
+    [
+      "candidate-sol-medium",
+      "baseline-opus-max",
+      "candidate-opus-medium",
+    ],
+    [
+      "candidate-opus-medium",
+      "candidate-sol-medium",
+      "baseline-opus-max",
+    ],
+    [
+      "baseline-opus-max",
+      "candidate-opus-medium",
+      "candidate-sol-medium",
+    ],
+  ];
+  return {
+    schema_version: "task-review-paired-schedule/v1",
+    seed: "paired-gate-seed-v1",
+    variants,
+    blocks: ordering.map((blockVariants, blockIndex) => ({
+      block: blockIndex + 1,
+      trials: blockVariants.map((variant, sequence) => ({
+        sequence: sequence + 1,
+        variant,
+        trial_id: `block-${blockIndex + 1}-${variant}`,
+      })),
+    })),
+  };
+}
+
+function observed(value, label = null) {
+  return {
+    value,
+    source: "fake-runtime",
+    ...(label ? { label } : {}),
+    unavailable_reason: null,
+  };
+}
+
+function makeRun({ block, variant, scheduleHash, freezeHash }) {
+  const variantIndex = variants.indexOf(variant);
+  const totalMs = [100, 60, 80][variantIndex] + (block - 1) * 10;
+  const totalTokens = [1_000, 700, 800][variantIndex] + block * 10;
+  const inputTokens = totalTokens - 300;
+  const outputTokens = 250;
+  const reasoningTokens = 50;
+  const actualCost = [1, 0.6, 0.8][variantIndex] + (block - 1) * 0.1;
+  const estimatedCost =
+    [1.2, 0.7, 0.9][variantIndex] + (block - 1) * 0.1;
+  const trialId = `block-${block}-${variant}`;
+  const protectedHashes = {
+    "specs/plan.md": "plan-hash",
+    "specs/execute.md": "execute-hash",
+    "specs/tasks.json": "tasks-hash",
+  };
+
+  return {
+    schema_version: "task-review-evaluation-result/v1",
+    id: trialId,
+    trial: trialId,
+    block,
+    variant,
+    status: "valid",
+    freeze_manifest_sha256: freezeHash,
+    schedule_sha256: scheduleHash,
+    quiescence: {
+      clean: true,
+      pre: { clean: true, contaminants: [] },
+      continuous: { clean: true, contaminants: [], samples: 2 },
+      post: { clean: true, contaminants: [] },
+      owned_reviewer_tree_excluded: true,
+    },
+    validity: {
+      first_pass: variantIndex !== 1 || block !== 2,
+      report: true,
+      inputs_unchanged: true,
+      allowed_writes: true,
+    },
+    protected_inputs: {
+      before: protectedHashes,
+      after: protectedHashes,
+    },
+    process: {
+      exit_code: 0,
+      timed_out: false,
+      attempts: variantIndex === 1 && block === 2 ? 2 : 1,
+      retries: variantIndex === 1 && block === 2 ? 1 : 0,
+      repairs: variantIndex === 1 && block === 3 ? 1 : 0,
+      fallback: observed(variantIndex === 2 && block === 3 ? "native" : null),
+    },
+    timing: {
+      total_ms: totalMs,
+      intervals: {
+        preflight_ms: 5,
+        reviewer_ms: totalMs - 10,
+        repair_fallback_ms: variantIndex === 1 && block === 3 ? 5 : 0,
+        validation_ms: 5,
+      },
+    },
+    telemetry: {
+      tokens: {
+        input: observed(inputTokens),
+        cached_input: observed(100),
+        output: observed(outputTokens),
+        reasoning_output: observed(reasoningTokens),
+        total: observed(totalTokens),
+      },
+      cost: {
+        actual_runtime_usd: observed(actualCost, "actual"),
+        estimated_token_usd: observed(estimatedCost, "estimate"),
+      },
+      tool_calls: observed(10 - variantIndex),
+      messages: observed(5 + variantIndex),
+    },
+    quality: {
+      recall_by_severity: {
+        Blocker: 1,
+        High: variantIndex === 0 ? 1 : 0.8,
+        Medium: variantIndex === 2 ? 0.7 : 0.8,
+        Low: 0.5,
+      },
+      weighted_recall: variantIndex === 0 ? 0.95 : 0.9,
+      supported_precision: variantIndex === 2 ? 0.85 : 0.9,
+      duplicate_count: variantIndex,
+      severity_drift: Array.from({ length: variantIndex }),
+      false_scope_change_count: variantIndex === 2 ? 1 : 0,
+      unmatched_known: Array.from({ length: variantIndex + 1 }, (_, index) => ({
+        id: `known-${index + 1}`,
+        severity: index === 0 ? "High" : "Medium",
+      })),
+      unmatched_candidates: Array.from(
+        { length: variantIndex },
+        (_, index) => ({
+          id: `candidate-${index + 1}`,
+          status: "supported",
+        }),
+      ),
+    },
+  };
+}
+
+async function writeCountedBundle(root, mutate = () => {}) {
+  const schedulePath = join(root, "schedule.json");
+  const scheduleHash = await writeJson(schedulePath, staticSchedule());
+  const freezePath = join(root, "freeze.json");
+  const freezeHash = await writeJson(freezePath, {
+    schema_version: "task-review-evaluation-freeze/v1",
+    freeze_id: "paired-freeze-v1",
+  });
+  const records = [];
+
+  for (let block = 1; block <= 3; block += 1) {
+    for (const variant of variants) {
+      const run = makeRun({ block, variant, scheduleHash, freezeHash });
+      const path = join(root, "runs", run.trial, "result.json");
+      const hash = await writeJson(path, run);
+      records.push({
+        trial_id: run.trial,
+        result: relative(root, path),
+        sha256: hash,
+      });
+    }
+  }
+
+  const bundle = {
+    root,
+    schedulePath,
+    scheduleHash,
+    freezePath,
+    freezeHash,
+    manifest: {
+      schema_version: "task-review-counted-results/v1",
+      freeze_manifest_sha256: freezeHash,
+      schedule_sha256: scheduleHash,
+      results: records,
+    },
+  };
+  await mutate(bundle);
+  const manifestPath = join(root, "counted-results.json");
+  await writeJson(manifestPath, bundle.manifest);
+  return { ...bundle, manifestPath };
+}
+
+async function summarizeBundle(runCli, bundle, output) {
+  return runCli([
+    "summarize",
+    "--counted-results",
+    bundle.manifestPath,
+    "--freeze",
+    bundle.freezePath,
+    "--schedule",
+    bundle.schedulePath,
+    "--output",
+    output,
+  ]);
+}
+
+test("schedule persists a deterministic seed-derived 3x3 order with unique trial IDs and refuses overwrite", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-paired-schedule-"));
+  try {
+    const { runCli } = await implementation();
+    const firstPath = join(root, "schedule.json");
+    const secondPath = join(root, "schedule-copy.json");
+    const first = await runCli([
+      "schedule",
+      "--seed",
+      "paired-gate-seed-v1",
+      "--output",
+      firstPath,
+    ]);
+    const second = await runCli([
+      "schedule",
+      "--seed",
+      "paired-gate-seed-v1",
+      "--output",
+      secondPath,
+    ]);
+
+    assert.deepEqual(first, staticSchedule());
+    assert.deepEqual(second, first);
+    assert.deepEqual(
+      JSON.parse(await readFile(firstPath, "utf8")),
+      first,
+    );
+    const trialIds = first.blocks.flatMap((block) =>
+      block.trials.map(({ trial_id: trialId }) => trialId)
+    );
+    assert.equal(trialIds.length, 9);
+    assert.equal(new Set(trialIds).size, 9);
+    for (const block of first.blocks) {
+      assert.deepEqual(
+        [...block.trials].sort((left, right) =>
+          left.sequence - right.sequence
+        ).map(({ variant }) => variant),
+        staticSchedule().blocks[block.block - 1].trials.map(
+          ({ variant }) => variant,
+        ),
+      );
+      assert.deepEqual(
+        [...block.trials].map(({ variant }) => variant).sort(),
+        [...variants].sort(),
+      );
+    }
+
+    const before = await readFile(firstPath);
+    await assert.rejects(
+      runCli([
+        "schedule",
+        "--seed",
+        "different-seed",
+        "--output",
+        firstPath,
+      ]),
+      /schedule output already exists|refus(?:e|ing).*overwrite/i,
+    );
+    assert.deepEqual(await readFile(firstPath), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("freeze persists every immutable comparison input and refuses overwrite", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-paired-freeze-"));
+  const previousClaudeBinary = process.env.CLAUDE_BIN;
+  const previousCodexBinary = process.env.CODEX_BIN;
+  process.env.CLAUDE_BIN = fakeReviewerPath;
+  process.env.CODEX_BIN = fakeReviewerPath;
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const output = join(root, "freeze.json");
+    const freeze = await runCli([
+      "freeze",
+      "--fixture",
+      fixtureRoot,
+      "--price-basis",
+      priceBasisPath,
+      "--output",
+      output,
+    ]);
+
+    assert.equal(freeze.schema_version, "task-review-evaluation-freeze/v1");
+    assert.equal(freeze.versions.evaluator, "evaluate-task-review/v1");
+    assert.equal(freeze.versions.node, process.version);
+    assert.equal(freeze.versions.reviewer_clis.claude, "fake-reviewer 1.0.0");
+    assert.equal(freeze.versions.reviewer_clis.codex, "fake-reviewer 1.0.0");
+    assert.match(freeze.repository.commit, /^[a-f0-9]{40}$/);
+    assert.equal(typeof freeze.repository.dirty, "boolean");
+    assert.match(freeze.repository.dirty_diff_sha256, shaPattern);
+
+    for (const path of [
+      ["hashes", "evaluator"],
+      ["hashes", "fixture_manifest"],
+      ["hashes", "fixture_components"],
+      ["hashes", "contracts", "baseline"],
+      ["hashes", "contracts", "candidate"],
+      ["hashes", "price_basis"],
+      ["hashes", "skills", "canonical"],
+      ["hashes", "skills", "generated"],
+      ["hashes", "helpers", "canonical"],
+      ["hashes", "helpers", "generated"],
+      ["hashes", "normalized_prompts", "baseline-opus-max"],
+      ["hashes", "normalized_prompts", "candidate-opus-medium"],
+      ["hashes", "normalized_prompts", "candidate-sol-medium"],
+    ]) {
+      let value = freeze;
+      for (const key of path) value = value?.[key];
+      assert.match(value, shaPattern, `missing frozen hash ${path.join(".")}`);
+    }
+    assert.deepEqual(
+      JSON.parse(await readFile(output, "utf8")),
+      freeze,
+    );
+
+    const before = await readFile(output);
+    await assert.rejects(
+      runCli([
+        "freeze",
+        "--fixture",
+        fixtureRoot,
+        "--price-basis",
+        priceBasisPath,
+        "--output",
+        output,
+      ]),
+      /freeze output already exists|refus(?:e|ing).*overwrite/i,
+    );
+    assert.deepEqual(await readFile(output), before);
+  } finally {
+    if (previousClaudeBinary === undefined) delete process.env.CLAUDE_BIN;
+    else process.env.CLAUDE_BIN = previousClaudeBinary;
+    if (previousCodexBinary === undefined) delete process.env.CODEX_BIN;
+    else process.env.CODEX_BIN = previousCodexBinary;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("quiescence uses injected pre/continuous/post snapshots, excludes the owned reviewer tree, and marks external work contaminated", async () => {
+  const { assessQuiescence } = await implementation();
+  assert.equal(
+    typeof assessQuiescence,
+    "function",
+    "the evaluator must expose process-snapshot quiescence assessment",
+  );
+  const ownedOnly = assessQuiescence({
+    evaluator_pid: 100,
+    reviewer_pid: 200,
+    snapshots: {
+      pre: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+      continuous: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+        { pid: 200, ppid: 100, command: "claude --output-format stream-json" },
+        { pid: 201, ppid: 200, command: "claude helper" },
+      ],
+      post: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+    },
+  });
+  assert.equal(ownedOnly.clean, true);
+  assert.equal(ownedOnly.owned_reviewer_tree_excluded, true);
+  assert.deepEqual(ownedOnly.pre.contaminants, []);
+  assert.deepEqual(ownedOnly.continuous.contaminants, []);
+  assert.deepEqual(ownedOnly.post.contaminants, []);
+
+  const contaminated = assessQuiescence({
+    evaluator_pid: 100,
+    reviewer_pid: 200,
+    snapshots: {
+      pre: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+      continuous: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+        { pid: 200, ppid: 100, command: "codex exec" },
+        { pid: 201, ppid: 200, command: "codex helper" },
+        { pid: 300, ppid: 1, command: "node --test unrelated.test.mjs" },
+      ],
+      post: [
+        { pid: 100, ppid: 1, command: "node evaluate-task-review.mjs" },
+      ],
+    },
+  });
+  assert.equal(contaminated.clean, false);
+  assert.deepEqual(
+    contaminated.continuous.contaminants.map(({ pid }) => pid),
+    [300],
+  );
+  assert.equal(
+    contaminated.continuous.contaminants.some(({ pid }) =>
+      [200, 201].includes(pid)
+    ),
+    false,
+  );
+});
+
+test("adjudication-packet accepts an otherwise-valid source with unmatched candidates and remains route blind", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-valid-packet-"));
+  await chmod(fakeReviewerPath, 0o755);
+  try {
+    const { runCli } = await implementation();
+    const outputDirectory = join(root, "source");
+    const source = await runCli([
+      "run",
+      "--fixture",
+      fixtureRoot,
+      "--variant",
+      "baseline-opus-max",
+      "--trial",
+      "valid-unmatched",
+      "--output-dir",
+      outputDirectory,
+      "--lock-file",
+      join(root, "evaluation.lock"),
+      "--price-basis",
+      priceBasisPath,
+      "--reviewer-command",
+      fakeReviewerPath,
+      "--reviewer-arg",
+      "scored-report",
+      "--timeout-ms",
+      "1000",
+    ]);
+    assert.equal(source.status, "valid");
+
+    const reportPath = join(outputDirectory, source.evidence.report);
+    const report = await readFile(reportPath, "utf8");
+    const unmatchedRow =
+      "| 2 | Medium | Executability | tasks.json 9.9.9 | A novel acceptance criterion is not observable. | Replace it with an observable result. |\n\n";
+    const updatedReport = report.replace(
+      "## Review Metadata",
+      `${unmatchedRow}## Review Metadata`,
+    );
+    await writeFile(reportPath, updatedReport);
+    const sourceResultPath = join(outputDirectory, "result.json");
+    const updatedSource = {
+      ...source,
+      evidence: {
+        ...source.evidence,
+        report_sha256: sha256(updatedReport),
+      },
+    };
+    await writeJson(sourceResultPath, updatedSource);
+
+    const packetPath = join(root, "packet.json");
+    const packet = await runCli([
+      "adjudication-packet",
+      "--source-result",
+      sourceResultPath,
+      "--fixture",
+      fixtureRoot,
+      "--output",
+      packetPath,
+    ]);
+    assert.equal(packet.candidates.length, 1);
+    assert.equal(packet.candidates[0].candidate_id, "2");
+    assert.ok(packet.oracles.length > 0);
+    assert.doesNotMatch(
+      JSON.stringify(packet),
+      /baseline-opus-max|candidate-opus-medium|candidate-sol-medium|Claude Code|Codex ->|-> Codex|gpt-5\.6|"variant"|"route"|"runtime"|"model"|"effort"/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize accepts only a curated immutable 3x3 counted-results manifest and rejects every ineligible run", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-counted-gates-"));
+  try {
+    const { runCli } = await implementation();
+
+    await t.test("rejects recursive directory discovery", async () => {
+      await assert.rejects(
+        runCli([
+          "summarize",
+          "--runs",
+          root,
+          "--output",
+          join(root, "recursive-summary.json"),
+        ]),
+        /curated.*counted-results|--counted-results.*required/i,
+      );
+    });
+
+    const cases = [
+      {
+        name: "duplicate result entries",
+        pattern: /duplicate.*(?:trial|result|path)/i,
+        mutate: async ({ manifest }) => {
+          manifest.results[1] = { ...manifest.results[0] };
+        },
+      },
+      {
+        name: "wrong 3x3 matrix",
+        pattern: /3x3|three.*blocks|exactly.*nine|missing.*variant/i,
+        mutate: async ({ manifest }) => {
+          manifest.results.pop();
+        },
+      },
+      {
+        name: "directory instead of an explicitly counted result",
+        pattern: /result.*(?:file|directory)|recursive/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          manifest.results[0].result = relative(caseRoot, join(caseRoot, "runs"));
+          manifest.results[0].sha256 = sha256("");
+        },
+      },
+      {
+        name: "freeze mismatch",
+        pattern: /freeze.*mismatch/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.freeze_manifest_sha256 = "f".repeat(64);
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "unclean quiescence",
+        pattern: /quiescen.*(?:unclean|contamin)/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.quiescence.clean = false;
+          run.quiescence.continuous = {
+            clean: false,
+            contaminants: [{ pid: 300, command: "node --test" }],
+          };
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "non-valid report",
+        pattern: /status.*valid|report.*valid/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.status = "blocked";
+          run.validity.report = false;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "nonzero reviewer exit",
+        pattern: /exit.*(?:nonzero|0)|process.*invalid/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.process.exit_code = 7;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "reviewer timeout",
+        pattern: /timed?.*out|timeout/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.process.timed_out = true;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "mutated protected inputs",
+        pattern: /input.*(?:mutat|unchanged|mismatch)/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.validity.inputs_unchanged = false;
+          run.protected_inputs.after = {
+            ...run.protected_inputs.after,
+            "specs/plan.md": "mutated-plan-hash",
+          };
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+      {
+        name: "less than 100% known Blocker recall",
+        pattern: /Blocker recall.*100%/i,
+        mutate: async ({ root: caseRoot, manifest }) => {
+          const entry = manifest.results[0];
+          const path = join(caseRoot, entry.result);
+          const run = JSON.parse(await readFile(path, "utf8"));
+          run.quality.recall_by_severity.Blocker = 0;
+          entry.sha256 = await writeJson(path, run);
+        },
+      },
+    ];
+
+    for (const scenario of cases) {
+      await t.test(scenario.name, async () => {
+        const caseRoot = join(
+          root,
+          scenario.name.replaceAll(/[^a-z0-9]+/gi, "-").toLowerCase(),
+        );
+        const bundle = await writeCountedBundle(caseRoot, scenario.mutate);
+        await assert.rejects(
+          summarizeBundle(
+            runCli,
+            bundle,
+            join(caseRoot, "summary.json"),
+          ),
+          scenario.pattern,
+        );
+      });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize aggregates required performance, spend, interaction, route-state, quality, loss, and same-block metrics without relabeling cost", async () => {
+  const root = await mkdtemp(join(tmpdir(), "task-review-paired-summary-"));
+  try {
+    const { runCli } = await implementation();
+    const bundle = await writeCountedBundle(root);
+    const output = join(root, "summary.json");
+    const summary = await summarizeBundle(runCli, bundle, output);
+
+    assert.equal(summary.schema_version, "task-review-evaluation-summary/v2");
+    assert.deepEqual(summary.counted_results, {
+      manifest_sha256: sha256(await readFile(bundle.manifestPath)),
+      freeze_manifest_sha256: bundle.freezeHash,
+      schedule_sha256: bundle.scheduleHash,
+      count: 9,
+    });
+    assert.deepEqual(Object.keys(summary.variants).sort(), [...variants].sort());
+
+    const requiredAggregatePaths = [
+      ["latency_ms"],
+      ["tokens", "input"],
+      ["tokens", "cached_input"],
+      ["tokens", "output"],
+      ["tokens", "reasoning_output"],
+      ["tokens", "total"],
+      ["cost", "actual_runtime_usd"],
+      ["cost", "estimated_token_usd"],
+      ["tool_calls"],
+      ["messages"],
+      ["validity", "first_pass"],
+      ["process", "retries"],
+      ["process", "repairs"],
+      ["process", "fallbacks"],
+      ["quality", "recall_by_severity", "Blocker"],
+      ["quality", "recall_by_severity", "High"],
+      ["quality", "recall_by_severity", "Medium"],
+      ["quality", "recall_by_severity", "Low"],
+      ["quality", "weighted_recall"],
+      ["quality", "supported_precision"],
+      ["quality", "duplicates"],
+      ["quality", "severity_drift"],
+      ["quality", "false_scope_changes"],
+      ["quality", "unmatched_findings"],
+      ["quality", "non_blocker_losses"],
+    ];
+    for (const variant of variants) {
+      for (const path of requiredAggregatePaths) {
+        let value = summary.variants[variant];
+        for (const key of path) value = value?.[key];
+        assert.ok(value, `missing ${variant}.${path.join(".")}`);
+        assert.equal(value.individual.length, 3);
+        assert.equal(typeof value.median, "number");
+        assert.equal(value.range.length, 2);
+      }
+    }
+    assert.equal(
+      summary.variants["baseline-opus-max"].latency_ms.median,
+      110,
+    );
+    assert.equal(
+      summary.variants["candidate-opus-medium"].latency_ms.median,
+      70,
+    );
+    assert.equal(
+      summary.variants["candidate-sol-medium"].latency_ms.median,
+      90,
+    );
+    assert.equal(
+      summary.variants["baseline-opus-max"].cost.actual_runtime_usd.label,
+      "actual",
+    );
+    assert.equal(
+      summary.variants["baseline-opus-max"].cost.estimated_token_usd.label,
+      "estimate",
+    );
+    assert.notEqual(
+      summary.variants["baseline-opus-max"].cost.actual_runtime_usd,
+      summary.variants["baseline-opus-max"].cost.estimated_token_usd,
+    );
+
+    for (const candidate of [
+      "candidate-opus-medium",
+      "candidate-sol-medium",
+    ]) {
+      assert.equal(summary.paired_deltas[candidate].length, 3);
+      for (const blockDelta of summary.paired_deltas[candidate]) {
+        assert.equal(typeof blockDelta.block, "number");
+        for (const path of requiredAggregatePaths) {
+          let value = blockDelta.deltas;
+          for (const key of path) value = value?.[key];
+          assert.ok(
+            value,
+            `missing ${candidate} paired delta ${path.join(".")}`,
+          );
+          assert.equal(typeof value.candidate, "number");
+          assert.equal(typeof value.baseline, "number");
+          assert.equal(typeof value.delta, "number");
+          assert.equal(typeof value.percent_delta, "number");
+        }
+      }
+    }
+    assert.equal(
+      summary.paired_deltas["candidate-opus-medium"][0]
+        .deltas.latency_ms.percent_delta,
+      -40,
+    );
+
+    assert.deepEqual(
+      JSON.parse(await readFile(output, "utf8")),
+      summary,
+    );
+    const before = await readFile(output);
+    await assert.rejects(
+      summarizeBundle(runCli, bundle, output),
+      /summary output already exists|refus(?:e|ing).*overwrite/i,
+    );
+    assert.deepEqual(await readFile(output), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
