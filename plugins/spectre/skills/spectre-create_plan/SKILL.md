@@ -9,16 +9,27 @@ user-invocable: true
 Transform a scoped PRD into a technical implementation plan. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
 
 ## Inputs
-- `$ARGUMENTS` — feature/PRD reference + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
-- `TASK_DIR/task_context.md` — reuse an existing `## Technical Research` section if comprehensive; skip new research. Under `--depth light`, also reuse substantive router research (file locations, code understanding, patterns, impact) if already present.
+- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
+- `{FEATURE_ROOT}/task_context.md` — reuse an existing `## Technical Research` section if comprehensive; skip new research. Under `--depth light`, also reuse substantive router research (file locations, code understanding, patterns, impact) if already present.
 
 ## Working Set
-- `OUT_DIR` = `docs/tasks/{branch}` (or a user-given `target_dir`); read branch via tool at runtime, never inline it.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new plan and record the legacy source in its manifest.
 - Research agents: `@finder` (where code lives), `@analyst` (how it works + data access), `@patterns` (canonical "follow this file" anchors). Run in parallel, await all, then read the real code at each step — don't trust filenames or summaries.
 - `CLAUDE.md` / `README.md` for rules + major components.
 
 ## Outputs + DONE
-Write the plan to `{OUT_DIR}/specs/plan.md` (scoped name if one exists). The plan is DONE when it carries the **verification spine** and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
+Write the plan to `{FEATURE_ROOT}/specs/plan.md` (scoped name if one exists). Every `plan.md` begins immediately below its title with:
+
+```text
+Feature: <feature-name>
+Feature Root: .spectre/features/<feature-name>
+```
+
+Derive both values from the physical feature directory. The plan is DONE when it is self-locating, carries the **verification spine**, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
 
 **Required at every depth (the spine):**
 1. **Overview** — problem, solution shape, why this approach.

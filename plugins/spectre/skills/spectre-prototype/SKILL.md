@@ -6,12 +6,12 @@ user-invocable: true
 
 # prototype
 
-Produce one portable, self-contained HTML file that makes a feature visible before it is planned. Output saved to `{OUT_DIR}/prototypes/{slug}_{MMDDYY}.html`.
+Produce one portable, self-contained HTML file that makes a feature visible before it is planned. Output saved to `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`.
 
 ## Inputs
-- `$ARGUMENTS` (feature description, `--explore` flag, optional output path).
+- `$ARGUMENTS` (explicit feature name/root or descendant artifact, feature description, optional `--explore` flag).
 - Env markers: `FROM_UX=true`, `FROM_KICKOFF=true`.
-- On-disk context (read FULLY, no offset/limit): `docs/tasks/{branch}/concepts/scope.md`, `.../specs/prd.md`, `.../ux.md`. Resolve `branch` via `git rev-parse --abbrev-ref HEAD` at runtime.
+- On-disk context beneath the resolved `FEATURE_ROOT` (read FULLY, no offset/limit): `concepts/scope.md`, `specs/prd.md`, `ux.md`, then legacy/fallback `specs/ux.md`.
 
 ## Mode + fidelity (detect most-context-first; this drives intake and faithfulness)
 | Mode | Signal | Fidelity | Job |
@@ -23,7 +23,12 @@ Produce one portable, self-contained HTML file that makes a feature visible befo
 | standalone | none | mid-fi | ask what we're prototyping |
 
 ## Working set
-Stage 1 intake (tight: 2–4 questions, never a form), then a gated parallel research+generate pass. Single-threaded write of the HTML.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output paths are invalid for new canonical prototypes.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before producing the prototype.
+- Pass the exact feature root unchanged to every routed child and read-only research prompt; a child never rederives it.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the prototype and cite the legacy source.
+- Stage 1 intake is tight (2–4 questions, never a form), followed by a gated parallel research-and-generate pass and single-threaded HTML writing.
 
 ## Method / guardrails
 1. **Immediate reply, then detect.** Respond before any tool call (except reading `ux.md` when `FROM_UX=true`). If ARGUMENTS empty → ask what we're prototyping.
@@ -38,7 +43,7 @@ Stage 1 intake (tight: 2–4 questions, never a form), then a gated parallel res
 
 ### Required HTML structure (load-bearing — these prevent the known failure modes)
 1. `<!DOCTYPE html>` + minimal `<head>` (`<meta viewport>`, inline `<style>`).
-2. **Metadata comment** at top of `<head>`: Feature · Fidelity · Generated (date) · Branch · Flow covered · Screens/states · Visual anchor · Source spec (ux.md path or "synthesized from …") · Key assumptions · Filled assumptions (post-ux only) · NOT included · Next step.
+2. **Metadata comment** at top of `<head>` begins with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then records Fidelity · Generated (date) · Flow covered · Screens/states · Visual anchor · Source spec (feature-root-relative ux.md path or "synthesized from …") · Key assumptions · Filled assumptions (post-ux only) · NOT included · Next step.
 3. **Design-tokens comment** (Primary/Accent/Surface/Text/Font/Border-radius/Spacing) AND the same encoded as CSS custom properties on `:root`.
 4. **Nav bar** only if multi-screen — vanilla-JS `display:block/none` toggling. No router, no framework.
 5. **One `<section>` per screen**, in user-encounter order. Every screen shows the happy path AND ≥1 of: empty / error / loading state.
@@ -50,7 +55,7 @@ Stage 1 intake (tight: 2–4 questions, never a form), then a gated parallel res
 - **No generic AI aesthetic** (no default Inter/Roboto, no purple-on-white gradients). **No Lorem ipsum / placeholder filler.** **No happy-path-only screens.** **No broken interactivity** (no `href="#"` jumps, no console errors). **No inconsistent components** — each recurring element = one named CSS class, reused, never re-styled inline.
 
 ## Outputs + DONE
-File at `{OUT_DIR}/prototypes/{slug}_{MMDDYY}.html` (`OUT_DIR=docs/tasks/{branch}` unless `FROM_UX`/`FROM_KICKOFF` reuse the task dir or user gives a path; `mkdir -p` the prototypes subdir). DONE when:
+HTML prototype file at `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`; `mkdir -p` the prototypes subdir. DONE when:
 - [ ] Mode + fidelity detected; context docs read fully before any question; visual anchor captured (never left generic).
 - [ ] Subagents dispatched in parallel and all completed before generation.
 - [ ] HTML is one self-contained file <300KB; metadata + design-token blocks present; tokens on `:root`.

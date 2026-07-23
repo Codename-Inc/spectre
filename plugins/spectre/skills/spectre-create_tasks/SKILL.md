@@ -10,15 +10,19 @@ Transform requirements into two execution artifacts: `execute.md` for primary-ag
 
 ## Inputs
 
-- `$ARGUMENTS` — feature/context; may carry `--depth` (`light` | `standard` | `comprehensive`, default `standard`) and/or output dir.
-- Planning artifacts in `OUT_DIR`, read fully: `concepts/scope.md` / `task_summary.md`, `specs/prd.md`, `specs/plan.md`, `specs/ux.md`, `task_context.md`, `research/*.md`. Plan **Out-of-Bounds** and **Verification** entries are load-bearing.
+- `$ARGUMENTS` — explicit feature name/root or descendant requirements artifact; may carry `--depth` (`light` | `standard` | `comprehensive`, default `standard`). Read explicit artifact paths first.
+- Planning artifacts in `FEATURE_ROOT`, read fully: `concepts/scope.md` / `task_summary.md`, `specs/prd.md`, `specs/plan.md`, `specs/ux.md`, `task_context.md`, `research/*.md`. Plan **Out-of-Bounds** and **Verification** entries are load-bearing.
 - If requirements are too thin to extract scope → ask, or route to `/spectre:plan`; do not invent scope.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`).
-- `OUT_DIR = user-specified || docs/tasks/{branch}`; ensure `{OUT_DIR}/specs` exists.
-- Default pair: `EXECUTE_FILE={OUT_DIR}/specs/execute.md`, `DETAIL_FILE={OUT_DIR}/specs/tasks.json`. If either exists for another feature, write a scoped pair with the same basename: `{name}.execute.md` + `{name}.tasks.json`.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for new canonical documents and record the legacy source in the document manifest.
+- Ensure `{FEATURE_ROOT}/specs` exists.
+- Default pair: `EXECUTE_FILE={FEATURE_ROOT}/specs/execute.md`, `DETAIL_FILE={FEATURE_ROOT}/specs/tasks.json`. If either exists for another feature, write a scoped pair with the same basename: `{name}.execute.md` + `{name}.tasks.json`.
 - Reference fixtures: `references/execute.example.md`, `references/tasks.example.json`.
 - Research only if plan/context do not name target files/patterns: dispatch `@spectre:finder`, `@spectre:analyst`, `@spectre:patterns`; fold returns into `task_context.md` `## Technical Research`. Skip for LIGHT or clear single-component scope.
 
@@ -46,7 +50,8 @@ Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not
 - Save indented JSON to `DETAIL_FILE`; re-parse it after writing:
   `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$DETAIL_FILE"`
 - Top-level keys are exactly `meta` and `phases`.
-- `meta` contains: `feature`, `generated_at`, `schema_version`, `objective`, `scope`, `out_of_bounds`, `requirements_trace`, `architecture_context`, `coverage_summary`.
+- `tasks.json` is self-locating: `meta.feature` is the physical feature-directory name and `meta.feature_root` is its repo-relative root.
+- `meta` contains: `feature`, `feature_root`, `generated_at`, `schema_version`, `objective`, `scope`, `out_of_bounds`, `requirements_trace`, `architecture_context`, `coverage_summary`.
 - `phases[]` contains phase objects with parent tasks and subtasks; mutable status lives only here.
 - Do **not** store `index`, `indexes`, `wave_plan`, or `waves` in JSON. Cheap orchestration metadata belongs in `execute.md`.
 - Status enum: `pending`, `in_progress`, `done`, `skipped`.
@@ -60,9 +65,14 @@ Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not
 ### `execute.md`
 
 - Save Markdown to `EXECUTE_FILE`; it is safe for the primary executor to read whole.
+- `execute.md` begins immediately below its title with:
+  ```text
+  Feature: <feature-name>
+  Feature Root: .spectre/features/<feature-name>
+  ```
 - Required sections: `Document Manifest`, `Task Detail Source`, `Execution Summary`, `Wave Plan`, `Parent Task Index`, `Slicing Rules`.
-- `Document Manifest` lists only actual discovered scope/UX/prototype/plan/research/PRD paths. Do not assume literal filenames.
-- `Task Detail Source` lists `DETAIL_FILE` and says not to read it whole.
+- `Document Manifest` lists only actual discovered scope/UX/prototype/plan/research/PRD paths. Intra-feature entries are relative to `FEATURE_ROOT`; repository implementation-file references remain repo-relative.
+- `Task Detail Source` lists the task JSON path relative to `FEATURE_ROOT`, declares `FEATURE_ROOT`, and says not to read it whole.
 - `Execution Summary` counts phases, parent tasks, subtasks, and waves.
 - `Wave Plan` includes each wave as an inline object with `id`, `label`, `parent_task_ids`, `after`, and `rationale`.
 - `Parent Task Index` lists phase label plus parent `id`, `title`, `subtasks`, `predecessor`, and `unblocks`. Do not include task bodies, acceptance criteria, context payloads, or mutable status.

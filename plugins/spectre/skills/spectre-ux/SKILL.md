@@ -10,7 +10,7 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Inputs
 
-- `$ARGUMENTS` — the feature/context.
+- `$ARGUMENTS` — explicit feature name/root or descendant requirements artifact.
 - Requirements doc — first that exists, read FULLY (no offset/limit):
   1. `{OUT_DIR}/concepts/scope.md` (canonical, preferred)
   2. `{OUT_DIR}/specs/prd.md`
@@ -19,8 +19,11 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
-- `OUT_DIR = user-specified || docs/tasks/{branch}`
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- An explicit legacy `docs/tasks/**` requirements artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new UX document and cite the legacy source.
 - Existing UI: one `@spectre:patterns` dispatch (Stage 1) for similar screens/components, conventions, design tokens — return ≤~2K in-thread, no files.
 
 ## Method / guardrails

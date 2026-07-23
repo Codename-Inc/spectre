@@ -143,6 +143,85 @@ test('continuation skills declare the three-step resolution order without branch
   }
 });
 
+test('planning and UX continuation workflows resolve and propagate one exact feature root', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-create_plan/SKILL.md',
+    'plugins/spectre/skills/spectre-create_tasks/SKILL.md',
+    'plugins/spectre/skills/spectre-ux/SKILL.md',
+    'plugins/spectre/skills/spectre-prototype/SKILL.md',
+    'plugins/spectre/skills/spectre-plan_review/SKILL.md',
+    'plugins/spectre/skills/spectre-task_review/SKILL.md',
+  ]) {
+    const content = read(file);
+    assertContinuationContract(content, file);
+    assert.match(
+      content,
+      /pass(?:es)? the exact feature root unchanged/i,
+      `${file}: missing exact-root propagation`,
+    );
+    assert.match(
+      content,
+      /physical feature directory .*authoritative/i,
+      `${file}: missing physical-directory authority`,
+    );
+    assert.match(
+      content,
+      /repair .*feature(?: name)?\/root metadata .*before (?:continuing|writing|producing)/i,
+      `${file}: missing stale metadata repair`,
+    );
+  }
+});
+
+test('planning, task, UX, prototype, and review outputs are self-locating', () => {
+  const outputContracts = new Map([
+    ['plugins/spectre/skills/spectre-create_plan/SKILL.md', ['plan.md']],
+    ['plugins/spectre/skills/spectre-create_tasks/SKILL.md', ['execute.md', 'tasks.json']],
+    ['plugins/spectre/skills/spectre-ux/SKILL.md', ['ux.md']],
+    ['plugins/spectre/skills/spectre-prototype/SKILL.md', ['HTML']],
+    ['plugins/spectre/skills/spectre-plan_review/SKILL.md', ['REVIEW_REPORT']],
+    [
+      'plugins/spectre/skills/spectre-task_review/SKILL.md',
+      ['REVIEW_REPORT', 'PREFLIGHT_JSON', 'REVIEW_STATE', 'IMPACT_JSON'],
+    ],
+  ]);
+
+  for (const [file, artifacts] of outputContracts) {
+    const content = read(file);
+    assert.match(content, /Feature: <feature-name>/, `${file}: missing Feature metadata contract`);
+    assert.match(
+      content,
+      /Feature Root: \.spectre\/features\/<feature-name>/,
+      `${file}: missing Feature Root metadata contract`,
+    );
+    for (const artifact of artifacts) {
+      assert.match(
+        content,
+        new RegExp(`${artifact.replace('.', '\\.')}[^\\n]*(?:feature|Feature)`),
+        `${file}: ${artifact} does not require self-location metadata`,
+      );
+    }
+  }
+});
+
+test('external planning reviewers receive the exact inherited root without branch rederivation', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-plan_review/SKILL.md',
+    'plugins/spectre/skills/spectre-task_review/SKILL.md',
+  ]) {
+    const content = read(file);
+    assert.match(
+      content,
+      /REVIEW_PROMPT[^.\n]*exact feature root/i,
+      `${file}: reviewer prompt omits the exact feature root`,
+    );
+    assert.match(
+      content,
+      /reviewer .*must not rederive .*branch/i,
+      `${file}: reviewer may rederive the root from the branch`,
+    );
+  }
+});
+
 test('tasks JSON fixture carries feature and feature_root metadata', () => {
   const file = 'plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json';
   const fixture = JSON.parse(read(file));

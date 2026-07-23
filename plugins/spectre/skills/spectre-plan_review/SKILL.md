@@ -10,14 +10,19 @@ Plan-only adversarial review: stabilize intent before `execute.md`/`tasks.json` 
 
 ## Inputs
 
-- `$ARGUMENTS` - `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`, optional explicit TASK_DIR.
-- Required: `{TASK_DIR}/specs/plan.md`. Helpful: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, `task_context.md`, `research/*.md`.
+- `$ARGUMENTS` - explicit feature name/root or descendant plan artifact, `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`.
+- Required: `{FEATURE_ROOT}/specs/plan.md`. Helpful: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, `task_context.md`, `research/*.md`.
 - If `plan.md` is absent -> stop, route to `/spectre:create_plan`. Do not ask the user to create missing optional artifacts.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `TASK_DIR = {arg path} || docs/tasks/{branch}`.
-- `REVIEW_REPORT = {TASK_DIR}/reviews/plan_review.md`; `mkdir -p`; if it exists, write `plan_review_{YYYY-MM-DD_HHMMSS}.md`.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical review artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it.
+- An explicit legacy `docs/tasks/**` plan remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new review report and record the legacy source.
+- `TASK_DIR = FEATURE_ROOT`.
+- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/plan_review.md`; `mkdir -p`; if it exists, write `plan_review_{YYYY-MM-DD_HHMMSS}.md`.
 - Canonical scope source, in order: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, explicit requirements in `task_context.md`.
 
 ## Canonical Scope Invariant
@@ -49,7 +54,7 @@ External report metadata is fixed by route: Codex -> Claude Code records `Review
 
 Run from repo root. Do not add approval flags, resume flags, broad bypass flags, `codex review`, project discovery commands, shell pipelines, or temp prompt files unless argument length requires a file. If a prompt file is unavoidable, keep the same command shape and pass `$(cat /tmp/plan_review_prompt.txt)` as the final argument.
 
-`REVIEW_PROMPT` includes: TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
+`REVIEW_PROMPT` includes the exact feature root, feature name, TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity. This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
 
 **Review lenses**
 
@@ -75,6 +80,7 @@ Run from repo root. Do not add approval flags, resume flags, broad bypass flags,
 ## Outputs + DONE
 
 `REVIEW_REPORT` required sections:
+0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
 1. **Must-Delete (Lens 1 - YAGNI)** - one nominated scope-safe cut or "No scope-safe deletion found".
 2. **Findings** - table `# | Severity | Lens | Location | Finding | Suggested Edit`.
 3. **Summary** - counts per severity; Blocker/High must resolve before task generation.
