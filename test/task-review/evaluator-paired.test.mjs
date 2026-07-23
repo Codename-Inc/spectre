@@ -60,13 +60,13 @@ function staticSchedule() {
       "candidate-opus-medium",
     ],
     [
-      "candidate-opus-medium",
-      "candidate-sol-medium",
       "baseline-opus-max",
+      "candidate-sol-medium",
+      "candidate-opus-medium",
     ],
     [
-      "baseline-opus-max",
       "candidate-opus-medium",
+      "baseline-opus-max",
       "candidate-sol-medium",
     ],
   ];
@@ -79,7 +79,9 @@ function staticSchedule() {
       trials: blockVariants.map((variant, sequence) => ({
         sequence: sequence + 1,
         variant,
-        trial_id: `block-${blockIndex + 1}-${variant}`,
+        trial_id: `b${String(blockIndex + 1).padStart(2, "0")}-s${String(
+          sequence + 1,
+        ).padStart(2, "0")}-${variant}-a01`,
       })),
     })),
   };
@@ -94,7 +96,7 @@ function observed(value, label = null) {
   };
 }
 
-function makeRun({ block, variant, scheduleHash, freezeHash }) {
+function makeRun({ block, variant, trialId, scheduleHash, freezeHash }) {
   const variantIndex = variants.indexOf(variant);
   const totalMs = [100, 60, 80][variantIndex] + (block - 1) * 10;
   const totalTokens = [1_000, 700, 800][variantIndex] + block * 10;
@@ -104,7 +106,6 @@ function makeRun({ block, variant, scheduleHash, freezeHash }) {
   const actualCost = [1, 0.6, 0.8][variantIndex] + (block - 1) * 0.1;
   const estimatedCost =
     [1.2, 0.7, 0.9][variantIndex] + (block - 1) * 0.1;
-  const trialId = `block-${block}-${variant}`;
   const protectedHashes = {
     "specs/plan.md": "plan-hash",
     "specs/execute.md": "execute-hash",
@@ -205,10 +206,20 @@ async function writeCountedBundle(root, mutate = () => {}) {
     freeze_id: "paired-freeze-v1",
   });
   const records = [];
+  const schedule = staticSchedule();
 
   for (let block = 1; block <= 3; block += 1) {
     for (const variant of variants) {
-      const run = makeRun({ block, variant, scheduleHash, freezeHash });
+      const trialId = schedule.blocks[block - 1].trials.find(
+        (trial) => trial.variant === variant,
+      ).trial_id;
+      const run = makeRun({
+        block,
+        variant,
+        trialId,
+        scheduleHash,
+        freezeHash,
+      });
       const path = join(root, "runs", run.trial, "result.json");
       const hash = await writeJson(path, run);
       records.push({
