@@ -19,29 +19,38 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 ## Step (1/2) - Archive Session Logs
 
-- **Action** — ArchiveLogs: Move session logs to archive directory
+- **Action** — ArchiveLogs: Move active session files for the current branch into each root's archive directory
 
 ```bash
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-session_dir="docs/tasks/${branch}/session_logs"
-archive_dir="${session_dir}/archive"
+canonical_dir=".spectre/handoffs/${branch}"
+legacy_dir="docs/tasks/${branch}/session_logs"
+archived_count=0
 
-# Check if session logs exist
-if [ ! -d "$session_dir" ] || [ -z "$(ls -A ${session_dir}/*.json 2>/dev/null)" ]; then
-    echo "NO_SESSIONS"
-    exit 0
+for session_dir in "$canonical_dir" "$legacy_dir"; do
+  [ -d "$session_dir" ] || continue
+  archive_dir="${session_dir}/archive"
+
+  while IFS= read -r -d '' session_file; do
+    mkdir -p "$archive_dir"
+    mv "$session_file" "$archive_dir/"
+    archived_count=$((archived_count + 1))
+  done < <(
+    find "$session_dir" -maxdepth 1 -type f \
+      \( -name '*_handoff.json' -o -name '*_todos.json' -o -name 'todos_history.json' \) \
+      -print0
+  )
+done
+
+if [ "$archived_count" -eq 0 ]; then
+  echo "NO_SESSIONS"
+  exit 0
 fi
 
-# Create archive and move all session files
-mkdir -p "$archive_dir"
-mv ${session_dir}/*_handoff.json "$archive_dir/" 2>/dev/null || true
-mv ${session_dir}/*_todos.json "$archive_dir/" 2>/dev/null || true
-mv ${session_dir}/todos_history.json "$archive_dir/" 2>/dev/null || true
-
-# Count archived
-archived_count=$(ls -1 ${archive_dir}/*_handoff.json 2>/dev/null | wc -l | xargs)
 echo "ARCHIVED:${archived_count}"
 ```
+
+Archive only the current branch's active, top-level files in `.spectre/handoffs/{branch}/` and the matching legacy `docs/tasks/{branch}/session_logs/`. Do not scan another branch, descend into an existing `archive/`, merge the roots, or restore an archived file. The raw branch name is used directly; slash-containing branches intentionally nest.
 
 ## Step (2/2) - Confirm to User
 
@@ -53,15 +62,16 @@ echo "ARCHIVED:${archived_count}"
   **Else** (output is `ARCHIVED:N`):
   > ✓ Session memory cleared
   >
-  > Archived {N} handoff file(s) to `docs/tasks/{branch}/session_logs/archive/`
+  > Archived {N} session file(s) under the matching `.spectre/handoffs/{branch}/archive/` and legacy `docs/tasks/{branch}/session_logs/archive/` directories.
   >
   > **Next**: Start a new session with `/clear` or close this terminal. Your next session will start fresh without auto-loaded context.
 
 ## Success Criteria
 
-- [ ] Session logs directory checked for existence
-- [ ] All `*_handoff.json` files moved to `archive/` subdirectory
-- [ ] All `*_todos.json` files moved to `archive/` subdirectory
-- [ ] `todos_history.json` moved to `archive/` subdirectory
+- [ ] Canonical and matching legacy session directories checked for the current branch only
+- [ ] All active `*_handoff.json` files in both roots moved to their own `archive/` subdirectory
+- [ ] All active `*_todos.json` files in both roots moved to their own `archive/` subdirectory
+- [ ] Active `todos_history.json` files in both roots moved to their own `archive/` subdirectory
+- [ ] Existing archives remain excluded and cannot be resurrected by legacy fallback
 - [ ] User informed of result (no sessions found OR count archived)
 - [ ] Clear instructions provided for starting fresh session

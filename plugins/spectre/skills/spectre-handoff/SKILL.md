@@ -1,6 +1,6 @@
 ---
 name: spectre-handoff
-description: Save state snapshot to session_logs for session resume
+description: Save a branch-keyed state snapshot for session resume
 user-invocable: true
 ---
 
@@ -13,7 +13,7 @@ Treat the current command arguments as this workflow's input. When invoked from 
 
 # handoff: Fast Session State Snapshot
 
-Generate progress update, gather context, output structured JSON for session resume. Output: `{timestamp}_handoff.json` in session_logs.
+Generate progress update, gather context, output structured JSON for session resume. Output: `{timestamp}_handoff.json` in `.spectre/handoffs/{branch}/`.
 
 **Performance Target**: 2-3 tool calls depending on session history
 
@@ -31,10 +31,23 @@ $ARGUMENTS
 
 ```bash
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-mkdir -p "docs/tasks/${branch}/session_logs"
+canonical_dir=".spectre/handoffs/${branch}"
+legacy_dir="docs/tasks/${branch}/session_logs"
+mkdir -p "$canonical_dir"
 
-# Count existing session logs for conditional flow
-session_count=$(ls docs/tasks/${branch}/session_logs/*_handoff.json 2>/dev/null | wc -l | xargs)
+# Canonical history wins. Matching legacy history is read only when canonical
+# history is absent, allowing the first canonical handoff to continue numbering.
+canonical_count=$(find "$canonical_dir" -maxdepth 1 -type f -name '*_handoff.json' 2>/dev/null | wc -l | xargs)
+if [ "$canonical_count" -gt 0 ]; then
+  history_dir="$canonical_dir"
+  session_count="$canonical_count"
+else
+  history_dir="$legacy_dir"
+  session_count=$(find "$legacy_dir" -maxdepth 1 -type f -name '*_handoff.json' 2>/dev/null | wc -l | xargs)
+fi
+session_number=$((session_count + 1))
+ts="$(date +%Y-%m-%d-%H%M%S)"
+output_path="${canonical_dir}/${ts}_handoff.json"
 
 beads_available=false
 beads_tasks='[]'
@@ -54,8 +67,11 @@ cat << EOF
   "branch": "$branch",
   "commit": "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)",
   "wip_count": $(git status --porcelain 2>/dev/null | wc -l | xargs),
-  "ts": "$(date +%Y-%m-%d-%H%M%S)",
+  "ts": "$ts",
   "session_count": $session_count,
+  "session_number": $session_number,
+  "history_path": "$history_dir",
+  "output_path": "$output_path",
   "beads_available": $beads_available,
   "beads_count": $beads_count,
   "beads": $beads_tasks
@@ -63,7 +79,7 @@ cat << EOF
 EOF
 ```
 
-**Output**: JSON with branch, commit, wip_count, ts, session_count, beads_available, beads_count, beads[]
+**Output**: JSON with branch, commit, wip_count, ts, session_count, session_number, literal history/output paths, beads_available, beads_count, beads[]
 
 ## Step 2: Compose Handoff Data
 
@@ -100,7 +116,7 @@ Check `session_count` from Step 1:
 
 **Do not narrate. Just write the file and output the confirmation.**
 
-Write directly to `docs/tasks/{branch}/session_logs/{ts}_handoff.json`
+Write directly to the literal `output_path` from Step 1: `.spectre/handoffs/{branch}/{ts}_handoff.json`.
 
 **JSON Schema**:
 ```json
@@ -109,7 +125,7 @@ Write directly to `docs/tasks/{branch}/session_logs/{ts}_handoff.json`
   "timestamp": "{ts}",
   "branch_name": "{branch}",
   "task_name": "{ARGUMENTS or branch}",
-  "session_number": 1,
+  "session_number": {session_number},
   "progress_update": {
     "summary": "string",
     "goal": "string",
@@ -149,22 +165,28 @@ Then respond: "✓ Handoff saved: {path}. First session recorded. Next session a
 
 **Do not narrate. Just spawn the subagent and output the confirmation when done.**
 
-Spawn `@sesh:sync` subagent with the composed data:
+Spawn `@spectre:sync` subagent with the composed data and the literal paths returned by Step 1:
 
 ```
 <current_session>
 {full JSON object you composed above}
 </current_session>
 
-<session_logs_path>
-docs/tasks/{branch}/session_logs
-</session_logs_path>
+<session_history_path>{history_path}</session_history_path>
+<handoff_output_path>{output_path}</handoff_output_path>
 ```
 
 The sync agent will:
-1. Read up to 3 previous handoff.json files
+1. Read up to 3 previous `*_handoff.json` files from the literal history path
 2. Synthesize current context with historical arc
-3. Write the final `{ts}_handoff.json` with enriched continuity
+3. Write the final `{ts}_handoff.json` to the literal canonical output path
 4. Return the file path
 
 Then respond: "✓ Handoff saved: {path}. Session {n} recorded with continuity from {x} previous sessions. Next session auto-resumes from this context."
+
+## Path and Numbering Contract
+
+- New handoffs write only to `.spectre/handoffs/{branch}/`; the raw branch name is used directly, so slash-containing branches intentionally create nested directories.
+- Canonical history wins. Matching legacy `docs/tasks/{branch}/session_logs/` handoffs are fallback read input only when there is no canonical history, and at most the three newest matching legacy handoffs are read.
+- `session_count` and `session_number` use canonical history, or matching legacy history only when there is no canonical history. The first canonical handoff therefore continues legacy numbering.
+- Pass the resolved history directory and canonical output file as literal paths to `@spectre:sync`. Neither skill nor agent reconstructs branch identity from those paths.
