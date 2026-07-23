@@ -74,6 +74,22 @@ Invocation Route: ${route}
 `,
     );
     break;
+  case "auth-bridge":
+    if (!process.env.CLAUDE_CONFIG_DIR) {
+      throw new Error("isolated Claude config is missing");
+    }
+    if (process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR !== "") {
+      throw new Error("Claude secure storage does not use the default namespace");
+    }
+    if (
+      process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.ANTHROPIC_AUTH_TOKEN
+    ) {
+      throw new Error("ambient credential material reached the reviewer");
+    }
+    await writeFile(reportPath, validReport);
+    break;
   case "timeout":
     await new Promise((resolve) => setTimeout(resolve, 60_000));
     break;

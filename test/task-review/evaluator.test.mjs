@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,8 +88,14 @@ test("run isolates candidate inputs and homes, excludes oracle, and persists raw
       "scored-report",
       ["--timeout-ms", "1000"],
     );
+    const authBridge = await runEvaluation(
+      root,
+      "auth-bridge",
+      "auth-bridge",
+      ["--timeout-ms", "1000"],
+    );
 
-    for (const run of [early, quiet, scored]) {
+    for (const run of [early, quiet, scored, authBridge]) {
       assert.equal(run.result.status, "valid");
       assert.equal(run.persisted.status, "valid");
       assert.equal(run.persisted.validity.report, true);
@@ -131,6 +144,76 @@ test("run isolates candidate inputs and homes, excludes oracle, and persists raw
     assert.equal(scored.persisted.quality.recall_by_severity.Blocker, 1);
     assert.equal(scored.persisted.quality.recall_by_severity.High, 0);
     assert.equal(scored.persisted.quality.unmatched_known.length, 39);
+    assert.deepEqual(authBridge.persisted.authentication.claude, {
+      checked: false,
+      logged_in: null,
+      auth_method: null,
+      api_provider: null,
+      source: "default-secure-storage",
+      unavailable_reason: "Custom reviewer command bypassed the real Claude auth preflight.",
+    });
+    const persistedEvidence = [
+      await readFile(
+        join(authBridge.outputDirectory, "result.json"),
+        "utf8",
+      ),
+      await readFile(
+        join(authBridge.outputDirectory, "raw", "reviewer.stdout.jsonl"),
+        "utf8",
+      ),
+      await readFile(
+        join(authBridge.outputDirectory, "raw", "reviewer.stderr.txt"),
+        "utf8",
+      ),
+    ].join("\n");
+    assert.doesNotMatch(
+      persistedEvidence,
+      /oauth[_-]?token|refresh[_-]?token|api[_-]?key|credentials?\.json/i,
+    );
+    assert.equal(
+      (await readdir(
+        authBridge.persisted.isolation.runtime_homes.claude,
+      )).includes(".credentials.json"),
+      false,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("authenticated real Claude host remains authenticated with isolated config and no copied credentials", async (t) => {
+  const ambient = spawnSync(
+    process.env.CLAUDE_BIN || "claude",
+    ["auth", "status", "--json"],
+    { encoding: "utf8", timeout: 5_000 },
+  );
+  if (ambient.status !== 0) {
+    t.skip("real Claude host is not authenticated");
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "task-review-claude-auth-"));
+  try {
+    const { probeClaudeAuthentication } = await implementation();
+    assert.equal(typeof probeClaudeAuthentication, "function");
+    const result = probeClaudeAuthentication(
+      process.env.CLAUDE_BIN || "claude",
+      root,
+    );
+
+    assert.deepEqual(result, {
+      checked: true,
+      logged_in: true,
+      auth_method: "claude.ai",
+      api_provider: "firstParty",
+      source: "default-secure-storage",
+      unavailable_reason: null,
+    });
+    assert.equal((await readdir(root)).includes(".credentials.json"), false);
+    assert.doesNotMatch(
+      JSON.stringify(result),
+      /email|org(?:id|name)|oauth[_-]?token|refresh[_-]?token|api[_-]?key/i,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -171,10 +171,61 @@ function requireOptions(options, names) {
 function cleanEnvironment() {
   const environment = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (/^(SUBSPACE|GROVE|CLAUDE|SPECTRE|CODEX)/.test(key)) continue;
+    if (/^(SUBSPACE|GROVE|CLAUDE|SPECTRE|CODEX|ANTHROPIC)/.test(key)) {
+      continue;
+    }
     environment[key] = value;
   }
   return environment;
+}
+
+function claudeAuthenticationEnvironment(claudeHome, baseEnvironment) {
+  return {
+    ...baseEnvironment,
+    CLAUDE_CONFIG_DIR: claudeHome,
+    // Keep config/session output isolated while using Claude's existing secure
+    // storage namespace. The credential itself remains in Keychain or the
+    // runtime-managed default credential store and is never copied here.
+    CLAUDE_SECURESTORAGE_CONFIG_DIR: "",
+  };
+}
+
+export function probeClaudeAuthentication(
+  command,
+  claudeHome,
+  baseEnvironment = cleanEnvironment(),
+) {
+  const result = spawnSync(command, ["auth", "status", "--json"], {
+    encoding: "utf8",
+    env: claudeAuthenticationEnvironment(claudeHome, baseEnvironment),
+    timeout: 5_000,
+  });
+  let status = {};
+  try {
+    status = JSON.parse(result.stdout || "{}");
+  } catch {
+    return {
+      checked: true,
+      logged_in: false,
+      auth_method: null,
+      api_provider: null,
+      source: "default-secure-storage",
+      unavailable_reason: "Claude auth status returned invalid JSON.",
+    };
+  }
+  const loggedIn = result.status === 0 && status.loggedIn === true;
+  return {
+    checked: true,
+    logged_in: loggedIn,
+    auth_method:
+      typeof status.authMethod === "string" ? status.authMethod : null,
+    api_provider:
+      typeof status.apiProvider === "string" ? status.apiProvider : null,
+    source: "default-secure-storage",
+    unavailable_reason: loggedIn
+      ? null
+      : `Claude auth status exited ${result.status ?? "without a status"}.`,
+  };
 }
 
 async function stageCodexAuthentication(codexHome) {
@@ -952,8 +1003,7 @@ async function runEvaluation(options, hooks = {}) {
     });
     const baseEnvironment = cleanEnvironment();
     const environment = {
-      ...baseEnvironment,
-      CLAUDE_CONFIG_DIR: claudeHome,
+      ...claudeAuthenticationEnvironment(claudeHome, baseEnvironment),
       CODEX_HOME: codexHome,
       SPECTRE_HOME: spectreHome,
       TASK_REVIEW_REPORT: reportPath,
@@ -964,14 +1014,50 @@ async function runEvaluation(options, hooks = {}) {
       TASK_REVIEW_ROUTE: configuration.route,
     };
     stagedAuth = await stageCodexAuthentication(codexHome);
+    const claudeAuthentication =
+      configuration.runtime !== "claude-code"
+        ? {
+          checked: false,
+          logged_in: null,
+          auth_method: null,
+          api_provider: null,
+          source: "not-applicable",
+          unavailable_reason: "The selected reviewer runtime is not Claude Code.",
+        }
+        : options.reviewerCommand
+          ? {
+            checked: false,
+            logged_in: null,
+            auth_method: null,
+            api_provider: null,
+            source: "default-secure-storage",
+            unavailable_reason:
+              "Custom reviewer command bypassed the real Claude auth preflight.",
+          }
+          : probeClaudeAuthentication(command.command, claudeHome, environment);
     const version = commandVersion(command.command, environment);
     const preflightEnded = performance.now();
 
-    const processResult = await runReviewer(command.command, command.args, {
-      cwd: workspace,
-      env: environment,
-      timeoutMs,
-    });
+    const authenticationBlocked =
+      configuration.runtime === "claude-code" &&
+      claudeAuthentication.checked &&
+      !claudeAuthentication.logged_in;
+    const processResult = authenticationBlocked
+      ? {
+        exitCode: null,
+        signal: null,
+        error: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        skipped: true,
+        durationMs: 0,
+      }
+      : await runReviewer(command.command, command.args, {
+        cwd: workspace,
+        env: environment,
+        timeoutMs,
+      });
     const reviewerEnded = performance.now();
     const rawStdoutPath = join(rawDirectory, "reviewer.stdout.jsonl");
     const rawStderrPath = join(rawDirectory, "reviewer.stderr.txt");
@@ -984,7 +1070,11 @@ async function runEvaluation(options, hooks = {}) {
     ]);
 
     const blockedReasons = [];
-    if (processResult.timedOut) {
+    if (authenticationBlocked) {
+      blockedReasons.push(
+        `Claude authentication preflight failed: ${claudeAuthentication.unavailable_reason}`,
+      );
+    } else if (processResult.timedOut) {
       blockedReasons.push(`reviewer timeout after ${timeoutMs}ms`);
     } else if (processResult.error) {
       blockedReasons.push(`reviewer process error: ${processResult.error}`);
@@ -1090,6 +1180,7 @@ async function runEvaluation(options, hooks = {}) {
         signal: processResult.signal,
         timed_out: processResult.timedOut,
         timeout_ms: timeoutMs,
+        launched: !processResult.skipped,
         attempts: 1,
         retries: 0,
         repairs: 0,
@@ -1098,6 +1189,9 @@ async function runEvaluation(options, hooks = {}) {
           unavailable_reason:
             "No fallback route was configured or attempted by this evaluator run.",
         },
+      },
+      authentication: {
+        claude: claudeAuthentication,
       },
       lock: {
         path: lockFile,
