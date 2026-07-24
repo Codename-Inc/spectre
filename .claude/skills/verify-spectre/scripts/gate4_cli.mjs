@@ -365,10 +365,26 @@ g.check(registryOutput !== null, 'load-knowledge emits valid SessionStart JSON o
   'Claude Code parses this; malformed JSON silently drops the hook output');
 const registry = registryOutput?.hookSpecificOutput?.additionalContext;
 g.check(
-  typeof registry === 'string' && registry.includes(canonical.id) &&
-    registry.includes(`load '${canonical.id}'`),
+  typeof registry === 'string' && registry.includes(`ID: ${canonical.id} (v`) &&
+    registry.includes("load '<ID>'"),
   'SessionStart delivers searchable metadata and exact-load guidance',
   `unexpected registry: ${registry}`,
+);
+g.check(
+  typeof registry === 'string' &&
+    (registry.match(/knowledge-cli\.mjs' load /g) || []).length === 1,
+  'SessionStart hoists one load command template instead of one per record',
+  `unexpected registry: ${registry}`,
+);
+
+const knowledgeResumeRun = hookEvent('load-knowledge.mjs', populated, {
+  ...sessionInput,
+  source: 'resume',
+});
+g.check(
+  knowledgeResumeRun.code === 0 && knowledgeResumeRun.stdout.trim() === '',
+  'SessionStart injects no knowledge registry on resume',
+  `resume emitted ${knowledgeResumeRun.stdout.length} chars; a resumed transcript already replays the startup injection`,
 );
 g.check(
   typeof registry === 'string' && !registry.includes(canonical.sentinel) &&
@@ -781,6 +797,40 @@ if (process.env.SPECTRE_GATE4_FEATURE_HOST !== '1') {
     `ignore exit: ${blanketIgnoreCheck.code}; transcript: ${blanketRun.stdoutPath}`,
   );
 
+  const standalonePlanProject = makeProject('feature-host-standalone-plan');
+  fs.mkdirSync(path.join(standalonePlanProject, 'src'), { recursive: true });
+  fs.writeFileSync(
+    path.join(standalonePlanProject, 'src', 'cli.js'),
+    'export function run(args) { return args.length; }\n',
+  );
+  fs.writeFileSync(
+    path.join(standalonePlanProject, 'README.md'),
+    '# Disposable standalone plan fixture\n',
+  );
+  commitFixture(standalonePlanProject, 'test: seed standalone plan fixture');
+  const standalonePlanRun = runClaudeFeatureHost(
+    'standalone-plan',
+    standalonePlanProject,
+    [
+      '/spectre:spectre-create_plan --depth light',
+      'Plan a scoped change that adds a local --health CLI flag returning process status.',
+      'IN: the flag and focused tests. OUT: network health endpoints. ANTI-SCOPE: telemetry.',
+      'There is deliberately no feature name or root. Derive one, create it, and proceed without asking.',
+    ].join(' '),
+  );
+  const standalonePlanFeatures = path.join(standalonePlanProject, '.spectre', 'features');
+  const standalonePlanName = fs.existsSync(standalonePlanFeatures)
+    ? fs.readdirSync(standalonePlanFeatures).find((name) =>
+      fs.existsSync(path.join(standalonePlanFeatures, name, 'specs', 'plan.md')))
+    : undefined;
+  g.check(
+    standalonePlanRun.code === 0 &&
+      Boolean(standalonePlanName) &&
+      fs.existsSync(path.join(standalonePlanFeatures, standalonePlanName, 'feature.json')),
+    'standalone create-plan derives a feature root and writes without a naming gate',
+    standalonePlanRun.stderr || `transcript: ${standalonePlanRun.stdoutPath}`,
+  );
+
   const scopeBeforeRescope = creatorScopeBody;
   const rescopeRun = runClaudeFeatureHost(
     'rescope',
@@ -835,13 +885,19 @@ if (process.env.SPECTRE_GATE4_FEATURE_HOST !== '1') {
       'OUT: remote upload. ANTI-SCOPE: telemetry.',
       'The boundaries are confirmed and there are no questions.',
       'Use the normal proposal flow; I am not selecting or continuing an existing managed feature.',
-      'If the proposed directory is occupied, follow the shipped collision safeguard and stop.',
+      'If the proposed directory is occupied, select the first free suffixed root and proceed without asking.',
     ].join(' '),
   );
+  const collisionFeaturesDir = path.join(collisionProject, '.spectre', 'features');
+  const collisionFallback = fs.readdirSync(collisionFeaturesDir)
+    .find((name) => name.startsWith('occupied-collision-proof-'));
   g.check(
     collisionRun.code === 0 &&
-      JSON.stringify(snapshotTree(collisionRoot)) === JSON.stringify(collisionBefore),
-    'unintended occupied feature directory remains byte-identical',
+      JSON.stringify(snapshotTree(collisionRoot)) === JSON.stringify(collisionBefore) &&
+      Boolean(collisionFallback) &&
+      fs.existsSync(path.join(collisionFeaturesDir, collisionFallback, 'feature.json')) &&
+      fs.existsSync(path.join(collisionFeaturesDir, collisionFallback, 'concepts', 'scope.md')),
+    'occupied proposal remains untouched while a free suffixed root proceeds',
     collisionRun.stderr || `transcript: ${collisionRun.stdoutPath}`,
   );
 

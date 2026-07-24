@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "feature": "knowledge-hook-duplication",
+    "feature_root": ".spectre/features/knowledge-hook-duplication",
+    "proved_at": "2026-07-24",
+    "aggregate_status": "PASS",
+    "orchestrated": false
+  },
+  "acceptance_sources": [
+    {
+      "type": "explicit_user_instruction",
+      "reference": "current thread",
+      "summary": "Stop injecting the knowledge registry on resume and stop duplicating content in the payload. Preamble must stay verbatim. Registry must still carry enough for the agent to load a record and its resources/references."
+    },
+    {
+      "type": "reported_defect",
+      "reference": "user-supplied session report",
+      "summary": "load-knowledge.mjs emitted the registry on both startup and resume; the two attachments had the same content in a different record order, so their hashes differed."
+    }
+  ],
+  "authorized_scope_hash": null,
+  "candidate": null,
+  "candidate_note": "No BASE_SHA/HEAD_SHA/DIFF_SHA256 tuple was supplied and no commit was made; proof covers the uncommitted working tree at BASE 16fbfe89d43dc703cd3b0381f67797278c0689b3.",
+  "tools_and_scenarios": [
+    {
+      "name": "run-journeys.mjs",
+      "path": ".spectre/features/knowledge-hook-duplication/proof/evidence/run-journeys.mjs",
+      "kind": "real-interface-driver",
+      "description": "Spawns the real load-knowledge.mjs SessionStart hook with real stdin hook payloads and the real knowledge-cli.mjs against an isolated temp project and temp SPECTRE_HOME. Decides every claim from observed stdout bytes and their SHA-256 hashes, not from product assertions.",
+      "reusable": true
+    },
+    {
+      "name": "HEAD comparison worktree",
+      "path": "/tmp/spectre-head-proof (git worktree, detached at 16fbfe8)",
+      "kind": "baseline",
+      "description": "Clean checkout of HEAD so the before/after comparison runs the real pre-change code rather than a reconstruction."
+    },
+    {
+      "name": "gate4_cli.mjs",
+      "path": ".claude/skills/verify-spectre/scripts/gate4_cli.mjs",
+      "kind": "existing-project-gate",
+      "description": "Project's established real-CLI gate; extended with two checks for this change."
+    }
+  ],
+  "matrix": [
+    {
+      "id": "R1",
+      "requirement": "The knowledge registry is not injected on SessionStart source=resume.",
+      "source": "explicit_user_instruction",
+      "start_state": "Isolated project with a real store holding 3 active records.",
+      "user_action": "Host sends SessionStart with source=resume to the real hook over stdin.",
+      "observable_result": "Hook exits 0 and writes nothing to stdout.",
+      "mechanism": "Real hook process, real stdin payload.",
+      "primary_evidence": "evidence/fixed.json journeys.session_resume: emitted=false, contextChars=0, exitCode=0. Baseline evidence/head.json journeys.session_resume: emitted=true, contextChars=3692.",
+      "supporting_diagnostics": "test_load-knowledge.mjs 'emits no knowledge context on resume'; gate4 check 'SessionStart injects no knowledge registry on resume'.",
+      "status": "PASS",
+      "limitations": null
+    },
+    {
+      "id": "R2",
+      "requirement": "startup, clear and compact still deliver the registry; handoff-resume keeps its resume trigger.",
+      "source": "explicit_user_instruction",
+      "start_state": "Same isolated project.",
+      "user_action": "Host sends SessionStart for each of startup, clear, compact; hooks.json is read as shipped.",
+      "observable_result": "All three emit a 3131-char registry. hooks.json has two SessionStart groups: startup|resume|clear|compact -> bootstrap.mjs + handoff-resume.mjs, and startup|clear|compact -> load-knowledge.mjs.",
+      "mechanism": "Real hook process; shipped hooks.json parsed from disk.",
+      "primary_evidence": "evidence/fixed.json journeys.session_startup/clear/compact emitted=true (3131 chars each); journeys.hook_wiring.groups shows the split with load-knowledge.mjs absent from the resume group.",
+      "supporting_diagnostics": "test_load-knowledge.mjs 'excludes resume from the knowledge SessionStart hook matcher'.",
+      "status": "PASS",
+      "limitations": null
+    },
+    {
+      "id": "R3",
+      "requirement": "Rendered registry content is byte-stable when a verified load reshuffles the ranking.",
+      "source": "reported_defect",
+      "start_state": "3 records whose alphabetical order is the reverse of their source-newness ranking.",
+      "user_action": "Inject, run a real verified `knowledge-cli.mjs load` (which records load activity), inject again.",
+      "observable_result": "Both attachments hash to d6f5d45268ce6f6792d7... with order alpha,mike,zulu. Baseline HEAD produced two different hashes (02c95916... then a9752eb2...) with orders zulu,mike,alpha then zulu,alpha,mike.",
+      "mechanism": "Real hook + real CLI load between injections.",
+      "primary_evidence": "evidence/fixed.json journeys.reinjection_after_load.identical=true; evidence/head.json journeys.reinjection_after_load.identical=false with differing firstOrder/secondOrder.",
+      "supporting_diagnostics": "test_knowledge-registry.mjs 'emits byte-identical content when load activity reshuffles the ranking' and 'renders in id order while ranking still governs which records survive'.",
+      "status": "PASS",
+      "limitations": "Proves stability against ranking churn. It does not prove stability against record content edits, which correctly do change the payload."
+    },
+    {
+      "id": "R4",
+      "requirement": "The load command appears once as a template rather than once per record.",
+      "source": "explicit_user_instruction",
+      "start_state": "3-record store.",
+      "user_action": "Inspect the emitted registry payload.",
+      "observable_result": "1 occurrence of the load command vs 3 on HEAD; payload 3692 -> 3131 chars for 3 records.",
+      "mechanism": "Real hook output.",
+      "primary_evidence": "evidence/fixed.json journeys.session_startup.loadCommandOccurrences=1; evidence/head.json =3.",
+      "supporting_diagnostics": "gate4 check 'SessionStart hoists one load command template instead of one per record'; registry unit assertions.",
+      "status": "PASS",
+      "limitations": null
+    },
+    {
+      "id": "R5",
+      "requirement": "The policy preamble is byte-identical to HEAD.",
+      "source": "explicit_user_instruction",
+      "start_state": "Identical record fixtures under both HEAD and the working tree.",
+      "user_action": "Slice each emitted payload at '## Available Knowledge' and hash, with run-specific paths normalized.",
+      "observable_result": "Both hash to b31f969fe12ebeef67d1240394a37d6c... at 2543 normalized chars.",
+      "mechanism": "Real hook output from both code versions.",
+      "primary_evidence": "evidence/head.json and evidence/fixed.json journeys.session_startup.preambleSha256 are equal.",
+      "supporting_diagnostics": "Independent module-level render with identical projectDir and cliPath: preamble equal at 2599 raw chars.",
+      "status": "PASS",
+      "limitations": "Path normalization is required because the two runs necessarily use different project and plugin roots. An earlier normalizer bug produced a false mismatch; it was corrected to normalize realpaths longest-first."
+    },
+    {
+      "id": "R6",
+      "requirement": "An agent can still load a record and its resources using only the hoisted template plus a verbatim ID.",
+      "source": "explicit_user_instruction",
+      "start_state": "3-record store; registry payload as emitted.",
+      "user_action": "Extract the template line from the payload, substitute an ID verbatim, execute it through /bin/sh.",
+      "observable_result": "Exit 0; the record body is returned and SPECTRE_KNOWLEDGE_RESOURCE_LOCATIONS (record directory plus verified resource paths) is present.",
+      "mechanism": "Real shell execution of the agent-constructed command against the real CLI.",
+      "primary_evidence": "evidence/fixed.json journeys.constructed_load_command: exitCode=0, returnedRecordBody=true, returnedResourceLocations=true.",
+      "supporting_diagnostics": "loader.mjs formatKnowledgeLoadHuman appends the resource manifest to every load.",
+      "status": "PASS",
+      "limitations": "Fixture records carry no supporting resource files, so the resources array is empty; the delivery mechanism is proven, a populated manifest is not."
+    },
+    {
+      "id": "R7",
+      "requirement": "The generated Codex mirror carries the same behavior.",
+      "source": "repository convention (plugins/spectre-codex is generated)",
+      "start_state": "Regenerated mirror after npm run sync-codex.",
+      "user_action": "Run the identical journey set against plugins/spectre-codex with --host codex.",
+      "observable_result": "resume emits nothing; startup/clear/compact emit; reinjection byte-identical; 1 load command occurrence; preamble hash equal to the Claude payload; same two-group hook wiring.",
+      "mechanism": "Real hook process against the generated mirror.",
+      "primary_evidence": "evidence/codex-mirror.json.",
+      "supporting_diagnostics": "npm run sync-codex -- --check --quiet reports the mirror in sync.",
+      "status": "PASS",
+      "limitations": null
+    }
+  ],
+  "run_history": [
+    {
+      "run": 1,
+      "description": "Initial evidence run with a hand-built store layout.",
+      "outcome": "Invalid: no payload emitted for any source under either version. The fabricated store was not recognized by resolveProjectStore.",
+      "action": "Rewrote the runner to create the store through the product's own resolveProjectStore."
+    },
+    {
+      "run": 2,
+      "description": "Evidence run after store fix.",
+      "outcome": "R1-R4 and R7 observed as recorded. R5 reported a false 8-char preamble mismatch.",
+      "action": "Diagnosed the mismatch as /tmp vs /private/tmp realpath in the HEAD worktree path, then an alias ordering bug in the normalizer. Corrected both."
+    },
+    {
+      "run": 3,
+      "description": "Final evidence run across HEAD, working tree, and Codex mirror.",
+      "outcome": "All seven rows PASS.",
+      "action": "None."
+    }
+  ],
+  "findings": [
+    {
+      "fingerprint": "gate4-duplicate-identifier-resumeRun",
+      "classification": "proof_infrastructure",
+      "description": "The gate4 check added for resume reused an identifier already declared later in the file, so the gate failed to parse.",
+      "repair": "Renamed the binding to knowledgeResumeRun.",
+      "attempts": 1,
+      "reproven": true
+    },
+    {
+      "fingerprint": "proof-runner-fabricated-store",
+      "classification": "proof_infrastructure",
+      "description": "The evidence runner invented a store layout that the product does not recognize, producing empty payloads that would have read as a false negative.",
+      "repair": "Create the store via the product's resolveProjectStore.",
+      "attempts": 1,
+      "reproven": true
+    },
+    {
+      "fingerprint": "proof-runner-path-normalization",
+      "classification": "proof_infrastructure",
+      "description": "Preamble comparison across two plugin roots reported a false 8-char mismatch caused by /private/tmp realpathing and then by replacing the shorter alias first.",
+      "repair": "Normalize both literal and realpath spellings, longest alias first.",
+      "attempts": 2,
+      "reproven": true
+    }
+  ],
+  "product_defects_found": [],
+  "repairs": {
+    "product": 0,
+    "proof_infrastructure": 3,
+    "cap": 3,
+    "cap_reached": false
+  },
+  "verification": {
+    "npm_test": "362/362 passing (5 consecutive clean runs)",
+    "sync_codex_check": "clean",
+    "gate4_real_cli": "56/56 (54 before this change; 2 checks added)"
+  },
+  "limitations": [
+    "One full-suite run reported 25 failures and could not be reproduced across five subsequent runs. No failing test name was captured before it went green. The suite spawns the verification gates recursively and several assertions are timing-bounded, so process contention is the leading explanation. It is not attributed to this change: the tests covering the changed code and the real-CLI gate pass deterministically. Flagged rather than dismissed.",
+    "Proof covers an uncommitted working tree. No candidate tuple was supplied and nothing was committed.",
+    "The working tree carried 56 pre-existing modified files unrelated to this change; they were not touched and not proven.",
+    "The payload reduction measured on this repository's own 4-record store is 4505 -> 3774 chars. The marginal per-record cost falls from 476 to 233 chars, so the saving grows with the number of records.",
+    "Token counts quoted anywhere are 4-chars-per-token estimates, not host tokenizer output."
+  ]
+}

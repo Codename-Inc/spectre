@@ -20,10 +20,10 @@ Codebase research: spawn parallel read-only agents, synthesize their findings in
 
 ## Feature root contract
 
-- Resolve an explicit feature directory or feature name first, then a supplied artifact beneath the feature root, then one unambiguous feature artifact from the current thread. If unresolved or ambiguous, use the proposal flow below; never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature.
-- For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` in the existing immediate response. Silence on the name accepts it; never create a separate name-confirmation gate.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
 - When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
-- Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
+- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
 - Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
 - Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
 - If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.

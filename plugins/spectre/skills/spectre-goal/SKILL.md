@@ -17,7 +17,9 @@ Turn existing Spectre planning and execution-state artifacts into a copy-ready a
 
 ## Working Set
 
-- Resolve `FEATURE_ROOT` in this order: an explicit feature directory or feature name; a supplied artifact beneath the feature root; one unambiguous feature artifact in the current conversation. Never infer it from the branch, recency, or lifecycle state.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
+- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - An explicit legacy `docs/tasks/**` plan/execute/task artifact remains a compatibility input, but new goal prompts require a confirmed `.spectre/features/<feature-name>/` root and record the legacy source.
 - Resolve `INPUT_MODE`: use structured mode for an explicit/default execute index with its resolvable task source; use plan-direct mode for an explicit readable source plan plus existing readable runtime state.
 - Structured mode: `OUT_DIR = FEATURE_ROOT`; `EXECUTE_INDEX = explicit path || {FEATURE_ROOT}/specs/execute.md`; resolve `TASKS_JSON` from its `Task Detail Source`.
@@ -49,7 +51,7 @@ Use an explicit user cap when supplied. Otherwise use 40 goal turns and state th
    - Keep scope broad enough to repair an upstream cause but narrow enough to audit against the canonical artifacts.
 3. Require this process order in both prompt forms:
    - Structured mode runs `Skill(spectre-execute)` with `EXECUTE_INDEX --orchestrated`.
-   - Plan-direct mode: invoke `Skill(spectre-execute)` with the source-plan path and `--orchestrated`.
+   - Plan-direct mode: invoke `Skill(spectre-execute)` with the source-plan path, `{FEATURE_ROOT}`, and `--orchestrated`.
    - Structured mode: only after execute meets its DONE contract, run `Skill(spectre-proof)` with `OUT_DIR --orchestrated` and follow its proof-repair loop until aggregate `PASS` or escalation.
    - Plan-direct mode: only after execute is DONE, invoke `Skill(spectre-proof)` with the same output directory (`OUT_DIR`), `PLAN_SOURCE`, and `--orchestrated`; follow its proof-repair loop until aggregate `PASS` or escalation.
    - Do not imitate, summarize away, or bypass either skill's current contract.

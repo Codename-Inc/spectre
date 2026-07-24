@@ -389,8 +389,31 @@ test('spectre-execute uses lightweight sentinel review before final adversarial 
     assert.match(skill, /Lightweight sentinel review/);
     assert.match(skill, /Final adversarial code review \+ validate/);
     assert.match(skill, /sentinel review counts/);
+    assert.match(
+      skill,
+      /sha256\(requirement anchor \+ primary symbol \+ normalized observable failure\)/,
+    );
+    assert.match(skill, /Return all evidence-backed CRITICAL\/HIGH findings/);
+    assert.match(skill, /fingerprint · attempt · route · result\/disposition/);
+    assert.match(
+      skill,
+      /distinct findings have independent budgets and there is no global sentinel\/fix cap/,
+    );
+    assert.match(skill, /Attempt 1 uses one focused `@spectre(?::|_)dev` repair/);
+    assert.match(skill, /primary revalidates it and owns attempt 2/);
+    assert.match(skill, /implement directly or use a clean-context, high-effort opposing runtime/);
+    assert.match(skill, /never replay the same prompt, agent, or approach/);
+    assert.match(skill, /survives attempt 2[^\n]*promote it to source-backed Adapt work/);
+    assert.match(skill, /Growth >25%[^\n]*may trigger Adapt sooner/);
+    assert.match(skill, /CRITICAL\/HIGH findings re-enter Reflect\/Adapt as source-backed gap work/);
+    assert.match(
+      skill,
+      /Never request approval solely because of repair count, reviewer count, diff growth, or a recurring finding/,
+    );
     assert.doesNotMatch(skill, /Dual clean-room review/);
     assert.doesNotMatch(skill, /dispatch two .*reviewer/);
+    assert.doesNotMatch(skill, /<=3 focused fix waves/);
+    assert.doesNotMatch(skill, /circuit breaker trips → halt and surface/);
   }
 });
 
@@ -444,7 +467,7 @@ test('plan-direct execute resolves explicit plans without changing structured de
     assert.ok(planDirectMode > structuredMode);
     assert.match(
       execute,
-      /No-argument execution[^\n]*feature-resolution order/i,
+      /No-argument execution[^\n]*feature-resolution rule[^\n]*without a naming gate/i,
     );
     assert.match(
       execute,
@@ -700,7 +723,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     const scopeUx = scope.indexOf('journeys, segments, states, copy, or accessibility');
     const scopePrototype = scope.indexOf('interaction/layout/visual validation materially matters');
     const scopeTasks = scope.indexOf('well-understood non-UI work');
-    const scopePlan = scope.indexOf('Otherwise');
+    const scopePlan = scope.indexOf('5. Otherwise');
     assert.ok(scopeUx !== -1);
     assert.ok(scopePrototype > scopeUx);
     assert.ok(scopeTasks > scopePrototype);
@@ -839,6 +862,28 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       assert.match(skill, /PR_CANDIDATE_STALE/);
       assert.match(skill, /`--draft`.*`--orchestrated`/s);
       assert.match(skill, /No merge, deploy, release, or public proof publication occurs/);
+      assert.match(
+        skill,
+        /Before any artifact or product write[^\n]*git status --porcelain=v1 --untracked-files=all/,
+      );
+      assert.match(
+        skill,
+        /Clean linked worktree:[\s\S]*stay in the current directory[\s\S]*Never create another worktree/,
+      );
+      assert.match(
+        skill,
+        /Dirty linked worktree:[\s\S]*create a clean sibling worktree[\s\S]*from committed `HEAD`/,
+      );
+      assert.match(
+        skill,
+        /Primary\/local checkout:[\s\S]*create a clean linked worktree[\s\S]*from committed `HEAD`/,
+      );
+      assert.match(
+        skill,
+        /Do not stash, reset, commit, copy, or otherwise carry its pre-existing changes/,
+      );
+      assert.match(skill, /Apply this routing without a confirmation gate/);
+      assert.match(skill, /run every child in the selected checkout/);
     }
 
     assert.doesNotMatch(deliver, /Skill\(spectre-scope\)/);

@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof — knowledge-hook-duplication</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --ink: #e6e9ef;
+    --muted: #99a1b3; --pass: #3fb950; --fail: #f85149; --warn: #d29922; --accent: #58a6ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 17px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .meta { color: var(--muted); font-size: 13px; font-family: var(--mono); }
+  .meta div { margin: 2px 0; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; font-family: var(--mono); }
+  .b-pass { background: rgba(63,185,80,.15); color: var(--pass); border: 1px solid rgba(63,185,80,.35); }
+  .b-fail { background: rgba(248,81,73,.15); color: var(--fail); border: 1px solid rgba(248,81,73,.35); }
+  .b-warn { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.35); }
+  .hero { display: flex; align-items: center; gap: 14px; margin: 20px 0 8px; }
+  .hero .badge { font-size: 15px; padding: 6px 16px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .05em; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px 18px; margin: 12px 0; }
+  .row-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+  pre { background: #0b0d11; border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px;
+    margin: 8px 0; color: #cdd5e0; }
+  .del { color: var(--fail); }
+  .add { color: var(--pass); }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cmp > div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .cmp h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); }
+  .lim li { margin: 8px 0; }
+  ul { padding-left: 20px; }
+  .note { color: var(--muted); font-size: 13px; }
+  @media (max-width: 720px) { .cmp { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Proof — knowledge-hook-duplication</h1>
+  <div class="meta">
+    <div>Feature: knowledge-hook-duplication</div>
+    <div>Feature Root: .spectre/features/knowledge-hook-duplication</div>
+    <div>Proved: 2026-07-24 &nbsp;·&nbsp; Baseline: 16fbfe8 (detached worktree) &nbsp;·&nbsp; Host: claude + codex</div>
+  </div>
+
+  <div class="hero">
+    <span class="badge b-pass">AGGREGATE PASS</span>
+    <span class="note">7 of 7 rows passed on inspected primary evidence · 0 product defects · 3 proof-infrastructure repairs</span>
+  </div>
+
+  <div class="card">
+    <strong>What was proven.</strong> The SPECTRE knowledge registry was being injected on
+    <span class="mono">resume</span> as well as <span class="mono">startup</span>, and the two attachments
+    carried the same records in a different order, so their hashes differed. Both behaviors are gone.
+    Evidence comes from spawning the real <span class="mono">load-knowledge.mjs</span> hook with real
+    stdin payloads and the real <span class="mono">knowledge-cli.mjs</span>, against both the pre-change
+    code in a clean HEAD worktree and the current working tree. Every verdict is decided by observed
+    stdout bytes and their SHA-256 hashes, not by the product's own assertions.
+  </div>
+
+  <h2>Acceptance matrix</h2>
+  <table>
+    <thead><tr><th style="width:52px">Row</th><th>Requirement</th><th style="width:280px">Observed</th><th style="width:78px">Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="row-id">R1</td>
+        <td>No registry injection on <span class="mono">source=resume</span></td>
+        <td class="mono">fixed: emitted=false, 0 chars<br>HEAD: emitted=true, 3692 chars</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R2</td>
+        <td>startup / clear / compact still deliver; handoff-resume keeps resume</td>
+        <td class="mono">3131 chars each; hooks.json split into 2 groups</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R3</td>
+        <td>Content byte-stable when a verified load reshuffles ranking</td>
+        <td class="mono">fixed: identical=true<br>HEAD: identical=false</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R4</td>
+        <td>Load command hoisted once, not once per record</td>
+        <td class="mono">fixed: 1 occurrence<br>HEAD: 3 occurrences</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R5</td>
+        <td>Policy preamble byte-identical to HEAD</td>
+        <td class="mono">both b31f969fe12ebeef… (2543 chars)</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R6</td>
+        <td>Agent can still load a record + resources from template + ID</td>
+        <td class="mono">exit 0; body + resource locations returned</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+      <tr>
+        <td class="row-id">R7</td>
+        <td>Generated Codex mirror at parity</td>
+        <td class="mono">same behavior, identical preamble hash</td>
+        <td><span class="badge b-pass">PASS</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>R1 / R2 — SessionStart sources, real hook over stdin</h2>
+  <p class="note">Each row is one real process invocation with a real hook payload on stdin.</p>
+  <table>
+    <thead><tr><th>source</th><th>HEAD (16fbfe8)</th><th>Working tree</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">startup</td><td class="mono">emitted, 3692 chars</td><td class="mono">emitted, 3131 chars</td><td class="note">preserved, smaller</td></tr>
+      <tr><td class="mono">resume</td><td class="mono del">emitted, 3692 chars</td><td class="mono add">nothing emitted</td><td class="note">duplicate eliminated</td></tr>
+      <tr><td class="mono">clear</td><td class="mono">emitted, 3692 chars</td><td class="mono">emitted, 3131 chars</td><td class="note">preserved</td></tr>
+      <tr><td class="mono">compact</td><td class="mono">emitted, 3692 chars</td><td class="mono">emitted, 3131 chars</td><td class="note">preserved</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Shipped hooks.json wiring</h3>
+  <div class="cmp">
+    <div>
+      <h4>HEAD</h4>
+      <pre>startup|resume|clear|compact
+  → bootstrap.mjs
+  → handoff-resume.mjs
+  → <span class="del">load-knowledge.mjs</span></pre>
+    </div>
+    <div>
+      <h4>Working tree</h4>
+      <pre>startup|resume|clear|compact
+  → bootstrap.mjs
+  → handoff-resume.mjs
+
+<span class="add">startup|clear|compact</span>
+  → load-knowledge.mjs</pre>
+    </div>
+  </div>
+  <p class="note">
+    <span class="mono">handoff-resume.mjs</span> genuinely needs <span class="mono">resume</span> and keeps it.
+    A second, independent gate in <span class="mono">load-knowledge.mjs</span>
+    (<span class="mono">SESSION_SOURCES</span>) also drops <span class="mono">resume</span>, so a stale
+    installed hooks.json — such as the cached 6.0.0 copy in the original report — cannot reintroduce
+    the duplicate on its own.
+  </p>
+
+  <h2>R3 — the reported symptom, reproduced and fixed</h2>
+  <p class="note">
+    Inject → run a real <span class="mono">knowledge-cli.mjs load</span> (which records load activity and
+    therefore changes the ranking) → inject again. Three records whose alphabetical order is deliberately
+    the reverse of their source-newness ranking.
+  </p>
+  <div class="cmp">
+    <div>
+      <h4>HEAD — unstable</h4>
+      <pre>1st  sha 02c95916d4d254f2…
+     order  zulu, mike, alpha
+
+2nd  sha <span class="del">a9752eb24d20e067…</span>
+     order  <span class="del">zulu, alpha, mike</span>
+
+identical: <span class="del">false</span></pre>
+    </div>
+    <div>
+      <h4>Working tree — stable</h4>
+      <pre>1st  sha d6f5d45268ce6f67…
+     order  alpha, mike, zulu
+
+2nd  sha <span class="add">d6f5d45268ce6f67…</span>
+     order  <span class="add">alpha, mike, zulu</span>
+
+identical: <span class="add">true</span></pre>
+    </div>
+  </div>
+  <p class="note">
+    Ranking still decides <em>which</em> records survive the payload budget; it no longer decides what
+    order they print in. Rendering is re-sorted by ID after selection, so the emitted bytes change only
+    when the record set or its content changes.
+  </p>
+
+  <h2>R4 — duplicated bytes removed</h2>
+  <p class="note">On HEAD the absolute CLI path and absolute project dir were repeated in a load command for every record.</p>
+  <div class="cmp">
+    <div>
+      <h4>HEAD — per record</h4>
+      <pre>### Knowledge record: feature-zulu
+- ID: feature-zulu
+- Version: 1
+- Use when: …
+- Activation cues: …
+- Load exact record: '&lt;cli&gt;' load
+  'feature-zulu' --project-dir '&lt;dir&gt;'</pre>
+      <p class="note mono">3 records → 3 load commands · 3692 chars</p>
+    </div>
+    <div>
+      <h4>Working tree — hoisted once</h4>
+      <pre>Load a record by copying its ID
+verbatim into this command:
+
+'&lt;cli&gt;' load '&lt;ID&gt;' --project-dir '&lt;dir&gt;'
+
+- ID: feature-zulu (v1) — Use when: …
+  Cues: …</pre>
+      <p class="note mono">3 records → 1 load command · 3131 chars</p>
+    </div>
+  </div>
+  <p class="note">
+    On this repository's own 4-record store the payload falls from 4505 to 3774 characters. The marginal
+    cost per record falls from 476 to 233 characters, so the saving grows with the number of records and
+    more records fit under the size cap before truncation. Character-to-token figures quoted elsewhere are
+    4-chars-per-token estimates, not host tokenizer output.
+  </p>
+
+  <h2>R5 — preamble untouched</h2>
+  <p class="note">
+    The policy preamble was explicitly out of scope. Both versions were rendered from identical record
+    fixtures, sliced at <span class="mono">## Available Knowledge</span>, and hashed with run-specific
+    paths normalized.
+  </p>
+  <pre>HEAD          b31f969fe12ebeef67d1240394a37d6c…   2543 chars
+Working tree  b31f969fe12ebeef67d1240394a37d6c…   2543 chars
+byte-identical: <span class="add">true</span></pre>
+  <p class="note">
+    Corroborated independently by a module-level render using one shared project dir and CLI path:
+    preamble equal at 2599 raw characters.
+  </p>
+
+  <h2>R6 — the hoisted template still works</h2>
+  <p class="note">
+    Removing per-record commands means the agent must build the command itself. That risk was proven, not
+    assumed: the template line was extracted from the emitted payload, an ID substituted verbatim, and the
+    result executed through a real shell.
+  </p>
+  <pre>template   '&lt;cli&gt;/knowledge-cli.mjs' load '&lt;ID&gt;' --project-dir '&lt;dir&gt;'
+executed   …load 'feature-zulu'…
+exit code  0
+returns    record body                        ✓
+           SPECTRE_KNOWLEDGE_RESOURCE_LOCATIONS ✓  (record directory + verified resource paths)</pre>
+  <p class="note">
+    Resources and references are delivered by the load itself
+    (<span class="mono">loader.mjs formatKnowledgeLoadHuman</span>), which is why the registry does not need
+    to carry them. The ID stays verbatim as the first token of its line, so no derivation is required.
+    <em>Limitation:</em> the fixture records carry no supporting resource files, so the manifest is empty —
+    the delivery mechanism is proven, a populated manifest is not.
+  </p>
+
+  <h2>R7 — Codex mirror parity</h2>
+  <pre>resume emits nothing                    ✓
+startup / clear / compact emit          ✓
+reinjection byte-identical              ✓
+load command occurrences                1
+preamble hash equals Claude payload     ✓
+hook wiring                             two groups, load-knowledge on startup|clear|compact
+npm run sync-codex -- --check --quiet   clean</pre>
+
+  <h2>Repair history</h2>
+  <p class="note">No product defects were found. All three repairs were to the proof apparatus itself.</p>
+  <table>
+    <thead><tr><th>Fingerprint</th><th>What happened</th><th>Repair</th><th>Attempts</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono">gate4-duplicate-identifier</td>
+        <td>The new gate4 resume check reused an identifier declared later in the file, so the gate failed to parse.</td>
+        <td>Renamed to <span class="mono">knowledgeResumeRun</span>.</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td class="mono">runner-fabricated-store</td>
+        <td>The evidence runner invented a store layout the product does not recognize; every source emitted nothing, which would have read as a false negative.</td>
+        <td>Create the store through the product's own <span class="mono">resolveProjectStore</span>.</td>
+        <td>1</td>
+      </tr>
+      <tr>
+        <td class="mono">runner-path-normalization</td>
+        <td>Preamble comparison reported a false 8-character mismatch — first from <span class="mono">/private/tmp</span> realpathing in the HEAD worktree, then from replacing the shorter path alias first.</td>
+        <td>Normalize literal and realpath spellings, longest alias first.</td>
+        <td>2</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Verification</h2>
+  <pre>npm test                                 362/362 passing (5 consecutive clean runs)
+npm run sync-codex -- --check --quiet    clean
+gate4 real-cli                           56/56  (54 before this change; 2 checks added)</pre>
+
+  <h2>Limitations</h2>
+  <ul class="lim">
+    <li>
+      <span class="badge b-warn">FLAGGED</span>
+      One full-suite run reported 25 failures and did not reproduce across five subsequent runs. No failing
+      test name was captured before it went green. The suite spawns the verification gates recursively and
+      several assertions are timing-bounded, so process contention is the leading explanation. It is not
+      attributed to this change — the tests covering the changed code and the real-CLI gate pass
+      deterministically — but it is recorded rather than dismissed.
+    </li>
+    <li>Proof covers an uncommitted working tree. No candidate SHA tuple was supplied and nothing was committed.</li>
+    <li>The working tree carried 56 pre-existing modified files unrelated to this change. They were not touched and not proven.</li>
+    <li>R3 proves stability against ranking churn, not against record content edits — those correctly do change the payload.</li>
+    <li>Fixture records carry no supporting resources, so R6 proves the resource-delivery mechanism but not a populated manifest.</li>
+  </ul>
+
+  <h2>Evidence</h2>
+  <pre>proof/evidence/run-journeys.mjs    real-interface driver (reusable)
+proof/evidence/head.json          baseline observations, HEAD 16fbfe8
+proof/evidence/fixed.json         working-tree observations
+proof/evidence/codex-mirror.json  generated Codex mirror observations
+proof/evidence/summary.json       condensed comparison
+proof/proof.json                  machine-readable proof state</pre>
+
+</div>
+</body>
+</html>

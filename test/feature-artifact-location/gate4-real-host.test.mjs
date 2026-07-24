@@ -17,7 +17,8 @@ test('Gate 4 drives the plugin-hosted creator happy and collision journeys', () 
   assert.match(gate4, /--plugin-dir[\s\S]*PLUGIN/);
   assert.match(gate4, /feature creator accepts the proposed name without a second naming prompt/);
   assert.match(gate4, /explicit re-scope preserves the existing scope bytes/);
-  assert.match(gate4, /unintended occupied feature directory remains byte-identical/);
+  assert.match(gate4, /occupied proposal remains untouched while a free suffixed root proceeds/);
+  assert.match(gate4, /standalone create-plan derives a feature root and writes without a naming gate/);
   assert.match(gate4, /plugin-hosted creator initializes the nested local-state ignore policy/);
   assert.match(gate4, /plugin-hosted creator keeps feature records trackable and local state ignored/);
   assert.match(gate4, /plugin-hosted creator preserves a blanket root ignore byte-for-byte/);

@@ -19,10 +19,10 @@ Planning router: classify tier, spend a tier-sized research budget, then route t
 
 ## Feature root contract
 
-- Resolve in this order: an explicit feature directory or feature name; a supplied artifact beneath the feature root; one unambiguous feature artifact from the current conversation. If unresolved or ambiguous, use the proposal flow below. Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature.
-- For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` in the existing design gate for STANDARD/COMPREHENSIVE or the tier response for LIGHT. Silence on the name accepts it; never create a separate name-confirmation gate.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
 - When the user explicitly names an existing managed feature, continue or re-plan it under its existing overwrite safeguards. The physical directory is authoritative.
-- Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
+- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
 - Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
 - Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
 - If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.

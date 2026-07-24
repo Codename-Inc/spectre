@@ -11,8 +11,13 @@ Terminal orchestrator for completed work: clean the branch, rebase it safely, an
 
 ## Inputs
 
-- `$ARGUMENTS` - optional target branch (default `origin/main`), feedback-focus hint, or `--draft`.
+- `$ARGUMENTS` - optional feature name/root or descendant artifact, target branch (default `origin/main`), feedback-focus hint, or `--draft`.
 - Live branch, working tree, remotes, and PR state, resolved just-in-time.
+
+## Feature root
+
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 
 ## Proof independence
 
@@ -29,8 +34,8 @@ Proof is a separate optional workflow and is never a prerequisite for `ship-it`.
 
 ## Method / guardrails
 
-1. **Resolve.** Confirm a feature branch, target branch, and no unrelated or sensitive changes. Stop on `main`/`master`.
-2. **Clean.** Run `Skill(spectre-clean)` with `--orchestrated` for the completed working set. Read its result and live Git state; do not continue past a blocked phase.
+1. **Resolve.** Confirm a feature branch, target branch, `FEATURE_ROOT`, and no unrelated or sensitive changes. Stop on `main`/`master`.
+2. **Clean.** Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated` for the completed working set. Read its result and live Git state; do not continue past a blocked phase.
 3. **Rebase.** Run `Skill(spectre-rebase)` with the explicit target and `--orchestrated`. Preserve and report its backup ref and restore command.
 4. **Create PR.** Run `Skill(spectre-create_pr)` with the target, `--orchestrated`, `--draft`, and feedback hints from `$ARGUMENTS`. Return its URL.
 

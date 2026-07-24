@@ -14,12 +14,13 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 - Plan-direct input may also provide an explicit readable plan path and a confirmed canonical feature root.
 - **Structured mode:** an explicit valid execute index with a resolvable `tasks.json`; preserve the existing indexed-task workflow.
 - **Plan-direct mode:** an explicit argument naming another readable plan document; resolve it as `PLAN_SOURCE`. Plan-direct mode never routes to `/spectre:create_tasks`.
-- **No-argument execution:** use the feature-resolution order below; otherwise ask for the feature name/path.
+- **No-argument execution:** use the feature-resolution rule below and proceed without a naming gate.
 
 ## Working Set
 
-- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
-- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
+- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
 - When a nested execute artifact is the sole locator, derive `FEATURE_ROOT` from its self-location metadata and physical enclosing feature directory; the physical directory wins on mismatch.
 - `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
@@ -50,7 +51,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
   2. **Runtime Status** — pending/running/blocked/done, current and last-completed waves, timestamps, current HEAD, and coarse-map coverage over the source plan. Derive cumulative diff only as `baseline..HEAD`.
   3. **Workstream & Parallelization Map** — one coarse row for every plan-native phase/workstream/work item at initial creation, with source anchor, status, dependencies/shared contracts/change surfaces, and ready/deferred/parallel-safe/sequential rationale. No fixed workstream count is imposed.
   4. **Active Wave** — only the currently dispatchable bounded assignments, owners, plan anchors, expected outputs/consumers/replacements, and verification signals.
-  5. **Wave History** — completed assignments, commits, changed files, deterministic checks/results, sentinel classification/result, repair count, and E2E completeness signal.
+  5. **Wave History** — completed assignments, commits, changed files, deterministic checks/results, sentinel classification/result, compact repair ledger (`fingerprint · attempt · route · result/disposition`), and E2E completeness signal.
   6. **Plan-Backed Adaptations** — discovered gap, source-plan relationship, disposition, and affected future workstream.
   7. **Final Quality State** — code-review report/verdict, validation report/status, test-guide path, unresolved findings, and normal proof-handoff state.
 - The initial map must coarsely cover every plan-native workstream, preserving plan names and source order unless dependency evidence requires documented reordering. Keep detailed assignment content only in **Active Wave**; do not create a parallel JSON task graph, enumerate future subtasks, generate exhaustive acceptance criteria, or durably copy plan excerpts. Stop decomposing as soon as the next safe wave can be dispatched.
@@ -78,9 +79,9 @@ Execute work in parallel waves without loading or generating an exhaustive task 
    - **3c — Lightweight sentinel review:** dispatch at most one `@spectre:reviewer` only for `wiring` or `risk`. Build the prompt only from wave diff, files manifest, relevant scope docs, and the mode-specific requirements source: verbatim ACs/context from the selected slice in structured mode, or the same transient verbatim source-anchored plan text for the active-wave workstreams in plan-direct mode. Forbidden: dev reports, implementer rationale, orchestrator paraphrase.
      - `wiring` lens: Defined -> Connected -> Reachable; grep usage, trace UI/API render or call path backward, flag dead computations, orphaned outputs, duplicate data sources, and old active paths.
      - `risk` lens: security + correctness, including scope adherence for the risk surface.
-     - Reviewer output must be either `CLEAN` or CRITICAL/HIGH findings only. No Medium/Low/nits/style/speculative architecture. Every finding must include `file:line`, reproducible failure/exploit scenario, concrete evidence chain, smallest scope-safe fix shape, and `sha256(file_path + line + finding_category)`. No evidence chain means `CLEAN`.
-   - **3d — Bounded fix loop:** CRITICAL/HIGH findings get <=3 fix waves. Reappearing hash = reviewer disagreement; escalate and do not re-queue. Halt on test-file changes >0.5x implementation-file changes or cumulative fix diff growth >25% per iteration. Re-run 3a, then re-run 3b/3c only when the selector still requires sentinel review after fixes.
-   - **3e — Exit:** deterministic checks pass and no required sentinel CRITICAL/HIGH remains, or cap reached and user notified.
+     - Reviewer output must be either `CLEAN` or CRITICAL/HIGH findings only. No Medium/Low/nits/style/speculative architecture. Every finding must include `file:line`, reproducible failure/exploit scenario, concrete evidence chain, smallest scope-safe fix shape, and a stable `sha256(requirement anchor + primary symbol + normalized observable failure)` fingerprint. Return all evidence-backed CRITICAL/HIGH findings discovered in the scoped pass, not only the first. No evidence chain means `CLEAN`.
+   - **3d — Per-finding repair:** Track repairs by stable finding fingerprint; distinct findings have independent budgets and there is no global sentinel/fix cap. Attempt 1 uses one focused `@spectre:dev` repair. If the same failure recurs, the primary revalidates it and owns attempt 2, changing both diagnosis and route: implement directly or use a clean-context, high-effort opposing runtime; never replay the same prompt, agent, or approach. If it survives attempt 2, end retries and promote it to source-backed Adapt work with revised implementation shape/dependencies. Growth >25% or test-file changes >0.5x implementation-file changes may trigger Adapt sooner. Continue through 3a–3c; halt only for scope change or user authority.
+   - **3e — Exit:** deterministic checks pass and no required CRITICAL/HIGH remains; otherwise Reflect/Adapt.
 4. **Mark complete.** In structured mode, edit `TASKS_JSON` status fields for assigned subtasks/parents to `done`, preserve indented valid JSON, and re-parse immediately. In plan-direct mode, update mapped workstream status plus checks, sentinel result, commits/files, and the E2E signal in `EXECUTION_STATE`.
 5. **Reflect.** Read completion reports for scope signals and E2E gaps. All ⚪ → next wave. Otherwise adapt.
 6. **Adapt only for source compliance.**
@@ -91,9 +92,9 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 **Final adversarial code review + validate.** After the mode-specific work projection is `done`/`skipped` and deterministic checks pass, run the expensive review once over the cumulative feature diff:
 - Run `Skill(spectre-code_review)` with `{FEATURE_ROOT} --orchestrated` over the cumulative diff. Pass the exact feature root unchanged. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
 - Structured-mode reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and relevant `TASKS_JSON` slices. Plan-direct mode passes the source plan plus relevant execution-state evidence instead of `tasks.json` slices; `PLAN_SOURCE` remains requirements authority and `EXECUTION_STATE` is routing/evidence only. Do not use dev reports or implementer rationale as evidence.
-- Read the saved report. CRITICAL/HIGH findings enter the bounded fix loop; Medium/Low findings are summarized but do not block completion unless the user asks.
+- Read the saved report. CRITICAL/HIGH findings re-enter Reflect/Adapt as source-backed gap work; Medium/Low findings are summarized but do not block completion unless the user asks.
 - Then `@spectre:analyst` runs `Skill(spectre-validate)` with `{FEATURE_ROOT} --orchestrated`, narrowed to cross-wave integration audit, scope-creep audit, and dead-computation sweep over the cumulative diff. Pass the exact feature root unchanged plus `SCOPE_DOCS` and `TASKS_JSON` in structured mode, or `PLAN_SOURCE` plus relevant `EXECUTION_STATE` sections in plan-direct mode; do not use `execute.md` or derivative state as the validation requirements source.
-- High-priority review or validation gaps → dispatch `@spectre:dev` to fix, rerun deterministic checks, then rerun `Skill(spectre-code_review)` or only the affected validation check.
+- High-priority review or validation gaps → use the same per-finding repair policy, re-enter the adaptive wave loop, then rerun only the affected gate.
 - After review/validation is clean or accepted:
   - Structured mode runs `Skill(spectre-create_test_guide)` with `{FEATURE_ROOT} --orchestrated`.
   - Plan-direct mode runs `Skill(spectre-create_test_guide)` with `PLAN_SOURCE` and `{FEATURE_ROOT} --orchestrated`.
@@ -129,5 +130,5 @@ Render exactly one `Next (recommended): ... — because {observed execution stat
 - In structured or no-argument mode, `execute.md` missing/malformed or `tasks.json` unresolved/unparseable → stop; route to `/spectre:create_tasks`.
 - In plan-direct mode, an unreadable source or a genuine execution-time blocker → report the blocker against the authoritative plan; never route to `/spectre:create_tasks` or introduce a plan-completeness gate.
 - A subagent prompt slice contains unrelated parent task ids → fix the slice before dispatch.
-- Fix loop hits cap, a hash recurs, or a circuit breaker trips → halt and surface; do not force past it.
+- Never request approval solely because of repair count, reviewer count, diff growth, or a recurring finding. Final-review and validation findings use the same per-finding repair policy. Escalate only for scope change or user authority.
 - Deterministic pre-gate cannot pass → fix before review; never advance a red wave.

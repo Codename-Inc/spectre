@@ -185,16 +185,16 @@ function assertRegistryOutput(result, id, bodySentinel) {
   ]);
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.equal(typeof output.hookSpecificOutput.additionalContext, 'string');
-  assert.match(output.hookSpecificOutput.additionalContext, new RegExp(`ID: ${id}`));
+  assert.match(output.hookSpecificOutput.additionalContext, new RegExp(`ID: ${id} \\(v\\d+\\)`));
   assert.match(output.hookSpecificOutput.additionalContext, /Use when:/);
-  assert.match(output.hookSpecificOutput.additionalContext, /Activation cues:/);
+  assert.match(output.hookSpecificOutput.additionalContext, /Cues:/);
   assert.equal('systemMessage' in output, false);
   assert.equal(output.hookSpecificOutput.additionalContext.includes(bodySentinel), false);
   assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /body preview|fallback file/i);
 }
 
 describe('knowledge registry SessionStart integration', () => {
-  for (const source of ['startup', 'resume', 'clear', 'compact']) {
+  for (const source of ['startup', 'clear', 'compact']) {
     it(`emits exactly one metadata-only additionalContext for ${source}`, async (t) => {
       const projectDir = makeTmp(t);
       const spectreHome = path.join(projectDir, 'spectre-home');
@@ -213,19 +213,52 @@ describe('knowledge registry SessionStart integration', () => {
       });
 
       assertRegistryOutput(result, id, bodySentinel);
-      assert.match(
-        JSON.parse(result.stdout).hookSpecificOutput.additionalContext,
-        new RegExp(`'${BUNDLED_CLI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}' load '${id}'`),
+      const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+      const quotedCli = BUNDLED_CLI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assert.match(context, new RegExp(`'${quotedCli}' load '<ID>'`));
+      assert.equal(
+        (context.match(new RegExp(`'${quotedCli}' load `, 'g')) || []).length,
+        1,
+        'the load command template must be hoisted, not repeated per record',
       );
       assert.equal(fs.existsSync(path.join(storePath, 'activity.json')), false);
     });
   }
 
-  it('declares resume in the sole canonical SessionStart hook', () => {
+  it('emits no knowledge context on resume', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    writeRecord(storePath, 'feature-resume-must-not-inject');
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('resume', projectDir),
+    });
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  });
+
+  it('excludes resume from the knowledge SessionStart hook matcher', () => {
     const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8'));
-    assert.equal(hooks.hooks.SessionStart.length, 1);
-    assert.equal(hooks.hooks.SessionStart[0].matcher, 'startup|resume|clear|compact');
     assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart']);
+    const groups = hooks.hooks.SessionStart;
+    const knowledgeGroups = groups.filter(group =>
+      group.hooks.some(hook => hook.command.includes('load-knowledge.mjs')));
+    assert.equal(knowledgeGroups.length, 1);
+    assert.equal(knowledgeGroups[0].matcher, 'startup|clear|compact');
+    assert.equal(knowledgeGroups[0].hooks.length, 1);
+
+    // handoff-resume genuinely needs resume and must keep it.
+    const resumeGroups = groups.filter(group => group.matcher.includes('resume'));
+    assert.equal(resumeGroups.length, 1);
+    assert.equal(resumeGroups[0].matcher, 'startup|resume|clear|compact');
+    assert.equal(
+      resumeGroups[0].hooks.some(hook => hook.command.includes('load-knowledge.mjs')),
+      false,
+    );
   });
 
   it('returns no context and creates nothing for a missing store', (t) => {
@@ -346,7 +379,7 @@ describe('knowledge registry SessionStart integration', () => {
     assert.deepEqual(fs.readFileSync(unresolvedRegistry), unresolvedBytes);
   });
 
-  it('fails open to source-newness when activity is corrupt and preserves its bytes', async (t) => {
+  it('fails open when activity is corrupt and preserves its bytes', async (t) => {
     const projectDir = makeTmp(t);
     const spectreHome = path.join(projectDir, 'spectre-home');
     const storePath = await createStore(projectDir, spectreHome);
@@ -359,14 +392,38 @@ describe('knowledge registry SessionStart integration', () => {
     const result = runHook({
       cwd: projectDir,
       spectreHome,
-      input: sessionInput('resume', projectDir),
+      input: sessionInput('startup', projectDir),
     });
 
     assert.equal(result.exitCode, 0, result.stderr);
     const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
-    assert.ok(context.indexOf('ID: feature-newer-source') < context.indexOf('ID: feature-older-source'));
+    assert.match(context, /ID: feature-newer-source/);
+    assert.match(context, /ID: feature-older-source/);
     assert.match(result.stderr, /KNOWLEDGE_ACTIVITY_CORRUPT/);
     assert.equal(fs.readFileSync(activityPath, 'utf8'), corrupt);
+  });
+
+  it('renders in a fixed id order regardless of rank-promoting source newness', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    // Newness order (zulu newest) is the reverse of id order, so a render that
+    // followed the ranking would place zulu first.
+    writeRecord(storePath, 'feature-alpha', { mtimeMs: 1_700_000_000_000 });
+    writeRecord(storePath, 'feature-zulu', { mtimeMs: 1_800_000_000_000 });
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('startup', projectDir),
+    });
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(
+      context.indexOf('ID: feature-alpha') < context.indexOf('ID: feature-zulu'),
+      'rendered entries must be id-ordered so the attachment stays byte-stable',
+    );
   });
 });
 

@@ -1,0 +1,177 @@
+{
+  "head": {
+    "sources": {
+      "startup": {
+        "emitted": true,
+        "chars": 3692
+      },
+      "resume": {
+        "emitted": true,
+        "chars": 3692
+      },
+      "clear": {
+        "emitted": true,
+        "chars": 3692
+      },
+      "compact": {
+        "emitted": true,
+        "chars": 3692
+      }
+    },
+    "reinjection": {
+      "loadExitCode": 0,
+      "loadEmitsResourceLocations": true,
+      "firstSha256": "02c95916d4d254f2bd03651e1fab7499b5c3a54f6c231a4b204cd87c8256f96a",
+      "secondSha256": "a9752eb24d20e0674f5ed32b75ad72468da1fa42e10848d11f832aa5ed92f4c3",
+      "firstOrder": [
+        "feature-zulu",
+        "feature-mike",
+        "feature-alpha"
+      ],
+      "secondOrder": [
+        "feature-zulu",
+        "feature-alpha",
+        "feature-mike"
+      ],
+      "identical": false
+    },
+    "loadCommandOccurrences": 3,
+    "preambleSha256": "b31f969fe12ebeef67d1240394a37d6c8c6fc5e5a22e0bd9899dc661b1a0e04f",
+    "preambleChars": 2543,
+    "wiring": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "commands": [
+          "bootstrap.mjs",
+          "handoff-resume.mjs",
+          "load-knowledge.mjs"
+        ]
+      }
+    ],
+    "constructed": null
+  },
+  "fixed": {
+    "sources": {
+      "startup": {
+        "emitted": true,
+        "chars": 3131
+      },
+      "resume": {
+        "emitted": false,
+        "chars": 0
+      },
+      "clear": {
+        "emitted": true,
+        "chars": 3131
+      },
+      "compact": {
+        "emitted": true,
+        "chars": 3131
+      }
+    },
+    "reinjection": {
+      "loadExitCode": 0,
+      "loadEmitsResourceLocations": true,
+      "firstSha256": "52510bb8cd18c5dfff26030460cf5dfa3beb0f39731cc2c9e3718023ce81489e",
+      "secondSha256": "52510bb8cd18c5dfff26030460cf5dfa3beb0f39731cc2c9e3718023ce81489e",
+      "firstOrder": [
+        "feature-alpha",
+        "feature-mike",
+        "feature-zulu"
+      ],
+      "secondOrder": [
+        "feature-alpha",
+        "feature-mike",
+        "feature-zulu"
+      ],
+      "identical": true
+    },
+    "loadCommandOccurrences": 1,
+    "preambleSha256": "b31f969fe12ebeef67d1240394a37d6c8c6fc5e5a22e0bd9899dc661b1a0e04f",
+    "preambleChars": 2543,
+    "wiring": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "commands": [
+          "bootstrap.mjs",
+          "handoff-resume.mjs"
+        ]
+      },
+      {
+        "matcher": "startup|clear|compact",
+        "commands": [
+          "load-knowledge.mjs"
+        ]
+      }
+    ],
+    "constructed": {
+      "template": "'/Users/joe/Dev/spectre/plugins/spectre/hooks/scripts/knowledge-cli.mjs' load '<ID>' --project-dir '/var/folders/qm/xyc9f8dj52v72q7bk63q5w9w0000gn/T/proof-fixed-0ejTYc'",
+      "command": "'/Users/joe/Dev/spectre/plugins/spectre/hooks/scripts/knowledge-cli.mjs' load 'feature-zulu' --project-dir '/var/folders/qm/xyc9f8dj52v72q7bk63q5w9w0000gn/T/proof-fixed-0ejTYc'",
+      "exitCode": 0,
+      "returnedRecordBody": true,
+      "returnedResourceLocations": true
+    }
+  },
+  "codex": {
+    "sources": {
+      "startup": {
+        "emitted": true,
+        "chars": 3155
+      },
+      "resume": {
+        "emitted": false,
+        "chars": 0
+      },
+      "clear": {
+        "emitted": true,
+        "chars": 3155
+      },
+      "compact": {
+        "emitted": true,
+        "chars": 3155
+      }
+    },
+    "reinjection": {
+      "loadExitCode": 0,
+      "loadEmitsResourceLocations": true,
+      "firstSha256": "8b594980863d0cfb147d54af0084fe0a575d97431a72363a2e74ab39d88099cd",
+      "secondSha256": "8b594980863d0cfb147d54af0084fe0a575d97431a72363a2e74ab39d88099cd",
+      "firstOrder": [
+        "feature-alpha",
+        "feature-mike",
+        "feature-zulu"
+      ],
+      "secondOrder": [
+        "feature-alpha",
+        "feature-mike",
+        "feature-zulu"
+      ],
+      "identical": true
+    },
+    "loadCommandOccurrences": 1,
+    "preambleSha256": "b31f969fe12ebeef67d1240394a37d6c8c6fc5e5a22e0bd9899dc661b1a0e04f",
+    "preambleChars": 2543,
+    "wiring": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "commands": [
+          "bootstrap.mjs",
+          "handoff-resume.mjs"
+        ]
+      },
+      {
+        "matcher": "startup|clear|compact",
+        "commands": [
+          "load-knowledge.mjs"
+        ]
+      }
+    ],
+    "constructed": {
+      "template": "'/Users/joe/Dev/spectre/plugins/spectre-codex/hooks/scripts/knowledge-cli.mjs' load '<ID>' --project-dir '/var/folders/qm/xyc9f8dj52v72q7bk63q5w9w0000gn/T/proof-codexmirror-qw91lu'",
+      "command": "'/Users/joe/Dev/spectre/plugins/spectre-codex/hooks/scripts/knowledge-cli.mjs' load 'feature-zulu' --project-dir '/var/folders/qm/xyc9f8dj52v72q7bk63q5w9w0000gn/T/proof-codexmirror-qw91lu'",
+      "exitCode": 0,
+      "returnedRecordBody": true,
+      "returnedResourceLocations": true
+    }
+  }
+}

@@ -15,7 +15,9 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Working Set
 
-- Resolve `FEATURE_ROOT` in this order: an explicit feature directory or feature name; a supplied artifact beneath the feature root; one unambiguous feature artifact in the current conversation. Never infer it from the branch, recency, or lifecycle state.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
+- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - An explicit legacy `docs/tasks/**` artifact remains a compatibility input, but a new cleanup summary requires a confirmed `.spectre/features/<feature-name>/` root and records the legacy source.
 - Set `OUT_DIR = FEATURE_ROOT`.
 - Resolve scope late at runtime:

@@ -11,7 +11,11 @@ import {
 import { resolveProjectStore } from './knowledge/store.mjs';
 
 const HOSTS = new Set(['claude', 'codex']);
-const SESSION_SOURCES = new Set(['startup', 'resume', 'clear', 'compact']);
+// `resume` is deliberately absent: a resumed transcript already replays the
+// registry injected at startup, so re-emitting it only duplicates context.
+// This gate is independent of the hooks.json matcher so a stale installed
+// hook configuration cannot reintroduce the duplicate.
+const SESSION_SOURCES = new Set(['startup', 'clear', 'compact']);
 const START_MARKER = '<!-- spectre-knowledge:start -->';
 const END_MARKER = '<!-- spectre-knowledge:end -->';
 

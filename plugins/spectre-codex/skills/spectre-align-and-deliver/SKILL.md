@@ -25,10 +25,10 @@ Run one-confirmation `spectre-scope` for a low-ambiguity feature or fix, then pr
 
 ## Feature root contract
 
-- Resolve an explicit feature directory or feature name first, then a supplied artifact beneath the feature root, then one unambiguous feature artifact from the current thread. If unresolved or ambiguous, use the proposal flow below; never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature.
-- For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` in the existing one-confirmation scope response. Silence on the name accepts it; never create a separate name-confirmation gate.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
 - When the user explicitly names an existing managed feature, continue or re-scope it under its existing overwrite safeguards. The physical directory is authoritative.
-- Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
+- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
 - Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
 - Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
 - If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
@@ -48,7 +48,11 @@ Run one-confirmation `spectre-scope` for a low-ambiguity feature or fix, then pr
 
 Invoke every named child skill with the stated arguments; do not merely describe or inline it. Validate each returned DONE contract before advancing.
 
-1. **Resolve and isolate.** Create a feature branch/worktree before product edits; never commit directly to `main`/`master`. Refuse unrelated or sensitive changes.
+1. **Resolve the execution location; isolate only when needed.** Before any artifact or product write, snapshot the entry state with `git status --porcelain=v1 --untracked-files=all` and distinguish the primary/local checkout from a linked worktree.
+   - **Clean linked worktree:** stay in the current directory. Reuse its non-protected branch; when it is on `main`/`master` or detached `HEAD`, create a collision-safe feature branch in that same worktree. Never create another worktree.
+   - **Dirty linked worktree:** leave it byte-for-byte untouched and create a clean sibling worktree plus collision-safe feature branch from committed `HEAD`. Do not stash, reset, commit, copy, or otherwise carry its pre-existing changes into the delivery worktree.
+   - **Primary/local checkout:** whether clean or dirty, leave it untouched and create a clean linked worktree plus collision-safe feature branch from committed `HEAD`.
+   - Apply this routing without a confirmation gate, run every child in the selected checkout, and never commit directly to `main`/`master`. Refuse unrelated or sensitive changes.
 2. **Scope once.** Run `Skill(spectre-scope)` with the task, `{FEATURE_ROOT}`, `DELIVERY_ALIGNMENT=one-confirmation`, and `--orchestrated`. Preserve its WHAT-not-HOW, canonical schema, and immutable-boundary contracts:
    - Use its fast grounding lookup; when insufficient, finish read-only pre-research before prompting.
    - Present one hypothesis with IN / OUT / ANTI-SCOPE and only blocking questions; wait once. Record optional unknowns as assumptions with “if false” consequences.
@@ -77,4 +81,5 @@ End with: `Next (recommended): review the proof and draft PR.`
 - Post-confirmation evidence requires changed scope; a bug cannot be reproduced or root-caused; acceptance truth conflicts; or a required proof dependency/credential/permission needs user authority.
 - Deterministic, review, validation, proof, or finalization repair caps are exhausted.
 - A required child skill or orchestrated mode is unavailable or cannot satisfy its DONE contract.
+- Git cannot provide the required safe checkout, or the requested delivery depends on pre-existing dirty changes deliberately left behind.
 - Rebase requires semantic product judgment, remote history diverged unexpectedly, or secrets/PII appear in the working set or evidence.

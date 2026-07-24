@@ -77,15 +77,27 @@ function bundledCommand(cliPath, operation, operand, projectDir) {
   ].join(' ');
 }
 
-function renderEntry(entry, cliPath, projectDir) {
+/**
+ * One entry carries only what the agent needs to route and to build its exact
+ * load command: the verbatim ID, version, the Use when condition, and cues.
+ * The load command itself is hoisted to a single template above the entries so
+ * the absolute CLI and project paths are not repeated once per record.
+ */
+function renderEntry(entry) {
   return [
-    `### Knowledge record: ${entry.id}`,
-    `- ID: ${entry.id}`,
-    `- Version: ${entry.version}`,
-    `- Use when: ${oneLine(entry.description)}`,
-    `- Activation cues: ${entry.triggers.map(oneLine).join('; ')}`,
-    `- Load exact record: ${bundledCommand(cliPath, 'load', entry.id, projectDir)}`,
+    `- ID: ${entry.id} (v${entry.version}) — Use when: ${oneLine(entry.description)}`,
+    `  Cues: ${entry.triggers.map(oneLine).join('; ')}`,
   ].join('\n');
+}
+
+/**
+ * Ranking decides which records survive the payload budget; it must not decide
+ * what order they print in. Rendering in a fixed id order keeps the emitted
+ * bytes stable across sessions, so load activity that reshuffles the ranking
+ * no longer changes the attachment or breaks host prefix cache reuse.
+ */
+function renderOrder(entries) {
+  return [...entries].sort((left, right) => compareIds(left.id, right.id));
 }
 
 function renderContent({ entries, omittedCount, cliPath, projectDir }) {
@@ -137,10 +149,14 @@ function renderContent({ entries, omittedCount, cliPath, projectDir }) {
       'Before handing back, offer to update or capture the durable learning through `/spectre:learn`, describing what should change. Registration remains approval-gated.',
       '',
       '## Available Knowledge',
+      '',
+      'Load a record by copying its ID verbatim into this command:',
+      '',
+      bundledCommand(cliPath, 'load', '<ID>', projectDir),
     ].join('\n'),
   ];
   if (entries.length > 0) {
-    sections.push(entries.map((entry) => renderEntry(entry, cliPath, projectDir)).join('\n\n'));
+    sections.push(renderOrder(entries).map(renderEntry).join('\n'));
   }
   return sections.join('\n\n');
 }
@@ -195,6 +211,7 @@ export function renderKnowledgeRegistry(options) {
         frame,
         measurement,
         includedEntries,
+        renderedEntries: renderOrder(includedEntries),
         includedCount: count,
         omittedCount,
       };

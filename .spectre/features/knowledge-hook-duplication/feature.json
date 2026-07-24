@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-24T00:00:00.000Z",
+  "feature": "knowledge-hook-duplication",
+  "feature_root": ".spectre/features/knowledge-hook-duplication"
+}

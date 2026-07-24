@@ -14,11 +14,37 @@ import test from 'node:test';
 
 const projectRoot = join(import.meta.dirname, '..', '..');
 
-const creatorContract = {
-  proposal: /propose (?:a )?lowercase kebab-case feature name/i,
-  noExtraGate: /never create a separate name-confirmation gate/i,
-  existingFeature: /explicitly (?:names|selects) an existing managed feature/i,
+const featureRootContract = {
+  resolution: /explicit feature name\/root, a descendant artifact, or one unambiguous current-thread artifact/i,
+  fallback: /derive a concise lowercase kebab-case name from the requested work and proceed/i,
+  noQuestion: /never ask for a feature name\/root/i,
+  disclosure: /existing user gate or normal response without waiting/i,
+  collision: /first free `?\.spectre\/features\/<name>\[-N\]\/?`?/i,
 };
+const featureRootSkills = [
+  'spectre-align-and-deliver',
+  'spectre-clean',
+  'spectre-code_review',
+  'spectre-create_plan',
+  'spectre-create_tasks',
+  'spectre-create_test_guide',
+  'spectre-deliver',
+  'spectre-execute',
+  'spectre-goal',
+  'spectre-kickoff',
+  'spectre-plan',
+  'spectre-plan_review',
+  'spectre-proof',
+  'spectre-prototype',
+  'spectre-prune',
+  'spectre-research',
+  'spectre-scope',
+  'spectre-ship-it',
+  'spectre-task_review',
+  'spectre-test',
+  'spectre-ux',
+  'spectre-validate',
+].map((name) => `plugins/spectre/skills/${name}/SKILL.md`);
 const creatorTenancyContract = {
   nestedIgnoreCondition:
     /create `?\.spectre\/\.gitignore`? only when it is absent and the parent repository does not already ignore `?\.spectre\/?`?/i,
@@ -31,12 +57,12 @@ const creatorTenancyContract = {
 };
 
 const continuationResolutionOrder = [
-  ['explicit', /explicit feature (?:directory|root) or feature name/i],
-  ['artifact', /supplied artifact beneath (?:a|the) feature (?:directory|root)/i],
-  ['conversation', /one unambiguous feature artifact .*current (?:conversation|thread)/i],
+  ['explicit', /explicit feature name\/root/i],
+  ['artifact', /a descendant artifact/i],
+  ['conversation', /one unambiguous current-thread artifact/i],
 ];
 const noContinuationInference =
-  /never use branch name, modification time, lifecycle completeness, or directory scanning/i;
+  /never use branch name, recency, lifecycle state, or directory scanning to select an existing feature/i;
 
 function read(relativePath) {
   return readFileSync(join(projectRoot, relativePath), 'utf8');
@@ -93,26 +119,24 @@ function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
-test('contract matcher accepts the complete creator and continuation fixture', () => {
+test('contract matcher accepts the complete non-blocking feature-root fixture', () => {
   const fixture = [
-    'Propose a lowercase kebab-case feature name.',
-    'Never create a separate name-confirmation gate.',
-    'When the user explicitly names an existing managed feature, continue it.',
-    'Resolve an explicit feature directory or feature name.',
-    'Then resolve a supplied artifact beneath the feature root.',
-    'Then resolve one unambiguous feature artifact from the current conversation.',
-    'Never use branch name, modification time, lifecycle completeness, or directory scanning.',
+    'Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact.',
+    'Otherwise derive a concise lowercase kebab-case name from the requested work and proceed.',
+    'Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.',
+    'Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.',
+    'For an inferred name, use the first free `.spectre/features/<name>[-N]/`.',
   ].join('\n');
 
-  assertContract(fixture, creatorContract, 'synthetic creator');
+  assertContract(fixture, featureRootContract, 'synthetic producer');
   assertContinuationContract(fixture, 'synthetic continuation');
 });
 
 test('ordered continuation matcher rejects a reordered synthetic contract', () => {
   const reordered = [
-    'Resolve one unambiguous feature artifact from the current thread.',
-    'Then resolve a supplied artifact beneath the feature root.',
-    'Finally resolve an explicit feature root or feature name.',
+    'Resolve one unambiguous current-thread artifact.',
+    'Then resolve a descendant artifact.',
+    'Finally resolve an explicit feature name/root.',
   ].join('\n');
 
   assert.deepEqual(continuationOrderMismatches(reordered), [
@@ -121,14 +145,21 @@ test('ordered continuation matcher rejects a reordered synthetic contract', () =
   ]);
 });
 
-test('creator skills declare no-extra-gate and selected-existing-feature behavior', () => {
-  for (const file of [
-    'plugins/spectre/skills/spectre-scope/SKILL.md',
-    'plugins/spectre/skills/spectre-kickoff/SKILL.md',
-    'plugins/spectre-codex/skills/spectre-scope/SKILL.md',
-    'plugins/spectre-codex/skills/spectre-kickoff/SKILL.md',
-  ]) {
-    assertContract(read(file), creatorContract, file);
+test('every feature-rooted skill derives and discloses a root without asking', () => {
+  for (const file of featureRootSkills) {
+    assertContract(read(file), featureRootContract, file);
+  }
+});
+
+test('no canonical skill instructs the model to ask for a feature root', () => {
+  const skillDirs = readdirSync(join(projectRoot, 'plugins/spectre/skills'), {
+    withFileTypes: true,
+  }).filter((entry) => entry.isDirectory());
+  for (const entry of skillDirs) {
+    const file = `plugins/spectre/skills/${entry.name}/SKILL.md`;
+    const content = read(file);
+    assert.doesNotMatch(content, /ask for the feature name\/path/i, file);
+    assert.doesNotMatch(content, /ask (?:the user )?(?:what|which) feature (?:name|root|path)/i, file);
   }
 });
 
@@ -141,13 +172,8 @@ test('creator skills declare the exact tracked/local tenancy contract', () => {
   }
 });
 
-test('continuation skills declare the three-step resolution order without branch inference', () => {
-  for (const file of [
-    'plugins/spectre/skills/spectre-plan/SKILL.md',
-    'plugins/spectre/skills/spectre-execute/SKILL.md',
-    'plugins/spectre-codex/skills/spectre-plan/SKILL.md',
-    'plugins/spectre-codex/skills/spectre-execute/SKILL.md',
-  ]) {
+test('feature-rooted skills preserve resolution order without existing-feature inference', () => {
+  for (const file of featureRootSkills) {
     const content = read(file);
     assertContinuationContract(content, file);
     assert.doesNotMatch(
@@ -219,18 +245,11 @@ test('planning, task, UX, prototype, and review outputs are self-locating', () =
 });
 
 test('creator manifests and remaining feature artifact producers are self-locating', () => {
-  for (const file of [
-    'plugins/spectre/skills/spectre-scope/SKILL.md',
-    'plugins/spectre/skills/spectre-kickoff/SKILL.md',
-    'plugins/spectre/skills/spectre-research/SKILL.md',
-    'plugins/spectre/skills/spectre-plan/SKILL.md',
-    'plugins/spectre/skills/spectre-deliver/SKILL.md',
-    'plugins/spectre/skills/spectre-align-and-deliver/SKILL.md',
-  ]) {
+  for (const file of featureRootSkills.filter((file) => !file.includes('spectre-ship-it'))) {
     const content = read(file);
     assert.match(
       content,
-      /feature\.json[^\n]*"feature"[^\n]*"feature_root"/i,
+      /feature\.json[^\n]*feature[^\n]*feature_root/i,
       `${file}: feature.json must carry self-location metadata`,
     );
     assert.doesNotMatch(
@@ -271,6 +290,21 @@ test('creator manifests and remaining feature artifact producers are self-locati
     clean,
     /working_set\.json[^\n]*"feature"[^\n]*"feature_root"/i,
     'spectre-clean working_set.json must carry self-location metadata',
+  );
+});
+
+test('orchestrators pass the resolved feature root to feature-rooted children', () => {
+  const clean = read('plugins/spectre/skills/spectre-clean/SKILL.md');
+  assert.match(clean, /Skill\(spectre-prune\)[^\n]*\{FEATURE_ROOT\}[^\n]*--orchestrated/i);
+  assert.match(clean, /Skill\(spectre-test\)[^\n]*\{FEATURE_ROOT\}[^\n]*--orchestrated/i);
+
+  const shipIt = read('plugins/spectre/skills/spectre-ship-it/SKILL.md');
+  assert.match(shipIt, /Skill\(spectre-clean\)[^\n]*\{FEATURE_ROOT\}[^\n]*--orchestrated/i);
+
+  const goal = read('plugins/spectre/skills/spectre-goal/SKILL.md');
+  assert.match(
+    goal,
+    /Plan-direct mode:[^\n]*Skill\(spectre-execute\)[^\n]*\{FEATURE_ROOT\}[^\n]*--orchestrated/i,
   );
 });
 

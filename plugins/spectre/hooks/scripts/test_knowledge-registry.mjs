@@ -143,6 +143,61 @@ describe('knowledge registry ranking', () => {
   });
 });
 
+describe('knowledge registry render stability', () => {
+  const records = [
+    record('feature-alpha', { sourceMtimeMs: FIXED_NOW - 3 }),
+    record('feature-mike', { sourceMtimeMs: FIXED_NOW - 2 }),
+    record('feature-zulu', { sourceMtimeMs: FIXED_NOW - 1 }),
+  ];
+  const common = {
+    host: 'claude',
+    records,
+    projectDir: '/tmp/project',
+    cliPath: '/tmp/plugin/knowledge-cli.mjs',
+  };
+
+  it('emits byte-identical content when load activity reshuffles the ranking', () => {
+    // A verified load promotes a record to the top of the ranking. Before the
+    // fix this reordered the rendered entries, so the same records produced a
+    // different attachment hash on the next injection.
+    const cold = renderKnowledgeRegistry({ ...common, activity: activity() });
+    const afterLoads = renderKnowledgeRegistry({
+      ...common,
+      activity: activity({
+        'feature-zulu': { versions: { '1': version(4, '2026-07-24T09:00:00.000Z') } },
+        'feature-alpha': { versions: { '1': version(1, '2026-07-24T08:00:00.000Z') } },
+      }),
+    });
+
+    assert.notDeepEqual(
+      cold.includedEntries.map(({ id }) => id),
+      afterLoads.includedEntries.map(({ id }) => id),
+      'the fixture must actually change the ranking, or this proves nothing',
+    );
+    assert.equal(afterLoads.content, cold.content);
+    assert.equal(afterLoads.frame, cold.frame);
+  });
+
+  it('renders in id order while ranking still governs which records survive', () => {
+    const result = renderKnowledgeRegistry({
+      ...common,
+      activity: activity({
+        'feature-zulu': { versions: { '1': version(4, '2026-07-24T09:00:00.000Z') } },
+      }),
+    });
+
+    assert.deepEqual(result.renderedEntries.map(({ id }) => id), [
+      'feature-alpha',
+      'feature-mike',
+      'feature-zulu',
+    ]);
+    assert.equal(result.includedEntries[0].id, 'feature-zulu');
+    assert.ok(
+      result.content.indexOf('ID: feature-alpha') < result.content.indexOf('ID: feature-zulu'),
+    );
+  });
+});
+
 describe('knowledge registry rendering', () => {
   it('injects the complete current apply policy before available knowledge', () => {
     const result = renderKnowledgeRegistry({
@@ -167,7 +222,7 @@ describe('knowledge registry rendering', () => {
     assert.match(result.content, /## Available Knowledge/);
     assert.ok(
       result.content.indexOf('## Before You Work') <
-      result.content.indexOf('### Knowledge record: feature-learning'),
+      result.content.indexOf('ID: feature-learning'),
     );
     assert.doesNotMatch(result.content, /complete list|one matching trigger|Skill\(\{name\}\)/i);
   });
@@ -209,13 +264,12 @@ describe('knowledge registry rendering', () => {
     assert.match(result.content, /Activation cues are supporting evidence, not automatic keyword matches/i);
     assert.match(result.content, /Registry exposure and search results are discovery signals only/i);
     assert.match(result.content, /They do not mean the record content has been loaded/i);
-    assert.match(result.content, /ID: feature-learning/);
-    assert.match(result.content, /Version: 8/);
+    assert.match(result.content, /ID: feature-learning \(v8\)/);
     assert.match(result.content, /Use when: Use when modifying the Spectre learning registry\./);
-    assert.match(result.content, /Activation cues: \/spectre:learn; knowledge load <id>/);
+    assert.match(result.content, /Cues: \/spectre:learn; knowledge load <id>/);
     assert.match(result.content, /Omitted active records: 0/);
     assert.match(result.content, /'\/tmp\/Plugin'\\''s bin\/knowledge-cli\.mjs' search/);
-    assert.match(result.content, /'\/tmp\/Plugin'\\''s bin\/knowledge-cli\.mjs' load 'feature-learning'/);
+    assert.match(result.content, /'\/tmp\/Plugin'\\''s bin\/knowledge-cli\.mjs' load '<ID>'/);
     assert.match(result.content, /--project-dir '\/tmp\/Project with spaces\/\$work'/);
     assert.equal(result.content.includes('sourceFingerprint'), false);
     assert.equal(result.content.includes('recordPath'), false);
@@ -264,8 +318,11 @@ describe('knowledge registry rendering', () => {
     assert.equal(codex.measurement.ok, true);
     assert.ok(claude.frame.length < 10_000);
     assert.equal(measurePayload('codex', codex.frame).ok, true);
-    assert.equal((claude.content.match(/^### Knowledge record:/gm) || []).length, claude.includedCount);
-    assert.equal((codex.content.match(/^### Knowledge record:/gm) || []).length, codex.includedCount);
+    assert.equal((claude.content.match(/^- ID: /gm) || []).length, claude.includedCount);
+    assert.equal((codex.content.match(/^- ID: /gm) || []).length, codex.includedCount);
+    // The load command is hoisted once, not repeated per record.
+    assert.equal((claude.content.match(/knowledge-cli\.mjs' load /g) || []).length, 1);
+    assert.equal((codex.content.match(/knowledge-cli\.mjs' load /g) || []).length, 1);
     assert.match(claude.content, new RegExp(`Omitted active records: ${claude.omittedCount}`));
     assert.match(codex.content, new RegExp(`Omitted active records: ${codex.omittedCount}`));
 
@@ -276,11 +333,8 @@ describe('knowledge registry rendering', () => {
 
     const nextPrefixFrame = frameFor([
       codex.content,
-      '### Knowledge record:',
-      `- ID: ${firstOmitted.id}`,
-      `- Version: ${firstOmitted.version}`,
-      `- Use when: ${firstOmitted.description}`,
-      `- Activation cues: ${firstOmitted.triggers.join('; ')}`,
+      `- ID: ${firstOmitted.id} (v${firstOmitted.version}) — Use when: ${firstOmitted.description}`,
+      `  Cues: ${firstOmitted.triggers.join('; ')}`,
     ].join('\n'));
     assert.equal(measurePayload('codex', nextPrefixFrame).ok, false);
   });
