@@ -15,5 +15,12 @@
       "legacy_source": "docs/tasks/example/specs/tasks.json"
     }
   },
+  "legacy_path_forms": [
+    "docs/tasks/{task_name}/",
+    "docs/tasks/{branch}",
+    "docs/tasks/{topic}/",
+    "docs/tasks/example/",
+    "docs/active_tasks/"
+  ],
   "migration_performed": false
 }

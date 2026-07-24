@@ -37,7 +37,7 @@ Adversarial review of what was just built. A clean-context reviewer tries to fal
 
 From Codex primary:
 ```bash
-claude -p --model fable --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Bash(git diff *),Bash(git show *),Bash(git status *),Bash(git rev-parse *),Write" --output-format text "$REVIEW_PROMPT"
+claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Bash(git diff *),Bash(git show *),Bash(git status *),Bash(git rev-parse *),Write" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
@@ -45,7 +45,7 @@ From Claude Code primary:
 codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
 ```
 
-External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: fable`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
+External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
 
 The external reviewer may write only `REVIEW_REPORT`; it may not edit code, tests, plans, tasks, scope docs, or other artifacts. Allow at least 20 minutes before treating the run as hung.
 
@@ -78,7 +78,7 @@ The external reviewer may write only `REVIEW_REPORT`; it may not edit code, test
 - Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged to `REVIEW_REPORT`.
 - Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
 
-After either route, verify the report exists, contains every required section, names the reviewed scope, and includes all runtime/model metadata. Repair an invalid external report once with the same CLI; otherwise use the native fallback. Never fix findings inside this skill.
+When a candidate tuple is supplied, require all three fields, recompute the canonical hash using `git diff --binary --full-index --no-ext-diff --no-color --no-renames`, and verify the tuple before dispatch and after report creation. Record it in Scope Boundary; a mismatch makes the report stale. After either route, verify the report exists, contains every required section, names the reviewed scope, and includes all runtime/model metadata. Repair an invalid external report once with the same CLI; otherwise use the native fallback. Never fix findings inside this skill.
 
 ## Outputs + DONE
 
@@ -98,7 +98,7 @@ DONE when the self-locating report exists with all six numbered sections plus me
 
 ## Handoff
 
-- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Suggest `/spectre:fix` for blockers or `/spectre:clean` / `/spectre:test` when unblocked.
+- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Blockers → `/spectre:fix`; otherwise choose `/spectre:proof` for completed user-observable work, `/spectre:test` for a concrete coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary recommendation tied to the verdict, not an equal-weight menu.
 - `--orchestrated`: return the verdict, CRITICAL/HIGH findings with their evidence chains, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
 
 ## Escalate-If

@@ -9,7 +9,7 @@ user-invocable: true
 Prepare uncommitted or recently-changed work for check-in: a fast, formulaic hygiene pass, then descriptive conventional commits. No subagents, no approval gates — execute each step and move on.
 
 ## Inputs
-- `$ARGUMENTS` (optional scope/intent hint). Read the live working tree at runtime (`git status`, `git diff`) — do not assume a prior phase ran.
+- `$ARGUMENTS` (optional scope/intent hint, plus `--orchestrated` when a parent workflow owns the next step). Read the live working tree at runtime (`git status`, `git diff`) — do not assume a prior phase ran.
 
 ## Working Set
 Changed files only. Opportunistic, not forensic — do not hunt beyond the diff.
@@ -35,7 +35,8 @@ One or more conventional commits covering the changes. DONE when:
    - One concern per commit — if it spans concerns, split it. Treat commits as durable context for future readers/LLMs; never `fix: updates` / `refactor: clean up`.
 
 ## Handoff
-Next Steps: one-line footer suggesting the natural follow-on (e.g. `spectre-rebase` to tidy history, or push/PR) grounded in the actual repo state.
+- `--orchestrated` → return commit hashes and verification status to the caller without user-facing Next Steps.
+- Standalone → emit one repo-state-grounded recommendation: `spectre-proof` if completed user-observable work still needs acceptance evidence; otherwise `spectre-rebase` when the branch is ready for merge preparation, or `spectre-create_pr` only when already current with the target.
 
 ## Escalate-If
 - A secret/credential appears in the diff — stop, surface it, do not commit until resolved.

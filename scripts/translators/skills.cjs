@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { toTomlAgentName } = require('./agents.cjs');
 
 function parseFrontmatter(source, filePath) {
   if (!source.startsWith('---\n')) {
@@ -71,16 +72,94 @@ function rewriteCodexCommandRefs(source) {
     });
 }
 
-function rewriteSkillForCodex(source) {
+function knownAgentNames(canonicalRoot) {
+  const agentsDir = path.join(canonicalRoot, 'agents');
+  if (!fs.existsSync(agentsDir)) return [];
+
+  return fs.readdirSync(agentsDir)
+    .filter((fileName) => fileName.endsWith('.md'))
+    .map((fileName) => path.basename(fileName, '.md'))
+    .sort((left, right) => right.length - left.length || left.localeCompare(right));
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function rewriteCodexAgentRefs(source, agentNames = []) {
+  let rewritten = source;
+  for (const agentName of agentNames) {
+    const codexName = toTomlAgentName(agentName);
+    const escaped = escapeRegExp(agentName);
+    const legacyPatterns = [
+      new RegExp(`@@spectre:${escaped}\\b`, 'g'),
+      new RegExp(`@spectre:${escaped}\\b`, 'g'),
+      new RegExp(`@spectre-${escaped}\\b`, 'g'),
+      new RegExp(`@sesh:${escaped}\\b`, 'g'),
+      new RegExp(`(?<![\\w:-])@${escaped}\\b`, 'g'),
+    ];
+    for (const pattern of legacyPatterns) {
+      rewritten = rewritten.replace(pattern, `@${codexName}`);
+    }
+  }
+  return rewritten;
+}
+
+function agentPreflightBlock() {
+  return [
+    '',
+    '## Codex Agent Preflight',
+    '',
+    'Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:',
+    '',
+    '```bash',
+    'node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json',
+    '```',
+    '',
+    'If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.',
+    '',
+  ].join('\n');
+}
+
+function addAgentPreflightIfNeeded(body) {
+  if (!/@spectre_[A-Za-z0-9_]+/.test(body)) return body;
+  if (body.includes('## Codex Agent Preflight')) return body;
+  return `${body.trimEnd()}\n${agentPreflightBlock()}`;
+}
+
+function rewriteTextForCodex(source, agentNames = []) {
+  return rewriteCodexAgentRefs(
+    rewriteCodexCommandRefs(rewriteProjectSkillPaths(source))
+      .replace(
+        /\bspectre knowledge (search|load|register|migrate)\b/g,
+        (_match, operation) =>
+          `node "\${PLUGIN_ROOT}/hooks/scripts/knowledge-cli.mjs" ${operation}`,
+      ),
+    agentNames,
+  );
+}
+
+function rewriteSkillForCodex(source, agentNames = []) {
   const { frontmatter, body } = parseFrontmatter(source, 'SKILL.md');
   const rewrittenFrontmatter = Object.fromEntries(
     Object.entries(frontmatter).map(([key, value]) => [
       key,
-      rewriteCodexCommandRefs(rewriteProjectSkillPaths(String(value))),
+      rewriteTextForCodex(String(value), agentNames),
     ]),
   );
-  const rewrittenBody = rewriteCodexCommandRefs(rewriteProjectSkillPaths(body));
+  const rewrittenBody = addAgentPreflightIfNeeded(rewriteTextForCodex(body, agentNames));
   return renderFrontmatter(rewrittenFrontmatter, rewrittenBody);
+}
+
+// Codex has no SKILL.md-frontmatter equivalent of Claude's `disable-model-invocation`.
+// Its lever is a per-skill-directory `agents/openai.yaml` policy: when
+// `allow_implicit_invocation` is false, Codex won't auto-invoke the skill from a
+// prompt, but explicit `$skill` invocation still works. Mirror the Claude flag here.
+const CODEX_INVOCATION_POLICY = 'policy:\n  allow_implicit_invocation: false\n';
+
+function isModelInvocationDisabled(frontmatter) {
+  const value = frontmatter['disable-model-invocation'];
+  return value === true || value === 'true';
 }
 
 function writeIfChanged(filePath, content) {
@@ -95,7 +174,7 @@ function writeIfChanged(filePath, content) {
   return existed ? 'updated' : 'created';
 }
 
-function copyDirectory(sourceDir, targetDir, keep) {
+function copyDirectory(sourceDir, targetDir, keep, agentNames) {
   const results = [];
 
   for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -105,17 +184,29 @@ function copyDirectory(sourceDir, targetDir, keep) {
     const targetPath = path.join(targetDir, entry.name);
 
     if (entry.isDirectory()) {
-      results.push(...copyDirectory(sourcePath, targetPath, keep));
+      results.push(...copyDirectory(sourcePath, targetPath, keep, agentNames));
       continue;
     }
 
     if (!entry.isFile()) continue;
 
     const content = fs.readFileSync(sourcePath, 'utf8');
-    const output = entry.name === 'SKILL.md' ? rewriteSkillForCodex(content) : content;
+    const output = entry.name === 'SKILL.md'
+      ? rewriteSkillForCodex(content, agentNames)
+      : rewriteTextForCodex(content, agentNames);
     const status = writeIfChanged(targetPath, output);
     keep.add(targetPath);
     results.push({ path: targetPath, sourcePath, status });
+
+    // Emit the Codex invocation-policy sidecar for skills that opt out of model
+    // invocation. Skills without the flag get no sidecar; a previously-emitted one
+    // falls out of `keep` and is pruned by removeStaleFiles.
+    if (entry.name === 'SKILL.md' && isModelInvocationDisabled(parseFrontmatter(content, sourcePath).frontmatter)) {
+      const policyPath = path.join(targetDir, 'agents', 'openai.yaml');
+      const policyStatus = writeIfChanged(policyPath, CODEX_INVOCATION_POLICY);
+      keep.add(policyPath);
+      results.push({ path: policyPath, sourcePath, status: policyStatus });
+    }
   }
 
   return results;
@@ -144,11 +235,49 @@ function removeStaleFiles(dir, keep) {
   return results;
 }
 
+function codexUninstallSkill() {
+  return `---
+name: "spectre-uninstall-codex"
+description: "Codex-only Spectre uninstall workflow. Use when the user wants to uninstall the native spectre@spectre Codex plugin; removes managed Spectre custom agents before native plugin removal while preserving marketplace registration and project knowledge."
+user-invocable: true
+---
+
+# uninstall-codex
+
+Remove only Spectre-managed Codex custom agents, then remove the native plugin. Preserve marketplace registration, project knowledge, handoffs, and unrelated Codex config.
+
+## Method
+1. Run:
+   \`\`\`bash
+   node "\${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --remove --json
+   \`\`\`
+2. If the helper reports \`collisions\`, stop and report the paths. Do not delete unowned files.
+3. Run:
+   \`\`\`bash
+   codex plugin remove spectre@spectre
+   \`\`\`
+
+## DONE
+Managed \`spectre_*.toml\` agents were removed or confirmed absent, the native plugin removal command completed, and no project knowledge/session data was deleted.
+`;
+}
+
+function writeCodexOnlySkills(targetDir, keep) {
+  const results = [];
+  const skillDir = path.join(targetDir, 'spectre-uninstall-codex');
+  const targetPath = path.join(skillDir, 'SKILL.md');
+  const status = writeIfChanged(targetPath, codexUninstallSkill());
+  keep.add(targetPath);
+  results.push({ path: targetPath, status });
+  return results;
+}
+
 function translate(canonicalRoot, codexRoot) {
   const sourceDir = path.join(canonicalRoot, 'skills');
   const targetDir = path.join(codexRoot, 'skills');
   const results = [];
   const keep = new Set();
+  const agentNames = knownAgentNames(canonicalRoot);
 
   if (!fs.existsSync(sourceDir)) return results;
 
@@ -160,9 +289,10 @@ function translate(canonicalRoot, codexRoot) {
     if (!fs.existsSync(skillPath)) continue;
 
     const targetSkillDir = path.join(targetDir, entry.name);
-    results.push(...copyDirectory(sourceSkillDir, targetSkillDir, keep));
+    results.push(...copyDirectory(sourceSkillDir, targetSkillDir, keep, agentNames));
   }
 
+  results.push(...writeCodexOnlySkills(targetDir, keep));
   results.push(...removeStaleFiles(targetDir, keep));
   return results;
 }
@@ -205,9 +335,11 @@ function verify(codexRoot) {
 module.exports = {
   parseFrontmatter,
   renderFrontmatter,
+  rewriteCodexAgentRefs,
   rewriteCodexCommandRefs,
   rewriteProjectSkillPaths,
   rewriteSkillForCodex,
+  rewriteTextForCodex,
   yamlScalar,
   translate,
   verify,

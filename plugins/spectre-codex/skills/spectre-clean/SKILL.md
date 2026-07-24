@@ -10,20 +10,22 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 
 ## Inputs
 
-- `$ARGUMENTS` — optional scope hint: commit/SHA, `unstaged`/`staged`, `context`/session, task dir, or files.
-- `target_out_dir` — optional OUT_DIR override.
+- `$ARGUMENTS` — optional scope hint: commit/SHA, `unstaged`/`staged`, `context`/session, task dir, files, or `--orchestrated` when a parent workflow owns the next step.
+- `FEATURE_ROOT` — explicit feature name/root or one descendant feature artifact.
 
 ## Working Set
 
-- Late-bind at runtime: `branch = git rev-parse --abbrev-ref HEAD`; `OUT_DIR = target_out_dir || docs/tasks/{branch}`.
+- Resolve `FEATURE_ROOT` in this order: an explicit feature directory or feature name; a supplied artifact beneath the feature root; one unambiguous feature artifact in the current conversation. Never infer it from the branch, recency, or lifecycle state.
+- An explicit legacy `docs/tasks/**` artifact remains a compatibility input, but new `working_set.json` and cleanup summaries require a confirmed `.spectre/features/<feature-name>/` root and record the legacy source.
+- Set `OUT_DIR = FEATURE_ROOT`.
 - Resolve the same full working set used by prune/test/sweep from committed changes, staged, unstaged, and untracked files. If a provided ref/scope is invalid or ambiguous, stop and ask.
-- Write/update `{OUT_DIR}/working_set.json` with scope, files, and the primary's P0-P3 risk tiers before dispatching test work.
+- Write/update `{OUT_DIR}/working_set.json` with `"feature":"<feature-name>"` and `"feature_root":".spectre/features/<feature-name>"`, plus scope, files, and the primary's P0-P3 risk tiers before dispatching test work.
 
 ## Outputs + DONE
 
 - `spectre-prune` cleanup completed by a subagent; manual-review items preserved.
 - Primary-authored P0-P3 risk assessment and test plan recorded in `working_set.json`.
-- `spectre-test` work completed by `@tester` test-lead subagents using the primary's risk plan.
+- `spectre-test` work completed by `@spectre_tester` test-lead subagents using the primary's risk plan.
 - `spectre-sweep` completed by a subagent, including final hygiene, verification, and conventional commits.
 - Final report includes: prune summary path, manual-review items, risk-tier counts, tests added/verified, lint/test status, sweep commit list, and any blockers.
 - **DONE when:** each phase skill actually ran in a subagent; primary did the test risk assessment itself; no phase rules were duplicated or hand-written in place of loading the focused skill; manual-review items are surfaced; sweep either committed cleanly or stopped on an explicit blocker.
@@ -31,15 +33,15 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 ## Method / guardrails
 
 1. **Resolve scope once.** Establish files, task dir, and OUT_DIR. Keep dynamic details out of the prompt body; read them live.
-2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(spectre-prune)` for the resolved scope. It returns cleanup edits, summary path, validation status, and manual-review items.
+2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(spectre-prune)` with `--orchestrated` for the resolved scope. It returns cleanup edits, summary path, validation status, and manual-review items.
 3. **Primary risk assessment.** After prune returns, the primary classifies every changed file P0-P3:
    - **P0 Critical:** auth/payment/security/crypto/session/token, PII, permissions, user-data mutation, external API handlers, DB migrations, `@critical`.
    - **P1 Core:** feature components, API handlers, state/business logic, fetch/cache, user-visible error paths.
    - **P2 Supporting:** exported utilities, validators, transformers, adapters, hooks with real logic.
    - **P3 Skip:** docs, styles, config, types, constants/enums, re-export barrels, pass-through wrappers, generated files.
    Write a compact plan: `- [P{tier}] {file}: {behavior or SKIP reason}`.
-4. **Test phase.** Dispatch `@tester` test-lead subagents in parallel. Each subagent loads `Skill(spectre-test)`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
-5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(spectre-sweep)` on the resulting diff. Sweep owns final hygiene, verification, and commits.
+4. **Test phase.** Dispatch `@spectre_tester` test-lead subagents in parallel. Each subagent loads `Skill(spectre-test)` with `--orchestrated`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
+5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(spectre-sweep)` with `--orchestrated` on the resulting diff. Sweep owns final hygiene, verification, and commits.
 6. **Synthesize.** Read phase returns and git state; report only the final state and blockers.
 
 Guardrails:
@@ -50,7 +52,10 @@ Guardrails:
 
 ## Handoff
 
-If sweep committed successfully, report commit hashes/messages and suggest `spectre-rebase` or push/PR. If blocked, report the exact phase and blocker, plus the manual-review list.
+If blocked, report the exact phase and blocker plus the manual-review list; recommend only the concrete recovery action. If successful, report commit hashes/messages.
+
+- `--orchestrated` → return the result to the caller without user-facing Next Steps.
+- Standalone → `Next (recommended): spectre-rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `spectre-proof` only as a conditional alternative when acceptance evidence is still desired before shipping.
 
 ## Escalate-If
 
@@ -58,3 +63,13 @@ If sweep committed successfully, report commit hashes/messages and suggest `spec
 - A phase skill conflicts with this orchestration contract; surface the conflict instead of improvising.
 - P0 coverage cannot be made behavioral and mutation-resistant.
 - Sweep finds secrets/PII or cannot commit without bypassing verification.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

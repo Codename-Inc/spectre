@@ -13,18 +13,6 @@ import {
 } from './constants.js';
 import { ensureDir, projectPaths } from './paths.js';
 
-const KNOWLEDGE_CAPABILITY_STATUS =
-  'spectre: relevant active project knowledge is applied automatically; ' +
-  'search with `spectre knowledge search "<query>"`; capture durable knowledge ' +
-  'with `/spectre:learn`.';
-const KNOWLEDGE_CAPABILITY_BODY = [
-  '## SPECTRE Project Knowledge',
-  '',
-  'Relevant active project knowledge is applied automatically when a prompt matches.',
-  'Use `spectre knowledge search "<query>"` for explicit lexical discovery.',
-  'Use `/spectre:learn` to capture durable project knowledge.'
-].join('\n');
-
 function gitBranch(projectDir) {
   try {
     return execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
@@ -321,31 +309,27 @@ export function syncSessionOverride(projectDir, payload = {}) {
 }
 
 export function clearKnowledgeOverride(projectDir) {
-  removeManagedOverride(projectPaths(projectDir).overrideAgentsPath, KNOWLEDGE_OVERRIDE_START, KNOWLEDGE_OVERRIDE_END);
-}
-
-export function syncKnowledgeOverride(projectDir) {
-  const { overrideAgentsPath } = projectPaths(projectDir);
-  writeManagedOverride(
-    overrideAgentsPath,
-    KNOWLEDGE_OVERRIDE_START,
-    KNOWLEDGE_OVERRIDE_END,
-    KNOWLEDGE_CAPABILITY_BODY
+  const overridePath = projectPaths(projectDir).overrideAgentsPath;
+  if (!fs.existsSync(overridePath)) return;
+  const current = fs.readFileSync(overridePath, 'utf8');
+  const updated = current.replace(
+    managedOverridePattern(KNOWLEDGE_OVERRIDE_START, KNOWLEDGE_OVERRIDE_END),
+    ''
   );
-
-  return {
-    knowledgeStatus: KNOWLEDGE_CAPABILITY_STATUS
-  };
+  if (updated.length === 0) {
+    fs.unlinkSync(overridePath);
+  } else if (updated !== current) {
+    fs.writeFileSync(overridePath, updated);
+  }
 }
 
 export function buildSessionStartOutput(projectDir, payload = {}) {
+  clearKnowledgeOverride(projectDir);
   const synced = syncSessionOverride(projectDir, payload);
-  const knowledge = syncKnowledgeOverride(projectDir);
 
   return {
     systemMessage: buildVisibleResumeNotice({
-      handoffPath: synced?.handoffPath,
-      knowledgeStatus: knowledge.knowledgeStatus
+      handoffPath: synced?.handoffPath
     }),
     hookSpecificOutput: {
       hookEventName: 'SessionStart'
@@ -370,12 +354,30 @@ function removeBridge(rootAgentsPath, startMarker = AGENTS_BRIDGE_START, endMark
   fs.writeFileSync(rootAgentsPath, `${updated}\n`);
 }
 
-function cleanupLegacyProjectContext(projectDir) {
+function legacyRegistryHasRows(skillDir) {
+  const registryPath = path.join(skillDir, 'references', 'registry.toon');
+  if (!fs.existsSync(registryPath)) return false;
+  return fs.readFileSync(registryPath, 'utf8')
+    .split(/\r?\n/)
+    .some(line => line.trim() && !line.trimStart().startsWith('#'));
+}
+
+function cleanupRetiredRecallDirs(projectDir) {
+  for (const nativeRoot of ['.agents', '.claude']) {
+    for (const skillName of ['spectre-recall', 'spectre-find']) {
+      const skillDir = path.join(projectDir, nativeRoot, 'skills', skillName);
+      if (fs.existsSync(skillDir) && !legacyRegistryHasRows(skillDir)) {
+        fs.rmSync(skillDir, { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+function cleanupLegacyProjectContext(projectDir, options = {}) {
   const paths = projectPaths(projectDir);
   const forkName = ['cas', 'par'].join('');
   removeBridge(paths.rootAgentsPath);
-  removeManagedOverride(paths.overrideAgentsPath, SESSION_OVERRIDE_START, SESSION_OVERRIDE_END);
-  removeManagedOverride(paths.overrideAgentsPath, KNOWLEDGE_OVERRIDE_START, KNOWLEDGE_OVERRIDE_END);
+  clearKnowledgeOverride(projectDir);
   removeBridge(
     paths.rootAgentsPath,
     `<!-- ${forkName}-codex:start -->`,
@@ -395,9 +397,16 @@ function cleanupLegacyProjectContext(projectDir) {
   if (fs.existsSync(paths.sessionSkillDir)) {
     fs.rmSync(paths.sessionSkillDir, { recursive: true, force: true });
   }
+  cleanupRetiredRecallDirs(projectDir);
+  if (options.storePath) {
+    const promptSessions = path.join(options.storePath, 'runtime', 'sessions');
+    if (fs.existsSync(promptSessions)) {
+      fs.rmSync(promptSessions, { recursive: true, force: true });
+    }
+  }
 }
 
-export function installProjectFiles(projectDir, scope) {
+export function installProjectFiles(projectDir, scope, options = {}) {
   const paths = projectPaths(projectDir);
   ensureDir(paths.spectreDir);
 
@@ -411,13 +420,13 @@ export function installProjectFiles(projectDir, scope) {
     spectreVersion: metadata.version,
     codexIntegration: {
       installedAt: new Date().toISOString(),
-      hiddenContextInjection: 'agents_override_managed_block',
+      hiddenContextInjection: 'session_start_registry',
       fallback: 'none'
     }
   };
 
   fs.writeFileSync(paths.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  cleanupLegacyProjectContext(projectDir);
+  cleanupLegacyProjectContext(projectDir, options);
 
   const legacyLauncherPath = path.join(paths.projectSpectreBinDir, 'codex');
   if (fs.existsSync(legacyLauncherPath)) {

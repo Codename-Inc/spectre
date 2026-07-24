@@ -4,6 +4,8 @@ import path from 'node:path';
 import { measurePayload } from './payload.mjs';
 import {
   CATEGORIES,
+  LEGACY_SPECTRE_LEARNING_METADATA_FIELD,
+  LEGACY_SPECTRE_LEARNING_METADATA_VALUE,
   parseKnowledgeRecord,
   refreshKnowledgeIndex,
 } from './records.mjs';
@@ -34,6 +36,7 @@ const SPECTRE_METADATA = new Set([
   'spectre-triggers',
   'spectre-status',
   'spectre-version',
+  LEGACY_SPECTRE_LEARNING_METADATA_FIELD,
 ]);
 
 function malformed(message) {
@@ -162,6 +165,7 @@ function normalizeLegacyRecord(sourcePath, id, category, triggers) {
   ) {
     throw malformed(`${sourcePath}: legacy name must match its valid directory ID`);
   }
+  const triggerSuffix = fields.description?.match(/\s+TRIGGER when:\s*(.+)$/);
   const description = fields.description
     ?.replace(/\s+TRIGGER when:.*$/, '')
     .trim();
@@ -175,6 +179,14 @@ function normalizeLegacyRecord(sourcePath, id, category, triggers) {
   const unrelatedMetadata = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!SPECTRE_METADATA.has(key)) unrelatedMetadata[key] = value;
+  }
+  const legacySpectreLearning = hasLegacySpectreLearningProvenance(
+    triggerSuffix?.[1],
+    triggers,
+  );
+  if (legacySpectreLearning) {
+    unrelatedMetadata[LEGACY_SPECTRE_LEARNING_METADATA_FIELD] =
+      LEGACY_SPECTRE_LEARNING_METADATA_VALUE;
   }
   const canonical = {
     id,
@@ -192,6 +204,7 @@ function normalizeLegacyRecord(sourcePath, id, category, triggers) {
   return {
     canonical,
     content: buildCanonicalContent(canonical),
+    legacySpectreLearning,
   };
 }
 
@@ -268,6 +281,24 @@ function parseTriggers(rawTriggers) {
   }
   if (triggers.length === 0) throw malformed('registry triggers must not be empty');
   return triggers;
+}
+
+function triggerSetsEqual(left, right) {
+  const normalizedLeft = new Set(left.map((trigger) => trigger.toLocaleLowerCase()));
+  const normalizedRight = new Set(right.map((trigger) => trigger.toLocaleLowerCase()));
+  return (
+    normalizedLeft.size === normalizedRight.size &&
+    [...normalizedLeft].every((trigger) => normalizedRight.has(trigger))
+  );
+}
+
+function hasLegacySpectreLearningProvenance(rawTriggerSuffix, registryTriggers) {
+  if (typeof rawTriggerSuffix !== 'string') return false;
+  try {
+    return triggerSetsEqual(parseTriggers(rawTriggerSuffix), registryTriggers);
+  } catch {
+    return false;
+  }
 }
 
 function readRegistryRows(projectDir) {
@@ -479,11 +510,11 @@ function classifyGroup(id, rows, storePath) {
     const triggers = mergeTriggers(rows);
     const normalized = normalizeLegacyRecord(sourcePaths[0], id, category, triggers);
     const framed = frameForMeasurement(normalized.content);
-    if (
+    const exceedsPromptBudget =
       normalized.content.length > 9_000 ||
       !measurePayload('claude', framed).ok ||
-      !measurePayload('codex', framed).ok
-    ) {
+      !measurePayload('codex', framed).ok;
+    if (exceedsPromptBudget && !normalized.legacySpectreLearning) {
       const grandfatheredClaudeNativeDiscovery = sourcePaths.some((sourcePath) =>
         sourcePath.includes(`${path.sep}.claude${path.sep}`));
       return {
@@ -509,6 +540,7 @@ function classifyGroup(id, rows, storePath) {
       code: sourcePaths.length > 1 ? 'DEDUPLICATED' : 'MIGRATED',
       canonical: normalized.canonical,
       canonicalContent: normalized.content,
+      ...(exceedsPromptBudget ? { promptTruncationRequired: true } : {}),
     };
   } catch (error) {
     if (error.code !== 'MALFORMED') throw error;

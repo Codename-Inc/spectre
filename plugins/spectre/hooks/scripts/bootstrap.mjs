@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readStdinWithTimeout } from './lib.mjs';
 
@@ -36,8 +37,17 @@ const STALE_PATHS = [
   'hooks/scripts/test_handoff_resume.py',
   'hooks/scripts/test_load_knowledge.py',
 
-  // Old skill directory replaced by spectre-guide
+  // Retired prompt-time knowledge transport
+  'hooks/scripts/user-prompt-submit.mjs',
+  'hooks/scripts/knowledge/matcher.mjs',
+
+  // Retired skill directories
+  'skills/spectre-recall',
+  'skills/spectre-find',
   'skills/spectre-next-steps',
+  'skills/spectre-guide',
+  'skills/spectre-evaluate',
+  'skills/spectre-architecture_review',
 ];
 
 // ──────────────────────────────────────────────────────────────────
@@ -68,6 +78,55 @@ function cleanupStalePaths(pluginRoot) {
   return removed;
 }
 
+function ensureCodexAgents(pluginRoot) {
+  if (!process.env.PLUGIN_ROOT) {
+    return null;
+  }
+  const scriptPath = path.join(
+    pluginRoot,
+    'skills',
+    'spectre-scope',
+    'scripts',
+    'ensure-codex-agents.mjs',
+  );
+  if (!fs.existsSync(scriptPath)) {
+    return {
+      ok: false,
+      message: `missing managed-agent setup helper: ${scriptPath}`,
+    };
+  }
+  const result = spawnSync(process.execPath, [scriptPath, '--ensure', '--json'], {
+    env: {
+      ...process.env,
+      PLUGIN_ROOT: pluginRoot,
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      message: (result.stderr || result.stdout || 'managed-agent setup failed').trim(),
+    };
+  }
+  try {
+    const payload = JSON.parse(result.stdout);
+    return {
+      ok: true,
+      changed:
+        (payload.installed?.length || 0) +
+        (payload.updated?.length || 0) +
+        (payload.removed?.length || 0) +
+        (payload.cleaned?.length || 0),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Main
 // ──────────────────────────────────────────────────────────────────
@@ -76,13 +135,25 @@ async function main() {
   // Drain stdin so the hook system doesn't hang
   await readStdinWithTimeout();
 
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..', '..');
+  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..', '..');
 
   const removed = cleanupStalePaths(pluginRoot);
+  const agentSetup = ensureCodexAgents(pluginRoot);
 
-  if (removed > 0) {
+  if (agentSetup && !agentSetup.ok) {
     process.stdout.write(JSON.stringify({
-      systemMessage: `bootstrap: cleaned ${removed} stale file${removed > 1 ? 's' : ''} from previous plugin version`
+      systemMessage: `bootstrap: Spectre Codex agent setup skipped: ${agentSetup.message}`
+    }) + '\n');
+  } else if (removed > 0 || agentSetup?.changed > 0) {
+    const parts = [];
+    if (removed > 0) {
+      parts.push(`cleaned ${removed} stale file${removed > 1 ? 's' : ''}`);
+    }
+    if (agentSetup?.changed > 0) {
+      parts.push('updated managed Codex agents; start a new Codex session before dispatching @spectre_* agents');
+    }
+    process.stdout.write(JSON.stringify({
+      systemMessage: `bootstrap: ${parts.join('; ')}`
     }) + '\n');
   } else {
     process.stdout.write(JSON.stringify({}) + '\n');
@@ -91,7 +162,7 @@ async function main() {
   process.exit(0);
 }
 
-export { cleanupStalePaths, STALE_PATHS };
+export { cleanupStalePaths, ensureCodexAgents, STALE_PATHS };
 
 if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename)) {
   main();

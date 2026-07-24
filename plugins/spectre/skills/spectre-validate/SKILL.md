@@ -19,7 +19,7 @@ Level 1 without 2/3 is **dead code that happens to match the description** — n
 
 ## Inputs
 
-- `$ARGUMENTS` — explicit feature name/root or descendant artifact, scope docs, an explicit plan as a requirement source, and/or `tasks.json` to validate against (paths, or "use thread context"), plus optional `execution_state.md` focus evidence, an immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and `--orchestrated` when a parent workflow owns remediation and the next step. Requirement context is **REQUIRED**. If absent, ask for a scope or plan path, the task detail JSON path, or "use thread context" — then wait.
+- `$ARGUMENTS` — explicit feature name/root or descendant artifact, scope docs, an explicit arbitrary plan as a requirement source, and/or `tasks.json` to validate against (paths, or "use thread context"), plus optional `execution_state.md` focus evidence, an immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and `--orchestrated` when a parent workflow owns remediation and the next step. Requirement context is **REQUIRED**. If absent, ask for a scope or plan path, the task detail JSON path, or "use thread context" — then wait.
 - Treat the plan as authoritative when passed. Otherwise use task acceptance slices, scope docs, then usable thread context. Read the authoritative source in full. For `tasks.json`, extract validation slices from `phases[]` (parent title/description plus child acceptance criteria/context); do not use `execute.md` as the validation source except to locate the JSON path.
 
 ## Working Set (late-bound — read at run-time, never inline)

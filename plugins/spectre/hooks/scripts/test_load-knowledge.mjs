@@ -8,14 +8,14 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import {
-  filterAppliedKnowledge,
-  markKnowledgeApplied,
-} from './knowledge/matcher.mjs';
+import { writeKnowledgeActivity } from './knowledge/activity.mjs';
+import { refreshKnowledgeIndex } from './knowledge/records.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = path.join(SCRIPT_DIR, 'load-knowledge.mjs');
+const BUNDLED_CLI = path.join(SCRIPT_DIR, 'knowledge-cli.mjs');
+const HOOKS_PATH = path.join(SCRIPT_DIR, '..', 'hooks.json');
 const START_MARKER = '<!-- spectre-knowledge:start -->';
 const END_MARKER = '<!-- spectre-knowledge:end -->';
 
@@ -35,19 +35,93 @@ async function createStore(projectDir, spectreHome) {
   return resolved.storePath;
 }
 
-function createManifest(projectDir) {
-  const manifestPath = path.join(projectDir, '.spectre', 'manifest.json');
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(manifestPath, '{"version":1}\n');
+function skillContent(id, options = {}) {
+  return [
+    '---',
+    `name: ${id}`,
+    `description: ${options.description || `Use when working with ${id}.`}`,
+    'metadata:',
+    `  spectre-category: "${options.category || 'feature'}"`,
+    `  spectre-triggers: '${JSON.stringify(options.triggers || [`${id} workflow`])}'`,
+    `  spectre-status: "${options.status || 'active'}"`,
+    `  spectre-version: "${options.version || 1}"`,
+    '---',
+    '',
+    options.body || `# ${id}\n\nPRIVATE_BODY_${id.toUpperCase().replaceAll('-', '_')}`,
+    '',
+  ].join('\n');
 }
 
-function runHook({
-  cwd,
-  spectreHome,
-  host = 'claude',
-  input,
-  env = {},
-}) {
+function writeRecord(storePath, id, options = {}) {
+  const recordDirectory = path.join(storePath, 'knowledge', id);
+  fs.mkdirSync(recordDirectory, { recursive: true });
+  const recordPath = path.join(recordDirectory, 'SKILL.md');
+  const content = skillContent(id, options);
+  fs.writeFileSync(recordPath, content);
+  if (options.mtimeMs !== undefined) {
+    const date = new Date(options.mtimeMs);
+    fs.utimesSync(recordPath, date, date);
+  }
+  return { content, recordDirectory, recordPath };
+}
+
+function writeLegacyRecord(projectDir, id) {
+  const skillDirectory = path.join(projectDir, '.claude', 'skills', id);
+  const registryPath = path.join(
+    projectDir,
+    '.claude',
+    'skills',
+    'spectre-recall',
+    'references',
+    'registry.toon',
+  );
+  fs.mkdirSync(skillDirectory, { recursive: true });
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  fs.writeFileSync(path.join(skillDirectory, 'SKILL.md'), [
+    '---',
+    `name: ${id}`,
+    'description: Use when migrating legacy registry knowledge.',
+    '---',
+    '',
+    '# Legacy record',
+    '',
+    'PRIVATE_LEGACY_MIGRATION_BODY',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(
+    registryPath,
+    `${id}|feature|legacy registry migration|Use when migrating legacy registry knowledge.\n`,
+  );
+  return skillDirectory;
+}
+
+function writeUnresolvedLegacyRegistryRow(projectDir, id) {
+  const registryPath = path.join(
+    projectDir,
+    '.claude',
+    'skills',
+    'spectre-recall',
+    'references',
+    'registry.toon',
+  );
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  fs.writeFileSync(
+    registryPath,
+    `${id}|feature|unresolved legacy migration|Use when testing lock contention.\n`,
+  );
+  return registryPath;
+}
+
+function emptyActivity() {
+  return {
+    schemaVersion: 1,
+    records: {},
+    search: { matches: 0, misses: 0, recordMatches: {} },
+  };
+}
+
+function runHook({ cwd, spectreHome, host = 'claude', input, env = {}, timeout = 10_000 }) {
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [SCRIPT_PATH, '--host', host], {
     cwd,
     encoding: 'utf8',
@@ -58,99 +132,152 @@ function runHook({
       ...env,
     },
     input: typeof input === 'string' ? input : JSON.stringify(input),
-    timeout: 10_000,
+    timeout,
   });
   return {
     exitCode: result.status,
     stdout: result.stdout,
     stderr: result.stderr,
+    elapsedMs: Date.now() - startedAt,
+    signal: result.signal,
   };
 }
 
-function legacySkill(projectDir, id = 'feature-legacy') {
-  const skillDir = path.join(projectDir, '.claude', 'skills', id);
-  const registryPath = path.join(
-    projectDir,
-    '.claude',
-    'skills',
-    'spectre-recall',
-    'references',
-    'registry.toon',
-  );
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
-  fs.writeFileSync(
-    path.join(skillDir, 'SKILL.md'),
-    [
-      '---',
-      `name: ${id}`,
-      'description: Legacy registry guidance.',
-      '---',
-      '# Secret legacy record',
-      '',
-      'LEGACY_RECORD_BODY_MUST_NOT_APPEAR_AT_STARTUP',
-    ].join('\n'),
-  );
-  fs.writeFileSync(
-    registryPath,
-    `${id}|feature|legacy trigger|Legacy registry guidance.\n`,
-  );
-  return { skillDir, registryPath };
+function runBundled(args, { cwd, spectreHome }) {
+  return spawnSync(BUNDLED_CLI, args, {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, SPECTRE_HOME: spectreHome },
+    timeout: 10_000,
+  });
 }
 
-function match(id = 'feature-auth', version = 1) {
-  return { id, version };
+function sessionInput(source, cwd) {
+  return {
+    hook_event_name: 'SessionStart',
+    source,
+    session_id: `${source}-session`,
+    cwd,
+  };
 }
 
-describe('capability-only SessionStart', () => {
-  it('writes constant search/learn guidance and migrates without exposing records', async (t) => {
+function statSnapshot(filePath) {
+  const stat = fs.statSync(filePath);
+  return {
+    bytes: fs.readFileSync(filePath),
+    mtimeMs: stat.mtimeMs,
+  };
+}
+
+function assertSnapshotUnchanged(filePath, before) {
+  assert.deepEqual(fs.readFileSync(filePath), before.bytes);
+  assert.equal(fs.statSync(filePath).mtimeMs, before.mtimeMs);
+}
+
+function assertRegistryOutput(result, id, bodySentinel) {
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal(result.signal, null);
+  const output = JSON.parse(result.stdout);
+  assert.deepEqual(Object.keys(output), ['hookSpecificOutput']);
+  assert.deepEqual(Object.keys(output.hookSpecificOutput).sort(), [
+    'additionalContext',
+    'hookEventName',
+  ]);
+  assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.equal(typeof output.hookSpecificOutput.additionalContext, 'string');
+  assert.match(output.hookSpecificOutput.additionalContext, new RegExp(`ID: ${id}`));
+  assert.match(output.hookSpecificOutput.additionalContext, /Use when:/);
+  assert.match(output.hookSpecificOutput.additionalContext, /Activation cues:/);
+  assert.equal('systemMessage' in output, false);
+  assert.equal(output.hookSpecificOutput.additionalContext.includes(bodySentinel), false);
+  assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /body preview|fallback file/i);
+}
+
+describe('knowledge registry SessionStart integration', () => {
+  for (const source of ['startup', 'resume', 'clear', 'compact']) {
+    it(`emits exactly one metadata-only additionalContext for ${source}`, async (t) => {
+      const projectDir = makeTmp(t);
+      const spectreHome = path.join(projectDir, 'spectre-home');
+      const storePath = await createStore(projectDir, spectreHome);
+      const id = `feature-${source}-registry`;
+      const bodySentinel = `PRIVATE_BODY_${id.toUpperCase().replaceAll('-', '_')}`;
+      writeRecord(storePath, id, {
+        description: `Use when validating ${source} knowledge registry delivery.`,
+        triggers: [`${source} registry delivery`, 'load-knowledge.mjs'],
+      });
+
+      const result = runHook({
+        cwd: projectDir,
+        spectreHome,
+        input: sessionInput(source, projectDir),
+      });
+
+      assertRegistryOutput(result, id, bodySentinel);
+      assert.match(
+        JSON.parse(result.stdout).hookSpecificOutput.additionalContext,
+        new RegExp(`'${BUNDLED_CLI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}' load '${id}'`),
+      );
+      assert.equal(fs.existsSync(path.join(storePath, 'activity.json')), false);
+    });
+  }
+
+  it('declares resume in the sole canonical SessionStart hook', () => {
+    const hooks = JSON.parse(fs.readFileSync(HOOKS_PATH, 'utf8'));
+    assert.equal(hooks.hooks.SessionStart.length, 1);
+    assert.equal(hooks.hooks.SessionStart[0].matcher, 'startup|resume|clear|compact');
+    assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart']);
+  });
+
+  it('returns no context and creates nothing for a missing store', (t) => {
     const projectDir = makeTmp(t);
-    const spectreHome = path.join(projectDir, '.spectre-home');
-    createManifest(projectDir);
-    const legacy = legacySkill(projectDir);
-    fs.writeFileSync(
-      path.join(projectDir, 'AGENTS.override.md'),
-      [
-        'User-owned override.',
-        '',
-        START_MARKER,
-        'feature-old|feature|old trigger|Old registry body',
-        '{{REGISTRY}}',
-        END_MARKER,
-        '',
-      ].join('\n'),
-    );
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const before = fs.readdirSync(projectDir);
 
     const result = runHook({
       cwd: projectDir,
       spectreHome,
-      input: {
-        hook_event_name: 'SessionStart',
-        source: 'startup',
-        session_id: 'startup-session',
-        cwd: projectDir,
-      },
+      input: sessionInput('startup', projectDir),
     });
 
-    assert.equal(result.exitCode, 0);
-    const output = JSON.parse(result.stdout);
-    assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
-    assert.match(output.systemMessage, /knowledge.*automatically/i);
-    assert.match(output.systemMessage, /spectre knowledge search "<query>"/);
-    assert.match(output.systemMessage, /\/spectre:learn/);
-    const override = fs.readFileSync(
-      path.join(projectDir, 'AGENTS.override.md'),
-      'utf8',
-    );
-    assert.match(override, /User-owned override/);
-    assert.match(override, /knowledge.*automatically/i);
-    assert.match(override, /spectre knowledge search "<query>"/);
-    assert.match(override, /\/spectre:learn/);
-    assert.doesNotMatch(override, /\{\{REGISTRY\}\}/);
-    assert.doesNotMatch(override, /feature-old\|/);
-    assert.doesNotMatch(override, /LEGACY_RECORD_BODY/);
-    assert.equal(fs.existsSync(legacy.skillDir), false);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.deepEqual(fs.readdirSync(projectDir), before);
+    assert.equal(fs.existsSync(spectreHome), false);
+  });
 
+  it('returns no context for an existing empty store', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    const projectMetadata = statSnapshot(path.join(storePath, 'project.json'));
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('clear', projectDir),
+    });
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assertSnapshotUnchanged(path.join(storePath, 'project.json'), projectMetadata);
+    assert.equal(fs.existsSync(path.join(storePath, 'index.json')), false);
+    assert.equal(fs.existsSync(path.join(storePath, 'activity.json')), false);
+  });
+
+  it('retains bounded legacy migration before rendering metadata', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const id = 'feature-legacy-registry';
+    const legacyDirectory = writeLegacyRecord(projectDir, id);
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('startup', projectDir),
+    });
+
+    assertRegistryOutput(result, id, 'PRIVATE_LEGACY_MIGRATION_BODY');
+    assert.equal(fs.existsSync(legacyDirectory), false);
     const resolved = await resolveProjectStore(projectDir, {
       spectreHome,
       readOnly: true,
@@ -159,205 +286,206 @@ describe('capability-only SessionStart', () => {
       },
     });
     assert.equal(
-      fs.existsSync(path.join(
-        resolved.storePath,
-        'knowledge',
-        'feature-legacy',
-        'SKILL.md',
-      )),
+      fs.existsSync(path.join(resolved.storePath, 'knowledge', id, 'SKILL.md')),
       true,
     );
   });
 
-  it('fails open for malformed or wrong events and creates no absent store', (t) => {
+  it('reads index and activity without changing their bytes or mtimes', async (t) => {
     const projectDir = makeTmp(t);
-    const spectreHome = path.join(projectDir, '.spectre-home');
-    createManifest(projectDir);
-    const overridePath = path.join(projectDir, 'AGENTS.override.md');
-    fs.writeFileSync(overridePath, 'User-owned override.\n');
-
-    for (const input of [
-      '{not-json',
-      JSON.stringify({
-        hook_event_name: 'UserPromptSubmit',
-        source: 'startup',
-        cwd: projectDir,
-      }),
-      JSON.stringify({
-        hook_event_name: 'SessionStart',
-        source: 'resume',
-        cwd: projectDir,
-      }),
-    ]) {
-      const result = runHook({ cwd: projectDir, spectreHome, input });
-      assert.equal(result.exitCode, 0);
-      assert.equal(result.stdout, '');
-    }
-    assert.equal(fs.readFileSync(overridePath, 'utf8'), 'User-owned override.\n');
-    assert.equal(fs.existsSync(spectreHome), false);
-  });
-
-  it('uses the host-specific learn command in capability guidance', (t) => {
-    for (const [host, learnCommand] of [
-      ['claude', '/spectre:learn'],
-      ['codex', 'spectre-learn'],
-    ]) {
-      const projectDir = makeTmp(t);
-      const spectreHome = path.join(projectDir, '.spectre-home');
-      createManifest(projectDir);
-
-      const result = runHook({
-        cwd: projectDir,
-        spectreHome,
-        host,
-        input: {
-          hook_event_name: 'SessionStart',
-          source: 'startup',
-          session_id: `${host}-guidance`,
-          cwd: projectDir,
-        },
-      });
-
-      assert.equal(result.exitCode, 0);
-      assert.match(JSON.parse(result.stdout).systemMessage, new RegExp(learnCommand));
-      const override = fs.readFileSync(
-        path.join(projectDir, 'AGENTS.override.md'),
-        'utf8',
-      );
-      assert.match(override, new RegExp(learnCommand));
-      if (host === 'codex') {
-        assert.doesNotMatch(result.stdout, /\/spectre:learn/);
-        assert.doesNotMatch(override, /\/spectre:learn/);
-      }
-    }
-  });
-
-  it('skips a held migration lock and still emits capability guidance', async (t) => {
-    const projectDir = makeTmp(t);
-    const spectreHome = path.join(projectDir, '.spectre-home');
-    createManifest(projectDir);
-    legacySkill(projectDir);
+    const spectreHome = path.join(projectDir, 'spectre-home');
     const storePath = await createStore(projectDir, spectreHome);
-    const lockPath = path.join(storePath, '.spectre.lock');
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({
-        pid: process.pid,
-        timestamp: new Date().toISOString(),
-        operation: 'held-by-test',
-      }),
-    );
+    writeRecord(storePath, 'feature-read-only-startup');
+    refreshKnowledgeIndex(storePath, { now: () => Date.parse('2026-07-22T20:00:00.000Z') });
+    writeKnowledgeActivity(storePath, emptyActivity());
+    const indexPath = path.join(storePath, 'index.json');
+    const activityPath = path.join(storePath, 'activity.json');
+    const indexBefore = statSnapshot(indexPath);
+    const activityBefore = statSnapshot(activityPath);
 
     const result = runHook({
       cwd: projectDir,
       spectreHome,
-      input: {
-        hook_event_name: 'SessionStart',
-        source: 'clear',
-        session_id: 'locked-session',
-        cwd: projectDir,
-      },
-      env: { SPECTRE_HOOK_MIGRATION_TIMEOUT_MS: '25' },
+      input: sessionInput('startup', projectDir),
     });
 
-    assert.equal(result.exitCode, 0);
-    assert.match(JSON.parse(result.stdout).systemMessage, /automatically/i);
-    assert.equal(
-      fs.existsSync(path.join(storePath, 'knowledge', 'feature-legacy')),
-      false,
+    assertRegistryOutput(result, 'feature-read-only-startup', 'PRIVATE_BODY_FEATURE_READ_ONLY_STARTUP');
+    assertSnapshotUnchanged(indexPath, indexBefore);
+    assertSnapshotUnchanged(activityPath, activityBefore);
+  });
+
+  it('does not wait on an activity writer lock', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    writeRecord(storePath, 'feature-lock-free-startup');
+    writeKnowledgeActivity(storePath, emptyActivity());
+    const unresolvedRegistry = writeUnresolvedLegacyRegistryRow(
+      projectDir,
+      'feature-unresolved-lock-debt',
     );
-    assert.equal(fs.existsSync(lockPath), true);
+    const unresolvedBytes = fs.readFileSync(unresolvedRegistry);
+    fs.writeFileSync(path.join(storePath, '.spectre.lock'), JSON.stringify({
+      pid: process.pid,
+      timestamp: new Date().toISOString(),
+      operation: 'held-activity-writer',
+    }));
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('compact', projectDir),
+      env: { SPECTRE_HOOK_MIGRATION_TIMEOUT_MS: '1000' },
+      timeout: 3_000,
+    });
+
+    assertRegistryOutput(result, 'feature-lock-free-startup', 'PRIVATE_BODY_FEATURE_LOCK_FREE_STARTUP');
+    assert.ok(result.elapsedMs < 800, `SessionStart waited ${result.elapsedMs}ms`);
+    assert.match(result.stderr, /migration skipped: reason=LOCK_TIMEOUT/);
+    assert.equal(fs.existsSync(path.join(storePath, '.spectre.lock')), true);
+    assert.deepEqual(fs.readFileSync(unresolvedRegistry), unresolvedBytes);
+  });
+
+  it('fails open to source-newness when activity is corrupt and preserves its bytes', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    writeRecord(storePath, 'feature-older-source', { mtimeMs: 1_700_000_000_000 });
+    writeRecord(storePath, 'feature-newer-source', { mtimeMs: 1_800_000_000_000 });
+    const activityPath = path.join(storePath, 'activity.json');
+    const corrupt = '{corrupt activity}\n';
+    fs.writeFileSync(activityPath, corrupt);
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('resume', projectDir),
+    });
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(context.indexOf('ID: feature-newer-source') < context.indexOf('ID: feature-older-source'));
+    assert.match(result.stderr, /KNOWLEDGE_ACTIVITY_CORRUPT/);
+    assert.equal(fs.readFileSync(activityPath, 'utf8'), corrupt);
+  });
+});
+
+describe('stale knowledge transport cleanup', () => {
+  it('removes only the managed knowledge block and old prompt ledgers', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    writeRecord(storePath, 'feature-cleanup-registry');
+    const overridePath = path.join(projectDir, 'AGENTS.override.md');
+    const knowledgeBlock = [
+      START_MARKER,
+      'old managed knowledge bytes',
+      END_MARKER,
+    ].join('\n');
+    const original = [
+      'USER_PREFIX_BYTES',
+      '<!-- spectre-session:start -->',
+      'SESSION_BLOCK_BYTES',
+      '<!-- spectre-session:end -->',
+      'USER_MIDDLE_BYTES',
+      knowledgeBlock,
+      'USER_SUFFIX_BYTES',
+      '',
+    ].join('\n');
+    fs.writeFileSync(overridePath, original);
+    const sessionsPath = path.join(storePath, 'runtime', 'sessions');
+    fs.mkdirSync(sessionsPath, { recursive: true });
+    fs.writeFileSync(path.join(sessionsPath, 'old-ledger.json'), '{"applied":["feature-old@1"]}\n');
+    fs.writeFileSync(path.join(storePath, 'runtime', 'keep.txt'), 'KEEP_RUNTIME_SIBLING\n');
+
+    const result = runHook({
+      cwd: projectDir,
+      spectreHome,
+      input: sessionInput('clear', projectDir),
+    });
+
+    assertRegistryOutput(result, 'feature-cleanup-registry', 'PRIVATE_BODY_FEATURE_CLEANUP_REGISTRY');
+    assert.equal(fs.readFileSync(overridePath, 'utf8'), original.replace(knowledgeBlock, ''));
+    assert.equal(fs.existsSync(sessionsPath), false);
     assert.equal(
-      result.stderr,
-      'spectre SessionStart migration skipped: reason=LOCK_TIMEOUT\n',
+      fs.readFileSync(path.join(storePath, 'runtime', 'keep.txt'), 'utf8'),
+      'KEEP_RUNTIME_SIBLING\n',
     );
   });
 });
 
-describe('SessionStart ledger reset', () => {
-  for (const source of ['startup', 'clear', 'compact']) {
-    it(`clears the addressed ${source} session`, async (t) => {
-      const projectDir = makeTmp(t);
-      const spectreHome = path.join(projectDir, '.spectre-home');
-      const storePath = await createStore(projectDir, spectreHome);
-      createManifest(projectDir);
-      const record = match(`feature-${source}`);
-      markKnowledgeApplied({
-        storePath,
-        host: 'claude',
-        sessionId: `${source}-session`,
-        record,
+describe('registry overflow recovery', () => {
+  it('keeps an omitted sentinel active/searchable/loadable without counting startup exposure', async (t) => {
+    const projectDir = makeTmp(t);
+    const spectreHome = path.join(projectDir, 'spectre-home');
+    const storePath = await createStore(projectDir, spectreHome);
+    const baseMtime = Date.parse('2026-07-22T20:00:00.000Z');
+    for (let index = 0; index < 70; index += 1) {
+      const id = `feature-overflow-${String(index).padStart(2, '0')}`;
+      writeRecord(storePath, id, {
+        mtimeMs: baseMtime - index * 1_000,
+        description: `Use when handling overflow registry fixture ${index}: ${'routing detail '.repeat(10)}`,
+        triggers: [`overflow fixture ${index}`, `${id}.md`],
       });
-      assert.deepEqual(filterAppliedKnowledge({
-        storePath,
-        host: 'claude',
-        sessionId: `${source}-session`,
-        matches: [record],
-      }), []);
+    }
+    const sentinelId = 'feature-omitted-sentinel';
+    const sentinel = writeRecord(storePath, sentinelId, {
+      mtimeMs: baseMtime - 100_000,
+      description: 'Use when recovering the unique overflow recovery sentinel.',
+      triggers: ['overflow recovery sentinel', 'feature-omitted-sentinel.md'],
+      body: '# Omitted sentinel\n\nOMITTED_SENTINEL_FULL_BODY',
+    });
+    refreshKnowledgeIndex(storePath, { now: () => baseMtime });
+    writeKnowledgeActivity(storePath, emptyActivity());
+    const indexPath = path.join(storePath, 'index.json');
+    const activityPath = path.join(storePath, 'activity.json');
+    const indexBefore = statSnapshot(indexPath);
+    const activityBefore = statSnapshot(activityPath);
 
-      const result = runHook({
+    for (const host of ['claude', 'codex']) {
+      const started = runHook({
         cwd: projectDir,
         spectreHome,
-        input: {
-          hook_event_name: 'SessionStart',
-          source,
-          session_id: `${source}-session`,
-          cwd: projectDir,
-        },
+        host,
+        input: sessionInput('startup', projectDir),
       });
+      assert.equal(started.exitCode, 0, started.stderr);
+      const context = JSON.parse(started.stdout).hookSpecificOutput.additionalContext;
+      assert.match(context, /Omitted active records: [1-9]\d*/);
+      assert.equal(context.includes(`ID: ${sentinelId}`), false);
+      assert.equal(context.includes('OMITTED_SENTINEL_FULL_BODY'), false);
+    }
+    assertSnapshotUnchanged(indexPath, indexBefore);
+    assertSnapshotUnchanged(activityPath, activityBefore);
+    assert.equal(
+      JSON.parse(fs.readFileSync(indexPath, 'utf8')).records
+        .find(({ id }) => id === sentinelId).status,
+      'active',
+    );
 
-      assert.equal(result.exitCode, 0);
-      assert.deepEqual(filterAppliedKnowledge({
-        storePath,
-        host: 'claude',
-        sessionId: `${source}-session`,
-        matches: [record],
-      }), [record]);
-    });
-  }
-
-  it('clears every project ledger when session_id is absent', async (t) => {
-    const projectDir = makeTmp(t);
-    const spectreHome = path.join(projectDir, '.spectre-home');
-    const storePath = await createStore(projectDir, spectreHome);
-    createManifest(projectDir);
-    const claudeRecord = match('feature-claude');
-    const codexRecord = match('feature-codex');
-    markKnowledgeApplied({
-      storePath,
-      host: 'claude',
-      sessionId: 'claude-session',
-      record: claudeRecord,
-    });
-    markKnowledgeApplied({
-      storePath,
-      host: 'codex',
-      sessionId: 'codex-session',
-      record: codexRecord,
-    });
-
-    const result = runHook({
-      cwd: projectDir,
-      spectreHome,
-      input: {
-        hook_event_name: 'SessionStart',
-        source: 'startup',
-        cwd: projectDir,
-      },
-    });
-
-    assert.equal(result.exitCode, 0);
-    assert.deepEqual(filterAppliedKnowledge({
-      storePath,
-      host: 'claude',
-      sessionId: 'claude-session',
-      matches: [claudeRecord],
-    }), [claudeRecord]);
-    assert.deepEqual(filterAppliedKnowledge({
-      storePath,
-      host: 'codex',
-      sessionId: 'codex-session',
-      matches: [codexRecord],
-    }), [codexRecord]);
+    const searched = runBundled([
+      'search',
+      'omitted sentinel',
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], { cwd: projectDir, spectreHome });
+    assert.equal(searched.status, 0, searched.stderr);
+    assert.deepEqual(
+      JSON.parse(searched.stdout).results.map(({ id }) => id),
+      [sentinelId],
+    );
+    const loaded = runBundled([
+      'load',
+      sentinelId,
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], { cwd: projectDir, spectreHome });
+    assert.equal(loaded.status, 0, loaded.stderr);
+    const loadedResult = JSON.parse(loaded.stdout);
+    assert.equal(loadedResult.content, sentinel.content);
+    assert.equal(loadedResult.status, 'active');
+    assert.equal(loadedResult.activity.successfulLoads, 1);
   });
 });

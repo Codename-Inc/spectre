@@ -238,6 +238,16 @@ test('handoff contract continues numbering across the legacy-to-canonical cutove
     /session_(?:count|number).*canonical.*legacy.*no canonical history/is.test(content),
     `${file}: missing continued-numbering rule`,
   );
+  assert.match(
+    content,
+    /nonempty agent-native todo[\s\S]*\$\{canonical_dir\}\/\$\{ts\}_todos\.json[\s\S]*\$\{canonical_dir\}\/todos_history\.json/i,
+    `${file}: missing canonical todo snapshot/history producer`,
+  );
+  assert.doesNotMatch(
+    content,
+    /write[^.\n]*(?:_todos\.json|todos_history\.json)[^.\n]*legacy_dir/i,
+    `${file}: todo producer must never write to legacy history`,
+  );
 });
 
 test('forget contract archives handoffs and todo history in both roots', () => {

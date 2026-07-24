@@ -81,14 +81,22 @@ Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not
 
 ## Outputs + DONE
 
-- `EXECUTE_FILE` exists and contains the six required sections.
-- `DETAIL_FILE` exists and parses as JSON.
+- `EXECUTE_FILE` exists, contains Feature/Feature Root metadata, and contains the six required sections.
+- `DETAIL_FILE` exists, parses as JSON, and contains matching `meta.feature` / `meta.feature_root`.
 - Every REQ is covered; no out-of-scope additions; Out-of-Bounds carried into `meta.out_of_bounds`; every parent has predecessor/unblocks; every build subtask has producer/consumer/replaces; acceptance criteria use only the three executable types; RED pairing and context payloads follow depth; no subtask exceeds the size cap; every plan Verification entry maps to a criterion.
 - The execute index tells downstream agents to use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
 
 ## Handoff
 
-Report inline: structure (`{X} phases, {Y} parents, {Z} subtasks`), execution shape (sequential steps / `{N}` waves), and paths for `EXECUTE_FILE` + `DETAIL_FILE`. If `--depth comprehensive`, suggest `spectre-task_review`; otherwise suggest `spectre-execute`.
+Report inline: structure (`{X} phases, {Y} parents, {Z} subtasks`), execution shape (sequential steps / `{N}` waves), and paths for `EXECUTE_FILE` + `DETAIL_FILE`.
+
+- **`--orchestrated`:** return the report and any routing signal to the caller without user-facing Next Steps.
+- **Standalone:** choose the first applicable route:
+  1. Task extraction exposed load-bearing user-facing behavior with no adequate UX/prototype acceptance source → `spectre-ux` when behavior is unresolved, otherwise `spectre-prototype`; require task regeneration afterward.
+  2. `--depth comprehensive` → `spectre-task_review`.
+  3. Otherwise → `spectre-execute`.
+
+Render one primary recommendation tied to the observed task/artifact state. Add at most one conditional alternative: `spectre-goal` only when plan/review artifacts are finalized and autonomous execute→proof is wanted. If stopping after standalone task generation, offer `Pause: spectre-handoff {feature}` with both artifact paths and the selected next step.
 
 ## Escalate-If
 

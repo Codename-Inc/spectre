@@ -216,6 +216,7 @@ test('npm knowledge module is a thin adapter to canonical runtime commands', asy
   for (const exportName of [
     'searchCanonicalKnowledge',
     'formatCanonicalKnowledgeSearch',
+    'previewCanonicalKnowledgeRegistry',
     'registerCanonicalKnowledge',
     'serializeCanonicalKnowledgeError',
     'migrateCanonicalKnowledge',
@@ -227,7 +228,6 @@ test('npm knowledge module is a thin adapter to canonical runtime commands', asy
     /\{\{REGISTRY\}\}/,
     /spectre-apply/,
     /recall-template/,
-    /knowledgeRegistry/i,
     /generateRecall/i,
     /updateKnowledgeRegistry/i,
     /matchKnowledge/,
@@ -237,7 +237,7 @@ test('npm knowledge module is a thin adapter to canonical runtime commands', asy
   }
 });
 
-test('project install and update migrate Git and non-Git knowledge with stable indexes', async (t) => {
+test('knowledge migrate handles Git and non-Git projects with stable indexes', async (t) => {
   for (const git of [true, false]) {
     const { projectDir } = makeFixture(t);
     const spectreHome = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-install-home-'));
@@ -248,41 +248,36 @@ test('project install and update migrate Git and non-Git knowledge with stable i
     seedLegacy(projectDir, `feature-${git ? 'git' : 'plain'}`);
 
     const env = { SPECTRE_HOME: spectreHome };
-    const installed = runCli([
-      'install',
-      'codex',
-      '--scope',
-      'project',
+    const migrated = runCli([
+      'knowledge',
+      'migrate',
       '--project-dir',
       projectDir,
+      '--json',
     ], env);
-    assert.equal(installed.status, 0, installed.stderr);
+    assert.equal(migrated.status, 0, migrated.stderr);
 
     const storePath = findStore(spectreHome);
     assert.ok(storePath);
     const before = fs.readFileSync(path.join(storePath, 'index.json'), 'utf8');
-    const updated = runCli([
-      'update',
-      'codex',
-      '--scope',
-      'project',
+    const rerun = runCli([
+      'knowledge',
+      'migrate',
       '--project-dir',
       projectDir,
+      '--json',
     ], env);
-    assert.equal(updated.status, 0, updated.stderr);
+    assert.equal(rerun.status, 0, rerun.stderr);
     assert.equal(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'), before);
-    assert.equal(fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall')), false);
     assert.equal(fs.existsSync(path.join(projectDir, 'AGENTS.override.md')), false);
   }
 });
 
-test('install preserves unresolved and user-owned state while user scope creates no store', async (t) => {
+test('native plugin hard cut preserves unresolved, user-owned, and canonical knowledge state', async (t) => {
   const { projectDir, codexHome, skillsRoot } = makeFixture(t);
   const spectreHome = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-preserve-home-'));
-  const userSpectreHome = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-user-home-'));
-  const userHome = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-user-install-'));
   t.after(() => {
-    for (const target of [spectreHome, userSpectreHome, userHome]) {
+    for (const target of [spectreHome]) {
       fs.rmSync(target, { recursive: true, force: true });
     }
   });
@@ -332,44 +327,36 @@ test('install preserves unresolved and user-owned state while user scope creates
   refreshKnowledgeIndex(resolved.storePath);
   const canonicalBytes = fs.readFileSync(canonicalPath);
 
-  const installed = runCli([
+  const installAttempt = runCli([
     'install',
     'codex',
     '--scope',
     'project',
     '--project-dir',
     projectDir,
+    '--json',
   ], { SPECTRE_HOME: spectreHome });
-  assert.equal(installed.status, 0, installed.stderr);
+  assert.notEqual(installAttempt.status, 0);
+  assert.equal(JSON.parse(installAttempt.stdout).code, 'CODEX_PLUGIN_REQUIRED');
   assert.deepEqual(fs.readFileSync(unresolvedPath), unresolvedBytes);
   assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedSkillBytes);
   assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
   const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
-  assert.match(config, /\[user\.settings\]\nkeep = "exact"/);
-  assert.match(config, /feature-oversized/);
-  assert.match(config, /team-owned/);
+  assert.equal(config, unrelatedConfig);
   const hooks = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf8'));
   assert.equal(hooks.custom, 'preserve');
   assert.deepEqual(hooks.hooks.Stop, unrelatedHooks.hooks.Stop);
   assert.equal(
     fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8'),
-    'User-owned override bytes.\n',
+    [
+      'User-owned override bytes.',
+      '',
+      '<!-- spectre-knowledge:start -->',
+      'retired generated content',
+      '<!-- spectre-knowledge:end -->',
+      '',
+    ].join('\n'),
   );
-
-  const userInstall = runCli([
-    'install',
-    'codex',
-    '--scope',
-    'user',
-    '--project-dir',
-    projectDir,
-  ], {
-    HOME: userHome,
-    CODEX_HOME: path.join(userHome, '.codex'),
-    SPECTRE_HOME: userSpectreHome,
-  });
-  assert.equal(userInstall.status, 0, userInstall.stderr);
-  assert.equal(fs.existsSync(path.join(userSpectreHome, 'projects')), false);
 });
 
 test('retired apply and recall-template assets have no active readers or placeholders', () => {
@@ -410,22 +397,54 @@ test('retired apply and recall-template assets have no active readers or placeho
   }
 });
 
-test('verifier guidance documents prompt-time delivery and capability-only startup', () => {
+test('active documentation describes metadata registry, neutral search, and exact load', () => {
   for (const skillRoot of ['.claude', '.agents']) {
     const guidance = fs.readFileSync(
       path.resolve(skillRoot, 'skills', 'verify-spectre', 'SKILL.md'),
       'utf8',
     );
-    assert.match(guidance, /Claude Code and Codex[\s\S]*UserPromptSubmit/);
-    assert.match(guidance, /additionalContext/);
-    assert.match(guidance, /capability-only SessionStart/i);
-    assert.doesNotMatch(
-      guidance,
-      /Populated registry|Empty registry|registry rows are \*inlined\*|apply source template/,
-    );
+    assert.match(guidance, /Metadata-only registry delivery/);
+    assert.match(guidance, /task-subject and use-condition alignment/);
+    assert.match(guidance, /activation cue alone is insufficient/);
+    assert.match(guidance, /neutral lexical search/);
+    assert.match(guidance, /verified exact-ID load/);
+    assert.match(guidance, /recordDirectory/);
+    assert.match(guidance, /resources/);
+    assert.match(guidance, /registry exposure is a delivery diagnostic/);
+    assert.match(guidance, /search match\/miss is discovery evidence/);
+    assert.match(guidance, /sole registry-rank signal/);
+    assert.doesNotMatch(guidance, /UserPromptSubmit|capability-only SessionStart|spectre-recall/);
   }
   assert.match(
     fs.readFileSync(path.resolve('.agents/skills/verify-spectre/SKILL.md'), 'utf8'),
     /Codex-facing skill/,
   );
+
+  const readme = fs.readFileSync(path.resolve('README.md'), 'utf8');
+  const capabilityPath = path.resolve('docs/codex-capability-matrix.md');
+  const capability = fs.readFileSync(capabilityPath, 'utf8');
+  const activeDocs = `${readme}\n${capability}`;
+  assert.equal(fs.existsSync(capabilityPath), true);
+  assert.match(readme, /\.\/docs\/codex-capability-matrix\.md/);
+  for (const text of [readme, capability]) {
+    assert.match(text, /\/plugin marketplace add Codename-Inc\/spectre/);
+    assert.match(text, /\/plugin install spectre@codename/);
+    assert.match(text, /codex plugin marketplace add Codename-Inc\/spectre/);
+    assert.match(text, /codex plugin add spectre@spectre/);
+  }
+  assert.match(activeDocs, /SessionStart/);
+  assert.match(activeDocs, /activation cue alone is insufficient/i);
+  assert.match(activeDocs, /spectre knowledge search/);
+  assert.match(activeDocs, /spectre knowledge load/);
+  assert.match(activeDocs, /spectre knowledge registry/);
+  assert.match(activeDocs, /recordDirectory/);
+  assert.match(activeDocs, /resources/);
+  assert.doesNotMatch(activeDocs, /spectre-recall|UserPromptSubmit/);
+
+  const manifestSource = fs.readFileSync(
+    path.resolve('scripts/translators/manifest.cjs'),
+    'utf8',
+  );
+  assert.match(manifestSource, /size-bounded SessionStart knowledge registry/);
+  assert.match(manifestSource, /neutral exact-ID search\/load/);
 });

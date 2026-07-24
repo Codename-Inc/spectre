@@ -6,7 +6,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { buildPromptContext } from './knowledge/matcher.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
 
 const SEARCH_MODULE_URL = new URL('./knowledge/search.mjs', import.meta.url);
@@ -18,6 +17,10 @@ const SPECTRE_BIN = path.resolve(
   '..',
   'bin',
   'spectre.js',
+);
+const BUNDLED_CLI = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'knowledge-cli.mjs',
 );
 
 async function loadSearchModule() {
@@ -193,7 +196,7 @@ test('empty search lists the complete active corpus and refreshes direct metadat
   }
 });
 
-test('the emitted secondary search hint resolves its record through the CLI', async () => {
+test('neutral bundled search recovers an omitted record for exact loading', async () => {
   const fixture = await makeStore();
   try {
     writeRecord(fixture.storePath, {
@@ -201,26 +204,9 @@ test('the emitted secondary search hint resolves its record through the CLI', as
       description: 'Use when changing access.',
       triggers: ['account access flow'],
     });
-    const framed = buildPromptContext({
-      host: 'claude',
-      primary: {
-        id: 'feature-primary',
-        content: '# Primary\n\nPrimary guidance.',
-      },
-      secondaryMatches: [{
-        id: 'feature-trigger-overlap',
-        description: 'Use when changing access.',
-        matchedTrigger: 'account access flow',
-      }],
-    });
-    const hint = framed.secondaryMetadata.match(
-      /`spectre knowledge search "([^"]+)"`/,
-    );
-    assert.notEqual(hint, null);
-
-    const result = spawnSync(
+    const search = spawnSync(
       process.execPath,
-      [SPECTRE_BIN, 'knowledge', 'search', hint[1], '--json'],
+      [BUNDLED_CLI, 'search', 'account access flow', '--project-dir', fixture.projectDir, '--json'],
       {
         cwd: fixture.projectDir,
         encoding: 'utf8',
@@ -231,11 +217,23 @@ test('the emitted secondary search hint resolves its record through the CLI', as
       },
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(
-      JSON.parse(result.stdout).results.map(({ id }) => id),
-      ['feature-trigger-overlap'],
+    assert.equal(search.status, 0, search.stderr);
+    const [match] = JSON.parse(search.stdout).results;
+    assert.equal(match.id, 'feature-trigger-overlap');
+
+    const load = spawnSync(
+      process.execPath,
+      [BUNDLED_CLI, 'load', match.id, '--project-dir', fixture.projectDir, '--json'],
+      {
+        cwd: fixture.projectDir,
+        encoding: 'utf8',
+        env: { ...process.env, SPECTRE_HOME: fixture.spectreHome },
+      },
     );
+    assert.equal(load.status, 0, load.stderr);
+    const loaded = JSON.parse(load.stdout);
+    assert.equal(loaded.id, 'feature-trigger-overlap');
+    assert.match(loaded.content, /Guidance for feature-trigger-overlap/);
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }

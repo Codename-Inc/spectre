@@ -3,6 +3,7 @@ import path from 'path';
 import {
   listSpectreAgents,
   listSpectreSkills,
+  RETIRED_SKILLS,
   SHARED_SKILLS,
   repoMetadata
 } from './constants.js';
@@ -108,6 +109,13 @@ function removeLegacyForkRuntime(runtimeRoot) {
   }
 }
 
+function removeRetiredSkillDirs() {
+  const skillsRoot = codexSkillsDir();
+  for (const skillName of RETIRED_SKILLS) {
+    fs.rmSync(path.join(skillsRoot, skillName), { recursive: true, force: true });
+  }
+}
+
 function removeLegacyPrefixedSkillDirs() {
   const skillsRoot = codexSkillsDir();
   if (!fs.existsSync(skillsRoot)) {
@@ -152,6 +160,7 @@ function installGeneratedCodexSkills() {
   const skillsRoot = codexSkillsDir();
   ensureDir(skillsRoot);
 
+  removeRetiredSkillDirs();
   removeLegacyPrefixedSkillDirs();
   removeLegacyBareSkillDirs();
 
@@ -222,7 +231,7 @@ function cleanupLegacyPrompts() {
 
 function refreshProjectTool() {
   return `#!/usr/bin/env node
-process.stderr.write('refresh-project-context is no longer installed as a package-cache wrapper. Run "npx @codename_inc/spectre update codex --scope project --project-dir <path>" to refresh SPECTRE assets.\\n');
+process.stderr.write('refresh-project-context is no longer installed as a package-cache wrapper. Use the native spectre@spectre Codex plugin and restart Codex so SessionStart hooks refresh context.\\n');
 process.exit(1);
 `;
 }
@@ -286,6 +295,7 @@ export function uninstallCodex({ scope, projectDir }) {
 
   removeLegacyPrefixedSkillDirs();
   removeLegacyBareSkillDirs();
+  removeRetiredSkillDirs();
 
   for (const skillName of managedCodexSkillNames()) {
     const skillDir = path.join(codexSkillsDir(), skillName);

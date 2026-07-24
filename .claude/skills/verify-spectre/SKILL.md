@@ -8,7 +8,7 @@ user-invocable: true
 
 The gate suite for the Spectre plugin itself. Run it after any change to skills, agents, hooks, `src/lib/`, or the Codex mirror — and always before a release.
 
-The reason this exists as scripts rather than a checklist: Spectre's real failures are silent. A skill whose frontmatter name drifts from its directory never triggers. A stale Codex mirror serves every Codex user the previous version indefinitely. A missing prompt resolver leaves exact knowledge matches unapplied without blocking the user's work. None of these break a test or throw an error — they just quietly stop working. So every check asserts an observable condition (file contents, exit code, byte-comparison) and exits nonzero. Nothing here is eyeballed.
+The reason this exists as scripts rather than a checklist: Spectre's real failures are silent. A skill whose frontmatter name drifts from its directory never triggers. A stale Codex mirror serves every Codex user the previous version indefinitely. A missing SessionStart registry or exact-load path leaves project knowledge undiscoverable without blocking the user's work. None of these break a test or throw an error — they just quietly stop working. So every check asserts an observable condition (file contents, exit code, byte-comparison) and exits nonzero. Nothing here is eyeballed.
 
 ## Run it
 
@@ -38,13 +38,16 @@ The scripts here are the single canonical copy. `.agents/skills/verify-spectre/`
 Tests exercise functions; users exercise the installed CLI and the hooks that fire at session start. Those are different things, and the gap between them is where this project's actual bugs have lived. Gate 4 closes it by driving the real binary:
 
 - **Non-spectre guard** — a bare directory gets nothing written to it.
-- **Equivalent prompt delivery** — Claude Code and Codex register `UserPromptSubmit`; an exact active match is delivered directly through `additionalContext` with a concise applied-knowledge notice.
-- **Capability-only SessionStart** — startup/clear/compact output contains constant search/capture guidance, never registry rows or record bodies.
-- **Prompt idempotency** — repeating the same match in one session injects nothing; a new/clear/compact boundary permits the record version to apply again.
-- **No-match silence** — unrelated prompts receive no knowledge context or visible notice.
+- **Metadata-only registry delivery** — Claude Code and Codex receive one size-bounded SessionStart registry on startup/resume/clear/compact, with complete routing entries and no record body or knowledge `systemMessage`.
+- **Relevance policy** — registry text requires both task-subject and use-condition alignment; an activation cue alone is insufficient.
+- **Overflow recovery** — an omitted active record remains discoverable through neutral lexical search and is applied only after a verified exact-ID load.
+- **Load and resource contract** — exact load returns the verified core plus canonical `recordDirectory` and safe `resources` paths, and one invocation advances successful-load activity exactly once.
+- **Evidence separation** — registry exposure is a delivery diagnostic; search match/miss is discovery evidence; a successful verified exact-ID load is authoritative content access and the sole registry-rank signal.
 - **Session memory** — a seeded handoff is surfaced by `handoff-resume`.
-- **Install/doctor/uninstall, both scopes** (`--scope user|project`) — and uninstall leaves zero managed markers behind.
-- **Legacy marker cleanup** — a project carrying `caspar-*` blocks from the fork era has them cleared on reinstall.
+- **Retired installer hard cut** — `install/update/uninstall codex` return `CODEX_PLUGIN_REQUIRED` and do not mutate files.
+- **Native Codex plugin bootstrap** — generated plugin hooks install/update/remove managed `spectre_*` agents, reject unowned collisions, remove legacy direct-install runtime, and `doctor codex` reports native readiness.
+
+Transcript file-read evidence may inform a later curation review, but it is optional secondary evidence and never changes runtime registry rank.
 
 If gate 4 can't run safely (no `codex` binary, sandbox restrictions), say so and stop — don't substitute the test suite for it and call the work validated. A green gate 2 with a skipped gate 4 means the functions work and the product is unverified.
 

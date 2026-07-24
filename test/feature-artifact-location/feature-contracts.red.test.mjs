@@ -218,6 +218,62 @@ test('planning, task, UX, prototype, and review outputs are self-locating', () =
   }
 });
 
+test('creator manifests and remaining feature artifact producers are self-locating', () => {
+  for (const file of [
+    'plugins/spectre/skills/spectre-scope/SKILL.md',
+    'plugins/spectre/skills/spectre-kickoff/SKILL.md',
+    'plugins/spectre/skills/spectre-research/SKILL.md',
+    'plugins/spectre/skills/spectre-plan/SKILL.md',
+    'plugins/spectre/skills/spectre-deliver/SKILL.md',
+    'plugins/spectre/skills/spectre-align-and-deliver/SKILL.md',
+  ]) {
+    const content = read(file);
+    assert.match(
+      content,
+      /feature\.json[^\n]*"feature"[^\n]*"feature_root"/i,
+      `${file}: feature.json must carry self-location metadata`,
+    );
+    assert.doesNotMatch(
+      content,
+      /feature\.json[^\n]*(?:branch|status|active pointer|absolute path)/i,
+      `${file}: feature.json must remain lifecycle-neutral`,
+    );
+  }
+
+  const markdownContracts = new Map([
+    ['plugins/spectre/skills/spectre-kickoff/SKILL.md', 'kickoff doc'],
+    ['plugins/spectre/skills/spectre-research/SKILL.md', 'research doc'],
+    ['plugins/spectre/skills/spectre-plan/SKILL.md', 'task_context.md'],
+    ['plugins/spectre/skills/spectre-goal/SKILL.md', 'goal-prompts.md'],
+    ['plugins/spectre/skills/spectre-prune/SKILL.md', 'cleanup_summary.md'],
+  ]);
+  for (const [file, artifact] of markdownContracts) {
+    const content = read(file);
+    assert.match(
+      content,
+      new RegExp(artifact.replace('.', '\\.'), 'i'),
+      `${file}: missing ${artifact} output contract`,
+    );
+    assert.match(
+      content,
+      /Feature: <feature-name>/,
+      `${file}: ${artifact} must carry Feature metadata`,
+    );
+    assert.match(
+      content,
+      /Feature Root: \.spectre\/features\/<feature-name>/,
+      `${file}: ${artifact} must carry Feature Root metadata`,
+    );
+  }
+
+  const clean = read('plugins/spectre/skills/spectre-clean/SKILL.md');
+  assert.match(
+    clean,
+    /working_set\.json[^\n]*"feature"[^\n]*"feature_root"/i,
+    'spectre-clean working_set.json must carry self-location metadata',
+  );
+});
+
 test('external planning reviewers receive the exact inherited root without branch rederivation', () => {
   for (const file of [
     'plugins/spectre/skills/spectre-plan_review/SKILL.md',

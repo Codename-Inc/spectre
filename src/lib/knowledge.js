@@ -1,4 +1,9 @@
 import {
+  formatKnowledgeLoadHuman,
+  loadKnowledgeById,
+  serializeKnowledgeLoadError
+} from '../../plugins/spectre/hooks/scripts/knowledge/loader.mjs';
+import {
   migrateLegacyKnowledge
 } from '../../plugins/spectre/hooks/scripts/knowledge/migration.mjs';
 import {
@@ -10,11 +15,15 @@ import {
 } from '../../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
 import {
   formatKnowledgeSearchHuman,
+  formatKnowledgeSearchWarningsHuman,
   searchKnowledge
 } from '../../plugins/spectre/hooks/scripts/knowledge/search.mjs';
 import {
   resolveProjectStore
 } from '../../plugins/spectre/hooks/scripts/knowledge/store.mjs';
+import {
+  previewKnowledgeRegistry
+} from '../../plugins/spectre/hooks/scripts/knowledge/preview.mjs';
 
 export async function searchCanonicalKnowledge(options) {
   return searchKnowledge(options);
@@ -22,6 +31,26 @@ export async function searchCanonicalKnowledge(options) {
 
 export function formatCanonicalKnowledgeSearch(result, query) {
   return formatKnowledgeSearchHuman(result, query);
+}
+
+export function formatCanonicalKnowledgeSearchWarnings(warnings) {
+  return formatKnowledgeSearchWarningsHuman(warnings);
+}
+
+export async function loadCanonicalKnowledge(options) {
+  return loadKnowledgeById(options);
+}
+
+export async function previewCanonicalKnowledgeRegistry(options) {
+  return previewKnowledgeRegistry(options);
+}
+
+export function formatCanonicalKnowledgeLoad(result) {
+  return formatKnowledgeLoadHuman(result);
+}
+
+export function serializeCanonicalKnowledgeLoadError(error) {
+  return serializeKnowledgeLoadError(error);
 }
 
 export async function registerCanonicalKnowledge(options) {

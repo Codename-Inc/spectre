@@ -2,29 +2,19 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|clear|compact",
+        "matcher": "startup|resume|clear|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CODEX_HOME}/spectre/hooks/scripts/bootstrap.mjs"
+            "command": "node ${PLUGIN_ROOT}/hooks/scripts/bootstrap.mjs"
           },
           {
             "type": "command",
-            "command": "node ${CODEX_HOME}/spectre/hooks/scripts/handoff-resume.mjs"
+            "command": "node ${PLUGIN_ROOT}/hooks/scripts/handoff-resume.mjs"
           },
           {
             "type": "command",
-            "command": "node ${CODEX_HOME}/spectre/hooks/scripts/load-knowledge.mjs --host codex"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CODEX_HOME}/spectre/hooks/scripts/user-prompt-submit.mjs --host codex"
+            "command": "node ${PLUGIN_ROOT}/hooks/scripts/load-knowledge.mjs --host codex"
           }
         ]
       }

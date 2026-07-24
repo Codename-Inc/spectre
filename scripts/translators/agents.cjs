@@ -11,6 +11,8 @@ const REQUIRED_FIELDS = [
   'developer_instructions',
 ];
 
+const MANAGED_AGENT_MARKER = 'spectre-managed-codex-agent';
+
 function parseMarkdownWithFrontmatter(source, filePath) {
   if (!source.startsWith('---\n')) {
     throw new Error(`Missing frontmatter in ${filePath}`);
@@ -48,11 +50,12 @@ function parseMarkdownWithFrontmatter(source, filePath) {
 }
 
 function toAgentFileName(name) {
-  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.toml`;
+  return `${toTomlAgentName(name)}.toml`;
 }
 
 function toTomlAgentName(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return normalized.startsWith('spectre_') ? normalized : `spectre_${normalized}`;
 }
 
 function tomlString(value) {
@@ -65,6 +68,7 @@ function tomlMultilineString(value) {
 
 function renderToml(fields) {
   return [
+    `# ${MANAGED_AGENT_MARKER}`,
     `name = ${tomlString(fields.name)}`,
     `description = ${tomlString(fields.description)}`,
     `sandbox_mode = ${tomlString(fields.sandbox_mode)}`,
@@ -204,7 +208,11 @@ function verify(codexRoot) {
 
     const filePath = path.join(targetDir, fileName);
     try {
-      const fields = parseToml(fs.readFileSync(filePath, 'utf8'));
+      const content = fs.readFileSync(filePath, 'utf8');
+      const fields = parseToml(content);
+      if (!content.includes(`# ${MANAGED_AGENT_MARKER}`)) {
+        throw new Error(`Missing managed marker "${MANAGED_AGENT_MARKER}"`);
+      }
       for (const field of REQUIRED_FIELDS) {
         if (!fields[field]) throw new Error(`Missing required field "${field}"`);
       }
@@ -223,9 +231,12 @@ function verify(codexRoot) {
 
 module.exports = {
   buildAgentToml,
+  MANAGED_AGENT_MARKER,
   parseMarkdownWithFrontmatter,
   parseToml,
   renderToml,
+  toAgentFileName,
+  toTomlAgentName,
   translate,
   verify,
 };

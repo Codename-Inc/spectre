@@ -3,17 +3,24 @@
 const fs = require('fs');
 const path = require('path');
 
-const CODEX_PLUGIN_ROOT = '${CODEX_HOME}/spectre';
+const CODEX_PLUGIN_ROOT = '${PLUGIN_ROOT}';
 
-function writeIfChanged(filePath, content) {
+function writeIfChanged(filePath, content, mode) {
   const existed = fs.existsSync(filePath);
   if (existed) {
     const current = fs.readFileSync(filePath, 'utf8');
-    if (current === content) return 'unchanged';
+    if (current === content) {
+      if (mode !== undefined && (fs.statSync(filePath).mode & 0o777) !== mode) {
+        fs.chmodSync(filePath, mode);
+        return 'updated';
+      }
+      return 'unchanged';
+    }
   }
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
+  if (mode !== undefined) fs.chmodSync(filePath, mode);
   return existed ? 'updated' : 'created';
 }
 
@@ -48,6 +55,15 @@ function rewriteHookCommand(command) {
     .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, CODEX_PLUGIN_ROOT)
     .replace(/hooks\/scripts\/([^/\s]+)\.cjs/g, 'hooks/scripts/$1.mjs')
     .replace(/(--host\s+)claude\b/g, '$1codex');
+}
+
+function rewriteRuntimeScript(source) {
+  return source
+    .replace(
+      /\bspectre knowledge (search|load|register|migrate)\b/g,
+      (_match, operation) =>
+        `node "\${PLUGIN_ROOT}/hooks/scripts/knowledge-cli.mjs" ${operation}`,
+    );
 }
 
 function translateHooksJson(sourcePath, targetPath) {
@@ -107,7 +123,12 @@ function translate(canonicalRoot, codexRoot) {
   for (const fileName of mjsFiles) {
     const sourcePath = path.join(sourceScriptsDir, fileName);
     const targetPath = path.join(targetScriptsDir, fileName);
-    const status = writeIfChanged(targetPath, fs.readFileSync(sourcePath, 'utf8'));
+    const sourceMode = fs.statSync(sourcePath).mode & 0o777;
+    const status = writeIfChanged(
+      targetPath,
+      rewriteRuntimeScript(fs.readFileSync(sourcePath, 'utf8')),
+      sourceMode,
+    );
     keep.add(targetPath);
     results.push({ path: targetPath, sourcePath, status });
   }
@@ -133,7 +154,7 @@ function commandScriptPaths(hooksConfig) {
       for (const hook of matcher.hooks || []) {
         if (hook.type !== 'command' || typeof hook.command !== 'string') continue;
 
-        const match = hook.command.match(/\$\{CODEX_HOME\}\/spectre\/([^\s'"]+)/);
+        const match = hook.command.match(/\$\{PLUGIN_ROOT\}\/([^\s'"]+)/);
         if (match) paths.push(match[1]);
       }
     }
@@ -189,6 +210,7 @@ module.exports = {
   commandScriptPaths,
   listRuntimeMjsFiles,
   rewriteHookCommand,
+  rewriteRuntimeScript,
   translate,
   verify,
 };

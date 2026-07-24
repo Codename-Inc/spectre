@@ -10,14 +10,17 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 
 ## Inputs
 
-- `$ARGUMENTS` — optional scope hint or specific files to focus on.
+- `$ARGUMENTS` — optional explicit feature name/root or descendant artifact, scope hint, or specific files to focus on, plus `--orchestrated` when a parent workflow owns the next step.
 - Optional orchestrator-provided risk plan from `spectre-clean`: files already tiered P0-P3 plus batch assignment. When present, use it as the plan for this batch.
-- `target_out_dir` — optional OUT_DIR override.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = target_out_dir || docs/tasks/{branch}`.
-- **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Record to `{OUT_DIR}/working_set.json`.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical testing artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child; a child never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
+- An explicit legacy `docs/tasks/**` artifact remains a readable scope input, but do not move or bulk-rewrite it. Write new testing artifacts only beneath the confirmed canonical `FEATURE_ROOT` and record the legacy source in their scope metadata.
+- **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Record to `{FEATURE_ROOT}/working_set.json`.
 - Baseline-lint all files in the set; map import/dependency edges. All paths absolute from repo root.
 
 ## Method / guardrails
@@ -29,26 +32,39 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
   - **P2 Supporting** (public surface only) — utils, helpers, formatters, validators, transformers, composed hooks, adapters/wrappers. Test exported functions' happy path only if they carry real logic; skip private and trivial functions.
   - **P3 Skip** (NO tests) — `.d.ts` types, configs (JSON/YAML), styles, docs, logic-free constants/enums, re-export barrels, pass-through wrappers, build/tooling config. Types + lint suffice; mark **SKIP — {reason}**.
 - **Write or consume the test plan** (3–7 bullets, `- [P{tier}] {file}: {behavior}`): P0 → multiple bullets (behaviors + error paths); P1 → 1–2; P2 → 1; P3 → SKIP line. Update `working_set.json` with tier categorization/results.
-- **Dispatch `@tester` subagents in parallel** (single message, multiple Task calls; 3–5 for medium scope, up to 8 for large). Partition the plan into independent batches: P0 = 1 agent/file (focus); P1 = 2–3 files/agent; P2 = 3–5 files/agent. Each agent gets its batch items, paths, tier context, and the instruction: **write behavioral tests, assert outcomes not calls, mutation-resistant.** Wait for all before verifying.
+- **Dispatch `@spectre_tester` subagents in parallel** (single message, multiple Task calls; 3–5 for medium scope, up to 8 for large). Partition the plan into independent batches: P0 = 1 agent/file (focus); P1 = 2–3 files/agent; P2 = 3–5 files/agent. Each agent gets its batch items, paths, tier context, and the instruction: **write behavioral tests, assert outcomes not calls, mutation-resistant.** Wait for all before verifying.
 - **Test quality bar (all tiers):** one behavior per test; descriptive names (`when_[cond]_then_[outcome]`); assert outcomes not calls (call-count assertions only when verifying side-effect prevention); refactor-resilient; mutation-resistant ("would a real bug fail this?"). Do NOT mock internal implementation details, duplicate type coverage, or test framework behavior. Add contract/schema tests at team/module boundaries (API response + error shape; emitted-event schema).
-- **Verify before commit:** run lint (autofix, then manual) → run full test suite (failures → fix via `@tester` or direct edit) → spot-check 1–2 tests for behavioral quality (rework via `@tester` if weak).
+- **Verify before commit:** run lint (autofix, then manual) → run full test suite (failures → fix via `@spectre_tester` or direct edit) → spot-check 1–2 tests for behavioral quality (rework via `@spectre_tester` if weak).
 - **Commit guard:** `--no-verify`, `eslint-disable`, and committing code carrying `eslint-disable` are **expressly forbidden without the user's explicit permission.**
 
 ## Outputs + DONE
 
 - Risk-appropriate behavioral tests added; lint clean; full suite green.
-- `{OUT_DIR}/working_set.json` (scope + risk-tier categorization).
-- Commits: planning/working artifacts first (`docs(test): add test planning artifacts for {branch}`), then code grouped into logical conventional commits (`type(scope): description`; tests bundled with feature or separate, your judgment).
-- **DONE when:** every changed file has a P0–P3 tier from this skill or the orchestrator; plan written/consumed with P3 explicitly SKIP'd; `@tester` agents dispatched in parallel when running standalone or assigned batches completed when running as a test lead; P0 thorough / P1 key-path / P2 public-surface / P3 no tests; lint + all tests pass; quality spot-checked; changes committed conventionally; no `--no-verify`/`eslint-disable` introduced.
+- `{FEATURE_ROOT}/working_set.json` with `feature` and `feature_root` in its owning metadata object, followed by scope + risk-tier categorization. The equivalent Markdown metadata contract is `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
+- Commits: planning/working artifacts first (`docs(test): add test planning artifacts for {feature-name}`), then code grouped into logical conventional commits (`type(scope): description`; tests bundled with feature or separate, your judgment).
+- **DONE when:** every changed file has a P0–P3 tier from this skill or the orchestrator; plan written/consumed with P3 explicitly SKIP'd; `@spectre_tester` agents dispatched in parallel when running standalone or assigned batches completed when running as a test lead; P0 thorough / P1 key-path / P2 public-surface / P3 no tests; lint + all tests pass; quality spot-checked; changes committed conventionally; no `--no-verify`/`eslint-disable` introduced.
 
 ## Handoff
 
-Report inline: files triaged by tier, tests added per tier, lint/test status, commit list. Then suggest the next command (no wait):
+Report inline: files triaged by tier, tests added per tier, lint/test status, commit list.
 
-- `spectre-rebase` — tidy history before merge.
+- `--orchestrated` or an orchestrator-provided risk plan → return results to the caller without user-facing Next Steps.
+- Standalone → choose from live state: completed user-observable work not yet acceptance-proven → `spectre-proof`; remaining uncommitted hygiene → `spectre-sweep`; clean, proven-or-explicitly-deferred work → `spectre-rebase`.
+
+Render one primary recommendation with its observed reason; never jump directly to rebase merely because tests passed.
 
 ## Escalate-If
 
 - A provided `commit_id` is invalid or scope is ambiguous → stop and ask before triaging.
 - Tests can't be made to pass, or a fix would require touching out-of-scope code → surface it; don't force green.
 - A commit would need `--no-verify` or `eslint-disable` → stop and ask the user; never bypass silently.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

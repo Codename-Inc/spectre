@@ -9,6 +9,8 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
+import { refreshKnowledgeIndex } from './knowledge/records.mjs';
+import { searchKnowledge } from './knowledge/search.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -134,6 +136,151 @@ function snapshotTree(root) {
 }
 
 describe('canonical knowledge registration process', () => {
+  it('rejects broad standalone cues while accepting specific phrases and structured identifiers', () => {
+    const tmp = createTmpDir();
+    try {
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+
+      for (const cue of ['test', 'plan', 'plugin', 'learn', 'knowledge', 'registry']) {
+        const proposal = writeCanonicalProposal(path.join(proposals, cue), {
+          id: `feature-broad-${cue}`,
+          triggers: [cue],
+        });
+        const result = runRegister([
+          '--project-root', projectDir,
+          '--record', proposal,
+          '--json',
+        ], { env: { SPECTRE_HOME: spectreHome } });
+        assert.notEqual(result.status, 0, cue);
+        const failure = JSON.parse(result.stdout);
+        assert.equal(failure.code, 'KNOWLEDGE_RECORD_INVALID');
+        assert.match(
+          failure.message,
+          /activation cue 1 .*generic standalone term/,
+        );
+      }
+
+      for (const [name, cue] of [
+        ['test-punctuation', '  test.  '],
+        ['plan-case', 'PLAN-'],
+        ['plugin-nfkc', 'ｐｌｕｇｉｎ.'],
+        ['learn-command', '/Learn'],
+        ['knowledge-whitespace', '\tknowledge_\n'],
+        ['registry-case', 'REGISTRY:'],
+      ]) {
+        const proposal = writeCanonicalProposal(path.join(proposals, name), {
+          id: `feature-broad-${name}`,
+          triggers: [cue],
+        });
+        const result = runRegister([
+          '--project-root', projectDir,
+          '--record', proposal,
+          '--json',
+        ], { env: { SPECTRE_HOME: spectreHome } });
+        assert.notEqual(result.status, 0, name);
+        const failure = JSON.parse(result.stdout);
+        assert.equal(failure.code, 'KNOWLEDGE_RECORD_INVALID');
+        assert.match(
+          failure.message,
+          /activation cue 1 .*generic standalone term/,
+        );
+      }
+
+      const accepted = writeCanonicalProposal(path.join(proposals, 'accepted'), {
+        id: 'feature-specific-cues',
+        triggers: [
+          'authentication refresh',
+          '/spectre:learn',
+          'src/auth/session.ts',
+          'hooks.json',
+          'registration.validateCue',
+          'feature_auth_flow',
+          'feature-auth-flow',
+          'Type:method',
+        ],
+      });
+      const result = runRegister([
+        '--project-root', projectDir,
+        '--record', accepted,
+        '--json',
+      ], { env: { SPECTRE_HOME: spectreHome } });
+      assert.equal(result.status, 0, result.stderr);
+
+      for (const [name, triggers, message] of [
+        [
+          'too-many',
+          Array.from({ length: 17 }, (_, index) => `specific cue ${index + 1}`),
+          /at most 16 activation cues/,
+        ],
+        [
+          'too-long',
+          [`specific ${'x'.repeat(112)}`],
+          /at most 120 normalized characters/,
+        ],
+      ]) {
+        const bounded = writeCanonicalProposal(path.join(proposals, name), {
+          id: `feature-${name}`,
+          triggers,
+        });
+        const boundedResult = runRegister([
+          '--project-root', projectDir,
+          '--record', bounded,
+          '--json',
+        ], { env: { SPECTRE_HOME: spectreHome } });
+        assert.notEqual(boundedResult.status, 0, name);
+        const failure = JSON.parse(boundedResult.stdout);
+        assert.equal(failure.code, 'KNOWLEDGE_RECORD_INVALID');
+        assert.match(failure.message, message);
+      }
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('keeps legacy broad-cue records parseable, active-indexed, and searchable', async () => {
+    const tmp = createTmpDir();
+    try {
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const seed = writeCanonicalProposal(proposals, {
+        id: 'feature-index-seed',
+        triggers: ['index seed behavior'],
+      });
+      await registerCanonicalKnowledge({ projectDir, recordPath: seed, spectreHome });
+      const storePath = findOnlyStore(spectreHome);
+      writeCanonicalProposal(path.join(storePath, 'knowledge'), {
+        id: 'feature-legacy-broad',
+        description: 'Use when verifying legacy broad cue visibility.',
+        triggers: ['test', 'plan', 'knowledge'],
+      });
+
+      const { index, errors } = refreshKnowledgeIndex(storePath);
+      assert.deepEqual(errors, []);
+      assert.deepEqual(
+        index.records.find(({ id }) => id === 'feature-legacy-broad')?.triggers,
+        ['test', 'plan', 'knowledge'],
+      );
+      assert.equal(
+        index.records.find(({ id }) => id === 'feature-legacy-broad')?.status,
+        'active',
+      );
+
+      const search = await searchKnowledge({
+        projectDir,
+        spectreHome,
+        query: 'knowledge',
+      });
+      assert.deepEqual(search.results.map(({ id }) => id), ['feature-legacy-broad']);
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
   it('creates and updates user-level records/resources/index without legacy registry side effects', () => {
     const tmp = createTmpDir();
     try {
@@ -205,7 +352,7 @@ describe('canonical knowledge registration process', () => {
     }
   });
 
-  it('rejects invalid, oversized, and host-unsafe proposals without changing prior record or index', () => {
+  it('rejects invalid and oversized proposals without changing prior record or index', () => {
     const tmp = createTmpDir();
     try {
       const projectDir = path.join(tmp, 'workspace', 'project');
@@ -214,7 +361,7 @@ describe('canonical knowledge registration process', () => {
       fs.mkdirSync(projectDir, { recursive: true });
       const valid = writeCanonicalProposal(proposals, {
         id: 'feature-safe',
-        triggers: ['safe'],
+        triggers: ['safe registration'],
       });
       assert.equal(runRegister([
         '--project-root', projectDir,
@@ -232,23 +379,14 @@ describe('canonical knowledge registration process', () => {
           id: 'feature-safe',
           extraFrontmatter: ['spectre-category: feature'],
         }, 'KNOWLEDGE_RECORD_INVALID'],
+        ['broad-cue-update', {
+          id: 'feature-safe',
+          triggers: ['test'],
+        }, 'KNOWLEDGE_RECORD_INVALID'],
         ['oversized', {
           id: 'feature-safe',
           body: `\n${'x'.repeat(9_100)}\n`,
         }, 'KNOWLEDGE_RECORD_INVALID'],
-        ['host-unsafe', {
-          id: 'feature-safe',
-          body: `\n${'!'.repeat(8_300)}\n`,
-        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
-        ['host-unsafe-digits', {
-          id: 'feature-safe',
-          body: `\n${'0123456789'.repeat(760)}\n`,
-        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
-        ['host-unsafe-alphanumeric', {
-          id: 'feature-safe',
-          body:
-            `\n${'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72'.repeat(238).slice(0, 7_600)}\n`,
-        }, 'KNOWLEDGE_PAYLOAD_UNSAFE'],
       ]) {
         const proposal = writeCanonicalProposal(path.join(proposals, name), options);
         const failed = runRegister([
@@ -268,6 +406,41 @@ describe('canonical knowledge registration process', () => {
     }
   });
 
+  it('accepts legal-size records regardless of retired prompt-frame density', () => {
+    const tmp = createTmpDir();
+    try {
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposal = writeCanonicalProposal(path.join(tmp, 'proposal'), {
+        id: 'feature-dense-canonical-core',
+        triggers: ['dense canonical core'],
+        body: `\n${'!'.repeat(8_300)}\n`,
+      });
+      fs.mkdirSync(projectDir, { recursive: true });
+
+      const result = runRegister([
+        '--project-root', projectDir,
+        '--record', proposal,
+        '--json',
+      ], { env: { SPECTRE_HOME: spectreHome } });
+
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.equal(JSON.parse(result.stdout).id, 'feature-dense-canonical-core');
+      const storePath = findOnlyStore(spectreHome);
+      assert.equal(
+        fs.existsSync(path.join(
+          storePath,
+          'knowledge',
+          'feature-dense-canonical-core',
+          'SKILL.md',
+        )),
+        true,
+      );
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
   it('times out behind a live store lock without partial writes', () => {
     const tmp = createTmpDir();
     try {
@@ -277,7 +450,7 @@ describe('canonical knowledge registration process', () => {
       fs.mkdirSync(projectDir, { recursive: true });
       const seed = writeCanonicalProposal(proposals, {
         id: 'feature-lock-seed',
-        triggers: ['seed'],
+        triggers: ['store lock seed'],
       });
       assert.equal(runRegister([
         '--project-root', projectDir,
@@ -296,7 +469,7 @@ describe('canonical knowledge registration process', () => {
 
       const blockedProposal = writeCanonicalProposal(proposals, {
         id: 'feature-lock-timeout',
-        triggers: ['timeout'],
+        triggers: ['store lock timeout'],
       });
       const blocked = runRegister([
         '--project-root', projectDir,
@@ -326,11 +499,11 @@ describe('canonical knowledge registration process', () => {
       fs.mkdirSync(projectDir, { recursive: true });
       const alpha = writeCanonicalProposal(proposals, {
         id: 'feature-alpha',
-        triggers: ['alpha'],
+        triggers: ['alpha registration'],
       });
       const beta = writeCanonicalProposal(proposals, {
         id: 'feature-beta',
-        triggers: ['beta'],
+        triggers: ['beta registration'],
       });
       const env = { ...process.env, SPECTRE_HOME: spectreHome };
       const first = spawn(REGISTER_BIN, [
@@ -369,7 +542,7 @@ describe('canonical knowledge registration process', () => {
       fs.mkdirSync(projectDir, { recursive: true });
       const initial = writeCanonicalProposal(proposals, {
         id: 'feature-rollback',
-        triggers: ['rollback'],
+        triggers: ['rollback behavior'],
         resources: { 'references/prior.md': 'prior resource\n' },
         body: '\n# Prior\n\nOriginal bytes.\n',
       });

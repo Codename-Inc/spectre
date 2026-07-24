@@ -51,8 +51,13 @@ Derive both values from the physical feature directory. The plan is DONE when it
 - Use judgment on section length, not on inclusion.
 
 ## Handoff
-- **`--no-review` (orchestrated by `plan`):** save the plan, return control to `plan` — do NOT wait for user review, do NOT render the Next-Steps footer. Message: "Draft implementation plan saved to `{path}`. Returning to `plan`."
-- **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user. On completion, render the inline Next-Steps line (suggest `/spectre:create_tasks`).
+- **`--no-review` / `--orchestrated`:** save the plan, return its path, depth, filled assumptions, and unresolved findings to the caller. Do not wait for user review and do not render user-facing Next Steps.
+- **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user.
+  1. If approval exposes unresolved user-facing flows/states/copy/accessibility → `/spectre:ux`; if behavior is settled but visual validation materially matters → `/spectre:prototype`. Planning resumes after the product artifact is reconciled.
+  2. Approved LIGHT plan → `/spectre:create_tasks`.
+  3. Approved STANDARD/COMPREHENSIVE plan → `/spectre:plan_review`.
+
+Render exactly one primary recommendation tied to the observed plan/depth, at most one conditional alternative, and `Pause: /spectre:handoff {feature}` when stopping at the approved standalone-plan boundary.
 
 ## Escalate-If
 - **`--depth light` and** the plan needs >3 critical files, a new abstraction, data migration, public-API change, or an unresolved scope / security-privacy / data-correctness / public-API-behavior decision → STOP, return a **tier-reassessment recommendation to `plan`** instead of guessing.

@@ -32,6 +32,8 @@ const CATEGORIES = new Set([
 ]);
 const STATUSES = new Set(['active', 'disputed', 'superseded', 'archived']);
 const CORE_CHARACTER_LIMIT = 9_000;
+const LEGACY_SPECTRE_LEARNING_METADATA_FIELD = 'spectre-migration-origin';
+const LEGACY_SPECTRE_LEARNING_METADATA_VALUE = 'legacy-spectre-learning';
 
 function recordError(skillPath, message) {
   return new Error(`${skillPath}: ${message}`);
@@ -223,17 +225,95 @@ function fingerprint(content) {
   return `sha256:${createHash('sha256').update(content).digest('hex')}`;
 }
 
+function isLegacySpectreLearningRecord(record) {
+  return (
+    record?.metadata?.[LEGACY_SPECTRE_LEARNING_METADATA_FIELD] ===
+    LEGACY_SPECTRE_LEARNING_METADATA_VALUE
+  );
+}
+
+function pathIsWithin(rootPath, candidatePath) {
+  return candidatePath === rootPath || candidatePath.startsWith(`${rootPath}${path.sep}`);
+}
+
+function filesystemTypeMatches(dirent, stat) {
+  return (
+    (dirent.isDirectory() && stat.isDirectory())
+    || (dirent.isFile() && stat.isFile())
+    || (dirent.isSymbolicLink() && stat.isSymbolicLink())
+  );
+}
+
 function listResources(recordDir) {
+  const absoluteRecordDir = path.resolve(recordDir);
+  let canonicalRecordDir;
+  try {
+    const rootStat = fs.lstatSync(absoluteRecordDir);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+      throw recordError(absoluteRecordDir, 'record directory is not a safe canonical directory');
+    }
+    canonicalRecordDir = fs.realpathSync.native(absoluteRecordDir);
+  } catch (error) {
+    if (error?.message?.startsWith(absoluteRecordDir)) throw error;
+    throw recordError(absoluteRecordDir, 'record directory changed during resource discovery');
+  }
+
   const resources = [];
-  const pending = [recordDir];
+  const pending = [{ directoryPath: absoluteRecordDir, canonicalPath: canonicalRecordDir }];
   while (pending.length > 0) {
     const current = pending.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      if (entry.isSymbolicLink()) continue;
-      const entryPath = path.join(current, entry.name);
-      if (entry.isDirectory()) pending.push(entryPath);
-      else if (entry.isFile() && entryPath !== path.join(recordDir, 'SKILL.md')) {
-        resources.push(path.relative(recordDir, entryPath));
+    let currentStat;
+    let currentCanonicalPath;
+    try {
+      currentStat = fs.lstatSync(current.directoryPath);
+      currentCanonicalPath = fs.realpathSync.native(current.directoryPath);
+    } catch {
+      throw recordError(
+        current.directoryPath,
+        'resource directory changed during discovery',
+      );
+    }
+    if (
+      !currentStat.isDirectory()
+      || currentStat.isSymbolicLink()
+      || currentCanonicalPath !== current.canonicalPath
+      || !pathIsWithin(canonicalRecordDir, currentCanonicalPath)
+    ) {
+      throw recordError(current.directoryPath, 'resource directory changed during discovery');
+    }
+
+    for (const entry of fs.readdirSync(current.directoryPath, { withFileTypes: true })) {
+      const entryPath = path.join(current.directoryPath, entry.name);
+      let entryStat;
+      try {
+        entryStat = fs.lstatSync(entryPath);
+      } catch {
+        throw recordError(entryPath, 'resource changed during discovery');
+      }
+      if (entryStat.isSymbolicLink()) {
+        if (entry.isSymbolicLink()) continue;
+        throw recordError(entryPath, 'resource changed to a symlink during discovery');
+      }
+      if (!filesystemTypeMatches(entry, entryStat)) {
+        throw recordError(entryPath, 'resource type changed during discovery');
+      }
+
+      let canonicalEntryPath;
+      try {
+        canonicalEntryPath = fs.realpathSync.native(entryPath);
+      } catch {
+        throw recordError(entryPath, 'resource changed during discovery');
+      }
+      if (!pathIsWithin(canonicalRecordDir, canonicalEntryPath)) {
+        throw recordError(entryPath, 'resource escapes its canonical record directory');
+      }
+      if (entryStat.isDirectory()) {
+        pending.push({ directoryPath: entryPath, canonicalPath: canonicalEntryPath });
+      } else if (
+        entryStat.isFile()
+        && entryPath !== path.join(absoluteRecordDir, 'SKILL.md')
+      ) {
+        resources.push(path.relative(absoluteRecordDir, entryPath));
       }
     }
   }
@@ -241,12 +321,16 @@ function listResources(recordDir) {
 }
 
 function parseKnowledgeContent(content, skillPath, resources = []) {
-  if (content.length > CORE_CHARACTER_LIMIT) {
+  const { fields, body } = parseFrontmatter(content, skillPath);
+  const record = { ...validateFields(fields, skillPath), body };
+  if (
+    content.length > CORE_CHARACTER_LIMIT &&
+    !isLegacySpectreLearningRecord(record)
+  ) {
     throw recordError(skillPath, `core size exceeds ${CORE_CHARACTER_LIMIT} characters`);
   }
-  const { fields, body } = parseFrontmatter(content, skillPath);
   return {
-    record: { ...validateFields(fields, skillPath), body },
+    record,
     content,
     fingerprint: fingerprint(content),
     resources,
@@ -340,7 +424,7 @@ export function readVerifiedIndexedRecord(storePath, entry, options = {}) {
     }
     if (fingerprint(content) !== entry.sourceFingerprint) continue;
     try {
-      return parseKnowledgeContent(content, skillPath);
+      return parseKnowledgeContent(content, skillPath, listResources(path.dirname(skillPath)));
     } catch {
       return null;
     }
@@ -351,6 +435,9 @@ export function readVerifiedIndexedRecord(storePath, entry, options = {}) {
 export {
   CATEGORIES,
   CORE_CHARACTER_LIMIT,
+  isLegacySpectreLearningRecord,
+  LEGACY_SPECTRE_LEARNING_METADATA_FIELD,
+  LEGACY_SPECTRE_LEARNING_METADATA_VALUE,
   SPECTRE_FIELDS,
   STATUSES,
 };

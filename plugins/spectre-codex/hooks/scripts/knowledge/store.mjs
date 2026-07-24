@@ -121,17 +121,25 @@ function readableSegments(canonicalProjectRoot) {
     .filter(Boolean);
 }
 
+function readableIdentityRoot(identity) {
+  if (identity.gitCommonDir && path.basename(identity.gitCommonDir) === '.git') {
+    return path.dirname(identity.gitCommonDir);
+  }
+  return identity.canonicalProjectRoot;
+}
+
 function allocateReadableStorePath(projectsDir, identity) {
-  const segments = readableSegments(identity.canonicalProjectRoot);
-  if (segments.length < 2) {
-    throw new Error(`Project path needs readable parent and project segments: ${identity.canonicalProjectRoot}`);
+  const identityRoot = readableIdentityRoot(identity);
+  const segments = readableSegments(identityRoot);
+  if (segments.length < 1) {
+    throw new Error(`Project path needs a readable project segment: ${identityRoot}`);
   }
 
-  for (let count = 2; count <= segments.length; count += 1) {
+  for (let count = 1; count <= segments.length; count += 1) {
     const candidate = path.join(projectsDir, ...segments.slice(-count));
     if (!fs.existsSync(candidate)) return candidate;
   }
-  throw new Error(`No unclaimed readable store path for ${identity.canonicalProjectRoot}`);
+  throw new Error(`No unclaimed readable store path for ${identityRoot}`);
 }
 
 function timestamp(options) {

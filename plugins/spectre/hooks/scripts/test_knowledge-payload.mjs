@@ -1,70 +1,24 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { measurePayload, PAYLOAD_BOUNDARIES } from './knowledge/payload.mjs';
 import { parseKnowledgeRecord } from './knowledge/records.mjs';
-import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
-
-const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..', '..', '..');
-const PAYLOAD_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'payload.mjs');
-const HOST_HARNESS = path.join(REPO_ROOT, 'scripts', 'verify-knowledge-hosts.mjs');
-
-const PROSE_PROMPT =
-  'Apply the knowledge for spectre payload prose boundary and reply exactly ' +
-  'SPECTRE_PROSE_INLINE_OK.';
-const CODE_PROMPT =
-  'Apply the knowledge for spectre payload code boundary and reply exactly ' +
-  'SPECTRE_CODE_INLINE_OK.';
-const DENSE_PROMPT =
-  'Apply the knowledge for spectre payload dense alphanumeric boundary and reply exactly ' +
-  'SPECTRE_DENSE_INLINE_OK.';
-const NO_MATCH_PROMPT = 'This prompt deliberately matches no Spectre payload fixture.';
-
-const REQUIRED_EVIDENCE_FIELDS = [
-  'primarySentinelVisible',
-  'requiredResponseObserved',
-  'systemMessageNamedPrimary',
-  'previewAbsent',
-  'savedFilePathAbsent',
-  'truncationAbsent',
-  'fallbackNoticeAbsent',
-  'repeatDeduped',
-  'resetReapplied',
-  'noMatchSilent',
-];
 
 function repeatToLength(unit, length) {
   return unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 }
 
-function frameCore(core, secondaryMetadataReserveChars) {
-  const secondaryReserve = repeatToLength(
+function frameCore(core) {
+  const reserve = repeatToLength(
     '[also matching: reserved metadata]\n',
-    secondaryMetadataReserveChars,
+    PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
   );
-  return [
-    '# Spectre applied knowledge',
-    '',
-    core,
-    '',
-    '## Also matching',
-    secondaryReserve,
-  ].join('\n');
-}
-
-function framePrimary(id, content) {
-  return [
-    `# Spectre applied knowledge: ${id}`,
-    '',
-    content,
-  ].join('\n');
+  return ['# Spectre knowledge registry', '', core, '', reserve].join('\n');
 }
 
 function numericTableRecord(id, length, unit) {
@@ -78,458 +32,102 @@ function numericTableRecord(id, length, unit) {
     '  spectre-status: "active"',
     '  spectre-version: "1"',
     '---',
-    '# Numeric table',
+    `# ${id}`,
     '',
   ].join('\n');
-  return `${prefix}${repeatToLength(
-    unit,
-    length - prefix.length,
-  )}`;
+  return `${prefix}${repeatToLength(unit, length - prefix.length)}`;
 }
 
-function payloadFixtures(boundaries) {
-  return {
-    prose: repeatToLength(
-    'Reliable project knowledge is applied directly when its declared trigger matches. ',
-      boundaries.proseCoreChars,
-    ),
-    code: repeatToLength(
-      'export function applyKnowledge(prompt) {\n  return prompt.trim();\n}\n',
-      boundaries.codeCoreChars,
-    ),
-    punctuation: repeatToLength(
-      '(){}[]<>.,;:!?/\\|`~@#$%^&*-_=+ ',
-      boundaries.punctuationUnsafeChars,
-    ),
-    unicode: repeatToLength(
-      'cafe\u0301 naive\u0308 Tokyo:\u6771\u4eac Greek:\u0394\u03bf\u03ba\u03b9\u03bc\u03ae guillemets:\u00ab\u00bb ',
-      boundaries.unicodeUnsafeChars,
-    ),
-    denseDigits: repeatToLength(
-      '0123456789',
-      boundaries.denseDigitUnsafeChars,
-    ),
-    denseAlphanumeric: repeatToLength(
-      'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
-      boundaries.denseAlphanumericUnsafeChars,
-    ),
-    denseProbe: repeatToLength(
-      'Az09By18Cx27Dw36Ev45Fu54Gt63Hs72',
-      boundaries.denseAlphanumericProbeChars,
-    ),
-    numericTable: numericTableRecord(
-      'feature-numeric-table',
-      boundaries.numericTableUnsafeChars ?? 8_700,
-      '1234567890123456789012345678901 \n',
-    ),
-    fourDigitTable: numericTableRecord(
-      'feature-four-digit-table',
-      boundaries.fourDigitTableUnsafeChars ?? 7_036,
-      '1234 \n',
-    ),
-    threeDigitTable: numericTableRecord(
-      'feature-three-digit-table',
-      boundaries.threeDigitTableUnsafeChars ?? 8_700,
-      '123 \n',
-    ),
-  };
-}
-
-async function loadPayloadModule() {
-  assert.equal(
-    fs.existsSync(PAYLOAD_MODULE),
-    true,
-    'measurePayload module is intentionally missing until the GREEN payload-contract task',
-  );
-  const module = await import(pathToFileURL(PAYLOAD_MODULE).href);
-  assert.equal(typeof module.measurePayload, 'function');
-  assert.equal(typeof module.PAYLOAD_BOUNDARIES, 'object');
-  return module;
-}
-
-function prepareHostFixture(t) {
-  assert.equal(
-    fs.existsSync(HOST_HARNESS),
-    true,
-    'host fixture harness is intentionally missing until the GREEN harness task',
-  );
-
-  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-hosts-'));
-  t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
-  const stdout = execFileSync(
-    process.execPath,
-    [HOST_HARNESS, '--fixture-root', fixtureRoot, '--json'],
-    { cwd: REPO_ROOT, encoding: 'utf8' },
-  );
-  return { fixtureRoot, manifest: JSON.parse(stdout) };
-}
-
-describe('knowledge payload feasibility contract', () => {
-  it('accepts the minimum useful prose and code cores after framing reserve', async () => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
-    assert.equal(fixtures.prose.length, PAYLOAD_BOUNDARIES.proseCoreChars);
-    assert.equal(fixtures.code.length, PAYLOAD_BOUNDARIES.codeCoreChars);
-    assert.equal(
-      measurePayload(
-        'codex',
-        frameCore(fixtures.prose, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars),
-      ).ok,
-      true,
+describe('knowledge registry payload estimator', () => {
+  it('accepts the minimum useful prose and code registry payloads', () => {
+    const prose = repeatToLength(
+      'Reliable project knowledge is routed from compact metadata. ',
+      PAYLOAD_BOUNDARIES.proseCoreChars,
     );
-    assert.equal(
-      measurePayload(
-        'codex',
-        frameCore(fixtures.code, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars),
-      ).ok,
-      true,
+    const code = repeatToLength(
+      'export function loadKnowledge(id) { return id.trim(); }\n',
+      PAYLOAD_BOUNDARIES.codeCoreChars,
     );
+    assert.equal(measurePayload('codex', frameCore(prose)).ok, true);
+    assert.equal(measurePayload('codex', frameCore(code)).ok, true);
   });
 
-  it('measures punctuation-heavy and Unicode boundary fixtures deterministically', async () => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
-    assert.equal(fixtures.punctuation.length, PAYLOAD_BOUNDARIES.punctuationUnsafeChars);
-    assert.equal(fixtures.unicode.length, PAYLOAD_BOUNDARIES.unicodeUnsafeChars);
-
-    for (const core of [fixtures.punctuation, fixtures.unicode]) {
-      const framed = frameCore(core, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars);
-      const first = measurePayload('codex', framed);
-      const second = measurePayload('codex', framed);
-      assert.deepEqual(second, first);
-      assert.equal(Number.isFinite(first.measured), true);
+  it('measures punctuation-heavy and Unicode boundaries deterministically', () => {
+    const fixtures = [
+      repeatToLength('(){}[]<>.,;:!?/\\|`~@#$%^&*-_=+ ', PAYLOAD_BOUNDARIES.punctuationUnsafeChars),
+      repeatToLength('cafe\u0301 Tokyo:\u6771\u4eac Greek:\u0394 ', PAYLOAD_BOUNDARIES.unicodeUnsafeChars),
+    ];
+    for (const fixture of fixtures) {
+      const first = measurePayload('codex', frameCore(fixture));
+      assert.deepEqual(measurePayload('codex', frameCore(fixture)), first);
       assert.equal(first.ok, false);
     }
   });
 
-  it('rejects unsafe digit and mixed alphanumeric runs while accepting the dense probe', async () => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
-    assert.equal(
-      fixtures.denseDigits.length,
-      PAYLOAD_BOUNDARIES.denseDigitUnsafeChars,
-    );
-    assert.equal(
-      fixtures.denseAlphanumeric.length,
-      PAYLOAD_BOUNDARIES.denseAlphanumericUnsafeChars,
-    );
-    assert.equal(
-      fixtures.denseProbe.length,
+  it('rejects unsafe dense runs while accepting the planned probe', () => {
+    const unsafe = [
+      repeatToLength('0123456789', PAYLOAD_BOUNDARIES.denseDigitUnsafeChars),
+      repeatToLength('Az09By18Cx27', PAYLOAD_BOUNDARIES.denseAlphanumericUnsafeChars),
+    ];
+    for (const fixture of unsafe) {
+      const measured = measurePayload('codex', frameCore(fixture));
+      assert.equal(measured.ok, false);
+      assert.equal(measured.measured > measured.limit, true);
+    }
+    const probe = repeatToLength(
+      'Az09By18Cx27',
       PAYLOAD_BOUNDARIES.denseAlphanumericProbeChars,
     );
-
-    for (const core of [fixtures.denseDigits, fixtures.denseAlphanumeric]) {
-      const framed = frameCore(core, PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars);
-      const first = measurePayload('codex', framed);
-      assert.deepEqual(measurePayload('codex', framed), first);
-      assert.equal(first.ok, false);
-      assert.equal(first.measured > first.limit, true);
-    }
-
-    const probe = measurePayload(
-      'codex',
-      frameCore(
-        fixtures.denseProbe,
-        PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
-      ),
-    );
-    assert.equal(probe.ok, true);
-    assert.equal(probe.measured <= probe.limit, true);
+    assert.equal(measurePayload('codex', frameCore(probe)).ok, true);
   });
 
-  it('rejects aggregate numeric tables below the long dense-run threshold', async (t) => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
-    const digitRuns = [...fixtures.numericTable.matchAll(/\d+/g)]
-      .map(([run]) => run.length);
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-numeric-table-'));
-    t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
-    const recordDir = path.join(fixtureRoot, 'feature-numeric-table');
+  it('rejects aggregate short numeric tables below the long-run threshold', (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-payload-table-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const content = numericTableRecord(
+      'feature-numeric-table',
+      PAYLOAD_BOUNDARIES.numericTableUnsafeChars,
+      '1234567890123456789012345678901 \n',
+    );
+    const recordDir = path.join(root, 'feature-numeric-table');
     fs.mkdirSync(recordDir);
     const skillPath = path.join(recordDir, 'SKILL.md');
-    fs.writeFileSync(skillPath, fixtures.numericTable);
-
-    assert.equal(PAYLOAD_BOUNDARIES.numericTableUnsafeChars, 8_700);
-    assert.equal(PAYLOAD_BOUNDARIES.digitTokenGroupChars, 3);
-    assert.equal(fixtures.numericTable.length, 8_700);
-    assert.equal(Math.max(...digitRuns), 31);
-    assert.equal(/[A-Za-z0-9]{32,}/.test(fixtures.numericTable), false);
+    fs.writeFileSync(skillPath, content);
     assert.equal(parseKnowledgeRecord(skillPath).record.id, 'feature-numeric-table');
-
-    const framed = framePrimary('feature-numeric-table', fixtures.numericTable);
-    const first = measurePayload('codex', framed);
-    assert.deepEqual(measurePayload('codex', framed), first);
-    assert.equal(first.measured, 3_031);
-    assert.equal(first.ok, false);
-    assert.equal(first.measured > first.limit, true);
+    assert.equal(Math.max(...[...content.matchAll(/\d+/g)].map(([run]) => run.length)), 31);
+    assert.equal(/[A-Za-z0-9]{32,}/.test(content), false);
+    assert.equal(measurePayload('codex', frameCore(content)).ok, false);
   });
 
-  it('rounds every maximal short digit field to three-character token groups', async (t) => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const fixtures = payloadFixtures(PAYLOAD_BOUNDARIES);
-    const cases = [
-      {
-        id: 'feature-four-digit-table',
-        content: fixtures.fourDigitTable,
-        boundary: PAYLOAD_BOUNDARIES.fourDigitTableUnsafeChars,
-        expectedChars: 7_036,
-        expectedRun: 4,
-        expectedMeasured: 2_916,
-      },
-      {
-        id: 'feature-three-digit-table',
-        content: fixtures.threeDigitTable,
-        boundary: PAYLOAD_BOUNDARIES.threeDigitTableUnsafeChars,
-        expectedChars: 8_700,
-        expectedRun: 3,
-        expectedMeasured: 2_622,
-      },
-    ];
-    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-short-digits-'));
-    t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
-
-    for (const fixture of cases) {
-      assert.equal(fixture.boundary, fixture.expectedChars);
-      assert.equal(fixture.content.length, fixture.expectedChars);
-      assert.equal(
-        Math.max(...[...fixture.content.matchAll(/\d+/g)]
-          .map(([run]) => run.length)),
-        fixture.expectedRun,
-      );
-      const recordDir = path.join(fixtureRoot, fixture.id);
-      fs.mkdirSync(recordDir);
-      const skillPath = path.join(recordDir, 'SKILL.md');
-      fs.writeFileSync(skillPath, fixture.content);
-      assert.equal(parseKnowledgeRecord(skillPath).record.id, fixture.id);
-
-      const measured = measurePayload(
-        'codex',
-        framePrimary(fixture.id, fixture.content),
-      );
-      assert.equal(measured.measured, fixture.expectedMeasured);
-      assert.equal(measured.ok, false);
-    }
+  it('rounds maximal short digit fields to three-character groups', () => {
+    const four = numericTableRecord(
+      'feature-four-digit-table',
+      PAYLOAD_BOUNDARIES.fourDigitTableUnsafeChars,
+      '1234 \n',
+    );
+    const three = numericTableRecord(
+      'feature-three-digit-table',
+      PAYLOAD_BOUNDARIES.threeDigitTableUnsafeChars,
+      '123 \n',
+    );
+    assert.equal(measurePayload('codex', frameCore(four)).ok, false);
+    assert.equal(measurePayload('codex', frameCore(three)).ok, false);
   });
 
-  it('does not double count digit runs covered by a denser alphanumeric run', async () => {
-    const { measurePayload } = await loadPayloadModule();
-    const containedDigits = measurePayload(
-      'codex',
-      framePrimary('feature-covered-digits', `A${'1'.repeat(40)}B`),
-    );
-    const lettersControl = measurePayload(
-      'codex',
-      framePrimary('feature-covered-digits', `A${'x'.repeat(40)}B`),
-    );
-
-    assert.equal(containedDigits.measured, 46);
-    assert.deepEqual(containedDigits, lettersControl);
+  it('does not double count digits inside a denser alphanumeric run', () => {
+    const digits = measurePayload('codex', frameCore(`A${'1'.repeat(40)}B`));
+    const letters = measurePayload('codex', frameCore(`A${'x'.repeat(40)}B`));
+    assert.deepEqual(digits, letters);
   });
 
-  it('enforces the Claude framing reserve at 9,000 and 9,001 characters', async () => {
-    const { measurePayload, PAYLOAD_BOUNDARIES } = await loadPayloadModule();
-    const emptyFrameLength = frameCore(
-      '',
-      PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
-    ).length;
-    const exact = frameCore(
-      'x'.repeat(PAYLOAD_BOUNDARIES.claudeSafeOutputChars - emptyFrameLength),
-      PAYLOAD_BOUNDARIES.secondaryMetadataReserveChars,
-    );
-    const over = `${exact}x`;
-    assert.equal(exact.length, PAYLOAD_BOUNDARIES.claudeSafeOutputChars);
-    assert.equal(over.length, PAYLOAD_BOUNDARIES.claudeSafeOutputChars + 1);
-
+  it('enforces the Claude registry output boundary at 9,000 and 9,001 characters', () => {
+    const exact = 'x'.repeat(PAYLOAD_BOUNDARIES.claudeSafeOutputChars);
     assert.deepEqual(measurePayload('claude', exact), {
       ok: true,
       measured: PAYLOAD_BOUNDARIES.claudeSafeOutputChars,
       limit: PAYLOAD_BOUNDARIES.claudeSafeOutputChars,
       reserve: PAYLOAD_BOUNDARIES.claudeReserveChars,
     });
-    assert.equal(measurePayload('claude', over).ok, false);
-  });
-});
-
-describe('real-host fixture harness contract', () => {
-  it('emits unique sentinels, exact prompts, and resolved host commands', (t) => {
-    const { fixtureRoot, manifest } = prepareHostFixture(t);
-    const expectedCommands = {
-      claude:
-        `SPECTRE_HOME="${path.join(fixtureRoot, '.spectre')}" ` +
-        `claude --plugin-dir "${path.join(REPO_ROOT, 'plugins', 'spectre')}" ` +
-        '--permission-mode dontAsk',
-      codex:
-        `SPECTRE_HOME="${path.join(fixtureRoot, '.spectre')}" ` +
-        `CODEX_HOME="${path.join(fixtureRoot, '.codex')}" codex -C "${fixtureRoot}"`,
-    };
-
-    assert.deepEqual(manifest.commands, expectedCommands);
-    assert.equal(manifest.prompts.prose, PROSE_PROMPT);
-    assert.equal(manifest.prompts.code, CODE_PROMPT);
-    assert.equal(manifest.prompts.denseAlphanumeric, DENSE_PROMPT);
-    assert.equal(manifest.prompts.noMatch, NO_MATCH_PROMPT);
-    assert.deepEqual(
-      manifest.primarySentinels,
-      [
-        'SPECTRE_PRIMARY_PROSE_6000_V1',
-        'SPECTRE_PRIMARY_CODE_4000_V1',
-        'SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1',
-      ],
-    );
-    assert.equal(new Set(manifest.primarySentinels).size, manifest.primarySentinels.length);
-    assert.equal(manifest.fixtureRoot, fixtureRoot);
-    assert.equal(manifest.spectreHome, path.join(fixtureRoot, '.spectre'));
-    assert.match(
-      manifest.evidencePath,
-      /docs\/tasks\/main\/knowledge-surfacing\/verification\/host-payload-\d{4}-\d{2}-\d{2}\.md$/,
-    );
-    const localDate = new Intl.DateTimeFormat('en-CA', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
-    assert.equal(
-      path.basename(manifest.evidencePath),
-      `host-payload-${localDate}.md`,
-    );
-    assert.equal(
-      fs.existsSync(path.join(manifest.codexRuntimeCopyPath, 'payload.mjs')),
-      true,
-    );
-    assert.equal(fs.existsSync(manifest.codexPromptHookPath), true);
-    assert.equal(fs.existsSync(manifest.codexSessionStartHookPath), true);
-    assert.equal(fs.existsSync(manifest.codexHooksPath), true);
-    const hooks = JSON.parse(fs.readFileSync(manifest.codexHooksPath, 'utf8'));
-    assert.match(
-      hooks.hooks.UserPromptSubmit[0].hooks[0].command,
-      /user-prompt-submit\.mjs['"]? --host codex$/,
-    );
-    assert.match(
-      hooks.hooks.SessionStart[0].hooks[0].command,
-      /load-knowledge\.mjs['"]? --host codex$/,
-    );
-  });
-
-  it('requires every inline and no-fallback observation in the evidence template', (t) => {
-    const { manifest } = prepareHostFixture(t);
-    assert.deepEqual(
-      Object.keys(manifest.evidenceTemplate).sort(),
-      [...REQUIRED_EVIDENCE_FIELDS].sort(),
-    );
-    for (const field of REQUIRED_EVIDENCE_FIELDS) {
-      assert.equal(manifest.evidenceTemplate[field], null);
-    }
-  });
-
-  it('frames one fixture inline, dedupes by session, reapplies in a new session, and ignores no-match', (t) => {
-    const { manifest } = prepareHostFixture(t);
-    const invoke = (prompt, sessionId) =>
-      execFileSync(
-        process.execPath,
-        [manifest.codexPromptHookPath, '--host', 'codex'],
-        {
-          cwd: manifest.fixtureRoot,
-          encoding: 'utf8',
-          env: {
-            ...process.env,
-            SPECTRE_HOME: manifest.spectreHome,
-          },
-          input: JSON.stringify({
-            hook_event_name: 'UserPromptSubmit',
-            prompt,
-            session_id: sessionId,
-            cwd: manifest.fixtureRoot,
-          }),
-        },
-      );
-
-    const first = JSON.parse(invoke(PROSE_PROMPT, 'session-one'));
-    assert.equal(first.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
-    assert.match(first.hookSpecificOutput.additionalContext, /SPECTRE_PRIMARY_PROSE_6000_V1/);
-    assert.match(first.systemMessage, /testing-payload-prose/);
-    assert.equal(invoke(PROSE_PROMPT, 'session-one'), '');
-
-    execFileSync(
-      process.execPath,
-      [manifest.codexSessionStartHookPath, '--host', 'codex'],
-      {
-        cwd: manifest.fixtureRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          SPECTRE_HOME: manifest.spectreHome,
-        },
-        input: JSON.stringify({
-          hook_event_name: 'SessionStart',
-          source: 'compact',
-          session_id: 'session-one',
-          cwd: manifest.fixtureRoot,
-        }),
-      },
-    );
-    const reapplied = JSON.parse(invoke(PROSE_PROMPT, 'session-one'));
-    assert.match(reapplied.hookSpecificOutput.additionalContext, /SPECTRE_PRIMARY_PROSE_6000_V1/);
-    assert.equal(invoke(NO_MATCH_PROMPT, 'session-one'), '');
-  });
-
-  it('frames the accepted dense alphanumeric probe inline for Codex', (t) => {
-    const { manifest } = prepareHostFixture(t);
-    const stdout = execFileSync(
-      process.execPath,
-      [manifest.codexPromptHookPath, '--host', 'codex'],
-      {
-        cwd: manifest.fixtureRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          SPECTRE_HOME: manifest.spectreHome,
-        },
-        input: JSON.stringify({
-          hook_event_name: 'UserPromptSubmit',
-          prompt: DENSE_PROMPT,
-          session_id: 'dense-probe-session',
-          cwd: manifest.fixtureRoot,
-        }),
-      },
-    );
-
-    assert.notEqual(stdout, '', 'dense probe must produce inline hook output');
-    const output = JSON.parse(stdout);
-    assert.match(
-      output.hookSpecificOutput.additionalContext,
-      /SPECTRE_PRIMARY_DENSE_ALPHANUMERIC_V1/,
-    );
-    assert.match(output.systemMessage, /testing-payload-dense-alphanumeric/);
-  });
-
-  it('accepts the dense probe through the exact registration frame', async (t) => {
-    const { manifest } = prepareHostFixture(t);
-    const projectDir = path.join(manifest.fixtureRoot, 'registration-target');
-    const spectreHome = path.join(manifest.fixtureRoot, 'registration-home');
-    fs.mkdirSync(projectDir, { recursive: true });
-    const recordPath = path.join(
-      manifest.storePath,
-      'knowledge',
-      'testing-payload-dense-alphanumeric',
-      'SKILL.md',
-    );
-
-    let result;
-    let registrationError;
-    try {
-      result = await registerCanonicalKnowledge({
-        projectDir,
-        spectreHome,
-        recordPath,
-        gitRunner() {
-          throw new Error('fixture is intentionally non-Git');
-        },
-      });
-    } catch (error) {
-      registrationError = error;
-    }
-
-    assert.equal(registrationError, undefined, registrationError?.message);
-    assert.equal(result?.id, 'testing-payload-dense-alphanumeric');
+    assert.equal(measurePayload('claude', `${exact}x`).ok, false);
   });
 });

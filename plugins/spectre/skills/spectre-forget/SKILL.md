@@ -2,6 +2,7 @@
 name: spectre-forget
 description: Clear session memory - archive all session files so next session starts fresh
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # forget

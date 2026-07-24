@@ -8,8 +8,10 @@ const path = require('path');
 const agents = require('./translators/agents.cjs');
 const skills = require('./translators/skills.cjs');
 const hooks = require('./translators/hooks.cjs');
+const manifest = require('./translators/manifest.cjs');
 
 const translators = [
+  { name: 'manifest', module: manifest },
   { name: 'agents', module: agents },
   { name: 'skills', module: skills },
   { name: 'hooks', module: hooks },

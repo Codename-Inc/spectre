@@ -9,20 +9,31 @@ user-invocable: true
 Transform a scoped PRD into a technical implementation plan. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
 
 ## Inputs
-- `$ARGUMENTS` — feature/PRD reference + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
-- `TASK_DIR/task_context.md` — reuse an existing `## Technical Research` section if comprehensive; skip new research. Under `--depth light`, also reuse substantive router research (file locations, code understanding, patterns, impact) if already present.
+- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
+- `{FEATURE_ROOT}/task_context.md` — reuse an existing `## Technical Research` section if comprehensive; skip new research. Under `--depth light`, also reuse substantive router research (file locations, code understanding, patterns, impact) if already present.
 
 ## Working Set
-- `OUT_DIR` = `docs/tasks/{branch}` (or a user-given `target_dir`); read branch via tool at runtime, never inline it.
-- Research agents: `@finder` (where code lives), `@analyst` (how it works + data access), `@patterns` (canonical "follow this file" anchors). Run in parallel, await all, then read the real code at each step — don't trust filenames or summaries.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new plan and record the legacy source in its manifest.
+- Research agents: `@spectre_finder` (where code lives), `@spectre_analyst` (how it works + data access), `@spectre_patterns` (canonical "follow this file" anchors). Run in parallel, await all, then read the real code at each step — don't trust filenames or summaries.
 - `CLAUDE.md` / `README.md` for rules + major components.
 
 ## Outputs + DONE
-Write the plan to `{OUT_DIR}/specs/plan.md` (scoped name if one exists). The plan is DONE when it carries the **verification spine** and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
+Write the plan to `{FEATURE_ROOT}/specs/plan.md` (scoped name if one exists). Every `plan.md` begins immediately below its title with:
+
+```text
+Feature: <feature-name>
+Feature Root: .spectre/features/<feature-name>
+```
+
+Derive both values from the physical feature directory. The plan is DONE when it is self-locating, carries the **verification spine**, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
 
 **Required at every depth (the spine):**
 1. **Overview** — problem, solution shape, why this approach.
-2. **Technical Approach** — components touched, data flow, key decisions + rationale; cite `@patterns` anchors by `file:line`.
+2. **Technical Approach** — components touched, data flow, key decisions + rationale; cite `@spectre_patterns` anchors by `file:line`.
 3. **Critical Files** — 1–7 real files from Step-1 research, each tagged *Core logic to modify / Pattern to follow / Interface to implement / Test to extend*. No guesses.
 4. **External Dependencies — Verify Before Implementation** — every third-party package with exact version + one-line existence check (`pkg@1.2.3 — verify: npm view pkg@1.2.3`). State "no new packages" explicitly if so. (Slopsquatting fence: ~20% of AI-suggested packages don't exist.)
 5. **Verification — How We Know This Works** — per major change, 1–3 falsifiable signals (`<change> → verifies by: <test | observable | state/file condition>`). These become acceptance criteria downstream. "It works" is not acceptable.
@@ -34,14 +45,29 @@ Write the plan to `{OUT_DIR}/specs/plan.md` (scoped name if one exists). The pla
 **`--depth light`:** concise, not shallow — keep all seven spine sections, ~1 short paragraph or 3–5 bullets each. One clear path following existing patterns; no alternatives enumeration. No standalone clarification/review gates, no `plan_review`, no expanded architecture.
 
 ## Method / guardrails
-- **Research first** (unless reused): `@finder`/`@analyst`/`@patterns` in parallel → trace entry points and data flow end-to-end → cross-reference `CLAUDE.md`/`README.md` → validate discoveries against real code. If research was newly done, update `task_context.md` `## Technical Research`.
+- **Research first** (unless reused): `@spectre_finder`/`@spectre_analyst`/`@spectre_patterns` in parallel → trace entry points and data flow end-to-end → cross-reference `CLAUDE.md`/`README.md` → validate discoveries against real code. If research was newly done, update `task_context.md` `## Technical Research`.
 - **Clarifications:** generate up to 10 technical questions, only for ambiguity not answered by the PRD or discoverable in code; present approach choices with Pros/Cons/Trade-offs. Prefer `AskUserQuestion` (batches ≤4, most critical first); fall back to intelligent defaults if unavailable. Return clarification findings in-thread — do not write clarification files.
 - **`--depth light`:** do NOT stop for clarifications — use conservative, codebase-consistent defaults and record them under **Filled Assumptions**.
 - Use judgment on section length, not on inclusion.
 
 ## Handoff
-- **`--no-review` (orchestrated by `plan`):** save the plan, return control to `plan` — do NOT wait for user review, do NOT render the Next-Steps footer. Message: "Draft implementation plan saved to `{path}`. Returning to `plan`."
-- **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user. On completion, render the inline Next-Steps line (suggest `spectre-create_tasks`).
+- **`--no-review` / `--orchestrated`:** save the plan, return its path, depth, filled assumptions, and unresolved findings to the caller. Do not wait for user review and do not render user-facing Next Steps.
+- **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user.
+  1. If approval exposes unresolved user-facing flows/states/copy/accessibility → `spectre-ux`; if behavior is settled but visual validation materially matters → `spectre-prototype`. Planning resumes after the product artifact is reconciled.
+  2. Approved LIGHT plan → `spectre-create_tasks`.
+  3. Approved STANDARD/COMPREHENSIVE plan → `spectre-plan_review`.
+
+Render exactly one primary recommendation tied to the observed plan/depth, at most one conditional alternative, and `Pause: spectre-handoff {feature}` when stopping at the approved standalone-plan boundary.
 
 ## Escalate-If
 - **`--depth light` and** the plan needs >3 critical files, a new abstraction, data migration, public-API change, or an unresolved scope / security-privacy / data-correctness / public-API-behavior decision → STOP, return a **tier-reassessment recommendation to `plan`** instead of guessing.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

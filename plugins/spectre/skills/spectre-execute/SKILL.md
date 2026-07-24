@@ -113,11 +113,16 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 
 ## Handoff
 
-Report the summary inline (counts, fix-loop iterations, unresolved findings, test-guide path), then suggest next:
+Report the summary inline (counts, fix-loop iterations, unresolved findings, test-guide path).
 
-- `/spectre:clean` — run prune + risk-based tests + sweep/commit
-- `/spectre:test` — strengthen automated tests
-- `/spectre:rebase` — tidy history before merge
+- `--orchestrated` → return DONE status, unresolved findings, and artifact paths to the parent goal without user-facing Next Steps.
+- Standalone → choose the first applicable route:
+  1. Unresolved CRITICAL/HIGH review or validation gap → `/spectre:fix`, then rerun the affected gate.
+  2. A concrete automated-coverage risk remains → `/spectre:test`.
+  3. Proof is explicitly deferred or no meaningful public proof surface exists → `/spectre:clean`.
+  4. Otherwise → `/spectre:proof`.
+
+Render exactly one `Next (recommended): ... — because {observed execution status}.` Add at most one conditional alternative. If stopping after completed or blocked execution, offer `Pause: /spectre:handoff {feature}` with task status, unresolved findings, and the selected next step.
 
 ## Escalate-If
 

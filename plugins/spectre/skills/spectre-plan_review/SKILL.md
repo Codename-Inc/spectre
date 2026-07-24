@@ -34,15 +34,16 @@ Reviewers may recommend deleting unrequested implementation, unnecessary abstrac
 **External-first selection**
 1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
 2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
-3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@spectre:reviewer`; unavailable opposing runtimes never block completion.
-4. Primary-agent self-review is prohibited except compiling explicit fallback subagent returns.
-5. Do not probe for startup commands. Use exactly the recipe below.
+3. Launch each external review attempt as a long-running process and keep polling it. Allow up to 20 minutes for completion; quiet output or elapsed time below that limit is not failure. Do not pass launcher timeout or duration guidance to the reviewer.
+4. If the opposite CLI is missing, exits non-zero, does not complete within that launcher window, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@spectre:reviewer`; unavailable opposing runtimes never block completion.
+5. Primary-agent self-review is prohibited except compiling explicit fallback subagent returns.
+6. Do not probe for startup commands. Use exactly the recipe below.
 
 **Opposite-runtime initiation recipe**
 
 From Codex primary:
 ```bash
-claude -p --model fable --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
@@ -50,11 +51,11 @@ From Claude Code primary:
 codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
 ```
 
-External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: fable`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
+External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
 
 Run from repo root. Do not add approval flags, resume flags, broad bypass flags, `codex review`, project discovery commands, shell pipelines, or temp prompt files unless argument length requires a file. If a prompt file is unavoidable, keep the same command shape and pass `$(cat /tmp/plan_review_prompt.txt)` as the final argument.
 
-`REVIEW_PROMPT` includes the exact feature root, feature name, TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity. This review may take at least 20 minutes; do not stop early. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Tell each dispatched worker that its review may take at least 20 minutes, wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
+`REVIEW_PROMPT` includes the exact feature root, feature name, TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
 
 **Review lenses**
 
@@ -90,7 +91,11 @@ DONE when the report exists before edits; every finding has a location + concret
 
 ## Handoff
 
-Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, and updated `plan.md` path. Next: `/spectre:create_tasks` once Blocker/High findings are resolved.
+Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, and updated `plan.md` path.
+
+- `--orchestrated` → return the review result and updated plan path to the caller without user-facing Next Steps.
+- Standalone + unresolved Blocker/High → remain in remediation; scope-change findings route to `/spectre:scope`.
+- Standalone + resolved Blocker/High → `Next (recommended): /spectre:create_tasks — the reviewed plan is ready for task compilation.` Offer `/spectre:handoff` only when stopping at this durable review boundary.
 
 ## Escalate-If
 

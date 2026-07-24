@@ -29,9 +29,15 @@ export function listSpectreAgents() {
 }
 
 export const SHARED_SKILLS = [
-  'spectre-guide',
   'spectre-learn',
   'spectre-tdd'
+];
+
+export const RETIRED_SKILLS = [
+  'spectre-architecture_review',
+  'spectre-apply',
+  'spectre-evaluate',
+  'spectre-guide'
 ];
 
 export const WORKFLOW_PROBE_SKILLS = [

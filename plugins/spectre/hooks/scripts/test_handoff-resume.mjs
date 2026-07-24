@@ -13,6 +13,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { claimDailyBanner } from './handoff-resume.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,8 @@ function runHook(cwd, opts) {
   opts = opts || {};
   const env = Object.assign({}, process.env);
   env.CLAUDE_PROJECT_DIR = cwd;
+  env.HOME = path.join(cwd, '.test-home');
+  env.USERPROFILE = env.HOME;
   // Remove plugin root to avoid side effects in tests
   delete env.CLAUDE_PLUGIN_ROOT;
 
@@ -249,6 +252,128 @@ describe('HandoffResume', () => {
       const output = JSON.parse(result.stdout);
       assert.ok(output.systemMessage);
       assert.ok(output.systemMessage.includes('/spectre:scope'));
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('shows the no-handoff banner only once per cwd each day', () => {
+    const tmp = createTmpDir();
+    try {
+      setupGitRepo(tmp);
+
+      const first = runHook(tmp, { stdin: JSON.stringify({ source: 'startup' }) });
+      const second = runHook(tmp, { stdin: JSON.stringify({ source: 'clear' }) });
+
+      assert.ok(JSON.parse(first.stdout).systemMessage.includes('Getting Started with SPECTRE:'));
+      assert.deepEqual(JSON.parse(second.stdout), {});
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('tracks daily banner markers independently by cwd and local date', () => {
+    const tmp = createTmpDir();
+    try {
+      const firstProject = path.join(tmp, 'first');
+      const secondProject = path.join(tmp, 'second');
+      const stateRoot = path.join(tmp, 'state');
+      fs.mkdirSync(firstProject);
+      fs.mkdirSync(secondProject);
+
+      const dayOne = new Date(2026, 6, 19, 8);
+      const dayTwo = new Date(2026, 6, 20, 8);
+
+      assert.equal(claimDailyBanner(firstProject, { stateRoot, now: dayOne }), true);
+      assert.equal(claimDailyBanner(firstProject, { stateRoot, now: dayOne }), false);
+      assert.equal(claimDailyBanner(secondProject, { stateRoot, now: dayOne }), true);
+      assert.equal(claimDailyBanner(firstProject, { stateRoot, now: dayTwo }), true);
+
+      const firstProjectMarkers = fs.readdirSync(stateRoot)
+        .map(dir => path.join(stateRoot, dir))
+        .find(dir => fs.existsSync(path.join(dir, '2026-07-20')));
+      assert.deepEqual(fs.readdirSync(firstProjectMarkers), ['2026-07-20']);
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('compact is silent without consuming the daily banner', () => {
+    const tmp = createTmpDir();
+    try {
+      setupGitRepo(tmp);
+
+      const compact = runHook(tmp, { stdin: JSON.stringify({ source: 'compact' }) });
+      const startup = runHook(tmp, { stdin: JSON.stringify({ source: 'startup' }) });
+
+      assert.deepEqual(JSON.parse(compact.stdout), {});
+      assert.ok(JSON.parse(startup.stdout).systemMessage.includes('Getting Started with SPECTRE:'));
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('malformed hook input retains compatible no-handoff behavior', () => {
+    const tmp = createTmpDir();
+    try {
+      setupGitRepo(tmp);
+
+      const result = runHook(tmp, { stdin: '{not-json' });
+      assert.ok(JSON.parse(result.stdout).systemMessage.includes('Getting Started with SPECTRE:'));
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('shows the banner when daily marker state cannot be written', () => {
+    const tmp = createTmpDir();
+    try {
+      setupGitRepo(tmp);
+      const homeFile = path.join(tmp, 'not-a-directory');
+      fs.writeFileSync(homeFile, 'blocked');
+
+      const result = runHook(tmp, {
+        env: { HOME: homeFile, USERPROFILE: homeFile },
+        stdin: JSON.stringify({ source: 'startup' })
+      });
+
+      assert.ok(JSON.parse(result.stdout).systemMessage.includes('Getting Started with SPECTRE:'));
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
+  it('restores an existing handoff during compact', () => {
+    const tmp = createTmpDir();
+    try {
+      const sessionDir = setupGitRepo(tmp);
+      const handoff = {
+        version: '1.0',
+        timestamp: '2026-07-19-120000',
+        branch_name: 'main',
+        task_name: 'Compact Restore',
+        progress_update: {
+          summary: 'Saved work',
+          accomplished: [],
+          next_steps: ['Continue'],
+          decisions: [],
+          blockers: [],
+          confidence: 'high',
+          risks: []
+        },
+        beads: { tasks: [] },
+        context: { last_commit: 'abc123', wip_state: 'clean' }
+      };
+      fs.writeFileSync(
+        path.join(sessionDir, '2026-07-19-120000_handoff.json'),
+        JSON.stringify(handoff)
+      );
+
+      const result = runHook(tmp, { stdin: JSON.stringify({ source: 'compact' }) });
+      const output = JSON.parse(result.stdout);
+
+      assert.ok(output.systemMessage.includes('Compact Restore'));
+      assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
     } finally {
       cleanup(tmp);
     }

@@ -2,6 +2,7 @@
 name: spectre-handoff
 description: Save a branch-keyed state snapshot for session resume
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # handoff
@@ -91,7 +92,7 @@ EOF
   | goal | ✓ | What we're building + success criteria |
   | accomplished | ✓ | What we completed (2-5 bullets) |
   | now | ✓ | **What you were actively working on when session ended** (critical!) |
-  | next_steps | ✓ | Upcoming work (2-4 bullets) |
+  | next_steps | ✓ | Upcoming work (2-4 bullets); first item preserves the outer workflow's already-selected next skill + reason |
   | confidence | ✓ | high / medium / low |
   | constraints | | Known constraints or assumptions |
   | decisions | | Key decisions made (0-3 bullets) |
@@ -106,7 +107,11 @@ EOF
   - `active_ids`: Beads task IDs in progress
   - `recent_commands`: Recent terminal commands (test, build, etc.)
 
+Do not independently re-route the workflow. When the current outer skill already emitted `Next (recommended)`, preserve that exact skill and its observed reason as the first `next_steps` item; include canonical artifact paths in `key_files`.
+
 - **Action** — BuildBeadsTree (if available): From beads array, build hierarchy (epic → tasks → subtasks). Include task IDs for resume.
+
+- **Action** — BuildTodoSnapshot (when available): If the current runtime exposes a nonempty agent-native todo list in the current conversation/tool state, serialize that current list with its statuses. After the handoff write, save the exact snapshot to `${canonical_dir}/${ts}_todos.json` and update `${canonical_dir}/todos_history.json`, retaining the five newest snapshots. These are canonical-only writes: never write or update todo files in `legacy_dir`. If no nonempty agent-native todo state is available, do not invent a snapshot and do not create either file.
 
 ## Step 3: Conditional Write
 
@@ -190,3 +195,4 @@ Then respond: "✓ Handoff saved: {path}. Session {n} recorded with continuity f
 - Canonical history wins. Matching legacy `docs/tasks/{branch}/session_logs/` handoffs are fallback read input only when there is no canonical history, and at most the three newest matching legacy handoffs are read.
 - `session_count` and `session_number` use canonical history, or matching legacy history only when there is no canonical history. The first canonical handoff therefore continues legacy numbering.
 - Pass the resolved history directory and canonical output file as literal paths to `@spectre:sync`. Neither skill nor agent reconstructs branch identity from those paths.
+- New todo snapshots and todo history, when agent-native todo state is available, write only to `${canonical_dir}/${ts}_todos.json` and `${canonical_dir}/todos_history.json`; matching legacy todo files are compatibility inputs for forget only.

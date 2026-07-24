@@ -2,6 +2,7 @@
 name: "spectre-kickoff"
 description: "Project kickoff — deep codebase + external research producing an evidence-backed kickoff doc, gap analysis, and MVP path before scoping. Use to start a fresh feature/project from an unclear problem, when the user wants research/options/an MVP recommendation before committing to scope or a plan. Do not trigger once scope is already defined (use /spectre:scope) or for a single targeted code question (use an analyst agent directly)."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # kickoff
@@ -23,8 +24,9 @@ Deep research entry point: investigate the codebase and external best practices,
 - For new work, propose a lowercase kebab-case feature name and `.spectre/features/<feature-name>/` in the existing acknowledgement response. Silence on the name accepts it; never create a separate name-confirmation gate.
 - When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
 - Before the first write, inspect the proposed root. An unintended occupied directory must stop the workflow; never auto-suffix, reinterpret, or overwrite it. An explicitly selected directory without a valid `feature.json` is unmanaged and must also stop.
-- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing only `{"schema_version":1,"created_at":"<ISO8601>"}`. Do not store a name, branch, status, active pointer, or absolute path.
-- Create `.spectre/.gitignore` only when it is absent and the parent repository does not already ignore `.spectre/`; give it ignore patterns for `manifest.json`, `bin/`, and `handoffs/`, while retaining `!features/`. Never silently rewrite an arbitrary user root `.gitignore`. A blanket parent `.spectre/` ignore requires a warning that the selected feature records are local-only.
+- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
+- Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
+- Before writing the first artifact, initialize local-state tenancy. Create `.spectre/.gitignore` only when it is absent and the parent repository does not already ignore `.spectre/`; give it ignore patterns for `manifest.json`, `bin/`, and `handoffs/`, while retaining `!features/`. Never silently rewrite an arbitrary user root `.gitignore`. A blanket parent `.spectre/` ignore requires a warning that the selected feature records are local-only.
 - Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
 
 ## Method / guardrails
@@ -44,7 +46,7 @@ Deep research entry point: investigate the codebase and external best practices,
 5. **Synthesize → gap → MVP → options.** Connect findings across components with file:line throughout; gap analysis = current capabilities (file refs) vs required, split missing-vs-modify; MVP = core value + minimum slice + what to defer; give 2–3 options each with summary, key decisions, code to leverage (refs), new work, effort, trade-offs; surface decision points and open questions.
 
 ## Outputs + DONE
-Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mkdir -p` first; timestamp-suffix if the file exists). **Save it before presenting** the summary.
+Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mkdir -p` first; timestamp-suffix if the file exists). The kickoff doc begins below its title with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`. **Save it before presenting** the summary.
 
 - YAML frontmatter: date, git_commit, branch, repo, topic, tags, status.
 - Required sections, in order: Title · Metadata · Project Context · Research Summary · Detailed Codebase Findings (by area, file:line, snippets) · Code References (table) · Architecture Insights (patterns, conventions, constraints) · External Research (with links) · Gap Analysis · MVP Suggestion · Implementation Options (2–3, with trade-offs) · Decision Points · Open Questions · Related Resources.

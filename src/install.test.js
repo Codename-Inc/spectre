@@ -3,468 +3,244 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
-function makeProject(t) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-install-'));
-  t?.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
-  execFileSync('git', ['init', '-b', 'main'], { cwd: tmp, stdio: 'ignore' });
-  fs.mkdirSync(path.join(tmp, 'docs', 'tasks', 'main', 'session_logs'), { recursive: true });
-  fs.writeFileSync(
-    path.join(tmp, 'docs', 'tasks', 'main', 'session_logs', '2026-03-09-100000_handoff.json'),
-    JSON.stringify({
-      branch_name: 'main',
-      progress_update: {
-        goal: 'Port Spectre to Codex',
-        summary: 'Subagents and workflow skills wired.',
-        now: 'Verifying installer',
-        next_steps: ['Run tests'],
-        constraints: ['Hooks hidden injection remains unverified']
-      },
-      working_set: {
-        key_files: ['src/lib/install.js']
-      }
-    }, null, 2)
-  );
-  return tmp;
+const CLI_PATH = path.resolve('bin/spectre.js');
+const CODEX_PLUGIN_ROOT = path.resolve('plugins/spectre-codex');
+const ENSURE_AGENTS = path.join(
+  CODEX_PLUGIN_ROOT,
+  'skills',
+  'spectre-scope',
+  'scripts',
+  'ensure-codex-agents.mjs',
+);
+
+function makeFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-native-'));
+  const projectDir = path.join(root, 'project');
+  const codexHome = path.join(root, 'codex-home');
+  fs.mkdirSync(projectDir, { recursive: true });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return { root, projectDir, codexHome };
 }
 
-function isolateInProcessSpectreHome(t, projectDir) {
-  const previousSpectreHome = process.env.SPECTRE_HOME;
-  const spectreHome = path.join(projectDir, '.test-spectre-home');
-  process.env.SPECTRE_HOME = spectreHome;
-  t.after(() => {
-    if (previousSpectreHome == null) delete process.env.SPECTRE_HOME;
-    else process.env.SPECTRE_HOME = previousSpectreHome;
-    fs.rmSync(spectreHome, { recursive: true, force: true });
-    assert.equal(fs.existsSync(spectreHome), false);
+function runCli(args, fixture) {
+  return spawnSync(process.execPath, [CLI_PATH, ...args], {
+    cwd: path.resolve('.'),
+    env: {
+      ...process.env,
+      CODEX_HOME: fixture.codexHome,
+      HOME: fixture.root,
+    },
+    encoding: 'utf8',
   });
-  return spectreHome;
 }
 
-test('project install writes workflow skills, agent config, and memory hooks', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  const spectreHome = isolateInProcessSpectreHome(t, projectDir);
-  const previousCodexHome = process.env.CODEX_HOME;
-  delete process.env.CODEX_HOME;
+function runAgentSetup(args, fixture) {
+  return spawnSync(process.execPath, [ENSURE_AGENTS, ...args, '--json'], {
+    cwd: fixture.projectDir,
+    env: {
+      ...process.env,
+      CODEX_HOME: fixture.codexHome,
+      HOME: fixture.root,
+      PLUGIN_ROOT: CODEX_PLUGIN_ROOT,
+    },
+    encoding: 'utf8',
+  });
+}
 
-  try {
-    fs.mkdirSync(path.join(projectDir, '.codex', 'skills', 'scope'), { recursive: true });
-    fs.writeFileSync(path.join(projectDir, '.codex', 'skills', 'scope', 'SKILL.md'), 'legacy bare scope skill\n');
+function readJson(result) {
+  assert.ok(result.stdout.trim(), result.stderr);
+  return JSON.parse(result.stdout);
+}
 
-    const { main } = await import('./main.js');
-    await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-    assert.equal(fs.existsSync(path.join(spectreHome, 'projects')), true);
-
-    const codeHome = path.join(projectDir, '.codex');
-    const scopeSkillPath = path.join(codeHome, 'skills', 'spectre-scope', 'SKILL.md');
-    assert.ok(fs.existsSync(scopeSkillPath));
-    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'scope')));
-    const scopeSkill = fs.readFileSync(scopeSkillPath, 'utf8');
-    assert.match(scopeSkill, /# scope/);
-    assert.match(scopeSkill, /clear on WHAT, silent on HOW/);
-    assert.doesNotMatch(scopeSkill, /This is the Codex skill replacement for the deprecated custom prompt \/spectre:scope/);
-    assert.doesNotMatch(scopeSkill, /Skill\(scope\)/);
-
-    for (const restoredSkill of ['spectre-forget', 'spectre-handoff']) {
-      assert.ok(fs.existsSync(path.join(codeHome, 'skills', restoredSkill)), `${restoredSkill} should be installed`);
+function collectFiles(root) {
+  const files = [];
+  if (!fs.existsSync(root)) return files;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectFiles(fullPath));
+    } else if (entry.isFile()) {
+      files.push(fullPath);
     }
-    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-apply')));
-    for (const removedSkill of ['spectre-architecture_review', 'spectre-evaluate']) {
-      assert.ok(!fs.existsSync(path.join(codeHome, 'skills', removedSkill)), `${removedSkill} should not be installed`);
-    }
+  }
+  return files.sort();
+}
 
-    const learnSkillPath = path.join(codeHome, 'skills', 'spectre-learn', 'SKILL.md');
-    assert.ok(fs.existsSync(learnSkillPath));
-    assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /Proposal gate/);
-    assert.match(fs.readFileSync(learnSkillPath, 'utf8'), /spectre knowledge register/);
-    assert.doesNotMatch(fs.readFileSync(learnSkillPath, 'utf8'), /registry\.toon/);
-    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-learn', 'references', 'recall-template.md')));
+test('install, update, and uninstall codex require the native plugin and do not mutate files', (t) => {
+  for (const command of ['install', 'update', 'uninstall']) {
+    const fixture = makeFixture(t);
+    fs.mkdirSync(path.join(fixture.codexHome, 'skills', 'user-owned'), { recursive: true });
+    const sentinel = path.join(fixture.codexHome, 'skills', 'user-owned', 'SKILL.md');
+    fs.writeFileSync(sentinel, 'user bytes\n');
+    const before = collectFiles(fixture.root).map((filePath) => [
+      path.relative(fixture.root, filePath),
+      fs.readFileSync(filePath, 'utf8'),
+    ]);
 
-    const agentPath = path.join(codeHome, 'spectre', 'agents', 'dev.toml');
-    assert.ok(fs.existsSync(agentPath));
-    const agentConfig = fs.readFileSync(agentPath, 'utf8');
-    assert.match(agentConfig, /name = "dev"/);
-    assert.match(agentConfig, /description = /);
-    assert.doesNotMatch(agentConfig, /^model = /m);
-    assert.doesNotMatch(agentConfig, /^model_reasoning_effort = /m);
-    assert.match(agentConfig, /sandbox_mode = "workspace-write"/);
-    assert.match(agentConfig, /developer_instructions = \"\"\"/);
-    assert.doesNotMatch(agentConfig, /base_instructions = /);
-
-    const config = fs.readFileSync(path.join(codeHome, 'config.toml'), 'utf8');
-    assert.match(config, /suppress_unstable_features_warning = true/);
-    assert.match(config, /\[agents\.spectre_dev\]/);
-    assert.match(config, /^hooks = true$/m);
-    assert.doesNotMatch(config, /codex_hooks = true/);
-    assert.match(config, /multi_agent = true/);
-    assert.doesNotMatch(config, /session_start = /);
-    assert.doesNotMatch(config, /pre_session_start/);
-    assert.doesNotMatch(config, /\[\[skills\.config\]\]/);
-    assert.doesNotMatch(config, /\.agents\/skills\/spectre-recall\/SKILL\.md/);
-
-    const hooksConfig = JSON.parse(fs.readFileSync(path.join(codeHome, 'hooks.json'), 'utf8'));
-    const sessionHooks = hooksConfig.hooks.SessionStart.flatMap(group => group.hooks);
-    assert.deepEqual(
-      sessionHooks.map(hook =>
-        path.basename(hook.command.match(/scripts\/([^/'"\s]+\.mjs)/)?.[1] || hook.command)),
-      ['bootstrap.mjs', 'handoff-resume.mjs', 'load-knowledge.mjs']
-    );
-    assert.equal(hooksConfig.hooks.UserPromptSubmit.length, 1);
-    assert.match(
-      hooksConfig.hooks.UserPromptSubmit[0].hooks[0].command,
-      /user-prompt-submit\.mjs' --host codex$/,
-    );
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'hooks.json')));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'handoff-resume.mjs')));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'bootstrap.mjs')));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'register_learning.mjs')));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'tools', 'sync-session-override.mjs')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon')));
-
-    const manifest = JSON.parse(fs.readFileSync(path.join(projectDir, '.spectre', 'manifest.json'), 'utf8'));
-    assert.equal(manifest.codexIntegration.hiddenContextInjection, 'agents_override_managed_block');
-    assert.equal(manifest.codexIntegration.fallback, 'none');
-
-    assert.ok(!fs.existsSync(path.join(projectDir, 'AGENTS.md')));
-    assert.ok(!fs.existsSync(path.join(projectDir, 'AGENTS.override.md')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-session')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'bin', 'codex')));
-    assert.ok(!fs.existsSync(path.join(codeHome, 'prompts', 'spectre:scope.md')));
-
-    const doctor = JSON.parse(execFileSync(process.execPath, [
-      path.join(process.cwd(), 'bin', 'spectre.js'),
-      'doctor',
+    const result = runCli([
+      command,
       'codex',
       '--scope',
       'project',
       '--project-dir',
-      projectDir,
-      '--json'
-    ], {
-      env: {
-        ...process.env,
-        CODEX_HOME: codeHome
-      },
-      encoding: 'utf8'
-    }));
-    assert.equal(doctor.hooks.spectreHooksConfigured, true);
-    assert.equal(doctor.hooks.hiddenContextInjection, 'agents_override_managed_block');
-    assert.equal('staleSpectreHooksConfigured' in doctor.hooks, false);
+      fixture.projectDir,
+      '--json',
+    ], fixture);
 
-    execFileSync('codex', ['--version'], {
-      env: {
-        ...process.env,
-        CODEX_HOME: codeHome
-      },
-      stdio: 'ignore'
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      ok: false,
+      code: 'CODEX_PLUGIN_REQUIRED',
+      message: [
+        `${command} codex no longer mutates Codex files.`,
+        'Codex native plugin installation is required for Spectre 6.0.0.',
+        '',
+        'Fresh install:',
+        '  codex plugin marketplace add Codename-Inc/spectre',
+        '  codex plugin add spectre@spectre',
+        '',
+        'Update:',
+        '  codex plugin marketplace upgrade spectre',
+        '  codex plugin remove spectre@spectre',
+        '  codex plugin add spectre@spectre',
+        '',
+        'Uninstall:',
+        '  Run the bundled spectre-uninstall-codex skill first to remove managed agents.',
+        '  codex plugin remove spectre@spectre',
+      ].join('\n'),
     });
-  } finally {
-    if (previousCodexHome == null) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = previousCodexHome;
-    }
-  }
-});
-
-test('doctor reports malformed hooks config without claiming hooks are active', { concurrency: false }, () => {
-  const projectDir = makeProject();
-  const codeHome = path.join(projectDir, '.codex');
-  fs.mkdirSync(codeHome, { recursive: true });
-  fs.writeFileSync(path.join(codeHome, 'config.toml'), '[features]\nhooks = true\n');
-  fs.writeFileSync(path.join(codeHome, 'hooks.json'), '{invalid json');
-
-  const doctor = JSON.parse(execFileSync(process.execPath, [
-    path.join(process.cwd(), 'bin', 'spectre.js'),
-    'doctor',
-    'codex',
-    '--scope',
-    'project',
-    '--project-dir',
-    projectDir,
-    '--json'
-  ], {
-    env: {
-      ...process.env,
-      CODEX_HOME: codeHome
-    },
-    encoding: 'utf8'
-  }));
-
-  assert.equal(doctor.hooks.spectreHooksConfigured, false);
-  assert.equal(doctor.hooks.hiddenContextInjection, 'malformed_hooks_json');
-  assert.match(doctor.hooks.configError, /Unexpected token|Expected property name/);
-});
-
-test('user install installs skills, agents, and global generated hooks', { concurrency: false }, () => {
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-home-'));
-  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-codex-workspace-'));
-  execFileSync('git', ['init', '-b', 'main'], { cwd: workspaceDir, stdio: 'ignore' });
-
-  execFileSync(process.execPath, [
-    path.join(process.cwd(), 'bin', 'spectre.js'),
-    'install',
-    'codex',
-    '--scope',
-    'user',
-    '--project-dir',
-    workspaceDir
-  ], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      HOME: homeDir,
-      CODEX_HOME: ''
-    },
-    stdio: 'ignore'
-  });
-
-  const codeHome = path.join(homeDir, '.codex');
-  assert.ok(fs.existsSync(path.join(codeHome, 'skills', 'spectre-plan', 'SKILL.md')));
-  assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'agents', 'dev.toml')));
-  assert.ok(fs.existsSync(path.join(codeHome, 'hooks.json')));
-  assert.ok(fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')));
-  assert.ok(!fs.existsSync(path.join(codeHome, 'spectre', 'hooks', 'session-start.mjs')));
-  assert.ok(!fs.existsSync(path.join(workspaceDir, '.spectre', 'manifest.json')));
-  assert.ok(!fs.existsSync(path.join(workspaceDir, 'AGENTS.override.md')));
-});
-
-test('project install removes legacy bridge artifacts while preserving non-managed AGENTS content', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  isolateInProcessSpectreHome(t, projectDir);
-  fs.writeFileSync(
-    path.join(projectDir, 'AGENTS.md'),
-    [
-      'Project-specific instructions.',
-      '',
-      '<!-- spectre-codex:start -->',
-      'Read `AGENTS.override.md` before doing work in this repository.',
-      '<!-- spectre-codex:end -->'
-    ].join('\n')
-  );
-  fs.writeFileSync(
-    path.join(projectDir, 'AGENTS.override.md'),
-    [
-      'User-owned override content.',
-      '',
-      '<!-- spectre-session:start -->',
-      'legacy session context',
-      '<!-- spectre-session:end -->',
-      '',
-      '<!-- spectre-knowledge:start -->',
-      'legacy knowledge context',
-      '<!-- spectre-knowledge:end -->'
-    ].join('\n')
-  );
-  fs.mkdirSync(path.join(projectDir, '.agents', 'skills', 'spectre-session'), { recursive: true });
-  fs.writeFileSync(path.join(projectDir, '.agents', 'skills', 'spectre-session', 'SKILL.md'), 'legacy session skill\n');
-  fs.mkdirSync(path.join(projectDir, '.spectre', 'bin'), { recursive: true });
-  fs.writeFileSync(path.join(projectDir, '.spectre', 'bin', 'codex'), '#!/bin/sh\n');
-
-  const previousCodexHome = process.env.CODEX_HOME;
-  delete process.env.CODEX_HOME;
-
-  try {
-    const { main } = await import('./main.js');
-    await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-
-    const agentsContent = fs.readFileSync(path.join(projectDir, 'AGENTS.md'), 'utf8');
-    assert.match(agentsContent, /Project-specific instructions\./);
-    assert.doesNotMatch(agentsContent, /spectre-codex:start/);
-    const overrideContent = fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8');
-    assert.match(overrideContent, /User-owned override content\./);
-    assert.doesNotMatch(overrideContent, /spectre-session:start/);
-    assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
-    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-session')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'bin', 'codex')));
-  } finally {
-    if (previousCodexHome == null) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = previousCodexHome;
-    }
-  }
-});
-
-test('project install preserves unrelated hooks.json handlers while adding Spectre hooks', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  isolateInProcessSpectreHome(t, projectDir);
-  const codeHome = path.join(projectDir, '.codex');
-  fs.mkdirSync(codeHome, { recursive: true });
-  fs.writeFileSync(
-    path.join(codeHome, 'hooks.json'),
-    JSON.stringify({
-      hooks: {
-        Stop: [
-          {
-            matcher: '*',
-            hooks: [
-              {
-                type: 'command',
-                command: 'echo existing-stop-hook'
-              }
-            ]
-          }
-        ]
-      }
-    }, null, 2)
-  );
-
-  const previousCodexHome = process.env.CODEX_HOME;
-  delete process.env.CODEX_HOME;
-
-  try {
-    const { main } = await import('./main.js');
-    await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-
-    const hooksConfig = JSON.parse(fs.readFileSync(path.join(codeHome, 'hooks.json'), 'utf8'));
-    assert.deepEqual(hooksConfig.hooks.Stop, [
-      {
-        matcher: '*',
-        hooks: [
-          {
-            type: 'command',
-            command: 'echo existing-stop-hook'
-          }
-        ]
-      }
+    const after = collectFiles(fixture.root).map((filePath) => [
+      path.relative(fixture.root, filePath),
+      fs.readFileSync(filePath, 'utf8'),
     ]);
-    assert.equal(hooksConfig.hooks.SessionStart.flatMap(group => group.hooks).length, 3);
-    assert.equal(hooksConfig.hooks.PreCompact, undefined);
-  } finally {
-    if (previousCodexHome == null) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = previousCodexHome;
-    }
+    assert.deepEqual(after, before);
   }
 });
 
-test('install removes fork-era agent definitions and runtime', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  isolateInProcessSpectreHome(t, projectDir);
-  const codeHome = path.join(projectDir, '.codex');
-  const forkName = ['cas', 'par'].join('');
-  const forkRuntime = path.join(codeHome, forkName);
-  fs.mkdirSync(path.join(forkRuntime, 'agents'), { recursive: true });
-  fs.writeFileSync(path.join(forkRuntime, 'agents', 'dev.toml'), 'name = "dev"\n');
-  fs.writeFileSync(
-    path.join(codeHome, 'config.toml'),
-    [
-      '[features]',
-      'multi_agent = true',
-      '',
-      `[agents.${forkName}_dev]`,
-      'description = "legacy dev"',
-      `config_file = "${path.join(forkRuntime, 'agents', 'dev.toml')}"`,
-      `nickname_candidates = ["dev", "${forkName}-dev", "${forkName} dev", "${forkName}_dev"]`,
-      '',
-      '[agents.unrelated_dev]',
-      'description = "user-owned dev"',
-      'config_file = "/tmp/unrelated-dev.toml"',
-      'nickname_candidates = ["other-dev"]'
-    ].join('\n')
-  );
+test('managed-agent helper installs, checks, updates, and removes namespaced agents', (t) => {
+  const fixture = makeFixture(t);
 
-  const previousCodexHome = process.env.CODEX_HOME;
-  delete process.env.CODEX_HOME;
+  const missing = runAgentSetup(['--check'], fixture);
+  assert.notEqual(missing.status, 0);
+  assert.equal(readJson(missing).ok, false);
+  assert.ok(readJson(missing).missing.includes('spectre_dev.toml'));
 
-  try {
-    const { main } = await import('./main.js');
-    await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
+  const installed = runAgentSetup(['--ensure'], fixture);
+  assert.equal(installed.status, 0, installed.stderr);
+  const installedPayload = readJson(installed);
+  assert.equal(installedPayload.ok, true);
+  assert.ok(installedPayload.installed.includes('spectre_dev.toml'));
 
-    const config = fs.readFileSync(path.join(codeHome, 'config.toml'), 'utf8');
-    assert.match(config, /\[agents\.spectre_dev\]/);
-    assert.doesNotMatch(config, new RegExp(`\\[agents\\.${forkName}_dev\\]`));
-    assert.doesNotMatch(config, new RegExp(`${forkName}/agents/dev\\.toml`));
-    assert.match(config, /\[agents\.unrelated_dev\]/);
-    assert.ok(!fs.existsSync(forkRuntime));
-    assert.ok(fs.existsSync(path.join(codeHome, 'spectre')));
-  } finally {
-    if (previousCodexHome == null) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = previousCodexHome;
-    }
-  }
+  const agentPath = path.join(fixture.codexHome, 'agents', 'spectre_dev.toml');
+  const original = fs.readFileSync(agentPath, 'utf8');
+  assert.match(original, /^# spectre-managed-codex-agent/m);
+  assert.match(original, /^name = "spectre_dev"$/m);
+
+  const current = runAgentSetup(['--check'], fixture);
+  assert.equal(current.status, 0, current.stderr);
+  assert.equal(readJson(current).ok, true);
+
+  fs.writeFileSync(agentPath, original.replace('workspace-write', 'read-only'));
+  const repaired = runAgentSetup(['--ensure'], fixture);
+  assert.equal(repaired.status, 0, repaired.stderr);
+  assert.ok(readJson(repaired).updated.includes('spectre_dev.toml'));
+  assert.equal(fs.readFileSync(agentPath, 'utf8'), original);
+
+  const removed = runAgentSetup(['--remove'], fixture);
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.ok(readJson(removed).removed.includes('spectre_dev.toml'));
+  assert.equal(fs.existsSync(agentPath), false);
 });
 
-test('project update removes stale apply skill and preserves unrelated user work', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  isolateInProcessSpectreHome(t, projectDir);
-  const codeHome = path.join(projectDir, '.codex');
-  const staleApplyPath = path.join(codeHome, 'skills', 'spectre-apply', 'SKILL.md');
-  const unrelatedPath = path.join(
-    codeHome,
+test('managed-agent helper rejects unowned collisions', (t) => {
+  const fixture = makeFixture(t);
+  const collidingPath = path.join(fixture.codexHome, 'agents', 'spectre_dev.toml');
+  fs.mkdirSync(path.dirname(collidingPath), { recursive: true });
+  fs.writeFileSync(collidingPath, 'name = "spectre_dev"\n# user-owned\n');
+
+  const result = runAgentSetup(['--ensure'], fixture);
+  assert.notEqual(result.status, 0);
+  const payload = readJson(result);
+  assert.equal(payload.ok, false);
+  assert.deepEqual(payload.collisions, [collidingPath]);
+  assert.equal(fs.readFileSync(collidingPath, 'utf8'), 'name = "spectre_dev"\n# user-owned\n');
+});
+
+test('managed-agent helper preserves an unowned retired-skill collision', (t) => {
+  const fixture = makeFixture(t);
+  const skillPath = path.join(
+    fixture.codexHome,
     'skills',
-    'spectre-apply-notes',
+    'spectre-recall',
     'SKILL.md',
   );
-  fs.mkdirSync(path.dirname(staleApplyPath), { recursive: true });
-  fs.writeFileSync(staleApplyPath, 'previous release managed apply\n');
-  fs.mkdirSync(path.dirname(unrelatedPath), { recursive: true });
-  fs.writeFileSync(unrelatedPath, 'user-owned apply notes\n');
-  const unrelatedBytes = fs.readFileSync(unrelatedPath);
+  fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+  fs.writeFileSync(skillPath, 'USER_SENTINEL\n');
 
-  const { main } = await import('./main.js');
-  await main(['update', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-
-  assert.equal(fs.existsSync(path.dirname(staleApplyPath)), false);
-  assert.deepEqual(fs.readFileSync(unrelatedPath), unrelatedBytes);
+  const result = runAgentSetup(['--ensure'], fixture);
+  assert.notEqual(result.status, 0);
+  const payload = readJson(result);
+  assert.equal(payload.ok, false);
+  assert.ok(payload.collisions.includes(path.dirname(skillPath)));
+  assert.equal(fs.readFileSync(skillPath, 'utf8'), 'USER_SENTINEL\n');
 });
 
-test('project uninstall removes managed workflow skills, agent config, and project skill registrations', { concurrency: false }, async (t) => {
-  const projectDir = makeProject(t);
-  isolateInProcessSpectreHome(t, projectDir);
-  fs.writeFileSync(
-    path.join(projectDir, 'AGENTS.override.md'),
-    [
-      'User-owned override content.',
-      '',
-      '<!-- spectre-session:start -->',
-      'legacy session context',
-      '<!-- spectre-session:end -->',
-      '',
-      '<!-- spectre-knowledge:start -->',
-      'legacy knowledge context',
-      '<!-- spectre-knowledge:end -->'
-    ].join('\n')
-  );
-  const previousCodexHome = process.env.CODEX_HOME;
-  delete process.env.CODEX_HOME;
+test('managed-agent helper cleans owned legacy install without removing unrelated config, hooks, skills, or knowledge', (t) => {
+  const fixture = makeFixture(t);
+  const configPath = path.join(fixture.codexHome, 'config.toml');
+  const hooksPath = path.join(fixture.codexHome, 'hooks.json');
+  const knowledgePath = path.join(fixture.root, '.spectre', 'projects', 'store', 'knowledge.json');
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, [
+    '[features]',
+    'custom = true',
+    '',
+    '# spectre-codex-managed',
+    '[agents.spectre_dev]',
+    `config_file = ${JSON.stringify(path.join(fixture.codexHome, 'spectre', 'agents', 'dev.toml'))}`,
+    '',
+    '[agents.user_owned]',
+    'description = "keep"',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(hooksPath, `${JSON.stringify({
+    hooks: {
+      SessionStart: [{ hooks: [
+        { type: 'command', command: 'node ${CODEX_HOME}/spectre/hooks/scripts/bootstrap.mjs' },
+        { type: 'command', command: 'node /tmp/user-hook.mjs' },
+      ] }],
+    },
+  }, null, 2)}\n`);
+  const legacySkill = path.join(fixture.codexHome, 'skills', 'spectre-scope', 'SKILL.md');
+  const retiredRecallSkill = path.join(fixture.codexHome, 'skills', 'spectre-recall', 'SKILL.md');
+  const retiredFindSkill = path.join(fixture.codexHome, 'skills', 'spectre-find', 'SKILL.md');
+  const userSkill = path.join(fixture.codexHome, 'skills', 'user-owned', 'SKILL.md');
+  fs.mkdirSync(path.dirname(legacySkill), { recursive: true });
+  fs.writeFileSync(legacySkill, 'legacy\n');
+  fs.mkdirSync(path.dirname(retiredRecallSkill), { recursive: true });
+  fs.writeFileSync(retiredRecallSkill, 'retired recall\n');
+  fs.mkdirSync(path.dirname(retiredFindSkill), { recursive: true });
+  fs.writeFileSync(retiredFindSkill, 'retired find\n');
+  fs.mkdirSync(path.dirname(userSkill), { recursive: true });
+  fs.writeFileSync(userSkill, 'keep\n');
+  fs.mkdirSync(path.join(fixture.codexHome, 'spectre', 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(fixture.codexHome, 'spectre', 'hooks', 'bootstrap.mjs'), 'legacy\n');
+  fs.mkdirSync(path.dirname(knowledgePath), { recursive: true });
+  fs.writeFileSync(knowledgePath, '{"keep":true}\n');
 
-  try {
-    const { main } = await import('./main.js');
-    await main(['install', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-    await main(['uninstall', 'codex', '--scope', 'project', '--project-dir', projectDir]);
-
-    const codeHome = path.join(projectDir, '.codex');
-
-    assert.ok(!fs.existsSync(path.join(codeHome, 'skills', 'spectre-scope')));
-    assert.ok(!fs.existsSync(path.join(codeHome, 'spectre')));
-
-    const config = fs.readFileSync(path.join(codeHome, 'config.toml'), 'utf8');
-    assert.doesNotMatch(config, /\[agents\.spectre_dev\]/);
-    assert.doesNotMatch(config, /\[\[skills\.config\]\][\s\S]*spectre-recall/);
-    assert.doesNotMatch(config, /pre_session_start/);
-    assert.doesNotMatch(config, /session_start = /);
-
-    assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'manifest.json')));
-    const overrideContent = fs.readFileSync(path.join(projectDir, 'AGENTS.override.md'), 'utf8');
-    assert.match(overrideContent, /User-owned override content\./);
-    assert.doesNotMatch(overrideContent, /spectre-session:start/);
-    assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
-    assert.ok(!fs.existsSync(path.join(projectDir, '.spectre', 'bin', 'codex')));
-    assert.ok(!fs.existsSync(path.join(codeHome, 'hooks.json')));
-    assert.ok(!fs.existsSync(path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md')));
-  } finally {
-    if (previousCodexHome == null) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = previousCodexHome;
-    }
-  }
+  const result = runAgentSetup(['--ensure'], fixture);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(fixture.codexHome, 'spectre')), false);
+  assert.equal(fs.existsSync(path.dirname(legacySkill)), false);
+  assert.equal(fs.existsSync(path.dirname(retiredRecallSkill)), false);
+  assert.equal(fs.existsSync(path.dirname(retiredFindSkill)), false);
+  assert.equal(fs.readFileSync(userSkill, 'utf8'), 'keep\n');
+  assert.doesNotMatch(fs.readFileSync(configPath, 'utf8'), /spectre-codex-managed|agents\.spectre_dev/);
+  assert.match(fs.readFileSync(configPath, 'utf8'), /\[features\]\ncustom = true/);
+  assert.match(fs.readFileSync(configPath, 'utf8'), /\[agents\.user_owned\]/);
+  assert.doesNotMatch(fs.readFileSync(hooksPath, 'utf8'), /spectre\/hooks\/scripts/);
+  assert.match(fs.readFileSync(hooksPath, 'utf8'), /user-hook\.mjs/);
+  assert.equal(fs.readFileSync(knowledgePath, 'utf8'), '{"keep":true}\n');
 });

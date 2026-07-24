@@ -1,0 +1,38 @@
+{
+  "name": "spectre",
+  "version": "6.0.0",
+  "description": "Contract-driven agentic coding workflow for Claude Code and Codex.",
+  "author": {
+    "name": "Joe Fernandez",
+    "email": "joe@bycodename.com"
+  },
+  "homepage": "https://github.com/Codename-Inc/spectre#readme",
+  "repository": "git+https://github.com/Codename-Inc/spectre.git",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agents",
+    "claude-code",
+    "codex",
+    "workflow",
+    "planning",
+    "tdd",
+    "code-review"
+  ],
+  "interface": {
+    "displayName": "Spectre",
+    "shortDescription": "Contract-driven workflow prompts for coding agents",
+    "longDescription": "Spectre provides compact workflow skills, plugin-root hooks, a size-bounded SessionStart knowledge registry with neutral exact-ID search/load, and managed Codex custom-agent setup.",
+    "developerName": "Joe Fernandez",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Codename-Inc/spectre#readme",
+    "defaultPrompt": [
+      "Use spectre-scope to define a new feature, then continue through the Spectre workflow."
+    ],
+    "brandColor": "#2F5D50"
+  }
+}

@@ -2,6 +2,7 @@
 name: "spectre-ux"
 description: "Define exactly how a feature behaves — user flows, screens, components, states, copy, and accessibility — producing a definitive ux.md spec for implementation. Two stages: align on user flows, then write the detailed spec. Trigger after scope/PRD when a feature needs a behavioral/UX spec before planning or building UI. Do NOT trigger for pure backend/non-UI work, for setting scope boundaries (spectre-scope), or for technical architecture (spectre-plan)."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # ux
@@ -10,7 +11,7 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Inputs
 
-- `$ARGUMENTS` — the feature/context.
+- `$ARGUMENTS` — explicit feature name/root or descendant requirements artifact.
 - Requirements doc — first that exists, read FULLY (no offset/limit):
   1. `{OUT_DIR}/concepts/scope.md` (canonical, preferred)
   2. `{OUT_DIR}/specs/prd.md`
@@ -19,9 +20,12 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`)
-- `OUT_DIR = user-specified || docs/tasks/{branch}`
-- Existing UI: one `@patterns` dispatch (Stage 1) for similar screens/components, conventions, design tokens — return ≤~2K in-thread, no files.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- An explicit legacy `docs/tasks/**` requirements artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new UX document and cite the legacy source.
+- Existing UI: one `@spectre_patterns` dispatch (Stage 1) for similar screens/components, conventions, design tokens — return ≤~2K in-thread, no files.
 
 ## Method / guardrails
 
@@ -37,7 +41,14 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Outputs + DONE
 
-Write `{OUT_DIR}/ux.md` with **all 11 sections**:
+Write `{FEATURE_ROOT}/ux.md` with **all 11 sections**. Immediately below the title, `ux.md` records:
+
+```text
+Feature: <feature-name>
+Feature Root: .spectre/features/<feature-name>
+```
+
+Derive both values from the physical feature directory.
 
 1. **Overview** — what it is, problem solved, primary user goal (1 para)
 2. **User Segments** — each segment served + what's different about their UX
@@ -63,10 +74,12 @@ Write `{OUT_DIR}/ux.md` with **all 11 sections**:
 
 ## Handoff
 
-Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then offer validation and suggest the next command — do not wait silently:
+Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then choose one:
 
-- **Prototype** (optional, recommended before planning): `spectre-prototype` renders this spec high-fi and flags assumptions it had to fill in — catches issues prose review misses. If run, apply spec updates from surfaced assumptions, then finalize.
-- Next: `spectre-create_plan` · `spectre-create_tasks` · `spectre-tdd`
+1. Material visual/interaction assumptions remain, stakeholder visual review is needed, or prose alone cannot validate the experience → `spectre-prototype`. Apply surfaced assumptions or contradictions back to `ux.md` before planning.
+2. Otherwise → `spectre-plan`, the unified tier/research/review/task router.
+
+Render `Next (recommended): /spectre:{command} — because {observed UX signal}.` Add at most one conditional alternative; direct `spectre-create_tasks` is valid only for explicitly small, settled, known-pattern work, and direct `spectre-tdd` only for a genuinely MICRO task. If stopping, offer `Pause: spectre-handoff {feature}` with the completed UX path and selected next step.
 
 ## Escalate-If
 
@@ -74,3 +87,13 @@ Confirm completion inline (screens specified, segments addressed, flows document
 - User pushes for implementation/architecture decisions → note them, defer to `spectre-plan`; keep this pass on behavior.
 - Flows won't converge after iterating → surface the specific unresolved divergence (usually a segment conflict) and ask the user to decide before Stage 2.
 - Feature has no user-facing surface → this spec adds nothing; route back to `spectre-plan`.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

@@ -10,19 +10,25 @@ Generated-task review: verify that `spectre-create_tasks` faithfully compiled th
 
 ## Inputs
 
-- `$ARGUMENTS` - `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`, optional explicit TASK_DIR.
-- Required: `{TASK_DIR}/specs/plan.md`, `{TASK_DIR}/specs/execute.md`, `{TASK_DIR}/specs/tasks.json` (or scoped `.execute.md` + `.tasks.json` pair).
+- `$ARGUMENTS` - explicit feature name/root or descendant execute/task artifact, `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`.
+- Required: `{FEATURE_ROOT}/specs/plan.md`, `{FEATURE_ROOT}/specs/execute.md`, `{FEATURE_ROOT}/specs/tasks.json` (or scoped `.execute.md` + `.tasks.json` pair).
 - Helpful: scope/PRD/UX/context artifacts listed in `execute.md` `Document Manifest`.
 - If task artifacts are absent -> stop, route to `spectre-create_tasks`. If `plan.md` is absent -> stop, route to `spectre-create_plan`.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `TASK_DIR = {arg path} || docs/tasks/{branch}`.
-- Resolve `EXECUTE_INDEX` as arg path or `{TASK_DIR}/specs/execute.md`; resolve `TASKS_JSON` from its `Task Detail Source`, adjacent `tasks.json`, or sibling `.tasks.json`.
-- `REVIEW_REPORT = {TASK_DIR}/reviews/task_review.md`; `mkdir -p`; if it exists, write `task_review_{YYYY-MM-DD_HHMMSS}.md`.
-- `PREFLIGHT_JSON = {TASK_DIR}/reviews/task_review_safety.json`; the primary writes this helper evidence and passes it back for protected-hash validation.
-- `REVIEW_STATE = {TASK_DIR}/reviews/task_review_state.json`; missing or invalid state is backward-compatible and selects a whole-graph semantic review.
-- `IMPACT_JSON = {TASK_DIR}/reviews/task_review_impact.json`; the primary writes the read-only helper result used to construct the review brief.
+- Resolve `FEATURE_ROOT` in this exact order: (1) an explicit feature directory or feature name; (2) a supplied artifact beneath the feature root; (3) one unambiguous feature artifact already present in the current thread. A name maps to `.spectre/features/<feature-name>/`. If resolution is absent or ambiguous, ask for the feature name/path.
+- Never use branch name, modification time, lifecycle completeness, or directory scanning to infer a feature. Arbitrary output roots are invalid for new canonical review artifacts.
+- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
+- Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it.
+- An explicit legacy `docs/tasks/**` plan/execute/tasks artifact remains a readable input and existing workflow-owned task status may be updated in place, but do not move or bulk-rewrite legacy records. Require a confirmed `.spectre/features/<feature-name>/` root for new review reports/evidence and record legacy sources.
+- `TASK_DIR = FEATURE_ROOT`.
+- Resolve `EXECUTE_INDEX` as an explicit descendant artifact or `{FEATURE_ROOT}/specs/execute.md`; resolve `TASKS_JSON` from its `Task Detail Source`, adjacent `tasks.json`, or sibling `.tasks.json`.
+- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/task_review.md`; `mkdir -p`; if it exists, write `task_review_{YYYY-MM-DD_HHMMSS}.md`.
+- `PREFLIGHT_JSON = {FEATURE_ROOT}/reviews/task_review_safety.json`; the primary writes this helper evidence and passes it back for protected-hash validation.
+- `REVIEW_STATE = {FEATURE_ROOT}/reviews/task_review_state.json`; missing or invalid state is backward-compatible and selects a whole-graph semantic review.
+- `IMPACT_JSON = {FEATURE_ROOT}/reviews/task_review_impact.json`; the primary writes the read-only helper result used to construct the review brief.
+- Every produced JSON evidence artifact (`PREFLIGHT_JSON`, `REVIEW_STATE`, `IMPACT_JSON`) carries `feature` and `feature_root` in its owning metadata object; populate them from the physical directory before consuming or persisting that artifact.
 - Parse `TASKS_JSON` before review and after every write. Use targeted projections/slices for reviewer briefs; do not inline the whole task graph unless it is genuinely small.
 
 ## Scope Boundary
@@ -61,7 +67,7 @@ Task review may improve translation only: coverage, criteria, dependencies, wave
 
 From Codex primary:
 ```bash
-claude -p --model opus --effort medium --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+claude -p --model opus --effort medium --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
@@ -73,7 +79,7 @@ External report metadata is fixed by route: Codex -> Claude Code records `Review
 
 Run from repo root. The reviewer may write only REVIEW_REPORT; it may not edit plan, scope docs, `execute.md`, or `tasks.json`.
 
-`REVIEW_PROMPT` includes: TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, compact preflight advisories, semantic review region, rerun/reuse reasons, eligible unresolved findings, write permission limited to REVIEW_REPORT, required report sections, and required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`). It directs the reviewer to use only the selected parents and lenses (or all four lenses for a full review), assign a stable finding ID and complete affected parent/lens region to each finding, explain a concrete execution/correctness consequence for any mechanical imperfection it reports, and avoid redoing the consumer-safety checks.
+`REVIEW_PROMPT` includes: the exact feature root, feature name, TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, compact preflight advisories, semantic review region, rerun/reuse reasons, eligible unresolved findings, write permission limited to REVIEW_REPORT, required report sections, and required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`). It says: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity." It directs the reviewer to use only the selected parents and lenses (or all four lenses for a full review), assign a stable finding ID and complete affected parent/lens region to each finding, explain a concrete execution/correctness consequence for any mechanical imperfection it reports, and avoid redoing the consumer-safety checks.
 
 Do not pass launcher timeout or duration guidance to the reviewer or its workers.
 
@@ -113,6 +119,7 @@ Count drift, anchor quality, optional headings/metadata, criterion/status enum i
 ## Outputs + DONE
 
 `REVIEW_REPORT` required sections:
+0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
 1. **Findings** - table `# | Severity | Lens | Location | Finding | Suggested Edit`.
 2. **Coverage Summary** - plan signals covered/missing; Out-of-Bounds violations, if any.
 3. **Index Alignment Summary** - `execute.md` vs `tasks.json` status.
@@ -126,10 +133,24 @@ DONE when the report exists before edits; every finding has a location + concret
 
 ## Handoff
 
-Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, updated task artifact paths, and whether `tasks.json` parses. Next: `spectre-execute` once Blocker/High findings are resolved.
+Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, updated task artifact paths, and whether `tasks.json` parses.
+
+- `--orchestrated` → return the review result and updated artifact paths to the caller without user-facing Next Steps.
+- Standalone + unresolved Blocker/High → remain in task remediation; scope-change findings route to `spectre-scope`.
+- Standalone + resolved Blocker/High → `Next (recommended): spectre-execute — the reviewed task graph is executable.` Add `spectre-goal` only as the conditional autonomous execute→proof alternative. Offer `spectre-handoff` only when stopping at this durable review boundary.
 
 ## Escalate-If
 
 - Cannot resolve or parse task artifacts -> stop; route to `spectre-create_tasks`.
 - A finding requires changing agreed scope or `plan.md` -> emit Scope Change Required; do not apply it.
 - Self-check fails after an applied edit -> surface the failure and ask before continuing.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

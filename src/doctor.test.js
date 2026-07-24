@@ -20,19 +20,20 @@ function makeFixture(t) {
   return { root, projectDir, codexHome, spectreHome };
 }
 
-function runCli(args, fixture) {
+function runCli(args, fixture, env = {}) {
   return spawnSync(process.execPath, [CLI_PATH, ...args], {
     cwd: path.resolve('.'),
     env: {
       ...process.env,
       CODEX_HOME: fixture.codexHome,
       SPECTRE_HOME: fixture.spectreHome,
+      ...env,
     },
     encoding: 'utf8',
   });
 }
 
-function doctorJson(fixture) {
+function doctorJson(fixture, env) {
   const result = runCli([
     'doctor',
     'codex',
@@ -41,15 +42,17 @@ function doctorJson(fixture) {
     '--project-dir',
     fixture.projectDir,
     '--json',
-  ], fixture);
+  ], fixture, env);
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
 
-function writeResolver(fixture, {
+function writeRegistryRuntime(fixture, {
   hooksEnabled = true,
-  promptHook = true,
-  adapter = true,
+  sessionHook = true,
+  handler = true,
+  cli = true,
+  stalePromptHook = false,
   trusted = true,
 } = {}) {
   fs.mkdirSync(fixture.codexHome, { recursive: true });
@@ -70,13 +73,18 @@ function writeResolver(fixture, {
   );
   const hooks = {
     hooks: {
-      SessionStart: [{
-        hooks: [{
-          type: 'command',
-          command: `node '${path.join(fixture.codexHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')}'`,
-        }],
-      }],
-      ...(promptHook
+      ...(sessionHook
+        ? {
+            SessionStart: [{
+              matcher: 'startup|resume|clear|compact',
+              hooks: [{
+                type: 'command',
+                command: `node '${path.join(fixture.codexHome, 'spectre', 'hooks', 'scripts', 'load-knowledge.mjs')}' --host codex`,
+              }],
+            }],
+          }
+        : {}),
+      ...(stalePromptHook
         ? {
             UserPromptSubmit: [{
               hooks: [{
@@ -92,16 +100,20 @@ function writeResolver(fixture, {
     path.join(fixture.codexHome, 'hooks.json'),
     `${JSON.stringify(hooks, null, 2)}\n`,
   );
-  if (adapter) {
-    const adapterPath = path.join(
+  for (const [present, fileName] of [
+    [handler, 'load-knowledge.mjs'],
+    [cli, 'knowledge-cli.mjs'],
+  ]) {
+    if (!present) continue;
+    const runtimePath = path.join(
       fixture.codexHome,
       'spectre',
       'hooks',
       'scripts',
-      'user-prompt-submit.mjs',
+      fileName,
     );
-    fs.mkdirSync(path.dirname(adapterPath), { recursive: true });
-    fs.writeFileSync(adapterPath, '// fixture resolver\n');
+    fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
+    fs.writeFileSync(runtimePath, '// fixture runtime\n');
   }
 }
 
@@ -145,49 +157,183 @@ function configEntry(skillPath, extra = '') {
   ].filter(Boolean).join('\n');
 }
 
-test('doctor reports active, absent, disabled, and untrusted prompt resolver states', { concurrency: false }, async (t) => {
+test('doctor reports active, absent, disabled, untrusted, and stale SessionStart registry states', { concurrency: false }, async (t) => {
   const active = makeFixture(t);
-  writeResolver(active);
+  writeRegistryRuntime(active);
   const activeStore = await createStore(active);
   writeCanonicalRecord(activeStore.storePath, 'feature-active');
   refreshKnowledgeIndex(activeStore.storePath);
 
   const activeDoctor = doctorJson(active);
-  assert.equal(activeDoctor.knowledge.resolver.status, 'active');
-  assert.equal(activeDoctor.knowledge.resolver.promptHookConfigured, true);
-  assert.equal(activeDoctor.knowledge.resolver.adapterPresent, true);
-  assert.equal(activeDoctor.knowledge.resolver.projectTrusted, true);
+  assert.equal(activeDoctor.knowledge.registry.status, 'active');
+  assert.equal(activeDoctor.knowledge.registry.sessionHookConfigured, true);
+  assert.equal(activeDoctor.knowledge.registry.handlerPresent, true);
+  assert.equal(activeDoctor.knowledge.registry.cliPresent, true);
+  assert.equal(activeDoctor.knowledge.registry.promptHookAbsent, true);
+  assert.equal(activeDoctor.knowledge.registry.projectTrusted, true);
   assert.equal(activeDoctor.knowledge.store.status, 'valid');
   assert.equal(activeDoctor.knowledge.store.index.status, 'valid');
   assert.equal(activeDoctor.knowledge.nativeDiscovery.status, 'complete');
 
-  for (const [expected, resolverOptions] of [
-    ['absent', { promptHook: false, adapter: false }],
+  for (const [expected, registryOptions] of [
+    ['absent', { sessionHook: false, handler: false }],
     ['disabled', { hooksEnabled: false }],
     ['untrusted', { trusted: false }],
+    ['stale_prompt_hook', { stalePromptHook: true }],
   ]) {
     const fixture = makeFixture(t);
-    writeResolver(fixture, resolverOptions);
+    writeRegistryRuntime(fixture, registryOptions);
     const doctor = doctorJson(fixture);
-    assert.equal(doctor.knowledge.resolver.status, expected);
+    assert.equal(doctor.knowledge.registry.status, expected);
     assert.equal(doctor.knowledge.store.status, 'absent');
   }
 
   const disabledWithUnrelatedHookSetting = makeFixture(t);
-  writeResolver(disabledWithUnrelatedHookSetting, { hooksEnabled: false });
+  writeRegistryRuntime(disabledWithUnrelatedHookSetting, { hooksEnabled: false });
   fs.appendFileSync(
     path.join(disabledWithUnrelatedHookSetting.codexHome, 'config.toml'),
     '[user.settings]\nhooks = true\n',
   );
   assert.equal(
-    doctorJson(disabledWithUnrelatedHookSetting).knowledge.resolver.status,
+    doctorJson(disabledWithUnrelatedHookSetting).knowledge.registry.status,
     'disabled',
   );
 });
 
+test('doctor reports native plugin generation, managed agents, and legacy residue', { concurrency: false }, async (t) => {
+  const fixture = makeFixture(t);
+  fs.mkdirSync(path.join(fixture.codexHome, 'agents'), { recursive: true });
+  fs.copyFileSync(
+    path.resolve('plugins/spectre-codex/agents/spectre_dev.toml'),
+    path.join(fixture.codexHome, 'agents', 'spectre_dev.toml'),
+  );
+  fs.mkdirSync(path.join(fixture.codexHome, 'spectre', 'hooks'), { recursive: true });
+  for (const skillName of ['spectre-recall', 'spectre-find']) {
+    const skillPath = path.join(fixture.codexHome, 'skills', skillName, 'SKILL.md');
+    fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+    fs.writeFileSync(skillPath, 'retired managed skill\n');
+  }
+
+  const doctor = doctorJson(fixture);
+  assert.equal(doctor.nativePlugin.marketplace.targetsGeneratedPlugin, true);
+  assert.equal(doctor.nativePlugin.generated.present, true);
+  assert.equal(doctor.nativePlugin.generated.version, '6.0.0');
+  assert.equal(doctor.nativePlugin.generated.hooksUsePluginRoot, true);
+  assert.ok(doctor.nativePlugin.generated.agents.includes('spectre_dev.toml'));
+  assert.ok(doctor.nativePlugin.agents.installed.includes('spectre_dev.toml'));
+  assert.ok(doctor.nativePlugin.agents.missing.includes('spectre_analyst.toml'));
+  assert.equal(doctor.nativePlugin.legacyResidue.runtimeDir, true);
+  assert.ok(doctor.nativePlugin.legacyResidue.legacySkills.includes('spectre-recall'));
+  assert.ok(doctor.nativePlugin.legacyResidue.legacySkills.includes('spectre-find'));
+  assert.equal(doctor.nativePlugin.legacyResidue.present, true);
+});
+
+test('doctor recognizes the installed native plugin JSON shape and cache capabilities', { concurrency: false }, (t) => {
+  const fixture = makeFixture(t);
+  const cachePath = path.join(
+    fixture.codexHome,
+    'plugins',
+    'cache',
+    'spectre',
+    'spectre',
+    '6.0.0',
+  );
+  fs.cpSync(path.resolve('plugins/spectre-codex'), cachePath, { recursive: true });
+  fs.writeFileSync(
+    path.join(cachePath, 'hooks', 'hooks.json'),
+    `${JSON.stringify({
+      hooks: {
+        SessionStart: [{
+          matcher: 'startup|resume|clear|compact',
+          hooks: [{
+            type: 'command',
+            command: 'node ${PLUGIN_ROOT}/hooks/scripts/load-knowledge.mjs --host codex',
+          }],
+        }],
+      },
+    }, null, 2)}\n`,
+  );
+  fs.copyFileSync(
+    path.resolve('plugins/spectre/hooks/scripts/knowledge-cli.mjs'),
+    path.join(cachePath, 'hooks', 'scripts', 'knowledge-cli.mjs'),
+  );
+  fs.rmSync(
+    path.join(cachePath, 'hooks', 'scripts', 'user-prompt-submit.mjs'),
+    { force: true },
+  );
+  const targetAgents = path.join(fixture.codexHome, 'agents');
+  fs.mkdirSync(targetAgents, { recursive: true });
+  for (const entry of fs.readdirSync(path.join(cachePath, 'agents'))) {
+    fs.copyFileSync(path.join(cachePath, 'agents', entry), path.join(targetAgents, entry));
+  }
+  fs.mkdirSync(fixture.codexHome, { recursive: true });
+  fs.writeFileSync(
+    path.join(fixture.codexHome, 'config.toml'),
+    `[projects.${JSON.stringify(fixture.projectDir)}]\ntrust_level = "trusted"\n`,
+  );
+
+  const fakeBin = path.join(fixture.root, 'bin');
+  const fakeCodex = path.join(fakeBin, 'codex');
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const writeFakeCodex = ({ installed = true, enabled = true } = {}) => {
+    fs.writeFileSync(fakeCodex, [
+      '#!/usr/bin/env node',
+      "if (process.argv.includes('--version')) { process.stdout.write('codex-cli 0.144.6\\n'); process.exit(0); }",
+      `process.stdout.write(${JSON.stringify(`${JSON.stringify({
+        installed: [{
+          pluginId: 'spectre@spectre',
+          name: 'spectre',
+          marketplaceName: 'spectre',
+          version: '6.0.0',
+          installed,
+          enabled,
+          source: { source: 'local', path: path.resolve('plugins/spectre-codex') },
+        }],
+        available: [],
+      })}\n`)});`,
+    ].join('\n'));
+  };
+  writeFakeCodex();
+  fs.chmodSync(fakeCodex, 0o755);
+
+  const doctor = doctorJson(fixture, { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` });
+  assert.equal(doctor.nativePlugin.installed.status, 'installed');
+  assert.equal(doctor.nativePlugin.installed.versionMatches, true);
+  assert.equal(doctor.nativePlugin.installed.installPath, cachePath);
+  assert.equal(doctor.nativePlugin.installed.cachePresent, true);
+  assert.equal(doctor.nativePlugin.installed.hooks.knowledgeSessionStartConfigured, true);
+  assert.equal(doctor.nativePlugin.agents.ready, true);
+  assert.equal(doctor.nativePlugin.legacyResidue.present, false);
+  assert.equal(doctor.hooks.spectreHooksConfigured, true);
+  assert.equal(doctor.hooks.hiddenContextInjection, 'native_plugin_hooks');
+  assert.equal(doctor.capabilities.exactWorkflowSkillsInstalled, true);
+  assert.equal(doctor.capabilities.subagentsInstalled, true);
+  assert.equal(doctor.knowledge.registry.status, 'active');
+
+  writeFakeCodex({ enabled: false });
+  const disabled = doctorJson(fixture, { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` });
+  assert.equal(disabled.nativePlugin.installed.status, 'disabled');
+  assert.equal(disabled.nativePlugin.installed.active, false);
+  assert.equal(disabled.nativePlugin.installed.cachePresent, true);
+  assert.equal(disabled.nativePlugin.installed.hooks.knowledgeSessionStartConfigured, true);
+  assert.equal(disabled.hooks.spectreHooksConfigured, false);
+  assert.equal(disabled.hooks.hiddenContextInjection, 'none');
+  assert.equal(disabled.capabilities.exactWorkflowSkillsInstalled, false);
+  assert.equal(disabled.knowledge.registry.status, 'disabled');
+
+  writeFakeCodex({ installed: false });
+  const notInstalled = doctorJson(fixture, { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` });
+  assert.equal(notInstalled.nativePlugin.installed.status, 'not_installed');
+  assert.equal(notInstalled.nativePlugin.installed.active, false);
+  assert.equal(notInstalled.hooks.spectreHooksConfigured, false);
+  assert.equal(notInstalled.hooks.hiddenContextInjection, 'none');
+  assert.equal(notInstalled.capabilities.exactWorkflowSkillsInstalled, false);
+  assert.equal(notInstalled.knowledge.registry.status, 'absent');
+});
+
 test('doctor reports malformed indexes and invalid canonical records without repairing the store', { concurrency: false }, async (t) => {
   const fixture = makeFixture(t);
-  writeResolver(fixture);
+  writeRegistryRuntime(fixture);
   const resolved = await createStore(fixture);
   const invalidSkillPath = writeCanonicalRecord(
     resolved.storePath,
@@ -207,9 +353,42 @@ test('doctor reports malformed indexes and invalid canonical records without rep
   assert.deepEqual(fs.readFileSync(indexPath), indexBytes);
 });
 
+test('doctor reports corrupt activity and stale transport without mutating either', { concurrency: false }, async (t) => {
+  const fixture = makeFixture(t);
+  writeRegistryRuntime(fixture);
+  const resolved = await createStore(fixture);
+  writeCanonicalRecord(resolved.storePath, 'feature-active');
+  refreshKnowledgeIndex(resolved.storePath);
+  const activityPath = path.join(resolved.storePath, 'activity.json');
+  fs.writeFileSync(activityPath, '{broken activity');
+  const activityBytes = fs.readFileSync(activityPath);
+  const ledgerPath = path.join(resolved.storePath, 'runtime', 'sessions', 'legacy.json');
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+  fs.writeFileSync(ledgerPath, 'legacy ledger bytes\n');
+  const overridePath = path.join(fixture.projectDir, 'AGENTS.override.md');
+  fs.writeFileSync(overridePath, [
+    'User bytes.',
+    '<!-- spectre-knowledge:start -->',
+    'stale knowledge transport',
+    '<!-- spectre-knowledge:end -->',
+  ].join('\n'));
+  const overrideBytes = fs.readFileSync(overridePath);
+
+  const doctor = doctorJson(fixture);
+  assert.equal(doctor.knowledge.store.status, 'invalid');
+  assert.equal(doctor.knowledge.store.activity.status, 'corrupt');
+  assert.equal(doctor.knowledge.store.activity.code, 'KNOWLEDGE_ACTIVITY_CORRUPT');
+  assert.equal(doctor.knowledge.stale.status, 'cleanup_required');
+  assert.equal(doctor.knowledge.stale.overrideBlockPresent, true);
+  assert.equal(doctor.knowledge.stale.promptLedgerPresent, true);
+  assert.deepEqual(fs.readFileSync(activityPath), activityBytes);
+  assert.deepEqual(fs.readFileSync(overridePath), overrideBytes);
+  assert.equal(fs.readFileSync(ledgerPath, 'utf8'), 'legacy ledger bytes\n');
+});
+
 test('doctor reports migration debt and grandfathered Claude native discovery in JSON and human output', { concurrency: false }, async (t) => {
   const fixture = makeFixture(t);
-  writeResolver(fixture);
+  writeRegistryRuntime(fixture);
   const resolved = await createStore(fixture);
   refreshKnowledgeIndex(resolved.storePath);
 
@@ -295,7 +474,7 @@ test('doctor reports migration debt and grandfathered Claude native discovery in
   assert.match(human.stdout, /still eligible for Claude native discovery/);
 });
 
-test('uninstall removes only managed runtime integration and preserves canonical, unresolved, and unrelated state', { concurrency: false }, async (t) => {
+test('uninstall codex hard cut preserves canonical, unresolved, and unrelated state', { concurrency: false }, async (t) => {
   const fixture = makeFixture(t);
   const resolved = await createStore(fixture);
   const canonicalPath = writeCanonicalRecord(resolved.storePath, 'feature-canonical');
@@ -400,6 +579,11 @@ test('uninstall removes only managed runtime integration and preserves canonical
     path.join(fixture.projectDir, '.spectre', 'manifest.json'),
     '{"scope":"project"}\n',
   );
+  const configBytes = fs.readFileSync(path.join(fixture.codexHome, 'config.toml'));
+  const hooksBytes = fs.readFileSync(path.join(fixture.codexHome, 'hooks.json'));
+  const runtimeBytes = fs.readFileSync(
+    path.join(fixture.codexHome, 'spectre', 'hooks', 'scripts', 'user-prompt-submit.mjs'),
+  );
 
   const uninstalled = runCli([
     'uninstall',
@@ -408,33 +592,28 @@ test('uninstall removes only managed runtime integration and preserves canonical
     'project',
     '--project-dir',
     fixture.projectDir,
+    '--json',
   ], fixture);
-  assert.equal(uninstalled.status, 0, uninstalled.stderr);
+  assert.notEqual(uninstalled.status, 0);
+  assert.equal(JSON.parse(uninstalled.stdout).code, 'CODEX_PLUGIN_REQUIRED');
 
   assert.deepEqual(fs.readFileSync(canonicalPath), canonicalBytes);
   assert.deepEqual(fs.readFileSync(unresolvedPath), unresolvedBytes);
   assert.deepEqual(fs.readFileSync(registryPath), registryBytes);
   assert.deepEqual(fs.readFileSync(unrelatedSkillPath), unrelatedSkillBytes);
-  assert.equal(fs.existsSync(path.join(fixture.codexHome, 'spectre')), false);
-  assert.equal(
-    fs.existsSync(path.join(fixture.projectDir, '.spectre', 'manifest.json')),
-    false,
+  assert.deepEqual(
+    fs.readFileSync(path.join(fixture.codexHome, 'config.toml')),
+    configBytes,
   );
-
-  const config = fs.readFileSync(path.join(fixture.codexHome, 'config.toml'), 'utf8');
-  assert.doesNotMatch(config, /# spectre-codex-managed/);
-  assert.doesNotMatch(config, /\[agents\.spectre_dev\]/);
-  assert.match(config, /\[user\.settings\]\nkeep = "exact"/);
-  assert.equal(config.includes(unresolvedConfigEntry), true);
-  assert.equal(config.includes(unrelatedConfigEntry), true);
-
-  const hooks = JSON.parse(
-    fs.readFileSync(path.join(fixture.codexHome, 'hooks.json'), 'utf8'),
+  assert.deepEqual(
+    fs.readFileSync(path.join(fixture.codexHome, 'hooks.json')),
+    hooksBytes,
   );
-  assert.equal(hooks.custom, 'preserve');
-  assert.deepEqual(hooks.hooks.Stop, [{
-    matcher: '*',
-    hooks: [{ type: 'command', command: 'echo unrelated-stop' }],
-  }]);
-  assert.equal(hooks.hooks.UserPromptSubmit, undefined);
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(fixture.codexHome, 'spectre', 'hooks', 'scripts', 'user-prompt-submit.mjs'),
+    ),
+    runtimeBytes,
+  );
+  assert.equal(fs.existsSync(path.join(fixture.projectDir, '.spectre', 'manifest.json')), true);
 });

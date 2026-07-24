@@ -11,12 +11,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Gate, REPO, run, frontmatter } from './lib.mjs';
+import { checkLegacyPathInvariant } from '../../../../test/feature-artifact-location/legacy-path-invariant.mjs';
 
 const g = new Gate('1 structure');
 const PLUGIN = path.join(REPO, 'plugins', 'spectre');
 const SKILLS = path.join(PLUGIN, 'skills');
 const AGENTS = path.join(PLUGIN, 'agents');
 const HERE = path.dirname(new URL(import.meta.url).pathname);
+
+// --- canonical feature paths ------------------------------------------------
+const legacyInventoryPath = path.join(
+  REPO,
+  'test',
+  'feature-artifact-location',
+  'legacy-path-allowlist.json'
+);
+const legacyInventory = JSON.parse(fs.readFileSync(legacyInventoryPath, 'utf8'));
+const legacyInvariant = checkLegacyPathInvariant(REPO, legacyInventory);
+g.check(
+  legacyInvariant.mismatches.length === 0,
+  'legacy paths are occurrence-classified compatibility or fixtures only',
+  legacyInvariant.mismatches.slice(0, 12).join(' | ')
+);
 
 // --- skills -----------------------------------------------------------------
 const skillDirs = fs.existsSync(SKILLS)
@@ -80,6 +96,11 @@ if (g.check(fs.existsSync(hooksPath), 'hooks.json exists')) {
   }
 
   if (hooks) {
+    g.check(
+      !Object.hasOwn(hooks.hooks || {}, 'UserPromptSubmit'),
+      'UserPromptSubmit knowledge delivery is retired',
+      'hooks.json still registers UserPromptSubmit'
+    );
     const sessionStart = hooks.hooks?.SessionStart || [];
     const commands = sessionStart.flatMap((m) => (m.hooks || []).map((h) => h.command || ''));
 
@@ -103,6 +124,19 @@ if (g.check(fs.existsSync(hooksPath), 'hooks.json exists')) {
     }
   }
 }
+
+g.check(
+  !fs.existsSync(path.join(PLUGIN, 'hooks', 'scripts', 'user-prompt-submit.mjs')),
+  'user-prompt-submit.mjs prompt runtime is retired'
+);
+g.check(
+  !fs.existsSync(path.join(PLUGIN, 'hooks', 'scripts', 'knowledge', 'matcher.mjs')),
+  'prompt matcher runtime is retired'
+);
+g.check(
+  !skillNames.has('spectre-recall'),
+  'active spectre-recall skill is retired'
+);
 
 // --- template placeholders --------------------------------------------------
 // Registry substitution is retired. No active skill may ship its placeholder.

@@ -67,7 +67,7 @@ Task review may improve translation only: coverage, criteria, dependencies, wave
 
 From Codex primary:
 ```bash
-claude -p --model opus --effort medium --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
+claude -p --model opus --effort medium --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write" --output-format text "$REVIEW_PROMPT"
 ```
 
 From Claude Code primary:
@@ -79,7 +79,7 @@ External report metadata is fixed by route: Codex -> Claude Code records `Review
 
 Run from repo root. The reviewer may write only REVIEW_REPORT; it may not edit plan, scope docs, `execute.md`, or `tasks.json`.
 
-`REVIEW_PROMPT` includes the exact feature root, feature name, TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, compact preflight advisories, semantic review region, rerun/reuse reasons, eligible unresolved findings, write permission limited to REVIEW_REPORT, required report sections, and required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`). It says: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity." It directs the reviewer to use only the selected parents and lenses (or all four lenses for a full review), assign a stable finding ID and complete affected parent/lens region to each finding, explain a concrete execution/correctness consequence for any mechanical imperfection it reports, and avoid redoing the consumer-safety checks.
+`REVIEW_PROMPT` includes: the exact feature root, feature name, TASK_DIR, EXECUTE_INDEX, TASKS_JSON, REVIEW_REPORT, mode, artifact manifest, Scope Boundary, compact preflight advisories, semantic review region, rerun/reuse reasons, eligible unresolved findings, write permission limited to REVIEW_REPORT, required report sections, and required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`). It says: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity." It directs the reviewer to use only the selected parents and lenses (or all four lenses for a full review), assign a stable finding ID and complete affected parent/lens region to each finding, explain a concrete execution/correctness consequence for any mechanical imperfection it reports, and avoid redoing the consumer-safety checks.
 
 Do not pass launcher timeout or duration guidance to the reviewer or its workers.
 
@@ -133,7 +133,11 @@ DONE when the report exists before edits; every finding has a location + concret
 
 ## Handoff
 
-Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, updated task artifact paths, and whether `tasks.json` parses. Next: `/spectre:execute` once Blocker/High findings are resolved.
+Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, updated task artifact paths, and whether `tasks.json` parses.
+
+- `--orchestrated` → return the review result and updated artifact paths to the caller without user-facing Next Steps.
+- Standalone + unresolved Blocker/High → remain in task remediation; scope-change findings route to `/spectre:scope`.
+- Standalone + resolved Blocker/High → `Next (recommended): /spectre:execute — the reviewed task graph is executable.` Add `/spectre:goal` only as the conditional autonomous execute→proof alternative. Offer `/spectre:handoff` only when stopping at this durable review boundary.
 
 ## Escalate-If
 

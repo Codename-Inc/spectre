@@ -1,11 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { measurePayload } from './payload.mjs';
 import { parseKnowledgeRecord, refreshKnowledgeIndex } from './records.mjs';
 import { atomicWriteFile, resolveProjectStore, withStoreLock } from './store.mjs';
 
 const RETIRED_NATIVE_RECORD_IDS = new Set(['spectre-recall', 'spectre-find']);
+const MAX_ACTIVATION_CUES = 16;
+const MAX_ACTIVATION_CUE_LENGTH = 120;
+const ACTIVATION_CUE_STRUCTURAL_SYNTAX = /[/.:_-]/u;
+const GENERIC_STANDALONE_ACTIVATION_CUES = new Set([
+  'test',
+  'plan',
+  'plugin',
+  'learn',
+  'knowledge',
+  'registry',
+]);
 
 function codedError(code, message, details = {}) {
   const error = new Error(message);
@@ -28,26 +38,56 @@ function proposalRecordDir(recordPath) {
   return stat.isDirectory() ? absolutePath : path.dirname(absolutePath);
 }
 
-function frameForMeasurement(content) {
-  return [
-    '# Spectre applied knowledge',
-    '',
-    content,
-    '',
-    'x'.repeat(750),
-  ].join('\n');
+function normalizeActivationCue(cue) {
+  return cue
+    .normalize('NFKC')
+    .replace(/\s+/gu, ' ')
+    .trim();
 }
 
-function validatePayloadSafe(content, skillPath) {
-  const framed = frameForMeasurement(content);
-  const claude = measurePayload('claude', framed);
-  const codex = measurePayload('codex', framed);
-  if (!claude.ok || !codex.ok) {
+function activationCueLexicalTokens(cue) {
+  const lexical = cue
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return lexical === '' ? [] : lexical.split(/\s+/u);
+}
+
+function validateActivationCues(triggers, skillPath) {
+  if (triggers.length > MAX_ACTIVATION_CUES) {
     throw codedError(
-      'KNOWLEDGE_PAYLOAD_UNSAFE',
-      `${skillPath}: framed record exceeds a host payload budget`,
-      { measurements: { claude, codex } },
+      'KNOWLEDGE_RECORD_INVALID',
+      `${skillPath}: spectre-triggers must contain at most ${MAX_ACTIVATION_CUES} activation cues`,
     );
+  }
+
+  for (const [index, cue] of triggers.entries()) {
+    const normalized = normalizeActivationCue(cue);
+    if ([...normalized].length > MAX_ACTIVATION_CUE_LENGTH) {
+      throw codedError(
+        'KNOWLEDGE_RECORD_INVALID',
+        `${skillPath}: activation cue ${index + 1} must contain at most ` +
+          `${MAX_ACTIVATION_CUE_LENGTH} normalized characters`,
+      );
+    }
+    const lexicalTokens = activationCueLexicalTokens(normalized);
+    const normalizedStandaloneCue =
+      lexicalTokens.length === 1 ? lexicalTokens[0].toLowerCase() : null;
+    if (GENERIC_STANDALONE_ACTIVATION_CUES.has(normalizedStandaloneCue)) {
+      throw codedError(
+        'KNOWLEDGE_RECORD_INVALID',
+        `${skillPath}: activation cue ${index + 1} (${JSON.stringify(cue)}) is a ` +
+          'generic standalone term after normalization',
+      );
+    }
+    const hasSpecificStructure =
+      lexicalTokens.length > 0 && ACTIVATION_CUE_STRUCTURAL_SYNTAX.test(normalized);
+    if (lexicalTokens.length < 2 && !hasSpecificStructure) {
+      throw codedError(
+        'KNOWLEDGE_RECORD_INVALID',
+        `${skillPath}: activation cue ${index + 1} (${JSON.stringify(cue)}) must contain ` +
+          'at least two lexical tokens or structural syntax (/ . : _ -)',
+      );
+    }
   }
 }
 
@@ -158,7 +198,7 @@ function validateStagedRecord(stagePath) {
       `${parsed.record.id} is a retired generated recall surface, not learned knowledge`,
     );
   }
-  validatePayloadSafe(parsed.content, path.join(stagePath, 'SKILL.md'));
+  validateActivationCues(parsed.record.triggers, path.join(stagePath, 'SKILL.md'));
   return parsed;
 }
 

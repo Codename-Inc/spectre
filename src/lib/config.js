@@ -236,10 +236,11 @@ function migratedNativeSkillPaths(migrationReport) {
 }
 
 function retiredRecallSkillPaths(projectDir) {
-  return new Set([
-    path.resolve(projectDir, '.agents', 'skills', 'spectre-recall', 'SKILL.md'),
-    path.resolve(projectDir, '.agents', 'skills', 'spectre-find', 'SKILL.md')
-  ]);
+  return new Set(['.agents', '.claude'].flatMap(nativeRoot =>
+    ['spectre-recall', 'spectre-find'].map(skillName =>
+      path.resolve(projectDir, nativeRoot, 'skills', skillName, 'SKILL.md')
+    )
+  ));
 }
 
 function removeLegacyProjectSkillTables(content) {
@@ -467,6 +468,40 @@ function removeSpectreHooks() {
     hooks
   });
 
+  return removed;
+}
+
+export function removeRetiredKnowledgeHooksConfigured() {
+  const hooksPath = codexHooksConfigPath();
+  if (!fs.existsSync(hooksPath)) return false;
+
+  const { config } = readHooksConfig();
+  const hooks = { ...(config.hooks ?? {}) };
+  let removed = false;
+  const groups = Array.isArray(hooks.UserPromptSubmit)
+    ? hooks.UserPromptSubmit
+    : [];
+  const retainedGroups = [];
+  for (const group of groups) {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) {
+      retainedGroups.push(group);
+      continue;
+    }
+    const originalHooks = Array.isArray(group.hooks) ? group.hooks : [];
+    const retainedHooks = originalHooks.filter(hook => {
+      const stale = hook?.type === 'command' &&
+        typeof hook.command === 'string' &&
+        hook.command.includes('user-prompt-submit.mjs');
+      removed ||= stale;
+      return !stale;
+    });
+    if (retainedHooks.length > 0) {
+      retainedGroups.push({ ...group, hooks: retainedHooks });
+    }
+  }
+  if (retainedGroups.length > 0) hooks.UserPromptSubmit = retainedGroups;
+  else delete hooks.UserPromptSubmit;
+  if (removed) writeHooksConfig(hooksPath, { ...config, hooks });
   return removed;
 }
 

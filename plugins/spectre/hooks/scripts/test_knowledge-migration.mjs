@@ -240,6 +240,17 @@ describe('legacy migration discovery and classification', () => {
     );
     writeLegacySkill(
       projectDir,
+      '.claude',
+      'feature-generated-oversized',
+      legacySkillContent({
+        name: 'feature-generated-oversized',
+        description:
+          'Use when applying feature-generated-oversized TRIGGER when: generated oversized',
+        body: `\n${'generated learning '.repeat(700)}`,
+      }),
+    );
+    writeLegacySkill(
+      projectDir,
       '.agents',
       'feature-malformed',
       'not frontmatter\n',
@@ -258,6 +269,7 @@ describe('legacy migration discovery and classification', () => {
     writeRegistry(projectDir, '.claude', [
       'feature-divergent|feature|divergent|Use when sources diverge',
       'feature-oversized|feature|oversized|Use when oversized',
+      'feature-generated-oversized|feature|generated oversized|Use when generated oversized',
       'feature-missing|feature|missing|Use when source is missing',
     ]);
     writeRegistry(projectDir, '.agents', [
@@ -313,11 +325,19 @@ describe('legacy migration discovery and classification', () => {
         'DIVERGENT',
         'MALFORMED',
         'MALFORMED',
+        'MIGRATED',
         'OVERSIZED',
         'SOURCE_MISSING',
       ].sort(),
     );
     assert.equal(entries.get('feature-oversized').grandfatheredClaudeNativeDiscovery, true);
+    assert.equal(entries.get('feature-generated-oversized').promptTruncationRequired, true);
+    assert.equal(
+      entries.get('feature-generated-oversized').canonical.metadata[
+        'spectre-migration-origin'
+      ],
+      'legacy-spectre-learning',
+    );
     assert.equal(report.grandfatheredClaudeNativeDiscoveryIncomplete, true);
     assert.match(entries.get('feature-conflict').destinationPath, /feature-conflict$/);
     assert.equal(entries.get('feature-already').code, 'ALREADY_MIGRATED');
@@ -327,6 +347,48 @@ describe('legacy migration discovery and classification', () => {
 });
 
 describe('legacy migration staged commit and cleanup', () => {
+  it('commits full oversized Spectre-generated learnings with prompt-truncation provenance', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(storePath, { recursive: true });
+    const id = 'feature-generated-large';
+    const sourcePath = writeLegacySkill(
+      projectDir,
+      '.claude',
+      id,
+      legacySkillContent({
+        name: id,
+        description:
+          'Use when applying feature-generated-large TRIGGER when: generated large',
+        body: `\n# Full generated learning\n\n${'preserve all guidance '.repeat(700)}`,
+      }),
+    );
+    writeRegistry(projectDir, '.claude', [
+      `${id}|feature|generated large|Use when applying generated large knowledge`,
+    ]);
+
+    const { migrateLegacyKnowledge } = await loadMigrationModule();
+    const report = await migrateLegacyKnowledge({ projectDir, storePath });
+    const canonicalPath = path.join(storePath, 'knowledge', id, 'SKILL.md');
+    const canonical = fs.readFileSync(canonicalPath, 'utf8');
+
+    assert.equal(report.entries[0].code, 'MIGRATED');
+    assert.equal(report.entries[0].promptTruncationRequired, true);
+    assert.equal(canonical.length > 9_000, true);
+    assert.match(
+      canonical,
+      /spectre-migration-origin: "legacy-spectre-learning"/,
+    );
+    assert.match(canonical, /preserve all guidance preserve all guidance/);
+    assert.equal(fs.existsSync(sourcePath), false);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'))
+        .records.map(({ id: recordId }) => recordId),
+      [id],
+    );
+  });
+
   it('commits compliant records and index before exact cleanup, then reruns byte-stably', async (t) => {
     const projectDir = path.join(makeTmp(t), 'project');
     const storePath = path.join(makeTmp(t), 'store');
@@ -595,7 +657,6 @@ describe('legacy migration staged commit and cleanup', () => {
         path.join(
           spectreHome,
           'projects',
-          'workspace',
           'project',
           'knowledge',
           'feature-resolved-store',

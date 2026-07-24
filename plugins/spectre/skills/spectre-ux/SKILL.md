@@ -2,6 +2,7 @@
 name: "spectre-ux"
 description: "Define exactly how a feature behaves — user flows, screens, components, states, copy, and accessibility — producing a definitive ux.md spec for implementation. Two stages: align on user flows, then write the detailed spec. Trigger after scope/PRD when a feature needs a behavioral/UX spec before planning or building UI. Do NOT trigger for pure backend/non-UI work, for setting scope boundaries (spectre-scope), or for technical architecture (spectre-plan)."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # ux
@@ -40,7 +41,14 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 
 ## Outputs + DONE
 
-Write `{OUT_DIR}/ux.md` with **all 11 sections**:
+Write `{FEATURE_ROOT}/ux.md` with **all 11 sections**. Immediately below the title, `ux.md` records:
+
+```text
+Feature: <feature-name>
+Feature Root: .spectre/features/<feature-name>
+```
+
+Derive both values from the physical feature directory.
 
 1. **Overview** — what it is, problem solved, primary user goal (1 para)
 2. **User Segments** — each segment served + what's different about their UX
@@ -66,10 +74,12 @@ Write `{OUT_DIR}/ux.md` with **all 11 sections**:
 
 ## Handoff
 
-Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then offer validation and suggest the next command — do not wait silently:
+Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then choose one:
 
-- **Prototype** (optional, recommended before planning): `/spectre:prototype` renders this spec high-fi and flags assumptions it had to fill in — catches issues prose review misses. If run, apply spec updates from surfaced assumptions, then finalize.
-- Next: `/spectre:create_plan` · `/spectre:create_tasks` · `/spectre:tdd`
+1. Material visual/interaction assumptions remain, stakeholder visual review is needed, or prose alone cannot validate the experience → `/spectre:prototype`. Apply surfaced assumptions or contradictions back to `ux.md` before planning.
+2. Otherwise → `/spectre:plan`, the unified tier/research/review/task router.
+
+Render `Next (recommended): /spectre:{command} — because {observed UX signal}.` Add at most one conditional alternative; direct `/spectre:create_tasks` is valid only for explicitly small, settled, known-pattern work, and direct `/spectre:tdd` only for a genuinely MICRO task. If stopping, offer `Pause: /spectre:handoff {feature}` with the completed UX path and selected next step.
 
 ## Escalate-If
 

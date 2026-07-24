@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
+
+import { refreshKnowledgeIndex } from '../plugins/spectre/hooks/scripts/knowledge/records.mjs';
+import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 
 function makeTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -33,16 +36,14 @@ function collectFiles(root) {
   }
 
   walk(root);
-  return files;
+  return files.sort();
 }
 
-test('packed npm artifact installs Codex assets from generated tree', { concurrency: false }, () => {
+test('packed npm artifact contains portable Claude and Codex knowledge runtimes with no retired surface', { concurrency: false }, async () => {
   const repoRoot = path.resolve('.');
   const packDir = makeTempDir('spectre-pack-');
   const projectDir = makeTempDir('spectre-pack-install-');
   const homeDir = makeTempDir('spectre-pack-home-');
-  const spectreHome = path.join(homeDir, '.spectre-isolated');
-  const configuredCodexHome = path.join(homeDir, '.codex-isolated');
 
   try {
     const packOutput = exec('npm', ['pack', '--pack-destination', packDir], { cwd: repoRoot }).trim();
@@ -50,63 +51,6 @@ test('packed npm artifact installs Codex assets from generated tree', { concurre
 
     exec('npm', ['init', '-y'], { cwd: projectDir });
     exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball], { cwd: projectDir });
-    exec('git', ['init', '-b', 'main'], { cwd: projectDir });
-
-    const env = {
-      ...process.env,
-      HOME: homeDir,
-      CODEX_HOME: configuredCodexHome,
-      SPECTRE_HOME: spectreHome,
-    };
-
-    const unscopedHelp = exec('npx', ['spectre', 'help'], {
-      cwd: projectDir,
-      env
-    });
-    assert.match(unscopedHelp, /spectre install codex/);
-
-    exec('npx', ['@codename_inc/spectre', 'install', 'codex', '--scope', 'project', '--project-dir', projectDir], {
-      cwd: projectDir,
-      env
-    });
-
-    const codexHome = path.join(projectDir, '.codex');
-    const canonicalSkillsDir = path.join(repoRoot, 'plugins', 'spectre', 'skills');
-    for (const entry of fs.readdirSync(canonicalSkillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const canonicalSkill = path.join(canonicalSkillsDir, entry.name, 'SKILL.md');
-      if (!fs.existsSync(canonicalSkill)) continue;
-      assert.ok(
-        fs.existsSync(path.join(codexHome, 'skills', entry.name, 'SKILL.md')),
-        `packed install is missing workflow skill ${entry.name}`,
-      );
-    }
-    assert.ok(!fs.existsSync(path.join(codexHome, 'skills', 'spectre-apply')));
-    assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'agents', 'dev.toml')));
-    const canonicalScriptsDir = path.join(repoRoot, 'plugins', 'spectre', 'hooks', 'scripts');
-    const canonicalRuntimeFiles = collectFiles(canonicalScriptsDir)
-      .filter((filePath) =>
-        filePath.endsWith('.mjs') && !path.basename(filePath).startsWith('test_'));
-    for (const canonicalRuntimeFile of canonicalRuntimeFiles) {
-      const relativePath = path.relative(canonicalScriptsDir, canonicalRuntimeFile);
-      assert.ok(
-        fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'scripts', relativePath)),
-        `packed install is missing runtime module ${relativePath}`,
-      );
-    }
-    assert.ok(fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'hooks.json')));
-    assert.ok(!fs.existsSync(path.join(codexHome, 'spectre', 'hooks', 'session-start.mjs')));
-    const hooksConfig = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf8'));
-    assert.deepEqual(
-      hooksConfig.hooks.SessionStart.flatMap(group => group.hooks)
-        .map(hook => path.basename(hook.command.match(/scripts\/([^/'"\s]+\.mjs)/)?.[1] || hook.command)),
-      ['bootstrap.mjs', 'handoff-resume.mjs', 'load-knowledge.mjs']
-    );
-    assert.equal(hooksConfig.hooks.UserPromptSubmit.length, 1);
-    assert.match(
-      hooksConfig.hooks.UserPromptSubmit[0].hooks[0].command,
-      /user-prompt-submit\.mjs' --host codex$/,
-    );
 
     const installedPackage = path.join(
       projectDir,
@@ -114,33 +58,233 @@ test('packed npm artifact installs Codex assets from generated tree', { concurre
       '@codename_inc',
       'spectre',
     );
-    const canonicalPluginBin = path.join(repoRoot, 'plugins', 'spectre', 'bin');
-    for (const cliName of fs.readdirSync(canonicalPluginBin)) {
-      assert.ok(
-        fs.existsSync(path.join(installedPackage, 'plugins', 'spectre', 'bin', cliName)),
-        `tarball is missing plugin CLI ${cliName}`,
-      );
-    }
-    const tarballPaths = collectFiles(installedPackage)
-      .map((filePath) => path.relative(installedPackage, filePath));
-    for (const retiredArtifact of [
-      /(?:^|\/)spectre-apply(?:\/|$)/,
-      /recall-template\.md$/,
-      /registry\.toon$/,
+    const claudePluginRoot = path.join(installedPackage, 'plugins', 'spectre');
+    const pluginRoot = path.join(installedPackage, 'plugins', 'spectre-codex');
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
+    );
+    assert.equal(manifest.name, 'spectre');
+    assert.equal(manifest.version, '6.0.0');
+    assert.equal('skills' in manifest, false);
+    assert.equal('agents' in manifest, false);
+
+    const marketplace = JSON.parse(
+      fs.readFileSync(path.join(installedPackage, '.agents', 'plugins', 'marketplace.json'), 'utf8'),
+    );
+    assert.equal(marketplace.plugins[0].source, './plugins/spectre-codex');
+    assert.equal(marketplace.plugins[0].version, '6.0.0');
+
+    for (const relativePath of [
+      'skills/spectre-scope/SKILL.md',
+      'skills/spectre-scope/scripts/ensure-codex-agents.mjs',
+      'skills/spectre-learn/scripts/register-knowledge.mjs',
+      'skills/spectre-uninstall-codex/SKILL.md',
+      'hooks/hooks.json',
+      'hooks/scripts/bootstrap.mjs',
+      'hooks/scripts/load-knowledge.mjs',
+      'hooks/scripts/knowledge-cli.mjs',
+      'hooks/scripts/knowledge/activity.mjs',
+      'hooks/scripts/knowledge/loader.mjs',
+      'hooks/scripts/knowledge/preview.mjs',
+      'hooks/scripts/knowledge/registry.mjs',
+      'hooks/scripts/knowledge/search.mjs',
+      'agents/spectre_dev.toml',
+      'agents/spectre_web_research.toml',
     ]) {
-      assert.equal(
-        tarballPaths.some((relativePath) => retiredArtifact.test(relativePath)),
-        false,
-        `tarball contains retired artifact ${retiredArtifact}`,
+      assert.ok(
+        fs.existsSync(path.join(pluginRoot, relativePath)),
+        `packed plugin is missing ${relativePath}`,
       );
     }
 
-    const runtimeFiles = collectFiles(path.join(codexHome, 'spectre'));
-    for (const filePath of runtimeFiles) {
+    for (const root of [claudePluginRoot, pluginRoot]) {
+      for (const relativePath of [
+        'hooks/hooks.json',
+        'hooks/scripts/load-knowledge.mjs',
+        'hooks/scripts/knowledge-cli.mjs',
+        'hooks/scripts/knowledge/activity.mjs',
+        'hooks/scripts/knowledge/loader.mjs',
+        'hooks/scripts/knowledge/preview.mjs',
+        'hooks/scripts/knowledge/registry.mjs',
+        'hooks/scripts/knowledge/search.mjs',
+      ]) {
+        assert.ok(fs.existsSync(path.join(root, relativePath)), `packed host is missing ${relativePath}`);
+      }
+      const retiredPromptAdapter = ['hooks', 'scripts', `${['user', 'prompt', 'submit'].join('-')}.mjs`].join('/');
+      const retiredRecallSkill = ['skills', `spectre-${'recall'}`].join('/');
+      for (const relativePath of [
+        retiredPromptAdapter,
+        'hooks/scripts/knowledge/matcher.mjs',
+        'hooks/scripts/runtime/sessions',
+        retiredRecallSkill,
+      ]) {
+        assert.equal(fs.existsSync(path.join(root, relativePath)), false, `packed host retained ${relativePath}`);
+      }
+      const hostHooks = JSON.parse(fs.readFileSync(path.join(root, 'hooks', 'hooks.json'), 'utf8'));
+      assert.equal('UserPromptSubmit' in hostHooks.hooks, false);
+    }
+
+    const hooksConfig = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
+    assert.deepEqual(
+      hooksConfig.hooks.SessionStart.flatMap(group => group.hooks)
+        .map(hook => hook.command),
+      [
+        'node ${PLUGIN_ROOT}/hooks/scripts/bootstrap.mjs',
+        'node ${PLUGIN_ROOT}/hooks/scripts/handoff-resume.mjs',
+        'node ${PLUGIN_ROOT}/hooks/scripts/load-knowledge.mjs --host codex',
+      ],
+    );
+    assert.equal('UserPromptSubmit' in hooksConfig.hooks, false);
+
+    const agent = fs.readFileSync(path.join(pluginRoot, 'agents', 'spectre_dev.toml'), 'utf8');
+    assert.match(agent, /^# spectre-managed-codex-agent/m);
+    assert.match(agent, /^name = "spectre_dev"$/m);
+
+    const pluginFiles = collectFiles(pluginRoot).map((filePath) => path.relative(pluginRoot, filePath));
+    assert.equal(
+      pluginFiles.some((relativePath) => /(?:^|\/)spectre-apply(?:\/|$)/.test(relativePath)),
+      false,
+    );
+    assert.equal(
+      pluginFiles.some((relativePath) => /(?:^|\/)spectre-guide(?:\/|$)/.test(relativePath)),
+      false,
+    );
+    for (const filePath of collectFiles(pluginRoot)) {
       const content = fs.readFileSync(filePath, 'utf8');
       assert.doesNotMatch(content, /file:\/\//, `${filePath} should not contain package-cache file:// imports`);
-      assert.doesNotMatch(content, new RegExp(repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${filePath} should not reference the repo checkout`);
+      assert.doesNotMatch(
+        content,
+        new RegExp(repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `${filePath} should not reference the repo checkout`,
+      );
     }
+
+
+    const spectreHome = path.join(homeDir, '.spectre-proof');
+    const retrievalProject = path.join(homeDir, 'retrieval-project');
+    fs.mkdirSync(retrievalProject, { recursive: true });
+    const { storePath } = await resolveProjectStore(retrievalProject, { spectreHome });
+    const recordId = 'feature-packed-neutral-cli';
+    const recordDirectory = path.join(storePath, 'knowledge', recordId);
+    fs.mkdirSync(path.join(recordDirectory, 'references'), { recursive: true });
+    fs.writeFileSync(path.join(recordDirectory, 'SKILL.md'), [
+      '---',
+      `name: ${recordId}`,
+      'description: Use when proving packed neutral knowledge retrieval.',
+      'metadata:',
+      '  spectre-category: "feature"',
+      '  spectre-triggers: \'["packed neutral retrieval","knowledge-cli.mjs"]\'',
+      '  spectre-status: "active"',
+      '  spectre-version: "1"',
+      '---',
+      `# ${recordId}`,
+      '',
+      'SPECTRE_PACKED_CORE_SENTINEL',
+      '',
+    ].join('\n'));
+    fs.writeFileSync(
+      path.join(recordDirectory, 'references', 'proof.md'),
+      'SPECTRE_PACKED_RESOURCE_SENTINEL\n',
+    );
+    refreshKnowledgeIndex(storePath);
+
+    const isolatedPath = path.join(homeDir, 'isolated-path');
+    fs.mkdirSync(isolatedPath);
+    fs.symlinkSync(process.execPath, path.join(isolatedPath, 'node'));
+    assert.equal(
+      fs.existsSync(path.join(retrievalProject, '.agents', 'skills', `spectre-${'recall'}`)),
+      false,
+    );
+    let expectedLoads = 0;
+    for (const root of [claudePluginRoot, pluginRoot]) {
+      const bundledCli = path.join(root, 'hooks', 'scripts', 'knowledge-cli.mjs');
+      const runBundled = (args) => spawnSync(bundledCli, args, {
+        cwd: retrievalProject,
+        env: { ...process.env, SPECTRE_HOME: spectreHome, PATH: isolatedPath },
+        encoding: 'utf8',
+      });
+      const host = root === claudePluginRoot ? 'claude' : 'codex';
+      const activityPath = path.join(storePath, 'activity.json');
+      const activityBeforePreview = fs.existsSync(activityPath)
+        ? fs.readFileSync(activityPath)
+        : null;
+      const preview = runBundled([
+        'registry',
+        '--host',
+        host,
+        '--project-dir',
+        retrievalProject,
+        '--json',
+      ]);
+      assert.equal(preview.status, 0, preview.stderr);
+      const previewed = JSON.parse(preview.stdout);
+      assert.equal(previewed.host, host);
+      assert.equal(previewed.injected, true);
+      assert.equal(previewed.measurement.ok, true);
+      assert.deepEqual(previewed.includedRecords, [{ id: recordId, version: 1 }]);
+      assert.match(
+        previewed.payload.hookSpecificOutput.additionalContext,
+        /## Before You Work[\s\S]*## Available Knowledge/,
+      );
+      assert.doesNotMatch(
+        previewed.payload.hookSpecificOutput.additionalContext,
+        /SPECTRE_PACKED_CORE_SENTINEL/,
+      );
+      const activityAfterPreview = fs.existsSync(activityPath)
+        ? fs.readFileSync(activityPath)
+        : null;
+      assert.deepEqual(activityAfterPreview, activityBeforePreview);
+      const search = runBundled([
+        'search',
+        'packed neutral retrieval',
+        '--project-dir',
+        retrievalProject,
+        '--json',
+      ]);
+      assert.equal(search.status, 0, search.stderr);
+      assert.ok(JSON.parse(search.stdout).results.some(({ id }) => id === recordId));
+
+      const load = runBundled([
+        'load',
+        recordId,
+        '--project-dir',
+        retrievalProject,
+        '--json',
+      ]);
+      assert.equal(load.status, 0, load.stderr);
+      const loaded = JSON.parse(load.stdout);
+      expectedLoads += 1;
+      assert.match(loaded.content, /SPECTRE_PACKED_CORE_SENTINEL/);
+      assert.equal(loaded.recordDirectory, recordDirectory);
+      assert.deepEqual(loaded.resources, [{
+        relativePath: 'references/proof.md',
+        absolutePath: path.join(recordDirectory, 'references', 'proof.md'),
+      }]);
+      assert.equal(loaded.activity.successfulLoads, expectedLoads);
+    }
+
+    const codexHome = path.join(homeDir, '.codex');
+    const result = spawnSync('npx', [
+      '@codename_inc/spectre',
+      'install',
+      'codex',
+      '--scope',
+      'project',
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        CODEX_HOME: codexHome,
+      },
+      encoding: 'utf8',
+    });
+    assert.notEqual(result.status, 0);
+    assert.equal(JSON.parse(result.stdout).code, 'CODEX_PLUGIN_REQUIRED');
+    assert.equal(fs.existsSync(codexHome), false);
   } finally {
     fs.rmSync(packDir, { recursive: true, force: true });
     fs.rmSync(projectDir, { recursive: true, force: true });

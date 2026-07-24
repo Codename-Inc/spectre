@@ -121,6 +121,15 @@ test("production task review keeps semantic judgment with a non-delegating revie
     reviewerPrompt,
     /at least 20 minutes|do not stop early|launcher timeout|duration guidance/i,
   );
+  const claudeRecipe = taskReview.match(
+    /claude -p --model opus --effort medium[^\n]+/,
+  )?.[0];
+  assert.ok(claudeRecipe, "Claude reviewer recipe must be present");
+  assert.doesNotMatch(
+    claudeRecipe,
+    /(?:^|[,\s"])Task(?:[,\s"]|$)/,
+    "the non-sharded Claude reviewer must not have delegation tools",
+  );
   assert.doesNotMatch(taskReview, /--model fable|model_reasoning_effort="high"/);
   assert.deepEqual(
     readdirSync(join(canonicalSkillDir, "scripts")).sort(),
@@ -129,7 +138,7 @@ test("production task review keeps semantic judgment with a non-delegating revie
   );
 });
 
-test("task-review routing changes without changing plan-review or code-review routes", () => {
+test("review gates retain their route-specific models and efforts", () => {
   const planReview = readFileSync(
     join(
       repositoryRoot,
@@ -168,7 +177,7 @@ test("task-review routing changes without changing plan-review or code-review ro
     planReview,
     /-m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
   );
-  assert.match(codeReview, /claude -p --model fable --effort high/);
+  assert.match(codeReview, /claude -p --model opus --effort high/);
   assert.match(
     codeReview,
     /-m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
@@ -179,6 +188,6 @@ test("task-review routing changes without changing plan-review or code-review ro
   );
   assert.match(
     knowledge,
-    /`spectre-code_review`[^\n]*`--model fable --effort high`[^\n]*model_reasoning_effort="high"/,
+    /`spectre-code_review`[^\n]*`--model opus --effort high`[^\n]*model_reasoning_effort="high"/,
   );
 });

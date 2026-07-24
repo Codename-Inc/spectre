@@ -2,6 +2,7 @@
 name: "spectre-prototype"
 description: "Generate a single self-contained, clickable HTML prototype to make a feature visible before planning — resolving ambiguity pre-scope, validating flows pre-plan, or rendering an approved UX spec for stakeholder review. Triggers on \"prototype this\", \"mock up the UI\", \"make a clickable preview\", or a mid-flow `ux` Stage 1→2 transition. Do NOT trigger to write production app code, build a multi-file frontend, or plan/scope the work itself — this produces one throwaway HTML file only."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # prototype
@@ -31,15 +32,18 @@ Produce one portable, self-contained HTML file that makes a feature visible befo
 - Stage 1 intake is tight (2–4 questions, never a form), followed by a gated parallel research-and-generate pass and single-threaded HTML writing.
 
 ## Method / guardrails
+
+primary-agent-only HTML implementation and validation is a hard ownership boundary.
+
 1. **Immediate reply, then detect.** Respond before any tool call (except reading `ux.md` when `FROM_UX=true`). If ARGUMENTS empty → ask what we're prototyping.
 2. **Read context before asking.** Read whichever of scope.md/prd.md/ux.md exist, fully; classify ux.md as complete / flows-only / absent → sets mode.
 3. **Confirm fidelity + visual anchor.** Recommend fidelity per the table; request a visual anchor (brand colors, font stack, reference URL, or named aesthetic e.g. "Linear-style"). If user skips, commit to a deliberate named aesthetic and call it out at the top of the file. **Gate: wait for confirmation** (auto-proceed only when `FROM_UX=true`).
-4. **Dispatch parallel subagents** (roster fixed — do not add or rename):
+4. **Dispatch parallel read-only subagents** (roster fixed — do not add or rename):
    - `@spectre:web-research` — 2–3 living UI references + the established convention for this interaction type + concrete palette/type/layout decisions for the anchor (hex, font families). Anti-slop forcing function: without it the model defaults to Inter + purple gradients. <400 words, cite sources.
    - `@spectre:analyst` — **extract** mode (post-ux): pull Screens/Layouts/Components/Interactions/States/Content verbatim from ux.md; use documented copy EXACTLY; flag spec-silent details as "filled assumptions"; never invent screens. **synthesize** mode (else): primary flow, per-screen state list, realistic domain content (no Lorem ipsum), component inventory.
    - `@spectre:patterns` — only if an existing app to anchor to: real design tokens, component conventions, interaction patterns (return actual hex/class values, not paths). Skip otherwise.
-   Return findings in-thread (compressed); write no intermediate docs.
-5. **Generate** after ALL subagents return. Use `@spectre:dev` (or inline if trivial). Embed the negative constraints below verbatim in the dev prompt.
+   Return findings in-thread (compressed); write no intermediate docs or prototype files.
+5. **Implement directly (primary agent only).** After ALL subagent findings return, the primary agent must personally create, edit, iterate on, and validate the prototype HTML. Do not delegate any prototype implementation or file modification to `@spectre:dev` or another subagent. Subagents may provide findings only; they must not write or edit the prototype.
 
 ### Required HTML structure (load-bearing — these prevent the known failure modes)
 1. `<!DOCTYPE html>` + minimal `<head>` (`<meta viewport>`, inline `<style>`).
@@ -58,12 +62,23 @@ Produce one portable, self-contained HTML file that makes a feature visible befo
 HTML prototype file at `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`; `mkdir -p` the prototypes subdir. DONE when:
 - [ ] Mode + fidelity detected; context docs read fully before any question; visual anchor captured (never left generic).
 - [ ] Subagents dispatched in parallel and all completed before generation.
-- [ ] HTML is one self-contained file <300KB; metadata + design-token blocks present; tokens on `:root`.
+- [ ] The primary agent directly authored and validated the HTML; no subagent created or modified the prototype.
+- [ ] HTML is one self-contained file <300KB; Feature/Feature Root metadata + design-token blocks present; tokens on `:root`.
 - [ ] Every screen: happy path + ≥1 non-happy state; realistic content; inline SVG only; recurring components share one class; all interactions respond, no console errors.
 - [ ] Portability self-check run (size, external images, relative paths, component reuse, state coverage); any violation surfaced as a caveat, not silently shipped.
 
 ## Handoff
-Present: path, size, screen count, fidelity, visual anchor, key assumptions, NOT-included list; tell user to `open` it in a browser and that it is fully shareable. Iterate on feedback (small tweaks → edit HTML; structural → re-run subagents + regen; re-run the portability check after any edit). **post-ux only:** surface filled assumptions and offer to promote selected ones into `ux.md` (edit the matching section, re-present with a one-line diff). Close with an inline Next-Steps line, mode-specific: `FROM_UX` → resume `/spectre:ux` Stage 2; `--explore` → `/spectre:scope`; post-scope → `/spectre:ux` or `/spectre:plan`.
+Present: path, size, screen count, fidelity, visual anchor, key assumptions, NOT-included list; tell user to `open` it in a browser and that it is fully shareable. Iterate on feedback (small tweaks → edit HTML; structural → re-run subagents + regen; re-run the portability check after any edit). **post-ux only:** surface filled assumptions and offer to promote selected ones into `ux.md` (edit the matching section, re-present with a one-line diff).
+
+Choose the first applicable route from the detected mode and observed assumptions:
+
+1. `explore` → `/spectre:scope`.
+2. `flows-only ux` → resume `/spectre:ux` Stage 2.
+3. `post-ux` with contradictions or material filled assumptions → resume `/spectre:ux`; otherwise → `/spectre:plan`.
+4. `post-scope` with unresolved flows/states/copy/segment behavior → `/spectre:ux`; with a validated, explicitly S/known-pattern scope → `/spectre:create_tasks`; otherwise → `/spectre:plan`.
+5. `standalone` without canonical scope → `/spectre:scope`; if scope exists, reclassify as `post-scope` and use rule 4.
+
+Render exactly one `Next (recommended): ... — because {mode + observed signal}.` Add at most one conditional alternative. If stopping after the completed artifact, offer `Pause: /spectre:handoff {feature}` with the prototype path and selected next step.
 
 ## Escalate if
 - Spec contradicts the prototype (post-ux): ask which is authoritative per contradiction, then update `ux.md` and the HTML together and re-run the portability check.

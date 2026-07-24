@@ -1,7 +1,10 @@
 import path from 'node:path';
 
+import { recordKnowledgeSearch } from './activity.mjs';
 import { refreshKnowledgeIndex } from './records.mjs';
 import { resolveProjectStore } from './store.mjs';
+
+const SEARCH_DIAGNOSTIC_WRITE_FAILED = 'KNOWLEDGE_SEARCH_DIAGNOSTIC_WRITE_FAILED';
 
 function compareText(left, right) {
   if (left < right) return -1;
@@ -89,18 +92,14 @@ export async function searchKnowledge(options) {
 
   const { index, errors } = refreshKnowledgeIndex(resolved.storePath);
   const normalizedQuery = normalizeSearchText(options.query);
+  let results;
   if (normalizedQuery === '') {
-    return {
-      results: index.records
-        .map((entry) => resultFromEntry(resolved.storePath, entry))
-        .sort(compareCorpusResults),
-      warnings: errors,
-    };
-  }
-
-  const queryTokens = tokens(normalizedQuery);
-  return {
-    results: index.records
+    results = index.records
+      .map((entry) => resultFromEntry(resolved.storePath, entry))
+      .sort(compareCorpusResults);
+  } else {
+    const queryTokens = tokens(normalizedQuery);
+    results = index.records
       .map((entry) => {
         const score = scoreRecord(entry, normalizedQuery, queryTokens);
         return resultFromEntry(resolved.storePath, entry, score);
@@ -110,9 +109,25 @@ export async function searchKnowledge(options) {
         result.triggerOverlap > 0 ||
         result.descriptionOverlap > 0,
       )
-      .sort(compareRankedResults),
-    warnings: errors,
-  };
+      .sort(compareRankedResults);
+  }
+
+  const warnings = [...errors];
+  try {
+    await recordKnowledgeSearch({
+      storePath: resolved.storePath,
+      results,
+      now: options.now,
+      lockOptions: options.lockOptions,
+      atomicWriteOptions: options.atomicWriteOptions,
+    });
+  } catch (error) {
+    warnings.push({
+      code: SEARCH_DIAGNOSTIC_WRITE_FAILED,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return { results, warnings };
 }
 
 export function formatKnowledgeSearchHuman({ results }, query = '') {
@@ -147,4 +162,10 @@ export function formatKnowledgeSearchHuman({ results }, query = '') {
   ].join('\n')).join('\n\n')}\n`;
 }
 
-export { normalizeSearchText };
+export function formatKnowledgeSearchWarningsHuman(warnings = []) {
+  return warnings.map((warning) => warning.code === SEARCH_DIAGNOSTIC_WRITE_FAILED
+    ? `spectre: ${warning.code}: ${warning.message}\n`
+    : `spectre: skipped invalid knowledge record: ${warning.message}\n`).join('');
+}
+
+export { normalizeSearchText, SEARCH_DIAGNOSTIC_WRITE_FAILED };

@@ -12,11 +12,16 @@
  * Exits nonzero if any gate fails, so it works as a CI step or a pre-push hook.
  */
 
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO, run } from './lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const VERIFY_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-verify-run-'));
+const VERIFY_ENV = { SPECTRE_HOME: path.join(VERIFY_ROOT, 'spectre-home') };
+process.on('exit', () => fs.rmSync(VERIFY_ROOT, { recursive: true, force: true }));
 
 const GATES = {
   1: { name: 'structure', script: 'gate1_structure.mjs' },
@@ -50,11 +55,11 @@ for (const id of selected) {
   if (id === 2) {
     // Gate 2 is just the suite. Streaming it live matters — a hanging test is
     // far easier to diagnose when you can see which one it stopped on.
-    const test = run('npm', ['test'], { cwd: REPO, timeout: 600000 });
+    const test = run('npm', ['test'], { cwd: REPO, timeout: 600000, env: VERIFY_ENV });
     code = test.code;
     const output = test.stdout + test.stderr;
-    const pass = output.match(/^# pass (\d+)/m)?.[1];
-    const fail = output.match(/^# fail (\d+)/m)?.[1];
+    const pass = output.match(/^(?:#|ℹ)\s+pass\s+(\d+)/m)?.[1];
+    const fail = output.match(/^(?:#|ℹ)\s+fail\s+(\d+)/m)?.[1];
     process.stdout.write(`  ${code === 0 ? 'ok   ' : 'FAIL '} npm test — ${pass ?? '?'} passing, ${fail ?? '?'} failing\n`);
     if (code !== 0) {
       const failures = output.split('\n').filter((l) => /^not ok |^\s+error:/.test(l)).slice(0, 10);
@@ -64,7 +69,11 @@ for (const id of selected) {
     if (pass) process.stdout.write(`  note  test count: ${pass} (compare against the last known-good run)\n`);
     process.stdout.write(`GATE ${code === 0 ? 'PASS' : 'FAIL'}  2 tests\n`);
   } else {
-    const result = run('node', [path.join(HERE, gate.script)], { cwd: REPO, timeout: 600000 });
+    const result = run('node', [path.join(HERE, gate.script)], {
+      cwd: REPO,
+      timeout: 600000,
+      env: VERIFY_ENV,
+    });
     code = result.code;
     process.stdout.write(result.stdout);
     if (result.stderr.trim()) process.stdout.write(result.stderr);

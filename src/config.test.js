@@ -202,7 +202,7 @@ test('native SessionStart maps raw slashed, detached, and non-Git branch identit
   assert.match(nonGitOutput.systemMessage, /\.spectre\/handoffs\/unknown\//);
 });
 
-test('SessionStart writes the latest handoff and capability-only knowledge guidance', async () => {
+test('SessionStart writes the latest handoff without legacy knowledge transport', async () => {
   const tmp = makeSessionProject();
   const { buildSessionStartOutput } = await import('./lib/project.js');
 
@@ -211,19 +211,15 @@ test('SessionStart writes the latest handoff and capability-only knowledge guida
 
   assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.match(output.systemMessage, /injected docs\/tasks\/main\/session_logs\/2026-03-09-100000_handoff\.json/);
-  assert.match(output.systemMessage, /knowledge is applied automatically/);
-  assert.match(output.systemMessage, /spectre knowledge search "<query>"/);
+  assert.doesNotMatch(output.systemMessage, /knowledge is applied automatically/);
   assert.match(overrideContent, /<!-- spectre-session:start -->/);
   assert.match(overrideContent, /official SessionStart migration/);
   assert.match(overrideContent, /Wiring tests for the new SessionStart payload/);
-  assert.match(overrideContent, /<!-- spectre-knowledge:start -->/);
-  assert.doesNotMatch(overrideContent, /feature-auth\|feature\|auth, login/);
-  assert.match(overrideContent, /knowledge is applied automatically/i);
-  assert.match(overrideContent, /spectre knowledge search "<query>"/);
+  assert.doesNotMatch(overrideContent, /<!-- spectre-knowledge:start -->/);
   assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
 });
 
-test('SessionStart clears stale session state but keeps empty knowledge and user content', async () => {
+test('SessionStart clears stale session and knowledge state while preserving user content', async () => {
   const tmp = makeSessionProject();
   fs.rmSync(path.join(tmp, '.agents'), { recursive: true, force: true });
   fs.writeFileSync(
@@ -248,12 +244,11 @@ test('SessionStart clears stale session state but keeps empty knowledge and user
   const output = buildSessionStartOutput(tmp, { source: 'clear' });
   const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
 
-  assert.match(output.systemMessage, /knowledge is applied automatically/);
+  assert.doesNotMatch(output.systemMessage, /knowledge is applied automatically/);
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, /spectre-session:start/);
-  assert.match(overrideContent, /spectre-knowledge:start/);
-  assert.match(overrideContent, /knowledge is applied automatically/i);
+  assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
   assert.doesNotMatch(overrideContent, /\{\{REGISTRY\}\}/);
 });
 
@@ -269,7 +264,7 @@ test('project install creates no native knowledge files or managed memory inject
   assert.ok(!fs.existsSync(path.join(tmp, 'AGENTS.override.md')));
 });
 
-test('project install removes legacy managed override blocks', async () => {
+test('project install removes stale knowledge block while preserving session and user content', async () => {
   const tmp = makeProject();
   fs.writeFileSync(
     path.join(tmp, 'AGENTS.override.md'),
@@ -294,7 +289,7 @@ test('project install removes legacy managed override blocks', async () => {
   const overrideContent = fs.readFileSync(path.join(tmp, 'AGENTS.override.md'), 'utf8');
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
-  assert.doesNotMatch(overrideContent, /spectre-session:start/);
+  assert.match(overrideContent, /spectre-session:start/);
   assert.doesNotMatch(overrideContent, /spectre-knowledge:start/);
 });
 
@@ -338,4 +333,111 @@ test('project reinstall removes fork-era managed blocks without removing user co
   assert.match(overrideContent, /User content before\./);
   assert.match(overrideContent, /User content after\./);
   assert.doesNotMatch(overrideContent, new RegExp(`${forkName}-(session|knowledge):start`));
+});
+
+test('project upgrade cleanup removes stale knowledge transport and preserves canonical, session, and user bytes', async () => {
+  const tmp = makeProject();
+  const storePath = path.join(tmp, '.store');
+  const canonicalPath = path.join(storePath, 'knowledge', 'feature-safe', 'SKILL.md');
+  fs.mkdirSync(path.dirname(canonicalPath), { recursive: true });
+  fs.writeFileSync(canonicalPath, 'canonical bytes\n');
+  fs.writeFileSync(path.join(storePath, 'index.json'), '{"schemaVersion":1,"records":[]}\n');
+  fs.writeFileSync(path.join(storePath, 'activity.json'), '{"schemaVersion":1,"records":{},"search":{"matches":0,"misses":0,"recordMatches":{}}}\n');
+  const ledgerPath = path.join(storePath, 'runtime', 'sessions', 'old.json');
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+  fs.writeFileSync(ledgerPath, 'old prompt ledger\n');
+  const runtimeSibling = path.join(storePath, 'runtime', 'keep.json');
+  fs.writeFileSync(runtimeSibling, 'keep runtime sibling\n');
+
+  const staleRecall = path.join(tmp, '.agents', 'skills', 'spectre-recall');
+  fs.mkdirSync(staleRecall, { recursive: true });
+  fs.writeFileSync(path.join(staleRecall, 'SKILL.md'), 'stale managed recall\n');
+  const legacyRegistry = path.join(tmp, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon');
+  fs.mkdirSync(path.dirname(legacyRegistry), { recursive: true });
+  fs.writeFileSync(legacyRegistry, 'feature-unresolved|feature|cue|legacy debt\n');
+
+  const overridePath = path.join(tmp, 'AGENTS.override.md');
+  const sessionBlock = '<!-- spectre-session:start -->\nsession bytes\n<!-- spectre-session:end -->';
+  fs.writeFileSync(overridePath, [
+    'user before',
+    sessionBlock,
+    '<!-- spectre-knowledge:start -->',
+    'stale knowledge bytes',
+    '<!-- spectre-knowledge:end -->',
+    'user after\n',
+  ].join('\n'));
+  fs.writeFileSync(path.join(tmp, '.gitignore'), 'user ignore bytes\n');
+
+  const { installProjectFiles } = await import('./lib/project.js');
+  installProjectFiles(tmp, 'project', { storePath });
+
+  const override = fs.readFileSync(overridePath, 'utf8');
+  assert.match(override, /user before/);
+  assert.match(override, /user after/);
+  assert.ok(override.includes(sessionBlock));
+  assert.doesNotMatch(override, /spectre-knowledge/);
+  assert.equal(fs.existsSync(staleRecall), false);
+  assert.equal(fs.readFileSync(legacyRegistry, 'utf8'), 'feature-unresolved|feature|cue|legacy debt\n');
+  assert.equal(fs.readFileSync(canonicalPath, 'utf8'), 'canonical bytes\n');
+  assert.equal(fs.readFileSync(runtimeSibling, 'utf8'), 'keep runtime sibling\n');
+  assert.equal(fs.existsSync(path.dirname(ledgerPath)), false);
+  assert.equal(fs.readFileSync(path.join(tmp, '.gitignore'), 'utf8'), 'user ignore bytes\n');
+});
+
+test('retired prompt hook and recall config cleanup preserves unrelated Codex configuration', { concurrency: false }, async (t) => {
+  const tmp = makeProject();
+  const codexHome = path.join(tmp, '.codex');
+  const priorCodexHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  t.after(() => {
+    if (priorCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = priorCodexHome;
+  });
+  fs.mkdirSync(codexHome, { recursive: true });
+  const recallPath = path.join(tmp, '.agents', 'skills', 'spectre-recall', 'SKILL.md');
+  const unrelatedPath = path.join(tmp, '.agents', 'skills', 'team-owned', 'SKILL.md');
+  fs.writeFileSync(path.join(codexHome, 'config.toml'), [
+    '[user.settings]',
+    'keep = "exact"',
+    '',
+    '[[skills.config]]',
+    `path = ${JSON.stringify(recallPath)}`,
+    'enabled = true',
+    '',
+    '[[skills.config]]',
+    `path = ${JSON.stringify(unrelatedPath)}`,
+    'enabled = true',
+    'custom_key = "preserve"',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(codexHome, 'hooks.json'), `${JSON.stringify({
+    userKey: 'preserve',
+    hooks: {
+      UserPromptSubmit: [{
+        hooks: [
+          { type: 'command', command: 'node /managed/user-prompt-submit.mjs --host codex' },
+          { type: 'command', command: 'node /user/keep.mjs' },
+        ],
+      }],
+      SessionStart: [{ hooks: [{ type: 'command', command: 'node /user/session.mjs' }] }],
+    },
+  }, null, 2)}\n`);
+
+  const {
+    removeProjectSkillsConfigured,
+    removeRetiredKnowledgeHooksConfigured,
+  } = await import('./lib/config.js');
+  removeProjectSkillsConfigured(tmp);
+  removeRetiredKnowledgeHooksConfigured();
+
+  const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+  assert.doesNotMatch(config, /spectre-recall/);
+  assert.match(config, /keep = "exact"/);
+  assert.match(config, /team-owned/);
+  assert.match(config, /custom_key = "preserve"/);
+  const hooks = fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf8');
+  assert.doesNotMatch(hooks, /user-prompt-submit/);
+  assert.match(hooks, /\/user\/keep\.mjs/);
+  assert.match(hooks, /\/user\/session\.mjs/);
+  assert.match(hooks, /"userKey": "preserve"/);
 });

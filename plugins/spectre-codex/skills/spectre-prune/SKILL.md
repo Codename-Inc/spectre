@@ -10,12 +10,14 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Inputs
 
-- `$ARGUMENTS` — optional scope. A `commit_id`/SHA, `unstaged`/`staged`, `context`/session, or a scoped file list. If ambiguous -> ask which scope mode. If a provided `commit_id` is invalid or not in history -> stop and ask for a valid ref.
-- `target_out_dir` — optional OUT_DIR override.
+- `$ARGUMENTS` — optional scope. A `commit_id`/SHA, `unstaged`/`staged`, `context`/session, a scoped file list, or `--orchestrated` when a parent workflow owns the next step. If ambiguous -> ask which scope mode. If a provided `commit_id` is invalid or not in history -> stop and ask for a valid ref.
+- `FEATURE_ROOT` — explicit feature name/root or one descendant feature artifact.
 
 ## Working Set
 
-- `branch = git rev-parse --abbrev-ref HEAD` (fallback `unknown`); `OUT_DIR = target_out_dir || docs/tasks/{branch}`.
+- Resolve `FEATURE_ROOT` in this order: an explicit feature directory or feature name; a supplied artifact beneath the feature root; one unambiguous feature artifact in the current conversation. Never infer it from the branch, recency, or lifecycle state.
+- An explicit legacy `docs/tasks/**` artifact remains a compatibility input, but a new cleanup summary requires a confirmed `.spectre/features/<feature-name>/` root and records the legacy source.
+- Set `OUT_DIR = FEATURE_ROOT`.
 - Resolve scope late at runtime:
   - **commit_range**: union of committed files from `{commit_id}^..HEAD` (including the commit), staged, unstaged, and untracked. If `commit_id == HEAD`, use staged + unstaged + untracked.
   - **unstaged/staged**: union of staged + unstaged + untracked.
@@ -25,7 +27,7 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 ## Outputs + DONE
 
 - Confirmed-safe cleanup edits only.
-- `{OUT_DIR}/cleanup_summary.md` with: Executive Summary, Safe Removals (`file:line`, what, why safe), Manual Review Required, Excluded Items, Estimated Impact, ESLint-debt notes.
+- `{OUT_DIR}/cleanup_summary.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, then: Executive Summary, Safe Removals (`file:line`, what, why safe), Manual Review Required, Excluded Items, Estimated Impact, ESLint-debt notes.
 - **DONE when:** every removed item was validated `CONFIRMED_SAFE`; every `UNCERTAIN`/`UNSAFE` item remains untouched and appears in Manual Review; affected lint/tests pass or the failed cleanup edit is rolled back; no `--no-verify`, `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` was introduced; summary was written.
 
 ## Method / guardrails
@@ -33,7 +35,7 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 - Detect -> investigate -> validate -> remove. Production code is deleted only with concrete evidence.
 - Signals: orphaned imports/exports, unused functions/vars, large commented-out blocks, debug artifacts, temp/dev logging, dead branches, duplicate abandoned implementations, test artifacts (`.only`, skipped tests), AI slop (`any` casts to dodge types, defensive noise, over-commenting).
 - Duplication: flag copy-pasted logic (>5 lines, 2+ instances), near-identical functions, repeated validate/transform/fetch patterns. Ignore fixtures/generated code. Consolidate only when low-risk and confirmed safe; otherwise report.
-- For non-trivial sets, dispatch up to 4 read-only `@analyst` agents over file/module chunks. Return compressed in-thread verdicts only: `SAFE_TO_REMOVE`, `NEEDS_VALIDATION`, or `KEEP`, with evidence.
+- For non-trivial sets, dispatch up to 4 read-only `@spectre_analyst` agents over file/module chunks. Return compressed in-thread verdicts only: `SAFE_TO_REMOVE`, `NEEDS_VALIDATION`, or `KEEP`, with evidence.
 - Every function/file/export deletion gets a second usage search for dynamic imports, string refs, reflection, tests, and external entrypoints. Remove only `CONFIRMED_SAFE`; downgrade uncertainty to manual review.
 - Run affected lint/tests after removals. If a cleanup edit causes failure, roll it back and document the reason.
 - No commits. `spectre-sweep` owns final hygiene and commit grouping.
@@ -41,13 +43,26 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Handoff
 
-Report counts analyzed/removed/excluded, lint/test status, the manual-review list, and the summary path. Then suggest the next step:
+Report counts analyzed/removed/excluded, lint/test status, the manual-review list, and the summary path.
 
-- `spectre-test` — add/strengthen tests for the cleaned areas
-- `spectre-sweep` — final hygiene and commit
+- `--orchestrated` → return results to the caller without user-facing Next Steps.
+- Standalone + concrete coverage risk exposed by cleanup → `spectre-test`.
+- Otherwise → `spectre-sweep`.
+
+Emit one primary recommendation tied to the cleanup result, not an equal-weight menu.
 
 ## Escalate-If
 
 - Scope or commit ref is ambiguous/invalid.
 - A removal touches behavior, public API, persistence, auth/security/payment/PII, or generated code without a clean signal.
 - Lint/tests fail and rollback is not straightforward.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

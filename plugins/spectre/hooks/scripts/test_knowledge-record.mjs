@@ -213,7 +213,7 @@ describe('canonical Agent Skills records', () => {
     }
   });
 
-  it('accepts 8,999 and 9,000 character cores and rejects 9,001', async (t) => {
+  it('accepts 8,999 and 9,000 character cores and only grandfathers marked legacy learnings above 9,000', async (t) => {
     const tmp = makeTmp(t);
     const { parseKnowledgeRecord } = await loadRecordModule();
 
@@ -239,6 +239,18 @@ describe('canonical Agent Skills records', () => {
       () => parseKnowledgeRecord(writeSkill(tmp, oversizedId, oversized)),
       /9,?000|size/i,
     );
+
+    const legacyId = 'feature-legacy-size-9001';
+    const legacy = contentAtLength(9_001)
+      .replace('name: feature-auth-flow', `name: ${legacyId}`)
+      .replace(
+        '  spectre-version: "1"',
+        '  spectre-version: "1"\n' +
+          '  spectre-migration-origin: "legacy-spectre-learning"',
+      );
+    const parsedLegacy = parseKnowledgeRecord(writeSkill(tmp, legacyId, legacy));
+    assert.equal(parsedLegacy.content, legacy);
+    assert.equal(parsedLegacy.content.length > 9_000, true);
   });
 });
 

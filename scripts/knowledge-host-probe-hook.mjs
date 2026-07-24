@@ -1,122 +1,139 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { measurePayload } from '../plugins/spectre/hooks/scripts/knowledge/payload.mjs';
-import { parseKnowledgeRecord } from '../plugins/spectre/hooks/scripts/knowledge/records.mjs';
 
-const FIXTURES = new Map([
-  [
-    'Apply the knowledge for spectre payload prose boundary and reply exactly SPECTRE_PROSE_INLINE_OK.',
-    'testing-payload-prose',
-  ],
-  [
-    'Apply the knowledge for spectre payload code boundary and reply exactly SPECTRE_CODE_INLINE_OK.',
-    'testing-payload-code',
-  ],
-]);
+function valueAfter(argv, flag) {
+  const index = argv.indexOf(flag);
+  return index === -1 ? null : argv[index + 1];
+}
 
 function parseArgs(argv) {
-  const valueAfter = (flag) => {
-    const index = argv.indexOf(flag);
-    return index === -1 ? null : argv[index + 1];
-  };
-  const storePath = valueAfter('--store');
-  const host = valueAfter('--host');
-  const stateRoot = valueAfter('--state-root');
-  if (!storePath || !host || !stateRoot) {
+  const runtimePath = valueAfter(argv, '--runtime');
+  const host = valueAfter(argv, '--host');
+  const evidencePath = valueAfter(argv, '--evidence');
+  const expectedId = valueAfter(argv, '--expected-id');
+  const coreSentinel = valueAfter(argv, '--core-sentinel');
+  const resourceSentinel = valueAfter(argv, '--resource-sentinel');
+  if (
+    !runtimePath
+    || !['claude', 'codex'].includes(host)
+    || !evidencePath
+    || !expectedId
+    || !coreSentinel
+    || !resourceSentinel
+  ) {
     throw new Error(
-      'Usage: knowledge-host-probe-hook.mjs --store <path> --host <host> --state-root <path>',
+      'Usage: knowledge-host-probe-hook.mjs --runtime <load-knowledge.mjs> ' +
+      '--host <claude|codex> --evidence <path> --expected-id <id> ' +
+      '--core-sentinel <value> --resource-sentinel <value>',
     );
   }
   return {
-    storePath: path.resolve(storePath),
+    runtimePath: path.resolve(runtimePath),
     host,
-    stateRoot: path.resolve(stateRoot),
+    evidencePath: path.resolve(evidencePath),
+    expectedId,
+    coreSentinel,
+    resourceSentinel,
   };
 }
 
-function readInput() {
-  const raw = fs.readFileSync(0, 'utf8');
-  return JSON.parse(raw);
+function atomicWriteJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(temporaryPath, filePath);
 }
 
-function frameRecord(content) {
-  return [
-    '# Spectre applied knowledge',
-    '',
-    content,
-    '',
-    'No additional knowledge records matched.',
-  ].join('\n');
-}
-
-function sessionStatePath(stateRoot, sessionId) {
-  const digest = createHash('sha256').update(sessionId).digest('hex');
-  return path.join(stateRoot, `${digest}.json`);
-}
-
-function markApplied(stateRoot, sessionId, recordKey) {
-  if (typeof sessionId !== 'string' || sessionId === '') return true;
-  fs.mkdirSync(stateRoot, { recursive: true });
-  const statePath = sessionStatePath(stateRoot, sessionId);
-  let applied = [];
+function observeFrame(args, input, stdout, stderr, exitCode) {
+  let parsed = null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    if (Array.isArray(parsed.applied)) applied = parsed.applied;
+    parsed = stdout.trim() ? JSON.parse(stdout) : null;
   } catch {
-    // Missing or malformed proof state starts a fresh isolated session.
+    // The observation records invalid JSON explicitly; stdout is still forwarded.
   }
-  if (applied.includes(recordKey)) return false;
-  applied.push(recordKey);
-  const temporaryPath = `${statePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify({ applied })}\n`);
-  fs.renameSync(temporaryPath, statePath);
-  return true;
+  const additionalContext = parsed?.hookSpecificOutput?.additionalContext;
+  const serializedFrame = parsed ? JSON.stringify(parsed) : stdout;
+  const measurement = measurePayload(args.host, serializedFrame);
+  return {
+    schemaVersion: 1,
+    observedAt: new Date().toISOString(),
+    host: args.host,
+    runtimePath: args.runtimePath,
+    hookEventName: input?.hook_event_name ?? null,
+    source: input?.source ?? null,
+    exitCode,
+    stderr: stderr.trim(),
+    validJson: parsed !== null,
+    frameCharacters: serializedFrame.length,
+    additionalContextCharacters:
+      typeof additionalContext === 'string' ? additionalContext.length : null,
+    measurement,
+    hookEventMatches:
+      parsed?.hookSpecificOutput?.hookEventName === 'SessionStart',
+    hasTopLevelSystemMessage: parsed?.systemMessage !== undefined,
+    hasHookSystemMessage: parsed?.hookSpecificOutput?.systemMessage !== undefined,
+    hasPreview:
+      parsed?.preview !== undefined || parsed?.hookSpecificOutput?.preview !== undefined,
+    hasFallbackFile:
+      parsed?.filePath !== undefined ||
+      parsed?.savedFilePath !== undefined ||
+      parsed?.hookSpecificOutput?.filePath !== undefined ||
+      parsed?.hookSpecificOutput?.savedFilePath !== undefined,
+    expectedIdVisible:
+      typeof additionalContext === 'string' && additionalContext.includes(args.expectedId),
+    coreSentinelVisible:
+      typeof additionalContext === 'string' && additionalContext.includes(args.coreSentinel),
+    resourceSentinelVisible:
+      typeof additionalContext === 'string' && additionalContext.includes(args.resourceSentinel),
+    omittedCount: Number(
+      typeof additionalContext === 'string'
+        ? additionalContext.match(/Omitted active records:\s*(\d+)/)?.[1] ?? Number.NaN
+        : Number.NaN,
+    ),
+  };
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const input = readInput();
-  const recordId = FIXTURES.get(input.prompt);
-  if (!recordId) return;
-
-  const skillPath = path.join(
-    args.storePath,
-    'knowledge',
-    recordId,
-    'SKILL.md',
-  );
-  const parsed = parseKnowledgeRecord(skillPath);
-  const framed = frameRecord(parsed.content);
-  const measurement = measurePayload(args.host, framed);
-  if (!measurement.ok) {
-    throw new Error(
-      `${recordId} exceeds ${args.host} proof payload limit: ` +
-        `${measurement.measured} > ${measurement.limit}`,
-    );
+function main(argv = process.argv.slice(2), stdin = fs.readFileSync(0, 'utf8')) {
+  const args = parseArgs(argv);
+  let input = null;
+  try {
+    input = JSON.parse(stdin);
+  } catch {
+    // The real runtime remains authoritative for malformed-input behavior.
   }
-
-  const recordKey = `${parsed.record.id}@${parsed.record.version}`;
-  if (!markApplied(args.stateRoot, input.session_id, recordKey)) return;
-
-  process.stdout.write(
-    JSON.stringify({
-      systemMessage:
-        `Spectre applied ${parsed.record.id} (0 additional matches).`,
-      hookSpecificOutput: {
-        hookEventName: 'UserPromptSubmit',
-        additionalContext: framed,
-      },
-    }),
+  const result = spawnSync(process.execPath, [args.runtimePath, '--host', args.host], {
+    cwd: process.cwd(),
+    env: process.env,
+    input: stdin,
+    encoding: 'utf8',
+  });
+  const exitCode = Number.isInteger(result.status) ? result.status : 1;
+  const stdout = result.stdout || '';
+  const stderr = result.stderr || '';
+  atomicWriteJson(
+    args.evidencePath,
+    observeFrame(args, input, stdout, stderr, exitCode),
   );
+  if (stderr) process.stderr.write(stderr);
+  if (stdout) process.stdout.write(stdout);
+  return exitCode;
 }
 
-try {
-  main();
-} catch (error) {
-  process.stderr.write(`knowledge host probe failed: ${error.message}\n`);
-  process.exitCode = 1;
+const isDirect = process.argv[1]
+  && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+if (isDirect) {
+  try {
+    process.exitCode = main();
+  } catch (error) {
+    process.stderr.write(`knowledge host probe failed: ${error.message}\n`);
+    process.exitCode = 1;
+  }
 }
+
+export { main, observeFrame, parseArgs };

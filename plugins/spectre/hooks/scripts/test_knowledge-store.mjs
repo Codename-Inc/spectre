@@ -88,6 +88,7 @@ describe('project identity and readable store allocation', () => {
 
     const mainStore = await resolveProjectStore(repositoryRoot, { spectreHome, gitRunner });
     const linkedStore = await resolveProjectStore(worktreeRoot, { spectreHome, gitRunner });
+    assert.equal(mainStore.storePath, path.join(spectreHome, 'projects', 'repo'));
     assert.equal(linkedStore.storePath, mainStore.storePath);
     assert.equal(linkedStore.created, false);
   });
@@ -170,10 +171,10 @@ describe('project identity and readable store allocation', () => {
     const first = await resolveProjectStore(firstProject, { spectreHome, gitRunner: noGit });
     const second = await resolveProjectStore(secondProject, { spectreHome, gitRunner: noGit });
 
-    assert.equal(first.storePath, path.join(spectreHome, 'projects', 'team', 'api'));
+    assert.equal(first.storePath, path.join(spectreHome, 'projects', 'api'));
     assert.equal(
       second.storePath,
-      path.join(spectreHome, 'projects', 'company-b', 'team', 'api'),
+      path.join(spectreHome, 'projects', 'team', 'api'),
     );
     assert.doesNotMatch(path.relative(path.join(spectreHome, 'projects'), second.storePath), /[a-f0-9]{16}/);
     assert.notEqual(first.storePath, second.storePath);

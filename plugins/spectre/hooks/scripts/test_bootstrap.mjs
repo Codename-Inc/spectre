@@ -44,15 +44,23 @@ describe('bootstrap', () => {
   it('removes stale directories that exist', () => {
     const tmpDir = createTempDir();
     try {
-      // Create a fake stale directory
-      const staleDir = path.join(tmpDir, 'skills', 'spectre-next-steps');
-      fs.mkdirSync(staleDir, { recursive: true });
-      fs.writeFileSync(path.join(staleDir, 'SKILL.md'), '# old skill');
+      const staleDirs = [
+        'spectre-next-steps',
+        'spectre-guide',
+        'spectre-evaluate',
+        'spectre-architecture_review'
+      ].map(name => path.join(tmpDir, 'skills', name));
+      for (const staleDir of staleDirs) {
+        fs.mkdirSync(staleDir, { recursive: true });
+        fs.writeFileSync(path.join(staleDir, 'SKILL.md'), '# old skill');
+      }
 
       const removed = cleanupStalePaths(tmpDir);
 
-      assert.ok(removed >= 1, `Expected at least 1 removal, got ${removed}`);
-      assert.ok(!fs.existsSync(staleDir), 'Stale directory should be deleted');
+      assert.strictEqual(removed, staleDirs.length);
+      for (const staleDir of staleDirs) {
+        assert.ok(!fs.existsSync(staleDir), `${path.basename(staleDir)} should be deleted`);
+      }
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

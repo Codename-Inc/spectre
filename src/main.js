@@ -2,13 +2,18 @@ import path from 'path';
 import readline from 'readline/promises';
 import fs from 'fs';
 import { runDoctor } from './lib/doctor.js';
-import { installCodex, uninstallCodex } from './lib/install.js';
+import { resolveKnowledgeProjectDir } from '../plugins/spectre/hooks/scripts/knowledge/cli-arguments.mjs';
 import {
+  formatCanonicalKnowledgeLoad,
   formatCanonicalKnowledgeSearch,
+  formatCanonicalKnowledgeSearchWarnings,
+  loadCanonicalKnowledge,
   migrateCanonicalKnowledge,
+  previewCanonicalKnowledgeRegistry,
   registerCanonicalKnowledge,
   searchCanonicalKnowledge,
-  serializeCanonicalKnowledgeError
+  serializeCanonicalKnowledgeError,
+  serializeCanonicalKnowledgeLoadError
 } from './lib/knowledge.js';
 import { projectCodexHome } from './lib/paths.js';
 
@@ -44,14 +49,36 @@ function parseArgs(argv) {
 
 function usage() {
   return `Usage:
-  spectre install codex [--scope user|project] [--project-dir <path>]
-  spectre uninstall codex [--scope user|project] [--project-dir <path>]
-  spectre update codex [--scope user|project] [--project-dir <path>]
+  spectre install codex
+  spectre uninstall codex
+  spectre update codex
   spectre doctor codex [--scope user|project] [--project-dir <path>] [--json]
   spectre knowledge search [query] [--project-dir <path>] [--json]
+  spectre knowledge load <id> [--project-dir <path>] [--json]
+  spectre knowledge registry [--host claude|codex] [--project-dir <path>] [--json]
   spectre knowledge register --record <path> [--project-dir <path>] [--json]
   spectre knowledge migrate [--project-dir <path>] [--json]
 `;
+}
+
+function codexPluginRequiredMessage(command) {
+  const update = [
+    'Codex native plugin installation is required for Spectre 6.0.0.',
+    '',
+    'Fresh install:',
+    '  codex plugin marketplace add Codename-Inc/spectre',
+    '  codex plugin add spectre@spectre',
+    '',
+    'Update:',
+    '  codex plugin marketplace upgrade spectre',
+    '  codex plugin remove spectre@spectre',
+    '  codex plugin add spectre@spectre',
+    '',
+    'Uninstall:',
+    '  Run the bundled spectre-uninstall-codex skill first to remove managed agents.',
+    '  codex plugin remove spectre@spectre',
+  ].join('\n');
+  return `${command} codex no longer mutates Codex files.\n${update}`;
 }
 
 function resolveProjectDir(flags) {
@@ -138,7 +165,7 @@ export async function main(argv) {
       let result;
       try {
         result = await searchCanonicalKnowledge({
-          projectDir: resolveProjectDir(flags),
+          projectDir: resolveKnowledgeProjectDir(flags.get('--project-dir')),
           query
         });
       } catch (error) {
@@ -151,9 +178,51 @@ export async function main(argv) {
         process.stdout.write(`${JSON.stringify({ ok: true, query, ...result })}\n`);
       } else {
         process.stdout.write(formatCanonicalKnowledgeSearch(result, query));
-        for (const warning of result.warnings) {
-          process.stderr.write(`spectre: skipped invalid knowledge record: ${warning.message}\n`);
+        process.stderr.write(formatCanonicalKnowledgeSearchWarnings(result.warnings));
+      }
+      return;
+    }
+
+    if (target === 'load') {
+      try {
+        const result = await loadCanonicalKnowledge({
+          projectDir: resolveKnowledgeProjectDir(flags.get('--project-dir')),
+          id: positional[2],
+          lockOptions: flags.get('--lock-timeout-ms')
+            ? { timeoutMs: Number(flags.get('--lock-timeout-ms')), retryDelayMs: 5 }
+            : undefined
+        });
+        if (flags.get('--json')) {
+          process.stdout.write(`${JSON.stringify(result)}\n`);
+        } else {
+          process.stdout.write(formatCanonicalKnowledgeLoad(result));
         }
+      } catch (error) {
+        const payload = serializeCanonicalKnowledgeLoadError(error);
+        throw new CliError(payload.code, payload.message);
+      }
+      return;
+    }
+
+    if (target === 'registry') {
+      let result;
+      try {
+        result = await previewCanonicalKnowledgeRegistry({
+          host: flags.get('--host') || 'claude',
+          projectDir: resolveKnowledgeProjectDir(flags.get('--project-dir')),
+        });
+      } catch (error) {
+        throw new CliError(
+          'KNOWLEDGE_REGISTRY_FAILED',
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+      if (flags.get('--json')) {
+        process.stdout.write(`${JSON.stringify({ ok: true, ...result })}\n`);
+      } else if (result.injected) {
+        process.stdout.write(`${result.payload.hookSpecificOutput.additionalContext}\n`);
+      } else {
+        process.stdout.write('No SessionStart knowledge payload would be injected.\n');
       }
       return;
     }
@@ -211,23 +280,12 @@ export async function main(argv) {
     throw new Error('Only the Codex target is currently implemented.');
   }
 
+  if (command === 'install' || command === 'uninstall' || command === 'update') {
+    throw new CliError('CODEX_PLUGIN_REQUIRED', codexPluginRequiredMessage(command));
+  }
+
   const projectDir = resolveProjectDir(flags);
   const scope = flags.get('--scope') || await promptForScope(command, projectDir);
-
-  if (command === 'install') {
-    await withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
-    return;
-  }
-
-  if (command === 'uninstall') {
-    await withScopedCodexHome(scope, projectDir, () => uninstallCodex({ scope, projectDir }));
-    return;
-  }
-
-  if (command === 'update') {
-    await withScopedCodexHome(scope, projectDir, () => installCodex({ scope, projectDir }));
-    return;
-  }
 
   if (command === 'doctor') {
     await withScopedCodexHome(scope, projectDir, () => runDoctor({

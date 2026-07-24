@@ -9,7 +9,7 @@ user-invocable: true
 Rebase the current branch onto a target, resolving conflicts and verifying the result, with a recoverable safety net.
 
 ## Inputs
-- Target branch from `$ARGUMENTS` (e.g. `origin/main`). If absent, ask which branch to rebase onto.
+- Target branch from `$ARGUMENTS` (e.g. `origin/main`) and optional `--orchestrated` when a parent workflow owns the next step. If absent, ask which branch to rebase onto.
 - Current branch + working-tree state (read just-in-time via `git status`, never assume).
 
 ## Working Set
@@ -34,7 +34,7 @@ A rebased branch and a **Rebase Summary** returned in-thread (not written to dis
 5. Track every resolution decision as you go (the summary table is a postcondition, not an afterthought).
 
 ## Handoff
-Return the Rebase Summary inline as a compressed (1–2K) block. End with a one-line Next Steps pointer to the appropriate next phase (e.g. evaluate / ship).
+Return the Rebase Summary inline as a compressed (1–2K) block. With `--orchestrated`, return to the caller without user-facing Next Steps. Standalone success → `Next (recommended): /spectre:create_pr — the rebased branch is verified and ready for review.` A failed or incomplete rebase recommends only the exact recovery action.
 
 ## Escalate-If
 - Conflicts can't be resolved by favoring the target (genuine semantic divergence) → stop, report, leave the rebase in progress for the user.

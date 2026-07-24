@@ -15,7 +15,9 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readStdinWithTimeout, getGitBranch } from './lib.mjs';
@@ -24,7 +26,80 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function getPluginRoot() {
-  return process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..', '..');
+  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..', '..');
+}
+
+function parseHookInput(rawInput) {
+  if (!rawInput) return {};
+
+  try {
+    const parsed = JSON.parse(rawInput);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function localDateKey(date) {
+  const value = date || new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function canonicalProjectDir(projectDir) {
+  try {
+    return fs.realpathSync(projectDir);
+  } catch (_) {
+    return path.resolve(projectDir);
+  }
+}
+
+function claimDailyBanner(projectDir, options) {
+  options = options || {};
+
+  const dateKey = localDateKey(options.now);
+  const stateRoot = options.stateRoot ||
+    path.join(
+      process.env.SPECTRE_HOME || path.join(os.homedir(), '.spectre'),
+      'state',
+      'session-start-banner',
+    );
+  const cwdHash = crypto
+    .createHash('sha256')
+    .update(canonicalProjectDir(projectDir))
+    .digest('hex');
+  const markerDir = path.join(stateRoot, cwdHash);
+  const markerPath = path.join(markerDir, dateKey);
+
+  try {
+    fs.mkdirSync(markerDir, { recursive: true, mode: 0o700 });
+  } catch (_) {
+    return true;
+  }
+
+  try {
+    for (const entry of fs.readdirSync(markerDir)) {
+      if (entry !== dateKey) {
+        fs.rmSync(path.join(markerDir, entry), { recursive: true, force: true });
+      }
+    }
+  } catch (_) {
+    // Cleanup is best-effort and must not suppress the current notice.
+  }
+
+  let markerFd;
+  try {
+    markerFd = fs.openSync(markerPath, 'wx', 0o600);
+    return true;
+  } catch (error) {
+    return error?.code !== 'EEXIST';
+  } finally {
+    if (markerFd != null) {
+      try { fs.closeSync(markerFd); } catch (_) {}
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -330,7 +405,7 @@ async function main() {
   }
 
   // Read stdin
-  await readStdinWithTimeout();
+  const hookInput = parseHookInput(await readStdinWithTimeout());
 
   // Fork to copy plugin references in background (non-blocking)
   const copyChild = fork(__filename, ['--bg-copy-refs'], {
@@ -343,15 +418,21 @@ async function main() {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
   // Get branch name
-  const branchName = getGitBranch();
+  const branchName = getGitBranch(projectDir);
 
-  // Find session logs directory
-  const sessionDir = path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs');
-
-  // Find latest handoff
-  const latestHandoff = findLatestHandoff(sessionDir);
+  // Canonical history is the cutover marker. Only fall back while it is absent.
+  const canonicalDir = path.join(projectDir, '.spectre', 'handoffs', branchName);
+  const canonicalHandoff = findLatestHandoff(canonicalDir);
+  const latestHandoff = canonicalHandoff || findLatestHandoff(
+    path.join(projectDir, 'docs', 'tasks', branchName, 'session_logs')
+  );
 
   if (!latestHandoff) {
+    if (hookInput.source === 'compact' || !claimDailyBanner(projectDir)) {
+      process.stdout.write('{}\n');
+      process.exit(0);
+    }
+
     // No session to resume - show welcome banner with tips
     const banner = '\ud83d\udc7b SPECTRE';
     const tips = [
@@ -397,7 +478,14 @@ async function main() {
   process.exit(0);
 }
 
-export { copyPluginReferences, formatContext, buildCheckboxTree };
+export {
+  copyPluginReferences,
+  formatContext,
+  buildCheckboxTree,
+  parseHookInput,
+  localDateKey,
+  claimDailyBanner
+};
 
 if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename)) {
   main();
