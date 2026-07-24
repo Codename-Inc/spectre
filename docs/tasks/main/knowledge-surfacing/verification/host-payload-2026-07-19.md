@@ -1,5 +1,7 @@
 # Phase-1 Codex Host Payload Evidence
 
+> **Historical evidence — superseded 2026-07-22.** These observations verify the former prompt-time injection implementation and are preserved unchanged as historical host evidence. They do not describe the active usage-ranked knowledge contract, which uses a metadata-only SessionStart registry, neutral search for omitted or unknown records, and verified exact-ID load before application. Registry exposure is delivery evidence, search match/miss is discovery evidence, and successful verified load is the sole runtime rank signal.
+
 ## Wave 11 Final Verification
 
 **Date:** 2026-07-19 20:09-20:29 PDT (`America/Los_Angeles`)
