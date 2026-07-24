@@ -14,6 +14,8 @@ grove-logs/
 .agents/*
 !.agents/skills/
 !.agents/skills/**
+!.agents/plugins/
+!.agents/plugins/marketplace.json
 AGENTS.override.md
 
 # Node.js
@@ -106,3 +108,14 @@ tmp/
 .spectre/bin/
 .spectre/handoffs/
 .memsearch/
+
+# Spectre local runtime state (credentials, transcripts, session scratch).
+# `.spectre/features/` stays trackable — canonical feature records are committed.
+.spectre/build-session.json
+.spectre/claude-subagent/
+.spectre/codex-subagent/
+
+# Local agent/tool state
+.helm/
+.impeccable/
+scratchpad/
