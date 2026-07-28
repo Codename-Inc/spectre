@@ -36,10 +36,10 @@ Derive every prompt from six load-bearing elements:
 2. **Verification** — `spectre-execute` satisfies its DONE contract, then `spectre-proof` records aggregate `PASS`; require the agent to print a concise evidence capsule into the transcript.
 3. **Constraints (must not)** — preserve canonical scope and Out-of-Bounds; do not weaken/delete tests, silently change public behavior, add unapproved proof dependencies, ship, publish, or share.
 4. **Scope** — exact canonical artifact paths and permitted repository boundary.
-5. **Iteration** — structured mode resumes from durable `tasks.json` and proof state. In plan-direct mode, resume from durable `execution_state.md` plus proof state. Follow each skill's bounded repair/adaptation rules and record the next evidence-driven move.
-6. **Stop** — success only when verification passes; otherwise stop at the explicit cap or a real escalation condition and report attempts, evidence, blocker, and required input. Reaching the cap is not success.
+5. **Iteration** — resume structured mode from `tasks.json` plus proof state, or plan-direct mode from `execution_state.md` plus proof state. Follow skill repair rules without a global cap.
+6. **Stop** — verification defines success; otherwise adapt until an authority impasse. A turn cap is a durable checkpoint, never a failure, blocker, or approval gate.
 
-Use an explicit user cap when supplied. Otherwise use 40 goal turns and state that visible assumption in the document. A cap is a safety checkpoint, never an alternate completion condition.
+Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and report the checkpoint, then resume when the platform permits; it is not a workflow blocker or completion state.
 
 ## Method / guardrails
 
@@ -52,8 +52,8 @@ Use an explicit user cap when supplied. Otherwise use 40 goal turns and state th
 3. Require this process order in both prompt forms:
    - Structured mode runs `Skill(spectre-execute)` with `EXECUTE_INDEX --orchestrated`.
    - Plan-direct mode: invoke `Skill(spectre-execute)` with the source-plan path, `{FEATURE_ROOT}`, and `--orchestrated`.
-   - Structured mode: only after execute meets its DONE contract, run `Skill(spectre-proof)` with `OUT_DIR --orchestrated` and follow its proof-repair loop until aggregate `PASS` or escalation.
-   - Plan-direct mode: only after execute is DONE, invoke `Skill(spectre-proof)` with the same output directory (`OUT_DIR`), `PLAN_SOURCE`, and `--orchestrated`; follow its proof-repair loop until aggregate `PASS` or escalation.
+   - Structured mode: after execute DONE, run `Skill(spectre-proof)` with `OUT_DIR --orchestrated` until `PASS` or an authority impasse.
+   - Plan-direct mode: after execute DONE, run `Skill(spectre-proof)` with `PLAN_SOURCE`, `OUT_DIR`, and `--orchestrated` until `PASS` or an authority impasse.
    - Do not imitate, summarize away, or bypass either skill's current contract.
 4. Require a final transcript evidence capsule containing task status counts, deterministic checks and exit results, final review/validation status, proof-matrix counts and aggregate status, artifact paths, repairs, and limitations. This makes one prompt verifiable by both Codex and transcript-only evaluators.
 5. Write `goal-prompts.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, then:
@@ -66,7 +66,7 @@ Use an explicit user cap when supplied. Otherwise use 40 goal turns and state th
    - concrete outcome and real verification surfaces;
    - execute appears before proof;
    - aggregate `PASS` is the only success state;
-   - cap and blocked path are explicit;
+   - cap and durable continuation/authority paths are explicit;
    - no vague finish line, judgment-only criterion, wrong/proxy metric, invented command, duplicated PRD, transcript-blind claim, or weakened must-not.
 
 ## Prompt forms
@@ -84,13 +84,13 @@ Constraints (must not): <canonical Out-of-Bounds and regression fences>
 Scope: <repository boundary plus exact mode-specific source-manifest paths>
 Process: run Skill(spectre-execute) with <execute index or source-plan path> --orchestrated; only after DONE, run Skill(spectre-proof) with <output directory in structured mode; source-plan path and output directory in plan-direct mode> --orchestrated.
 Iteration: <resume durable tasks or execution-state plus proof state, record evidence, choose the next skill-authorized move>
-Stop: success = execute DONE and proof aggregate PASS; OR checkpoint after <cap>; OR if blocked, report attempts, evidence, blocker, and required input. Reaching the cap is not success.
+Stop: success = execute DONE plus proof PASS; otherwise adapt. At <cap>, persist evidence and resume action, then resume when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
 ```
 
 **Compact prompt**
 
 ```text
-/goal <approved end state>, verified by Skill(spectre-execute) completing <execute index or source plan> --orchestrated and then Skill(spectre-proof) recording aggregate PASS with <output directory in structured mode; source plan and output directory in plan-direct mode> --orchestrated. Preserve <scope and must-nots>. Resume from durable task or execution-state plus proof state and print the final evidence capsule into the transcript. Success requires execute DONE plus proof PASS; otherwise checkpoint after <cap> or report the evidenced blocker and required input. Reaching the cap is not success.
+/goal <approved end state>, verified by Skill(spectre-execute) completing <execute index or source plan> --orchestrated, then Skill(spectre-proof) recording PASS with <output directory, plus source plan in plan-direct mode> --orchestrated. Preserve <scope and must-nots>; resume durable execution/proof state and print the evidence capsule. Otherwise adapt; at <cap>, persist the resume action and continue when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
 ```
 
 ## Outputs + DONE

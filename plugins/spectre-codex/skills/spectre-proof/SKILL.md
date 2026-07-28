@@ -1,6 +1,6 @@
 ---
 name: "spectre-proof"
-description: "Prove a completed feature works from the user's point of view by exercising real product workflows, capturing and reviewing screenshots/video and supporting diagnostics, comparing observed behavior with approved scope/UX artifacts, repairing scoped defects through bounded dev loops, and rerunning proof until stable. Use after spectre-execute or when the user asks to prove it works, provide acceptance evidence, inspect screenshots/video/logs, or create an HTML proof artifact. Do NOT use for implementation-time code validation, unit-test work, planning, or code review."
+description: "Prove completed work through reviewed user-facing evidence, adapt scoped repairs, and publish qualified proof. Use after spectre-execute or for acceptance evidence, screenshots/video/logs, or an HTML proof artifact. Do NOT use for implementation checks, unit tests, planning, or code review."
 user-invocable: true
 ---
 
@@ -55,10 +55,10 @@ For non-visual work, use the real public interface and preserve observable outpu
 
 1. Run the smallest complete set of journeys that covers every in-scope matrix row. Preserve commands, environment, timestamps, evidence paths, and limitations.
 2. Inspect primary evidence before reading diagnostic summaries. Then review logs/errors and durable state for silent failures.
-3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment blocker. Fix only scoped product/UX defects and required proof infrastructure; no nice-to-haves or silent scope expansion.
+3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment/authority constraint. Fix only scoped product/UX defects and required proof infrastructure; no nice-to-haves or silent scope expansion.
 4. Dispatch `@spectre_dev` with the exact failed claim, reproduction, inspected evidence, repair boundary, and required reproof. Use `Skill(spectre-tdd)` for behavior that can be tested; visual-only repairs still require focused deterministic checks where useful.
 5. Disregard the implementer's pass claim. Rerun the affected journey from a realistic start state, inspect fresh evidence, then rerun any primary journey the repair could affect.
-6. Allow at most three repair attempts for the same stable finding fingerprint. A recurring fingerprint or growing repair scope is an escalation, not another loop.
+6. Record each fingerprint and compact repair history. Recurrence changes diagnosis/route and continues; related growth needed for existing acceptance is adaptation. Stop only at an authority impasse.
 
 ## Outputs + DONE
 
@@ -73,20 +73,22 @@ Keep secrets, credentials, private customer data, and unnecessary local paths ou
 
 ## Handoff
 
-Report the proven journeys, artifacts, evidence reviewed, repair iterations, limitations, aggregate status, and blocking rows.
+Report the proven journeys, artifacts, evidence reviewed, repair iterations, limitations, aggregate status, and unresolved rows.
 
 - `--orchestrated` → return the proof result to the parent goal without user-facing Next Steps.
 - Standalone `PASS` → `Next (recommended): spectre-ship-it — every in-scope proof row passed with reviewed evidence.`
-- Standalone non-PASS → choose the blocker-specific action: scoped product defect → `spectre-fix`, then resume proof; boundary/requirement ambiguity → `spectre-scope`; user-flow/state/copy ambiguity → `spectre-ux`; proof-tool/environment blocker → resolve the named prerequisite and resume `spectre-proof`. Never route a non-PASS result to shipping.
+- Standalone non-PASS → repair, diagnose, or route via `spectre-fix`, `spectre-scope`, `spectre-ux`, or the named proof prerequisite, then resume. Qualified proof status alone never gates `spectre-ship-it`.
 
-If pausing on a blocked standalone proof, offer `Pause: spectre-handoff {feature}` with the failing rows, evidence paths, and exact resume action.
+If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: spectre-handoff {feature}` with the failing rows, evidence paths, and exact resume action.
 
 ## Escalate-If
 
 - Acceptance sources conflict or omit the observable outcome.
 - Adequate tooling requires a new dependency and the user has not selected an option.
 - Proof depends on unavailable credentials, external services, OS permissions, hardware, or subjective product judgment.
-- The repair cap is reached, a finding recurs, or a repair would change approved scope.
+- Repair changes approved requirements or no safe in-scope action remains without new authority.
+
+Never escalate for failed/recurring proof, attempt count, or related growth required by acceptance.
 
 ## Codex Agent Preflight
 

@@ -29,7 +29,7 @@ Own one reusable bug flow: reproduce the failure, identify the root cause, and i
 - `diagnose` → `DIAGNOSIS_READY`: reproduction, root cause, affected files, proposed repair, and regression-test opportunity; no code writes.
 - `repair | full` → `FIX_COMPLETE`: diagnosis plus confirmed RED evidence, implementation, GREEN checks, `[🪳 TEMP {TOPIC}]` diagnostic logging, changed files, and limitations.
 
-**DONE when:** the symptom is reproduced or otherwise grounded; the root cause—not merely the symptom—is named; required authorization is valid; the regression test fails for the right reason before implementation and passes afterward; relevant deterministic checks pass; and the result returns to the parent.
+**DONE when:** root cause is grounded, authorization is valid, the regression is RED→GREEN, affected checks have no attributable failure, unrelated findings are routed, and the parent receives the result.
 
 ## Method / guardrails
 
@@ -38,8 +38,9 @@ Own one reusable bug flow: reproduce the failure, identify the root cause, and i
 3. **Verify authorization before repair.**
    - `repair` proceeds only when the parent supplies the exact diagnosis previously shown to the user plus `USER_APPROVED_DIAGNOSIS=true`.
    - `full` proceeds only when the named delivery parent supplies a readable scope artifact whose recomputed SHA-256 equals `AUTHORIZED_SCOPE_SHA256`, whose alignment mode matches the parent (`deliver=inferred`, `align-and-deliver=confirmed`), and the diagnosis plus repair remain inside it. Parent authorization replaces only the post-diagnosis approval pause.
-4. **Repair test-first.** Write the regression test, confirm RED for the diagnosed reason, implement the smallest root-cause fix plus `[🪳 TEMP {TOPIC}]` logging, then reach GREEN and run relevant deterministic checks.
-5. **Contain scope.** Do not broaden behavior, hide failures, weaken assertions, bypass checks, or treat an unrelated defect as authorized.
+4. **Repair test-first.** Write the regression test, confirm RED for the diagnosed reason, implement the smallest root-cause fix plus `[🪳 TEMP {TOPIC}]` logging, then reach GREEN and run affected deterministic checks.
+5. **Attribute and continue.** Classify extra failures `branch-caused|unrelated|indeterminate`; repair branch-caused families, route unrelated findings, and use a focused target-state check when unclear. A red repository-wide baseline never blocks.
+6. **Contain scope.** Do not broaden behavior, hide failures, weaken assertions, bypass checks, or treat an unrelated defect as authorized.
 
 ## Handoff
 
@@ -49,4 +50,4 @@ Return the phase status, diagnosis, authorization path/hash/mode, RED/GREEN evid
 
 - The report is too thin to form testable hypotheses, reproduction is unavailable, or no root cause can be grounded.
 - Authorization is absent, stale, unreadable, hash/mode-mismatched, does not match the diagnosis, or the repair exceeds the authorized scope.
-- The regression test cannot fail for the diagnosed reason, deterministic checks remain red, or evidence contradicts the proposed cause.
+- The regression cannot establish the cause, evidence contradicts it, or further safe action needs authority. Never escalate for unrelated red checks, unavailable broad suites, attempt count, or authorized related-file growth.

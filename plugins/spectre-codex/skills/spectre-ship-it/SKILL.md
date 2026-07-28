@@ -1,13 +1,13 @@
 ---
 name: "spectre-ship-it"
-description: "Finish a completed feature branch by orchestrating spectre-clean, spectre-rebase, and spectre-create_pr into a reviewer-ready pull request. Use after any completed task or staged workflow when the user asks to clean up, rebase, and open the PR. Proof is an independent optional workflow, never a prerequisite. Do NOT use for implementation, unfinished work, direct pushes to main/master, releases, or the autonomous request-to-PR flow (spectre-deliver)."
+description: "Turn completed branch work into a reviewer-ready PR: clean, rebase, observe one advisory full suite, repair/route failures, and open via spectre-create_pr. Use when asked to ship finished work. Proof is optional. Do NOT use for implementation, main/master pushes, releases, or autonomous request-to-PR delivery."
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # ship-it
 
-Terminal orchestrator for completed work: clean the branch, rebase it safely, and open the PR. Load the focused skills; do not duplicate their procedures.
+Clean, rebase, observe the repository suite once without gating the PR, then open it. Load focused skills; do not duplicate them.
 
 ## Inputs
 
@@ -21,31 +21,33 @@ Terminal orchestrator for completed work: clean the branch, rebase it safely, an
 
 ## Proof independence
 
-Proof is a separate optional workflow and is never a prerequisite for `ship-it`. Do not inspect proof artifacts, infer whether proof ran, classify proof status, invoke proof, or gate shipping on proof availability. Concrete unresolved failures reported by the user or surfaced by clean/rebase/PR verification remain blockers on their own merits.
+Proof is optional and independent: do not inspect, infer, invoke, or gate on it. Verification failures are repair/routing work; only an authority or publication-safety impasse may prevent PR creation.
 
 ## Outputs + DONE
 
-- Successful `Skill(spectre-clean)` result with its commits and verification summary.
-- Successful `Skill(spectre-rebase)` result including backup ref, target, conflicts, and post-rebase verification.
-- Successful `Skill(spectre-create_pr)` result and PR URL.
-- Final summary: clean commits; rebase target/backup/conflicts; verification performed by the composed skills; PR URL.
+- PR URL plus clean commits; rebase target/backup/conflicts; tested SHA; compact failures/attribution/repairs/routing; final focused checks; `CI: pending`; and `PR_OPENED` verification status `PASS|REPAIRED|PRE_EXISTING_FAILURES|INDETERMINATE|KNOWN_FAILURES_REMAIN`.
 
-**DONE when:** clean completed without bypasses; rebase completed with its safety and verification gates; the actual diff and test evidence ground the PR; and the PR URL is returned.
+**DONE when:** clean/rebase safety completed, the full suite ran once, failures were repaired or routed/disclosed, and the PR URL is returned. Non-green verification never prevents DONE by itself.
 
 ## Method / guardrails
 
 1. **Resolve.** Confirm a feature branch, target branch, `FEATURE_ROOT`, and no unrelated or sensitive changes. Stop on `main`/`master`.
-2. **Clean.** Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated` for the completed working set. Read its result and live Git state; do not continue past a blocked phase.
-3. **Rebase.** Run `Skill(spectre-rebase)` with the explicit target and `--orchestrated`. Preserve and report its backup ref and restore command.
-4. **Create PR.** Run `Skill(spectre-create_pr)` with the target, `--orchestrated`, `--draft`, and feedback hints from `$ARGUMENTS`. Return its URL.
+2. **Clean.** Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`; repair or route child findings and continue unless `NEEDS_AUTHORITY`.
+3. **Rebase.** Run `Skill(spectre-rebase)` with the target, `--orchestrated`, and `--verification-owner parent`; retain its backup/restore summary.
+4. **Observe the full suite once.** At rebased `FULL_SUITE_SHA`, run one repository-authoritative root suite; do not duplicate package suites or run a baseline suite. Keep raw output out of child prompts.
+   - Attribute exact failures `branch-caused|unrelated|indeterminate`, preferring target-SHA CI and otherwise reproducing only the failing check at target.
+   - Repair branch-caused root-cause families; rerun failing/affected checks. Do not rerun the full suite after repairs. Route unrelated findings; disclose unresolved indeterminate findings; record repaired HEAD and `CI: pending`.
+   - Verification status is evidence, never a stop condition; red output, attempts, diff growth, and remaining failures cannot prevent PR creation.
+5. **Create PR.** Pass compact `VERIFICATION_SUMMARY` to `Skill(spectre-create_pr)` with target, `--orchestrated`, `--draft`, and feedback hints. Return its URL. On `PR_CANDIDATE_STALE`, refresh and retry.
 
 Never use `--no-verify`, force-push over unrelated remote history, suppress failures, or publish evidence containing secrets/PII.
 
 ## Handoff
 
-Terminal skill. Return the PR URL plus the compact final summary. End with `Next (recommended): review the PR.` Add `spectre-code_review` only when an additional adversarial review is requested or the diff risk warrants it. Do not offer `spectre-handoff` after the terminal PR boundary.
+Return the PR URL plus compact `PR_OPENED`/verification status. End: `Next (recommended): review the PR; CI owns merge-gating full-suite validation.` Do not offer handoff after this terminal boundary.
 
 ## Escalate-If
 
-- Clean, rebase, or create-PR skill reports a blocker.
+- Clean, rebase, or create-PR reports `NEEDS_AUTHORITY` because no safe executable path exists without new user authority.
 - The branch/target is ambiguous, the remote diverged unexpectedly, or the diff contains secrets/PII.
+- Never escalate solely for test/lint/type/build failures, full-suite status, repair count, diff growth, or candidate drift that can be refreshed.

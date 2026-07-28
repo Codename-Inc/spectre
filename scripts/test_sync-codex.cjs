@@ -376,7 +376,7 @@ test('check mode detects drift and passes after regeneration', () => {
   }
 });
 
-test('spectre-execute supports bounded delivery-child gates and strict standalone finalization', () => {
+test('spectre-execute keeps verification failures in affected repair flow and avoids full-suite blocking', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillPaths = [
     path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-execute', 'SKILL.md'),
@@ -404,22 +404,27 @@ test('spectre-execute supports bounded delivery-child gates and strict standalon
     );
     assert.match(
       skill,
-      /distinct invariant families have independent budgets and there is no global sentinel\/fix cap/,
+      /distinct invariant families have independent histories and there is no global sentinel\/fix cap/,
     );
-    assert.match(skill, /authoritative complete suite for every package\/workspace affected by the wave/);
-    assert.match(skill, /--verification-profile bounded\|strict/);
     assert.match(skill, /--finalization-owner parent/);
-    assert.match(skill, /Plain `--orchestrated` changes handoff only/);
-    assert.match(skill, /Under `bounded`, do not run a complete-suite baseline/);
-    assert.match(skill, /affected-package lint\/typecheck\/build plus the repository-native related\/focused tests/);
-    assert.match(skill, /promote permanently to `strict`/);
-    assert.match(skill, /Do not rerun complete suites, dispatch final `spectre-code_review`, or create a test guide/);
+    assert.match(skill, /Plain `--orchestrated` changes handoff only and never transfers finalization ownership/);
+    assert.match(skill, /Verification continuation invariant/);
+    assert.match(skill, /repository-wide baselines and full suites do not belong to execute/);
+    assert.match(skill, /Affected deterministic verification/);
+    assert.match(skill, /smallest authoritative affected package\/workspace command/);
+    assert.match(skill, /do not widen to the repository root/);
+    assert.match(skill, /branch-caused.*unrelated.*indeterminate/);
+    assert.match(skill, /record or route unrelated failures and continue/);
+    assert.match(skill, /Never run a complete baseline for attribution/);
+    assert.match(skill, /Do not rerun affected commands, dispatch final `spectre-code_review`, or create a test guide/);
     assert.match(skill, /Return `IMPLEMENTATION_READY`/);
     assert.match(skill, /FINALIZATION_OWNER=self/);
-    assert.match(skill, /do not duplicate an identical affected-scope command at the same HEAD/);
-    assert.match(skill, /a green baseline must remain green/);
-    assert.match(skill, /Count-only comparison is forbidden/);
-    assert.match(skill, /Any new, changed, or unclassified failure keeps the wave red/);
+    assert.match(skill, /run one cumulative affected verification/);
+    assert.match(skill, /never run the repository root suite/);
+    assert.doesNotMatch(skill, /--verification-profile bounded\|strict/);
+    assert.doesNotMatch(skill, /a green baseline must remain green/);
+    assert.doesNotMatch(skill, /Any new, changed, or unclassified failure keeps the wave red/);
+    assert.doesNotMatch(skill, /unavailable required suite is a blocker/);
     assert.match(skill, /replace—not supplement—the lightweight sentinel/);
     assert.match(skill, /--checkpoint wave-\{N\}/);
     assert.match(skill, /`defect`.*`scheduled`.*`scope-change`/);
@@ -430,13 +435,14 @@ test('spectre-execute supports bounded delivery-child gates and strict standalon
     assert.match(skill, /implement directly or use a clean-context, high-effort opposing runtime/);
     assert.match(skill, /never replay the same prompt, agent, or approach/);
     assert.match(skill, /invariant family survives attempt 2[^\n]*promote it to source-backed Adapt work/);
+    assert.match(skill, /attempt count alone never stops execution/);
     assert.match(skill, /Growth >25%[^\n]*may trigger Adapt sooner/);
     assert.match(skill, /CRITICAL\/HIGH defects re-enter Reflect\/Adapt/);
     assert.match(skill, /Do not separately dispatch `spectre-validate` from execute/);
     assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
     assert.match(
       skill,
-      /Never request approval solely because of repair count, reviewer count, diff growth, or a recurring invariant family/,
+      /Never request approval solely because of a test\/lint\/type\/build failure, red or unavailable baseline, repair count, reviewer count, diff growth, related-file changes, or a recurring invariant family/,
     );
     assert.doesNotMatch(skill, /Dual clean-room review/);
     assert.doesNotMatch(skill, /dispatch two .*reviewer/);
@@ -647,9 +653,9 @@ test('plan-direct goal composition resumes execute before proof from durable sta
     const proofIndex = goal.indexOf('Skill(spectre-proof)');
 
     assert.match(goal, /source plan plus (?:its )?`execution_state\.md`/i);
-    assert.match(goal, /resume from durable `execution_state\.md` plus proof state/i);
+    assert.match(goal, /plan-direct mode from `execution_state\.md` plus proof state/i);
     assert.match(goal, /invoke `?Skill\(spectre-execute\)`? with the source-plan path/i);
-    assert.match(goal, /`?Skill\(spectre-proof\)`? with the same output directory/i);
+    assert.match(goal, /`?Skill\(spectre-proof\)`? with `PLAN_SOURCE`, `OUT_DIR`/i);
     assert.match(goal, /require only readable plan\/runtime inputs/i);
     assert.ok(executeIndex !== -1);
     assert.ok(proofIndex > executeIndex);
@@ -660,7 +666,7 @@ test('plan-direct goal composition resumes execute before proof from durable sta
   }
 });
 
-test('proof contract requires reviewed user evidence and a bounded repair loop', () => {
+test('proof contract requires reviewed user evidence and a continuing repair flow', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -677,7 +683,11 @@ test('proof contract requires reviewed user evidence and a bounded repair loop',
     assert.match(skill, /PASS`, `PARTIAL`, `DIAGNOSTIC_ONLY`, or `FAIL/);
     assert.match(skill, /Captured-but-unreviewed media does not count/);
     assert.match(skill, /When assertions and pixels disagree, pixels win/);
-    assert.match(skill, /at most three repair attempts/);
+    assert.match(skill, /compact repair history/);
+    assert.match(skill, /Recurrence changes diagnosis\/route and continues/);
+    assert.doesNotMatch(skill, /at most three repair attempts/);
+    assert.match(skill, /proof status alone never gates `(?:\/)?spectre(?::|-)?ship-it`/);
+    assert.match(skill, /Never escalate for failed\/recurring proof/);
     assert.match(skill, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
     assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
     assert.match(skill, /PR_CANDIDATE_STALE/);
@@ -718,7 +728,9 @@ test('goal prompts preserve the completion contract and require execute then por
     assert.match(goal, /transcript/i);
     assert.match(goal, /Structured prompt/);
     assert.match(goal, /Compact prompt/);
-    assert.match(goal, /Reaching the cap is not success/);
+    assert.match(goal, /turn cap is a durable checkpoint/);
+    assert.match(goal, /resume when the platform permits/);
+    assert.doesNotMatch(goal, /stop at the explicit cap/);
     assert.doesNotMatch(goal, /execute-only/i);
   }
 });
@@ -808,7 +820,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(execute, /--orchestrated.*without user-facing Next Steps/);
     assert.match(validate, /Standalone `Complete`.*spectre-proof/);
     assert.match(proof, /Standalone `PASS`.*spectre-ship-it/);
-    assert.match(proof, /Never route a non-PASS result to shipping/);
+    assert.match(proof, /proof status alone never gates .*spectre.*ship-it/);
 
     assert.match(clean, /spectre-prune.*--orchestrated/);
     assert.match(clean, /spectre-test.*--orchestrated/);
@@ -849,9 +861,8 @@ test('ship-it composes focused skills without a proof prerequisite', () => {
     assert.ok(cleanIndex !== -1);
     assert.ok(rebaseIndex > cleanIndex);
     assert.ok(createPrIndex > rebaseIndex);
-    assert.match(skill, /Proof is a separate optional workflow/);
-    assert.match(skill, /never a prerequisite/);
-    assert.match(skill, /Do not inspect proof artifacts, infer whether proof ran/);
+    assert.match(skill, /Proof is optional and independent/);
+    assert.match(skill, /do not inspect, infer, invoke, or gate on it/);
     assert.doesNotMatch(skill, /--require-proof/);
     assert.doesNotMatch(skill, /Skill\(spectre-proof\)/);
     assert.doesNotMatch(skill, /PROOF_JSON/);
@@ -882,6 +893,9 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     const rebase = readSkill('spectre-rebase');
     const createPr = readSkill('spectre-create_pr');
     const shipIt = readSkill('spectre-ship-it');
+    const clean = readSkill('spectre-clean');
+    const testSkill = readSkill('spectre-test');
+    const sweep = readSkill('spectre-sweep');
 
     for (const skill of [deliver, aligned]) {
       const createTasksIndex = skill.indexOf('Skill(spectre-create_tasks)');
@@ -889,8 +903,8 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       const fixCoreIndex = skill.indexOf('Skill(spectre-fix-core)');
       const cleanIndex = skill.indexOf('Skill(spectre-clean)');
       const rebaseIndex = skill.indexOf('Skill(spectre-rebase)');
+      const fullSuiteIndex = skill.indexOf('single repository-authoritative root suite once');
       const candidatePinIndex = skill.indexOf('DIFF_SHA256=sha256');
-      const finalVerificationIndex = skill.indexOf('FINAL_VERIFICATION_KEY=sha256');
       const finalReviewIndex = skill.lastIndexOf('Skill(spectre-code_review)');
       const finalValidateIndex = skill.lastIndexOf('Skill(spectre-validate)');
       const proofIndex = skill.indexOf('Skill(spectre-proof)');
@@ -902,29 +916,34 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       assert.ok(fixCoreIndex !== -1);
       assert.ok(cleanIndex > fixCoreIndex);
       assert.ok(rebaseIndex > cleanIndex);
-      assert.ok(candidatePinIndex > rebaseIndex);
-      assert.ok(finalVerificationIndex > candidatePinIndex);
-      assert.ok(finalReviewIndex > finalVerificationIndex);
+      assert.ok(fullSuiteIndex > rebaseIndex);
+      assert.ok(candidatePinIndex > fullSuiteIndex);
+      assert.ok(finalReviewIndex > candidatePinIndex);
       assert.equal(finalValidateIndex, -1);
       assert.ok(proofIndex > finalReviewIndex);
       assert.ok(createPrIndex > proofIndex);
-      assert.match(skill, /--verification-profile \{VERIFICATION_PROFILE\}/);
+      assert.doesNotMatch(skill, /--verification-profile/);
       assert.match(skill, /--finalization-owner parent/);
       assert.match(skill, /`IMPLEMENTATION_READY`/);
       assert.match(skill, /QUICK_PLAN_FILE[\s\S]*plan-direct mode/);
       assert.match(skill, /Do not create `execute\.md`\/`tasks\.json` merely as ceremony/);
       assert.match(skill, /--verification-owner parent/);
-      assert.match(skill, /exactly one complete-suite layer/);
-      assert.match(skill, /Reuse a prior PASS only for an exact key match/);
-      assert.match(skill, /exhaustive delivery coverage/);
+      assert.match(skill, /run the single repository-authoritative root suite once/);
+      assert.match(skill, /do not run a baseline or duplicate package suites/);
+      assert.match(skill, /Never rerun the full suite after repairs/);
+      assert.match(skill, /CI: pending/);
+      assert.match(skill, /VERIFICATION_SUMMARY/);
+      assert.match(skill, /CRITICAL\/HIGH defects enter repair\/adaptation/);
       assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
-      assert.match(skill, /proof aggregate is `PASS` for the exact final candidate tuple/);
+      assert.match(skill, /A non-green status is disclosed, never converted into a generic blocker/);
       assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
       assert.match(skill, /collision-safe `QUICK_PLAN_FILE`/);
-      assert.match(skill, /Any repair or candidate-affecting mutation restarts this cycle at clean/);
       assert.match(skill, /EXPECTED_BASE_SHA=\{BASE_SHA\}/);
       assert.match(skill, /PR_CANDIDATE_STALE/);
+      assert.match(skill, /refresh the tuple and retry without a cap/);
       assert.match(skill, /`--draft`.*`--orchestrated`/s);
+      assert.match(skill, /Non-green verification\/review\/proof status never prevents PR creation/);
+      assert.match(skill, /Never escalate solely for test\/lint\/type\/build failures/);
       assert.match(skill, /No merge, deploy, release, or public proof publication occurs/);
       assert.match(
         skill,
@@ -955,6 +974,8 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     assert.match(rebase, /verification: PARENT_OWNED/);
     assert.match(rebase, /do not run lint or tests/);
     assert.match(rebase, /plain `--orchestrated` does not transfer ownership/i);
+    assert.match(rebase, /not a precondition for PR creation/);
+    assert.match(rebase, /never return a blocker solely because verification is red/);
 
     assert.doesNotMatch(deliver, /Skill\(spectre-scope\)/);
     assert.match(deliver, /Alignment: inferred/);
@@ -979,6 +1000,9 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     assert.match(fixCore, /deliver=inferred.*align-and-deliver=confirmed/);
     assert.match(fixCore, /USER_APPROVED_DIAGNOSIS=true/);
     assert.match(fixCore, /RED-before-GREEN/);
+    assert.match(fixCore, /A red repository-wide baseline never blocks/);
+    assert.match(fixCore, /Never escalate for unrelated red checks/);
+    assert.doesNotMatch(fixCore, /deterministic checks remain red/);
 
     assert.match(
       createTasks,
@@ -990,6 +1014,8 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     assert.match(validate, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
     assert.match(validate, /tuple in the report/);
     assert.match(createPr, /EXPECTED_BASE_SHA.*EXPECTED_HEAD_SHA.*EXPECTED_DIFF_SHA256/);
+    assert.match(createPr, /VERIFICATION_SUMMARY/);
+    assert.match(createPr, /Never turn non-green advisory verification into a claimed pass/);
     assert.match(createPr, /PR_CANDIDATE_STALE/);
     assert.match(createPr, /performs neither action/);
     assert.match(
@@ -1009,6 +1035,21 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     assert.ok(ghCreateIndex > pushIndex);
 
     assert.match(createPr, /gh pr create --base \{PR_BASE\}/);
+    assert.match(shipIt, /Observe the full suite once/);
+    assert.match(shipIt, /do not duplicate package suites or run a baseline suite/);
+    assert.match(shipIt, /Do not rerun the full suite after repairs/);
+    assert.match(shipIt, /Verification status is evidence, never a stop condition/);
+    assert.match(shipIt, /PR_OPENED/);
+    assert.match(shipIt, /CI: pending/);
+    assert.match(shipIt, /PR_CANDIDATE_STALE/);
+    assert.match(shipIt, /Never escalate solely for test\/lint\/type\/build failures/);
+    assert.match(testSkill, /Never run a repository-wide baseline or full suite from this skill/);
+    assert.match(testSkill, /Branch-caused → repair\/reverify/);
+    assert.match(testSkill, /other findings are routed without stopping/);
+    assert.match(sweep, /Never run a repository-wide baseline or full suite/);
+    assert.match(sweep, /ordinary lint\/test failures remain in repair flow/);
+    assert.match(clean, /Ordinary test\/lint\/build failures never produce it/);
+    assert.match(clean, /repairable findings remain with the owning child/);
     assert.doesNotMatch(createPr, /\(spectre-ship\)/);
     assert.doesNotMatch(shipIt, /\(spectre-ship\)/);
   }

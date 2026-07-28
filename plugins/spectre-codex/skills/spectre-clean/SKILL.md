@@ -29,8 +29,8 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 - Primary-authored P0-P3 risk assessment and test plan recorded in `working_set.json`.
 - `spectre-test` work completed by `@spectre_tester` test-lead subagents using the primary's risk plan.
 - `spectre-sweep` completed by a subagent, including final hygiene, verification, and conventional commits.
-- Final report includes: prune summary path, manual-review items, risk-tier counts, tests added/verified, lint/test status, sweep commit list, and any blockers.
-- **DONE when:** each phase skill actually ran in a subagent; primary did the test risk assessment itself; no phase rules were duplicated or hand-written in place of loading the focused skill; manual-review items are surfaced; sweep either committed cleanly or stopped on an explicit blocker.
+- Final report: prune/manual review · risk tiers · tests/affected checks · routed findings · sweep commits · `NEEDS_AUTHORITY`, if any.
+- **DONE when:** every phase ran in its owning subagent, the primary supplied risk tiers, repairable findings were repaired/routed by their owner, manual-review items surfaced, and sweep committed or returned genuine `NEEDS_AUTHORITY`.
 
 ## Method / guardrails
 
@@ -44,17 +44,17 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
    Write a compact plan: `- [P{tier}] {file}: {behavior or SKIP reason}`.
 4. **Test phase.** Dispatch `@spectre_tester` test-lead subagents in parallel. Each subagent loads `Skill(spectre-test)` with `{FEATURE_ROOT} --orchestrated`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
 5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(spectre-sweep)` with `--orchestrated` on the resulting diff. Sweep owns final hygiene, verification, and commits.
-6. **Synthesize.** Read phase returns and git state; report only the final state and blockers.
+6. **Synthesize.** Route repairable findings to their owner; report final state, routed findings, and genuine authority/safety impasses.
 
 Guardrails:
 - Do not inline the bodies of prune/test/sweep; call the skills.
-- Do not let the primary perform prune edits, test authoring, or sweep commits except to recover from a surfaced blocker with user approval.
+- Do not let the primary perform prune edits, test authoring, or sweep commits; repairable findings remain with the owning child, which continues without a user gate.
 - `CONFIRMED_SAFE` cleanup may be applied; `UNCERTAIN`/`UNSAFE` cleanup stays untouched and appears in final manual review.
 - `--no-verify`, lint/type suppressions, and forced green are forbidden unless the user explicitly permits them.
 
 ## Handoff
 
-If blocked, report the exact phase and blocker plus the manual-review list; recommend only the concrete recovery action. If successful, report commit hashes/messages.
+`NEEDS_AUTHORITY` reports its phase/impasse and manual-review list. Ordinary test/lint/build failures never produce it; repair or route them. Otherwise report commits.
 
 - `--orchestrated` → return the result to the caller without user-facing Next Steps.
 - Standalone → `Next (recommended): spectre-rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `spectre-proof` only as a conditional alternative when acceptance evidence is still desired before shipping.
@@ -63,7 +63,7 @@ If blocked, report the exact phase and blocker plus the manual-review list; reco
 
 - Scope is ambiguous, a ref is invalid, or no meaningful working set exists.
 - A phase skill conflicts with this orchestration contract; surface the conflict instead of improvising.
-- P0 coverage cannot be made behavioral and mutation-resistant.
+- P0 coverage exposes a product-requirement or user-authority conflict with no safe executable alternative; ordinary coverage gaps remain in repair/adaptation.
 - Sweep finds secrets/PII or cannot commit without bypassing verification.
 
 ## Codex Agent Preflight

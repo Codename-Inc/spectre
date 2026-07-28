@@ -26,7 +26,7 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 
 ## Method / guardrails
 
-- **Orchestrated mode:** if `spectre-clean` supplied a risk plan, do not redo broad risk analysis. Sanity-check only for missing assigned files or obvious P0 underclassification; if found, stop and return the conflict to the primary. Otherwise execute the assigned batch using the supplied tiers and update `working_set.json` with results.
+- **Orchestrated mode:** if `spectre-clean` supplied a risk plan, do not redo broad risk analysis. Sanity-check only for missing assigned files or obvious P0 underclassification; correct the tier/assignment with the primary and continue. Then execute the assigned batch using the supplied tiers and update `working_set.json` with results.
 - **Triage every changed file into a risk tier (inline):**
   - **P0 Critical** (thorough) — path contains `auth`/`payment`/`security`/`crypto`/`session`/`token`; handles user-data mutations, financial transactions, PII, permissions; external-facing API handlers; DB migrations; `@critical` annotation. Requires 100% **behavioral** coverage (every user-facing outcome), all error paths with specific assertions, security-input edge cases (null/empty/malformed/overflow), public-API contract/schema tests, mutation-resistant assertions.
   - **P1 Core** (key behaviors) — feature components, internal API handlers, state management (stores/reducers/contexts), core business logic, data fetch/cache. Cover happy path of public functions + user-visible error paths + contract tests at exported boundaries. Skip internal helpers and exhaustive branches.
@@ -35,15 +35,15 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 - **Write or consume the test plan** (3–7 bullets, `- [P{tier}] {file}: {behavior}`): P0 → multiple bullets (behaviors + error paths); P1 → 1–2; P2 → 1; P3 → SKIP line. Update `working_set.json` with tier categorization/results.
 - **Dispatch `@spectre_tester` subagents in parallel** (single message, multiple Task calls; 3–5 for medium scope, up to 8 for large). Partition the plan into independent batches: P0 = 1 agent/file (focus); P1 = 2–3 files/agent; P2 = 3–5 files/agent. Each agent gets its batch items, paths, tier context, and the instruction: **write behavioral tests, assert outcomes not calls, mutation-resistant.** Wait for all before verifying.
 - **Test quality bar (all tiers):** one behavior per test; descriptive names (`when_[cond]_then_[outcome]`); assert outcomes not calls (call-count assertions only when verifying side-effect prevention); refactor-resilient; mutation-resistant ("would a real bug fail this?"). Do NOT mock internal implementation details, duplicate type coverage, or test framework behavior. Add contract/schema tests at team/module boundaries (API response + error shape; emitted-event schema).
-- **Verify before commit:** run lint (autofix, then manual) → run full test suite (failures → fix via `@spectre_tester` or direct edit) → spot-check 1–2 tests for behavioral quality (rework via `@spectre_tester` if weak).
+- **Verify before commit:** run affected lint, new/changed plus related tests across demonstrated dependencies, then spot-check quality. Branch-caused → repair/reverify; unrelated → route/continue; indeterminate → reproduce only the failing check at base. Never run a repository-wide baseline or full suite from this skill.
 - **Commit guard:** `--no-verify`, `eslint-disable`, and committing code carrying `eslint-disable` are **expressly forbidden without the user's explicit permission.**
 
 ## Outputs + DONE
 
-- Risk-appropriate behavioral tests added; lint clean; full suite green.
+- Risk-appropriate tests added; affected lint/related tests have no branch-caused failure; other findings are routed.
 - `{FEATURE_ROOT}/working_set.json` with `feature` and `feature_root` in its owning metadata object, followed by scope + risk-tier categorization. The equivalent Markdown metadata contract is `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
 - Commits: planning/working artifacts first (`docs(test): add test planning artifacts for {feature-name}`), then code grouped into logical conventional commits (`type(scope): description`; tests bundled with feature or separate, your judgment).
-- **DONE when:** every changed file has a P0–P3 tier from this skill or the orchestrator; plan written/consumed with P3 explicitly SKIP'd; `@spectre_tester` agents dispatched in parallel when running standalone or assigned batches completed when running as a test lead; P0 thorough / P1 key-path / P2 public-surface / P3 no tests; lint + all tests pass; quality spot-checked; changes committed conventionally; no `--no-verify`/`eslint-disable` introduced.
+- **DONE when:** every changed file is P0–P3; the plan records P3 skips; tester batches finish; tier coverage holds; affected lint/related tests have no attributable failure; other findings are routed without stopping; quality is spot-checked; changes are committed without bypass/suppression.
 
 ## Handoff
 
@@ -57,7 +57,8 @@ Render one primary recommendation with its observed reason; never jump directly 
 ## Escalate-If
 
 - A provided `commit_id` is invalid or scope is ambiguous → stop and ask before triaging.
-- Tests can't be made to pass, or a fix would require touching out-of-scope code → surface it; don't force green.
+- Related-file repair growth is not a scope change; expand and continue.
+- No safe executable repair/routing action exists without changing product requirements or using unavailable user authority → return `NEEDS_AUTHORITY` with the exact impasse.
 - A commit would need `--no-verify` or `eslint-disable` → stop and ask the user; never bypass silently.
 
 ## Codex Agent Preflight

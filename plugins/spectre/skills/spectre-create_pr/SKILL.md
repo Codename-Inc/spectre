@@ -9,7 +9,7 @@ user-invocable: true
 Produce a reviewer-ready pull request grounded in the actual change. Every claim traces to a diff hunk, a commit message, or a linked issue — never invented. Scale the description to the size of the change. Then open the PR with `gh`.
 
 ## Inputs
-- `$ARGUMENTS` (optional): `TARGET_BRANCH` (default `origin/main`), feedback-focus hint, `--draft`, optional `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256` plus explicit `EVIDENCE_DIRS`, or `--orchestrated` when a parent workflow owns the final summary. Read the live repo state at runtime — never assume a prior phase ran.
+- `$ARGUMENTS` (optional): `TARGET_BRANCH` (default `origin/main`), feedback-focus hint, `--draft`, a compact `VERIFICATION_SUMMARY`, optional `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256` plus explicit `EVIDENCE_DIRS`, or `--orchestrated` when a parent workflow owns the final summary. Read the live repo state at runtime — never assume a prior phase ran.
 - Resolve just-in-time:
   - `BRANCH = git rev-parse --abbrev-ref HEAD`. If on `main`/`master` → stop and ask (nothing to PR).
   - `TARGET_BRANCH` (default `origin/main`); `PR_BASE = TARGET_BRANCH` with a leading remote name such as `origin/` removed. `git fetch`, then resolve `BASE_SHA` and `HEAD_SHA`.
@@ -32,7 +32,7 @@ The diff between `TARGET_BRANCH` and `HEAD`, the commit log over that range, and
    - **What** ← summarize the **behavioral** change from `DIFF`. Describe what the code now does, not which files/lines moved. Never recite the diff.
    - **Why** ← linked issue body, then commit messages, then branch name. If no source exists, emit `<!-- WHY: motivation not found in commits/issue — fill in -->` rather than inventing rationale.
    - **How / trade-offs** ← decisions visible in commit messages or diff structure. Omit for trivial changes; never infer design intent from code shape alone.
-   - **Testing** ← inspect the diff for test-file changes. If tests changed, summarize what they cover. If none changed, state that plainly — do not claim tests were added.
+   - **Testing** ← inspect the diff for test-file changes and include any supplied `VERIFICATION_SUMMARY` verbatim in substance: exact command/scope, pass/fail counts, attribution, repairs, routed findings, and CI-pending status. If tests changed, summarize what they cover. If none changed, state that plainly. Never turn non-green advisory verification into a claimed pass or block PR creation because the summary is non-green.
 2. **Scale the template to PR size** (lines changed + concern count):
    - **Trivial** (small, single-concern): What + Why + `Closes #`.
    - **Standard**: Summary · Changes (behavioral bullets) · Testing · `Closes #`.
