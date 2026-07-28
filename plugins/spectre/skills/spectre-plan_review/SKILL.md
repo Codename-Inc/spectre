@@ -10,7 +10,7 @@ Plan-only adversarial review: stabilize intent before `execute.md`/`tasks.json` 
 
 ## Inputs
 
-- `$ARGUMENTS` - explicit feature name/root or descendant plan artifact, `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`.
+- `$ARGUMENTS` - explicit feature name/root or descendant plan artifact, `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`, and optional `--review-again` only when the user's latest instruction explicitly requests another plan review.
 - Required: `{FEATURE_ROOT}/specs/plan.md`. Helpful: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, `task_context.md`, `research/*.md`.
 - If `plan.md` is absent -> stop, route to `/spectre:create_plan`. Do not ask the user to create missing optional artifacts.
 
@@ -23,7 +23,8 @@ Plan-only adversarial review: stabilize intent before `execute.md`/`tasks.json` 
 - Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it.
 - An explicit legacy `docs/tasks/**` plan remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new review report and record the legacy source.
 - `TASK_DIR = FEATURE_ROOT`.
-- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/plan_review.md`; `mkdir -p`; if it exists, write `plan_review_{YYYY-MM-DD_HHMMSS}.md`.
+- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/plan_review.md`; `mkdir -p`. A user-authorized `--review-again` writes `plan_review_{YYYY-MM-DD_HHMMSS}.md`; no other condition may select a second report.
+- `REVIEW_ATTEMPT = {FEATURE_ROOT}/reviews/plan_review_attempt.json`; create it atomically immediately before the first reviewer launch with `status: started`, the report path, route, timestamp, and `authorization: initial|explicit-user-review-again`. Update it to `complete` or `failed` when the round ends.
 - Canonical scope source, in order: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, explicit requirements in `task_context.md`.
 
 ## Canonical Scope Invariant
@@ -31,6 +32,13 @@ Plan-only adversarial review: stabilize intent before `execute.md`/`tasks.json` 
 Reviewers may recommend deleting unrequested implementation, unnecessary abstractions, weak verification, hallucinated refs, bad deps, or bad sequencing. They **MUST NOT** cut, narrow, expand, or reinterpret agreed scope. If scope itself looks wrong or incomplete, emit **Scope Change Required**; never auto-apply it.
 
 ## Method / guardrails
+
+**One-review hard stop**
+
+1. Before constructing a prompt or launching any reviewer, check `REVIEW_ATTEMPT` and `REVIEW_REPORT`.
+2. If either shows that a plan-review round already started, **do not launch, resume, repair, fall back, or synthesize another semantic review**. Return the existing report/attempt status to the caller. Artifact changes, final-gate feedback, discussion points, stale hashes, failed/partial prior attempts, and uncertainty never reopen the gate.
+3. The only override is `--review-again` backed by the user's latest instruction explicitly asking for another plan review. A planner or orchestrator **MUST NOT** infer, manufacture, or add this flag. Record the user's authorization in `REVIEW_ATTEMPT` before launching the explicitly requested round.
+4. An initial external attempt, its report-only repair, and its native fallback belong to one review round. They may finish that already-started round; they do not authorize a later round after the skill returns or is interrupted.
 
 **External-first selection**
 1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
@@ -88,13 +96,14 @@ Run from repo root. Do not add approval flags, resume flags, broad bypass flags,
 3. **Summary** - counts per severity; Blocker/High must resolve before task generation.
 4. **Review Metadata** - reviewed artifacts, canonical scope source, auto-apply mode, ISO8601 timestamp, `Mode:`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
 
-DONE when the report exists before edits; every finding has a location + concrete suggested edit; runtime/model/effort/route metadata is recorded; any native fallback reason is recorded; applied edits touch only `plan.md`; scope-change recommendations are left unapplied; post-edit self-check passes.
+DONE when one review round is recorded in `REVIEW_ATTEMPT`; the report exists before edits; every finding has a location + concrete suggested edit; runtime/model/effort/route metadata is recorded; any native fallback reason is recorded; applied edits touch only `plan.md`; scope-change recommendations are left unapplied; post-edit self-check passes. Later edits do not invalidate the completed round or trigger another one.
 
 ## Handoff
 
 Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, and updated `plan.md` path.
 
 - `--orchestrated` → return the review result and updated plan path to the caller without user-facing Next Steps.
+- Existing attempt without explicit `--review-again` → return `Plan review hard stop: prior round {status}; no reviewer launched`, plus the attempt/report paths.
 - Standalone + unresolved Blocker/High → remain in remediation; scope-change findings route to `/spectre:scope`.
 - Standalone + resolved Blocker/High → `Next (recommended): /spectre:create_tasks — the reviewed plan is ready for task compilation.` Offer `/spectre:handoff` only when stopping at this durable review boundary.
 

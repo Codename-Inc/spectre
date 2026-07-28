@@ -376,7 +376,7 @@ test('check mode detects drift and passes after regeneration', () => {
   }
 });
 
-test('spectre-execute uses lightweight sentinel review before final adversarial review', () => {
+test('spectre-execute supports bounded delivery-child gates and strict standalone finalization', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillPaths = [
     path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-execute', 'SKILL.md'),
@@ -386,34 +386,85 @@ test('spectre-execute uses lightweight sentinel review before final adversarial 
   for (const skillPath of skillPaths) {
     const skill = fs.readFileSync(skillPath, 'utf8');
     assert.match(skill, /Sentinel selector/);
-    assert.match(skill, /Lightweight sentinel review/);
-    assert.match(skill, /Final adversarial code review \+ validate/);
+    assert.match(skill, /Sentinel or one-time risk checkpoint/);
+    assert.match(skill, /Finalization ownership/);
     assert.match(skill, /sentinel review counts/);
     assert.match(
       skill,
-      /sha256\(requirement anchor \+ primary symbol \+ normalized observable failure\)/,
+      /finding_fingerprint = sha256\(requirement anchor \+ primary symbol\/boundary \+ normalized observable failure\)/,
+    );
+    assert.match(
+      skill,
+      /invariant_family = sha256\(requirement anchor \+ normalized violated invariant \+ lifecycle\/data-flow boundary\)/,
     );
     assert.match(skill, /Return all evidence-backed CRITICAL\/HIGH findings/);
-    assert.match(skill, /fingerprint · attempt · route · result\/disposition/);
     assert.match(
       skill,
-      /distinct findings have independent budgets and there is no global sentinel\/fix cap/,
+      /invariant_family · finding_fingerprint · attempt · route · test topology · disposition/,
     );
+    assert.match(
+      skill,
+      /distinct invariant families have independent budgets and there is no global sentinel\/fix cap/,
+    );
+    assert.match(skill, /authoritative complete suite for every package\/workspace affected by the wave/);
+    assert.match(skill, /--verification-profile bounded\|strict/);
+    assert.match(skill, /--finalization-owner parent/);
+    assert.match(skill, /Plain `--orchestrated` changes handoff only/);
+    assert.match(skill, /Under `bounded`, do not run a complete-suite baseline/);
+    assert.match(skill, /affected-package lint\/typecheck\/build plus the repository-native related\/focused tests/);
+    assert.match(skill, /promote permanently to `strict`/);
+    assert.match(skill, /Do not rerun complete suites, dispatch final `spectre-code_review`, or create a test guide/);
+    assert.match(skill, /Return `IMPLEMENTATION_READY`/);
+    assert.match(skill, /FINALIZATION_OWNER=self/);
+    assert.match(skill, /do not duplicate an identical affected-scope command at the same HEAD/);
+    assert.match(skill, /a green baseline must remain green/);
+    assert.match(skill, /Count-only comparison is forbidden/);
+    assert.match(skill, /Any new, changed, or unclassified failure keeps the wave red/);
+    assert.match(skill, /replace—not supplement—the lightweight sentinel/);
+    assert.match(skill, /--checkpoint wave-\{N\}/);
+    assert.match(skill, /`defect`.*`scheduled`.*`scope-change`/);
+    assert.match(skill, /`scheduled` consumes no attempt/);
     assert.match(skill, /Attempt 1 uses one focused `@spectre(?::|_)dev` repair/);
-    assert.match(skill, /primary revalidates it and owns attempt 2/);
+    assert.match(skill, /second manifestation of the same invariant family/);
+    assert.match(skill, /RED regression at the invariant's actual level/);
     assert.match(skill, /implement directly or use a clean-context, high-effort opposing runtime/);
     assert.match(skill, /never replay the same prompt, agent, or approach/);
-    assert.match(skill, /survives attempt 2[^\n]*promote it to source-backed Adapt work/);
+    assert.match(skill, /invariant family survives attempt 2[^\n]*promote it to source-backed Adapt work/);
     assert.match(skill, /Growth >25%[^\n]*may trigger Adapt sooner/);
-    assert.match(skill, /CRITICAL\/HIGH findings re-enter Reflect\/Adapt as source-backed gap work/);
+    assert.match(skill, /CRITICAL\/HIGH defects re-enter Reflect\/Adapt/);
+    assert.match(skill, /Do not separately dispatch `spectre-validate` from execute/);
+    assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
     assert.match(
       skill,
-      /Never request approval solely because of repair count, reviewer count, diff growth, or a recurring finding/,
+      /Never request approval solely because of repair count, reviewer count, diff growth, or a recurring invariant family/,
     );
     assert.doesNotMatch(skill, /Dual clean-room review/);
     assert.doesNotMatch(skill, /dispatch two .*reviewer/);
     assert.doesNotMatch(skill, /<=3 focused fix waves/);
     assert.doesNotMatch(skill, /circuit breaker trips → halt and surface/);
+  }
+});
+
+test('spectre-code_review supports risk checkpoints and absorbs final delivery validation', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillPaths = [
+    path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-code_review', 'SKILL.md'),
+    path.join(repoRoot, 'plugins', 'spectre-codex', 'skills', 'spectre-code_review', 'SKILL.md'),
+  ];
+
+  for (const skillPath of skillPaths) {
+    const skill = fs.readFileSync(skillPath, 'utf8');
+    assert.match(skill, /--checkpoint wave-\{N\}/);
+    assert.match(skill, /REVIEW_MODE = checkpoint/);
+    assert.match(skill, /checkpoint-wave-\{N\}\.md/);
+    assert.match(skill, /Requirement delivery \/ reachability/);
+    assert.match(skill, /Scope \/ dead paths/);
+    assert.match(skill, /finding_fingerprint = sha256/);
+    assert.match(skill, /invariant_family = sha256/);
+    assert.match(skill, /Requirement Delivery Coverage/);
+    assert.match(skill, /Scope and Dead-Path Audit/);
+    assert.match(skill, /every applicable requirement\/AC has one evidence-backed delivery status/);
+    assert.match(skill, /does not match `wave-\[1-9\]\[0-9\]\*`/);
   }
 });
 
@@ -828,6 +879,7 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
     const createTasks = readSkill('spectre-create_tasks');
     const codeReview = readSkill('spectre-code_review');
     const validate = readSkill('spectre-validate');
+    const rebase = readSkill('spectre-rebase');
     const createPr = readSkill('spectre-create_pr');
     const shipIt = readSkill('spectre-ship-it');
 
@@ -838,6 +890,7 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       const cleanIndex = skill.indexOf('Skill(spectre-clean)');
       const rebaseIndex = skill.indexOf('Skill(spectre-rebase)');
       const candidatePinIndex = skill.indexOf('DIFF_SHA256=sha256');
+      const finalVerificationIndex = skill.indexOf('FINAL_VERIFICATION_KEY=sha256');
       const finalReviewIndex = skill.lastIndexOf('Skill(spectre-code_review)');
       const finalValidateIndex = skill.lastIndexOf('Skill(spectre-validate)');
       const proofIndex = skill.indexOf('Skill(spectre-proof)');
@@ -845,15 +898,26 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
 
       assert.match(skill, /disable-model-invocation: true/);
       assert.ok(createTasksIndex !== -1);
-      assert.ok(executeIndex > createTasksIndex);
+      assert.ok(executeIndex !== -1);
       assert.ok(fixCoreIndex !== -1);
       assert.ok(cleanIndex > fixCoreIndex);
       assert.ok(rebaseIndex > cleanIndex);
       assert.ok(candidatePinIndex > rebaseIndex);
-      assert.ok(finalReviewIndex > candidatePinIndex);
-      assert.ok(finalValidateIndex > finalReviewIndex);
-      assert.ok(proofIndex > finalValidateIndex);
+      assert.ok(finalVerificationIndex > candidatePinIndex);
+      assert.ok(finalReviewIndex > finalVerificationIndex);
+      assert.equal(finalValidateIndex, -1);
+      assert.ok(proofIndex > finalReviewIndex);
       assert.ok(createPrIndex > proofIndex);
+      assert.match(skill, /--verification-profile \{VERIFICATION_PROFILE\}/);
+      assert.match(skill, /--finalization-owner parent/);
+      assert.match(skill, /`IMPLEMENTATION_READY`/);
+      assert.match(skill, /QUICK_PLAN_FILE[\s\S]*plan-direct mode/);
+      assert.match(skill, /Do not create `execute\.md`\/`tasks\.json` merely as ceremony/);
+      assert.match(skill, /--verification-owner parent/);
+      assert.match(skill, /exactly one complete-suite layer/);
+      assert.match(skill, /Reuse a prior PASS only for an exact key match/);
+      assert.match(skill, /exhaustive delivery coverage/);
+      assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
       assert.match(skill, /proof aggregate is `PASS` for the exact final candidate tuple/);
       assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
       assert.match(skill, /collision-safe `QUICK_PLAN_FILE`/);
@@ -885,6 +949,12 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       assert.match(skill, /Apply this routing without a confirmation gate/);
       assert.match(skill, /run every child in the selected checkout/);
     }
+
+    assert.match(rebase, /--verification-owner parent/);
+    assert.match(rebase, /REBASE_READY/);
+    assert.match(rebase, /verification: PARENT_OWNED/);
+    assert.match(rebase, /do not run lint or tests/);
+    assert.match(rebase, /plain `--orchestrated` does not transfer ownership/i);
 
     assert.doesNotMatch(deliver, /Skill\(spectre-scope\)/);
     assert.match(deliver, /Alignment: inferred/);
@@ -1006,8 +1076,12 @@ test('review gates pin route-specific opposing models and retain native fallback
       } else if (skillName === 'spectre-task_review') {
         assert.match(skill, /task-review-safety\.mjs` `preflight/);
         assert.match(skill, /task-review-safety\.mjs` `validate-report/);
-        assert.match(skill, /one repair attempt/);
+        assert.match(skill, /one report-only repair attempt/);
         assert.match(skill, /focused post-check/);
+        assert.match(skill, /One-review hard stop/);
+        assert.match(skill, /--review-again/);
+        assert.match(skill, /task_review_attempt\.json/);
+        assert.match(skill, /MUST NOT run its `impact` operation/);
         assert.match(skill, /Adversarial mode:.*does not delegate/);
         assert.match(skill, /Allow up to 20 minutes for completion/);
         assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
@@ -1017,7 +1091,7 @@ test('review gates pin route-specific opposing models and retain native fallback
   }
 });
 
-test('code review is adversarial and execute delegates the final review gate', () => {
+test('code review is adversarial and self-finalizing execute delegates the final review gate', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -1047,8 +1121,10 @@ test('code review is adversarial and execute delegates the final review gate', (
       'SKILL.md',
     );
     const execute = fs.readFileSync(executePath, 'utf8');
-    assert.match(execute, /Final adversarial code review \+ validate/);
+    assert.match(execute, /Finalization ownership/);
+    assert.match(execute, /FINALIZATION_OWNER=self/);
     assert.match(execute, /Skill\(spectre-code_review\)/);
+    assert.doesNotMatch(execute, /Skill\(spectre-validate\)/);
     assert.doesNotMatch(execute, /Dispatch multi-lens clean-room review/);
   }
 });

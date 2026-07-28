@@ -1,17 +1,18 @@
 ---
 name: "spectre-code_review"
-description: "Run an independent adversarial code review of completed work using a pinned high-effort opposing runtime, with a same-contract native fallback. Finds bugs, correctness and security failures, regressions, performance landmines, overengineering, and missing behavioral tests. Review only; never edits code."
+description: "Run an independent adversarial review of completed work using a pinned high-effort opposing runtime, with a same-contract native fallback. Finds correctness/security failures, regressions, performance landmines, overengineering, missing behavioral tests, unreachable requirements, scope creep, dead computations, and stale active paths. Supports an execute-time risk checkpoint and exhaustive final delivery coverage. Review only; never edits code."
 user-invocable: true
 ---
 
 # code_review
 
-Adversarial review of what was just built. A clean-context reviewer tries to falsify correctness and production readiness, then returns only evidence-backed, severity-ranked findings. Review only; never edit code.
+Adversarial review of what was just built. A clean-context reviewer tries to falsify correctness, production readiness, and requirement delivery, then returns only evidence-backed, severity-ranked findings plus explicit reachability coverage. Review only; never edit code.
 
 ## Inputs
 
-- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, focus guidance, explicit diff/base range, an explicit source-plan path, an optional immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and optional `--orchestrated` when another workflow will consume the report.
+- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, focus guidance, explicit diff/base range, an explicit source-plan path, an optional immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, optional `--checkpoint wave-{N}` for execute's first material-risk checkpoint, and optional `--orchestrated` when another workflow will consume the report.
 - Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else an explicitly passed source-plan path ahead of literal `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
+- With no `--checkpoint`, set `REVIEW_MODE = final`. Set `REVIEW_MODE = checkpoint` only for an exact `--checkpoint wave-{N}` label matching `wave-[1-9][0-9]*`; a supplied malformed label stops under **Escalate-If**. Checkpoint mode covers the cumulative diff through that wave and only completed/risk-relevant requirement slices. Final mode covers every applicable in-scope requirement/AC in the completed work.
 - If the work scope is genuinely ambiguous after inspecting artifacts and git state, ask what to review before dispatching.
 
 ## Working Set
@@ -22,8 +23,8 @@ Adversarial review of what was just built. A clean-context reviewer tries to fal
 - The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
 - Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
 - An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Every new review document requires a confirmed canonical `.spectre/features/<feature-name>/` root and records the legacy source in its scope manifest.
-- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/comprehensive_code_review.md`; if it exists, use `comprehensive_code_review_{YYYY-MM-DD_HHMMSS}.md` and never overwrite prior evidence.
-- Build a late-bound review manifest: diff/base range, optional candidate tuple, changed-file summary, in-scope requirement/AC paths, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
+- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/checkpoint-wave-{N}.md` in checkpoint mode and `{FEATURE_ROOT}/reviews/comprehensive_code_review.md` in final mode; if the selected path exists, append `_{YYYY-MM-DD_HHMMSS}` and never overwrite prior evidence.
+- Build a late-bound review manifest: review mode/checkpoint label, diff/base range, optional candidate tuple, changed-file summary, all applicable in-scope requirement/AC paths for that mode, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
 
 ## Method / guardrails
 
@@ -50,7 +51,7 @@ External report metadata is fixed by route: Codex -> Claude Code records `Review
 
 The external reviewer may write only `REVIEW_REPORT`; it may not edit code, tests, plans, tasks, scope docs, or other artifacts. Allow at least 20 minutes before treating the run as hung.
 
-`REVIEW_PROMPT` includes the exact feature name/root and says to use that root unchanged without branch or repository-activity rederivation. It also includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It includes the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
+`REVIEW_PROMPT` includes the exact feature name/root and says to use that root unchanged without branch or repository-activity rederivation. It also includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, unreachable from its consumers, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It includes `REVIEW_MODE`, the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
 
 **Adversarial lenses**
 
@@ -62,6 +63,8 @@ The external reviewer may write only `REVIEW_REPORT`; it may not edit code, test
 | Performance / reliability | hot-path complexity, N+1 work, blocking I/O, leaks, unbounded memory/work, retry or failure amplification |
 | Overengineering | speculative abstractions, duplicate paths, needless indirection, generality not required by scope; flag only when a materially simpler in-scope shape is evident |
 | Test adequacy | changed behavior with no executable regression signal, untested failure/security paths, assertions that cannot catch the defect |
+| Requirement delivery / reachability | for every applicable requirement/AC, trace definition -> consumer/usage -> reachable user/system outcome; definition-only work is Partial or Dead, never Delivered |
+| Scope / dead paths | out-of-scope behavior, dead computations, orphaned outputs, old active paths after replacement, duplicate data sources, and new values that never reach a consumer |
 
 **Severity and evidence**
 
@@ -70,8 +73,17 @@ The external reviewer may write only `REVIEW_REPORT`; it may not edit code, test
 - **MEDIUM** - localized defect, meaningful maintainability/overengineering cost, non-critical performance issue, or material test gap with a concrete failure risk.
 - **LOW** - small but actionable issue. Do not report style, naming, formatting, praise, or speculative future concerns.
 - Every finding needs `file:line`, the violated behavior/requirement, concrete evidence, impact, and the smallest scope-safe fix.
-- Every CRITICAL/HIGH also needs a reproducible failure, exploit, or performance path with observable behavior. No evidence chain means downgrade or omit; "could potentially" is not evidence.
+- Every finding also records `finding_fingerprint = sha256(requirement anchor + primary symbol/boundary + normalized observable failure)` and `invariant_family = sha256(requirement anchor + normalized violated invariant + lifecycle/data-flow boundary)`.
+- Every CRITICAL/HIGH also needs the normalized violated invariant plus a reproducible failure, exploit, or performance path with observable behavior. No evidence chain means downgrade or omit; "could potentially" is not evidence.
 - Stay within the completed work and its direct blast radius. Missing features from another scope and subjective architecture preferences are not findings.
+
+**Delivery coverage**
+
+- For each applicable requirement/AC in the mode's manifest, assign exactly one status: `Delivered` (defined, connected, and reachable), `Partial` (present but a required connection/outcome is missing), `Dead` (defined with no active usage/consumer), or `Missing`.
+- Every `Delivered` row cites both definition and usage/consumer `file:line` evidence plus the reachable outcome. Never infer delivery from file existence, task status, dev reports, or implementation rationale.
+- Every `Partial`, `Dead`, or `Missing` row has a corresponding severity-ranked finding and prioritized action; coverage gaps never live only in the table.
+- Trace UI outcomes backward from render/user action and service/data outcomes through caller -> boundary -> side effect/persistence -> reload/reconciliation where applicable.
+- Audit and report scope creep, dead computations, old active paths, orphaned outputs, and duplicate data sources even when they do not create a CRITICAL/HIGH verdict.
 
 **Native fallback**
 
@@ -79,7 +91,7 @@ The external reviewer may write only `REVIEW_REPORT`; it may not edit code, test
 - Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged to `REVIEW_REPORT`.
 - Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
 
-When a candidate tuple is supplied, require all three fields, recompute the canonical hash using `git diff --binary --full-index --no-ext-diff --no-color --no-renames`, and verify the tuple before dispatch and after report creation. Record it in Scope Boundary; a mismatch makes the report stale. After either route, verify the report exists, contains every required section, names the reviewed scope, and includes all runtime/model metadata. Repair an invalid external report once with the same CLI; otherwise use the native fallback. Never fix findings inside this skill.
+When a candidate tuple is supplied, require all three fields, recompute the canonical hash using `git diff --binary --full-index --no-ext-diff --no-color --no-renames`, and verify the tuple before dispatch and after report creation. Record it in Scope Boundary; a mismatch makes the report stale. After either route, verify the report exists, contains every required section, names the reviewed scope/mode, covers every applicable requirement/AC in its delivery table, and includes all runtime/model metadata. Repair an invalid external report once with the same CLI; otherwise use the native fallback. Never fix findings inside this skill.
 
 ## Outputs + DONE
 
@@ -90,20 +102,23 @@ Required report sections:
 0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
 1. **Scope Boundary** - completed work, diff/base, supplied candidate tuple, requirements, in-scope files/dependencies/tests, explicit exclusions, and any legacy source path.
 2. **Verdict** - `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, or `CLEAN`.
-3. **Findings** - table `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Smallest Fix`, ordered CRITICAL to LOW. Say `No findings` when clean; do not pad.
+3. **Findings** - table `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Finding Fingerprint | Invariant Family | Smallest Fix`, ordered CRITICAL to LOW. Say `No findings` when clean; do not pad.
 4. **Coverage Record** - files/paths and tests inspected, plus material areas not verified and why.
-5. **Prioritized Actions** - minimal ordered remediation list, or `None` when clean.
-6. **Review Metadata** - ISO8601 timestamp, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
+5. **Requirement Delivery Coverage** - exhaustive table `Requirement/AC | Status | Definition | Usage/Consumer | Reachable Outcome | Evidence/Gap` for every applicable requirement/AC in the selected mode.
+6. **Scope and Dead-Path Audit** - separate evidence tables for scope creep, dead computations/orphaned outputs, old active paths, and duplicate data sources; write `None found` for an empty category.
+7. **Prioritized Actions** - minimal ordered remediation list, or `None` when clean.
+8. **Review Metadata** - ISO8601 timestamp, `Review Mode:`, optional `Checkpoint:`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
 
-DONE when the self-locating report exists with all six numbered sections plus metadata; scope and any candidate tuple are explicit and unchanged; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings satisfy evidence rules; no code or non-report artifact was modified.
+DONE when the self-locating report exists with all nine numbered sections plus metadata; scope, mode, and any candidate tuple are explicit and unchanged; every applicable requirement/AC has one evidence-backed delivery status; scope/dead-path categories are present; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings include both identities and satisfy evidence rules; no code or non-report artifact was modified.
 
 ## Handoff
 
 - Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Blockers → `spectre-fix`; otherwise choose `spectre-proof` for completed user-observable work, `spectre-test` for a concrete coverage gap, or `spectre-clean` only when proof is explicitly deferred. Emit one primary recommendation tied to the verdict, not an equal-weight menu.
-- `--orchestrated`: return the verdict, CRITICAL/HIGH findings with their evidence chains, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
+- `--orchestrated`: return the verdict, requirement-delivery status counts, CRITICAL/HIGH findings with their evidence chains and both identities, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
 
 ## Escalate-If
 
+- A supplied `--checkpoint` label does not match `wave-[1-9][0-9]*` -> stop; never interpolate it into a report path.
 - Diff/work scope remains ambiguous after reading available task/plan artifacts and git state -> ask what to review before dispatching.
 - A proposed finding changes requirements rather than identifying a defect -> label it `Scope Change Required`; do not include it in the blocking verdict.
 

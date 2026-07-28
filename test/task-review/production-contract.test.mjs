@@ -34,13 +34,13 @@ test("production task review owns the explicit medium-effort orchestration seque
 
   const orderedContract = [
     "task-review-safety.mjs` `preflight",
-    "Launch the selected opposite-runtime command",
+    "launch the selected opposite-runtime command",
     "poll",
     "task-review-safety.mjs` `validate-report",
-    "one repair attempt",
+    "one report-only repair attempt",
     "native fallback",
     "Read `REVIEW_REPORT` fully",
-    "apply scope-safe",
+    "scope-safe selected findings",
     "focused post-check",
   ];
   let previousIndex = -1;
@@ -58,45 +58,34 @@ test("production task review owns the explicit medium-effort orchestration seque
     /Missing Coverage or Index Alignment summaries request repair or become an advisory/,
   );
   assert.match(taskReview, /Allow up to 20 minutes for completion/);
-  assert.match(taskReview, /atomically persists any review-state payload/);
-  assert.match(taskReview, /failed post-check invalidates that state/);
+  assert.match(taskReview, /Atomically write `REVIEW_ATTEMPT`/);
+  assert.match(taskReview, /Record pass\/failure in `REVIEW_ATTEMPT`/);
   assert.match(
     taskReview,
     /Do not pass launcher timeout or duration guidance to the reviewer/,
   );
 });
 
-test("repeat review is impact-scoped and primary-owned state is persisted only after write-back", () => {
-  const orderedContract = [
-    "Run `task-review-safety.mjs` `preflight`",
-    "Run `task-review-safety.mjs` `impact`",
-    "Construct the semantic review brief",
-    "Launch the selected opposite-runtime command",
-    "Record exactly one disposition",
-    "Write back",
-    "focused post-check",
-    "Atomically persist",
-  ];
-  let previousIndex = -1;
-  for (const phrase of orderedContract) {
-    const index = taskReview.indexOf(phrase, previousIndex + 1);
-    assert.ok(
-      index > previousIndex,
-      `${phrase} must appear in impact/write-back lifecycle order`,
-    );
-    previousIndex = index;
-  }
-
-  assert.match(taskReview, /task_review_state\.json/);
-  assert.match(taskReview, /task-review-state\/v1/);
-  assert.match(taskReview, /unresolved`, `applied`, `skipped`, or `scope-change/);
-  assert.match(taskReview, /post-write hashes and semantic snapshot/);
-  assert.match(taskReview, /Applied findings never enter the reusable set/);
-  assert.match(taskReview, /helper remains read-only and never persists state/);
+test("task review is one-shot and helper impact can never trigger another semantic review", () => {
+  assert.match(taskReview, /One-review hard stop/i);
+  assert.match(taskReview, /--review-again/);
+  assert.match(taskReview, /task_review_attempt\.json/);
   assert.match(
     taskReview,
-    /Rerun Parents:.*Rerun Lenses:.*Reused Findings:.*Impact Reasons:/s,
+    /do not launch, resume, repair, fall back, or synthesize another semantic review/i,
   );
+  assert.match(
+    taskReview,
+    /MUST NOT run its `impact` operation or use helper output to select, authorize, slice, or restart a semantic review/,
+  );
+  assert.match(
+    taskReview,
+    /small later deltas are handled by deterministic checks and direct edits, not sliced or full re-reviews/,
+  );
+  assert.match(taskReview, /failed post-check.*never triggers another semantic review/i);
+  assert.match(taskReview, /unresolved`, `applied`, `skipped`, or `scope-change/);
+  assert.doesNotMatch(taskReview, /task_review_state\.json|task-review-state\/v1/);
+  assert.doesNotMatch(taskReview, /IMPACT_JSON|Rerun Parents:|Reused Findings:/);
 });
 
 test("production task review keeps semantic judgment with a non-delegating reviewer", () => {
@@ -189,5 +178,45 @@ test("review gates retain their route-specific models and efforts", () => {
   assert.match(
     knowledge,
     /`spectre-code_review`[^\n]*`--model opus --effort high`[^\n]*model_reasoning_effort="high"/,
+  );
+});
+
+test("plan routing and both review gates require explicit user authorization for any second round", () => {
+  const plan = readFileSync(
+    join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
+    "utf8",
+  );
+  const planReview = readFileSync(
+    join(
+      repositoryRoot,
+      "plugins",
+      "spectre",
+      "skills",
+      "spectre-plan_review",
+      "SKILL.md",
+    ),
+    "utf8",
+  );
+
+  assert.match(plan, /One-review hard stop/);
+  assert.match(plan, /at most one plan-review round/);
+  assert.match(plan, /at most one task-review round/);
+  assert.match(plan, /do not re-run `plan_review` or `task_review`/);
+  assert.match(plan, /Explicit review-again request/);
+  assert.doesNotMatch(
+    plan,
+    /apply the smallest `plan\.md` edit, re-run `plan_review/,
+  );
+
+  assert.match(planReview, /One-review hard stop/);
+  assert.match(planReview, /--review-again/);
+  assert.match(planReview, /plan_review_attempt\.json/);
+  assert.match(
+    planReview,
+    /do not launch, resume, repair, fall back, or synthesize another semantic review/i,
+  );
+  assert.match(
+    planReview,
+    /planner or orchestrator \*\*MUST NOT\*\* infer, manufacture, or add this flag/,
   );
 });

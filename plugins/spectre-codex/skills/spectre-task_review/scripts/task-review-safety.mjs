@@ -1406,7 +1406,16 @@ async function main() {
       return;
     }
     if (operation === "impact") {
-      finish(await impact(parsed.options));
+      finish({
+        ...resultFor("impact"),
+        status: "hard_failure",
+        hard_failures: [
+          hardFailure(
+            "IMPACT_RETIRED",
+            "The impact operation is retired. Artifact changes never authorize or scope another semantic task review; only an explicit user request may start a new review round.",
+          ),
+        ],
+      });
       return;
     }
     if (operation === "validate-report") {

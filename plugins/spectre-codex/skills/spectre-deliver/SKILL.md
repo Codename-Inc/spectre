@@ -22,7 +22,7 @@ Turn one low-ambiguity feature or bug-fix request into a proven, reviewer-ready 
 
 - Late-bind branch, worktree, remotes, diff, repository instructions, and test/lint/build commands.
 - `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved once below and passed unchanged to every child.
-- Canonical artifacts: `{FEATURE_ROOT}/concepts/scope.md`; `{FEATURE_ROOT}/specs/{quick_task_plan.md,execute.md,tasks.json}`; review/validation reports; and `{FEATURE_ROOT}/proof/{proof.json,proof.html}`.
+- Canonical artifacts: `{FEATURE_ROOT}/concepts/scope.md`; `{FEATURE_ROOT}/specs/{quick_task_plan.md,execute.md,tasks.json}` when needed; final verification/review reports; and `{FEATURE_ROOT}/proof/{proof.json,proof.html}`.
 
 ## Feature root contract
 
@@ -39,11 +39,11 @@ Turn one low-ambiguity feature or bug-fix request into a proven, reviewer-ready 
 
 - A compact `SCOPE_FILE` plus `SCOPE_SHA256`: **Alignment: inferred** · Type (`feature | fix`) · Objective · IN · OUT · ANTI-SCOPE · Acceptance Criteria · Proof Journeys · Assumptions · Target Branch.
 - A bounded `quick_task_plan.md`: Agreed Scope · Research Summary · Approach · dependency-ordered Implementation Tasks · Success Criteria; plus light `execute.md`/`tasks.json` when the feature route needs them.
-- Tested implementation with conventional commits; cumulative review/validation evidence; clean and rebased branch with backup/restore evidence.
+- Tested implementation with conventional commits; exact-candidate deterministic/review evidence; clean and rebased branch with backup/restore evidence.
 - Sanitized `proof.json` and `proof.html` proving the immutable final candidate tuple `{BASE_SHA, HEAD_SHA, DIFF_SHA256}`.
 - A pushed branch and draft PR grounded in the actual diff; a separate proof capsule and PR URL returned together for review.
 
-**DONE when:** implementation and deterministic gates pass; no unresolved CRITICAL/HIGH review or validation gap remains; proof aggregate is `PASS` for the exact final candidate tuple; cleanup and rebase safety contracts pass; and the draft PR URL is returned. No merge, deploy, release, or public proof publication occurs.
+**DONE when:** implementation and exact-candidate deterministic gates pass; no unresolved CRITICAL/HIGH review or delivery-coverage gap remains; proof aggregate is `PASS` for the exact final candidate tuple; cleanup and rebase safety contracts pass; and the draft PR URL is returned. No merge, deploy, release, or public proof publication occurs.
 
 ## Method / guardrails
 
@@ -56,19 +56,22 @@ Invoke every named child skill with the stated arguments; do not merely describe
    - Apply this routing without a confirmation gate, run every child in the selected checkout, and never commit directly to `main`/`master`. Refuse unrelated or sensitive changes.
 2. **Infer the delivery brief.** Ground with targeted `@spectre_finder`, `@spectre_analyst`, and `@spectre_patterns` reads. Write the compact scope without confirmation, capture its actual path as `SCOPE_FILE`, and record `SCOPE_SHA256=sha256(bytes(SCOPE_FILE))`; use a scoped filename rather than overwriting another task. Record material assumptions. Once mutation begins, scope is immutable: no silent narrowing, expansion, or reinterpretation.
 3. **Plan and route.** Write a bounded quick plan to a collision-safe `QUICK_PLAN_FILE`; keep it within roughly three phases/eight parents and map every IN item to work and proof.
-   - `feature` → run `Skill(spectre-create_tasks)` with `SCOPE_FILE`, `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, and `--depth light` for ≤3 parents or `--depth standard` otherwise. Capture returned `EXECUTE_FILE` and `DETAIL_FILE`, verify both, then run `Skill(spectre-execute)` with `EXECUTE_FILE --orchestrated`.
+   - Before a feature route, set `VERIFICATION_PROFILE=bounded` only when the planned diff is confined to one package/workspace, repository-native related tests are identifiable, and neither scope nor likely paths touch auth, permissions, payments, PII, migrations, public APIs/contracts, secrets, network input, destructive actions, data correctness, persistent state, external side effects, shared infrastructure/build/test tooling, cross-package behavior, or a lifecycle/trust boundary. Otherwise set `strict`. This is an evidence-based classification, not a user-confidence claim; execute may promote bounded to strict but never demote it.
+   - Tiny `feature` — exactly one dependency-safe sequential workstream with no structured resume/parallelization need → run `Skill(spectre-execute)` with `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, `--verification-profile {VERIFICATION_PROFILE}`, and `--finalization-owner parent` in plan-direct mode. Do not create `execute.md`/`tasks.json` merely as ceremony.
+   - Other `feature` → run `Skill(spectre-create_tasks)` with `SCOPE_FILE`, `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, and `--depth light` for ≤3 parents or `--depth standard` otherwise. Capture returned `EXECUTE_FILE` and `DETAIL_FILE`, verify both, then run `Skill(spectre-execute)` with `EXECUTE_FILE`, `--orchestrated`, `--verification-profile {VERIFICATION_PROFILE}`, and `--finalization-owner parent`.
    - `fix` → run `Skill(spectre-fix-core)` with the bug report, `PHASE=full`, `PARENT=spectre-deliver`, `PARENT_AUTHORIZATION={SCOPE_FILE}`, `AUTHORIZED_SCOPE_SHA256={SCOPE_SHA256}`, `ALIGNMENT_MODE=inferred`, and `--orchestrated`. Preserve root cause and RED-before-GREEN repair; the explicit `spectre-deliver` invocation replaces only diagnosis approval.
-4. **Close implementation gaps.** Require deterministic checks and cumulative adversarial review plus defined→connected→reachable validation. When the selected path did not already produce them, run `Skill(spectre-code_review)` with `{FEATURE_ROOT} --orchestrated`, then `Skill(spectre-validate)` with `SCOPE_FILE`, `DETAIL_FILE` when present, `{FEATURE_ROOT}`, and `--orchestrated`; repair only scope-safe gaps and rerun the affected gate.
+4. **Accept implementation readiness, not finalization.** A feature route must return `IMPLEMENTATION_READY` with its required execute manifest; a fix route must return its root cause, RED→GREEN evidence, affected paths/test roots, and relevant deterministic results. Reject unresolved CRITICAL/HIGH findings or an incomplete task/workstream projection. Do not run a pre-rebase final code review or separate `spectre-validate`; the immutable candidate review below owns exhaustive delivery/reachability, scope-creep, dead-computation, old-path, and single-data-source validation.
 5. **Converge the final candidate.** Allow at most two cycles:
-   1. Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`, then `Skill(spectre-rebase)` with `{TARGET_BRANCH} --orchestrated` and its mandatory backup ref.
-   2. Set `EVIDENCE_DIRS={FEATURE_ROOT}/{reviews,validation,proof}`. Require a clean candidate worktree outside them, then capture `BASE_SHA=git rev-parse {TARGET_BRANCH}`, `HEAD_SHA=git rev-parse HEAD`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`.
-   3. Recompute `SCOPE_SHA256` before each child and stop on drift. Run `Skill(spectre-code_review)` and `Skill(spectre-validate)` with the Step 4 sources plus the candidate tuple. Require clean/accepted results and verify the tuple is unchanged after each. Any repair or candidate-affecting mutation restarts this cycle at clean.
-   4. Run `Skill(spectre-proof)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, the candidate tuple, `EVIDENCE_DIRS`, and `--orchestrated`. Require aggregate `PASS` for that exact tuple. Any product or proof-infrastructure repair returns `CANDIDATE_CHANGED` and restarts this cycle.
+   1. Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`, then `Skill(spectre-rebase)` with `{TARGET_BRANCH}`, `--orchestrated`, `--verification-owner parent`, and its mandatory backup ref. Require `REBASE_READY`; Deliver now owns post-rebase verification.
+   2. Set `EVIDENCE_DIRS={FEATURE_ROOT}/{reviews,verification,proof}`. Require a clean candidate worktree outside them, then capture `BASE_SHA=git rev-parse {TARGET_BRANCH}`, `HEAD_SHA=git rev-parse HEAD`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`.
+   3. **Verify the exact candidate once.** Resolve and run repository-authoritative lint/typecheck/build plus exactly one complete-suite layer: when a single authoritative root suite exists, run it once and do not also run identical package suites; otherwise run each affected package/workspace complete suite once. Use the execute/fix manifest only to locate affected roots and commands, never as pass evidence. Persist command bytes, exit/results, duration, runtime/tool versions, lockfile hash, candidate tuple, and `FINAL_VERIFICATION_KEY=sha256(candidate tuple + command bytes + stable environment fingerprint)` under `{FEATURE_ROOT}/verification/`. Reuse a prior PASS only for an exact key match; any tuple, command, lockfile, runtime, or environment change invalidates it. Recompute `HEAD_SHA` and `DIFF_SHA256` after verification and restart at clean on any candidate or non-evidence worktree change.
+   4. Set `REQUIREMENTS_SOURCE=DETAIL_FILE` when structured tasks exist, otherwise `QUICK_PLAN_FILE`. Recompute `SCOPE_SHA256` before each child and stop on drift. Run `Skill(spectre-code_review)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `REQUIREMENTS_SOURCE`, the candidate tuple, and `--orchestrated`. Require clean/accepted exhaustive delivery coverage and verify the tuple is unchanged afterward. Any repair or candidate-affecting mutation restarts this cycle at clean.
+   5. Run `Skill(spectre-proof)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, the candidate tuple, `EVIDENCE_DIRS`, and `--orchestrated`. Require aggregate `PASS` for that exact tuple. Any product or proof-infrastructure repair returns `CANDIDATE_CHANGED` and restarts this cycle.
 6. **Open the review boundary.** Run `Skill(spectre-create_pr)` with `{TARGET_BRANCH}`, `EXPECTED_BASE_SHA={BASE_SHA}`, `EXPECTED_HEAD_SHA={HEAD_SHA}`, `EXPECTED_DIFF_SHA256={DIFF_SHA256}`, `EVIDENCE_DIRS`, `--draft`, and `--orchestrated`. It must fetch and reject target/head/diff or candidate-worktree drift as `PR_CANDIDATE_STALE` before pushing or opening; restart Step 5 within its cap. Keep workflow evidence separate from the PR diff. Never force-push unrelated history, bypass hooks/checks, suppress failures, merge, deploy, or release.
 
 ## Handoff
 
-Return: proof status and artifact paths · `{BASE_SHA, HEAD_SHA, DIFF_SHA256}` · scope hash · checks/review/validation results · repair/finalization counts · rebase target, backup ref, and restore command · limitations · draft PR URL.
+Return: proof status and artifact paths · `{BASE_SHA, HEAD_SHA, DIFF_SHA256}` · scope hash · verification profile/promotions · exact-candidate checks/review result · repair/finalization counts · rebase target, backup ref, and restore command · limitations · draft PR URL.
 
 End with: `Next (recommended): review the proof and draft PR.`
 
@@ -76,7 +79,7 @@ End with: `Next (recommended): review the proof and draft PR.`
 
 - No safe, cohesive low-ambiguity interpretation exists before mutation → recommend `spectre-align-and-deliver`; route broad/multi-area work to `spectre-plan`.
 - A bug cannot be reproduced or root-caused; acceptance truth conflicts; a repair changes scope; or a required proof dependency/credential/permission needs user authority.
-- Deterministic, review, validation, proof, or finalization repair caps are exhausted.
+- Deterministic, review, proof, or finalization repair caps are exhausted.
 - A required child skill or orchestrated mode is unavailable or cannot satisfy its DONE contract.
 - Git cannot provide the required safe checkout, or the requested delivery depends on pre-existing dirty changes deliberately left behind.
 - Rebase requires semantic product judgment, remote history diverged unexpectedly, or secrets/PII appear in the working set or evidence.
