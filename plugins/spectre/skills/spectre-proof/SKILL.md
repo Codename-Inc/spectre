@@ -1,6 +1,6 @@
 ---
 name: "spectre-proof"
-description: "Prove completed work through reviewed user-facing evidence, adapt scoped repairs, and publish qualified proof. Use after spectre-execute or for acceptance evidence, screenshots/video/logs, or an HTML proof artifact. Do NOT use for implementation checks, unit tests, planning, or code review."
+description: "Run one acceptance-proof pass over completed work and publish reviewed user-facing evidence. Use from spectre-execute or standalone for acceptance evidence, screenshots/video/logs, or an HTML proof artifact. Do NOT use for implementation checks, repairs, unit tests, planning, or code review."
 user-invocable: true
 ---
 
@@ -10,7 +10,7 @@ Independently prove the completed experience against its approved contract. Trea
 
 ## Inputs
 
-- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, explicitly passed source-plan path, scope/UX/prototype/test-guide paths, journey hints, a prior proof run to resume, an authorized scope hash, an immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, explicit `EVIDENCE_DIRS`, and `--orchestrated` when a parent goal owns the final handoff.
+- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, explicitly passed source-plan path, scope/UX/prototype/test-guide paths, journey hints, a prior proof run to extend, an authorized scope hash, explicit `EVIDENCE_DIRS`, and `--orchestrated` when a parent owns the next action.
 - Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
 - Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 - Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
@@ -21,14 +21,14 @@ Independently prove the completed experience against its approved contract. Trea
 
 This skill must work in a fresh session. Read canonical artifacts and live repository state instead of relying on prior conversation.
 
-When any candidate field is supplied, require all three. `git-diff-v1` means SHA-256 over the raw stdout bytes of `git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}`. Recompute head and hash before proof and handoff; reject an initial mismatch as `PR_CANDIDATE_STALE`. Files inside explicit `EVIDENCE_DIRS` are separate; any other tracked or untracked worktree change, commit, or diff change returns `CANDIDATE_CHANGED` so the parent can clean, rebase, review, validate, and reprove. Never attach `PASS` to the old tuple.
+Each invocation is exactly one proof pass. Record the observed repository/runtime state at start and finish, excluding generated evidence. If product state changes during the pass, mark affected rows `PARTIAL` with limitation `PROOF_STATE_CHANGED`; never bind proof to a future PR candidate.
 
 ## Proof Surface
 
 - Inventory available skills, repository scripts, automation, runnable applications, public interfaces, and existing scenarios before choosing tools. Prefer the project's established proof stack and reusable scenarios.
 - Match the mechanism to the actual surface: visible app, browser, desktop/mobile runtime, CLI/TUI, API/service, library, or background workflow. Exercise the same public controls and interfaces a user would use.
 - When no adequate proof tool exists, read `references/proof-tools.md`; use `@spectre:web-research` when available to verify current options against primary sources; then offer the user 2-4 suitable choices with a recommendation, trade-offs, installation impact, and evidence capabilities. Hold for selection before adding a dependency or committing to a materially weaker proof method.
-- Proof-infrastructure changes are allowed only when necessary to make an in-scope journey repeatable. Label them separately from product repairs and prefer reusable named scenarios over one-off scripts.
+- Identify missing proof infrastructure separately from product findings; this skill reports the required capability but never installs, writes, or repairs it.
 
 ## Proof Contract
 
@@ -51,33 +51,31 @@ For visible work, proof requires screenshots of the meaningful start, action, an
 
 For non-visual work, use the real public interface and preserve observable output, state/persistence evidence, and relevant logs. Do not manufacture visual evidence where it adds no information. Tests, stores, internal APIs, fixtures, filesystem markers, and logs may support proof but cannot replace the user-facing outcome they are meant to corroborate.
 
-## Proof-Repair Loop
+## Proof Pass
 
 1. Run the smallest complete set of journeys that covers every in-scope matrix row. Preserve commands, environment, timestamps, evidence paths, and limitations.
 2. Inspect primary evidence before reading diagnostic summaries. Then review logs/errors and durable state for silent failures.
-3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment/authority constraint. Fix only scoped product/UX defects and required proof infrastructure; no nice-to-haves or silent scope expansion.
-4. Dispatch `@spectre:dev` with the exact failed claim, reproduction, inspected evidence, repair boundary, and required reproof. Use `Skill(spectre-tdd)` for behavior that can be tested; visual-only repairs still require focused deterministic checks where useful.
-5. Disregard the implementer's pass claim. Rerun the affected journey from a realistic start state, inspect fresh evidence, then rerun any primary journey the repair could affect.
-6. Record each fingerprint and compact repair history. Recurrence changes diagnosis/route and continues; related growth needed for existing acceptance is adaptation. Stop only at an authority impasse.
+3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment/authority constraint. Record the failed claim, expected/observed result, reproduction, evidence paths, fingerprint, and limitation.
+4. Write the artifacts and return. Never modify product/proof infrastructure, dispatch an implementer, invoke TDD, or repeat a journey after a repair inside this invocation.
 
 ## Outputs + DONE
 
 Write:
 
-- `{FEATURE_ROOT}/proof/proof.json` - machine-readable proof state whose owning metadata object includes `feature` and `feature_root`; preserve the existing acceptance-source, authorized-scope-hash, candidate `{base_sha, head_sha, diff_sha256, algorithm: "git-diff-v1"}`, tool/scenario, matrix, run-history, evidence, finding/fingerprint, repair, limitation, and aggregate-status schemas unchanged.
-- `{FEATURE_ROOT}/proof/proof.html` - self-contained review artifact whose metadata block begins with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, followed by the acceptance matrix, observed-vs-expected findings, selected screenshots/video frames, redacted diagnostic excerpts, before/after repair history, limitations, and final status. Do not publish or share it unless the user asks.
+- `{FEATURE_ROOT}/proof/proof.json` - machine-readable proof state with `feature`, `feature_root`, acceptance sources, scope hash, observed start/finish state, tool/scenario, matrix/run history, evidence, findings, limitations, and aggregate status. Retain legacy history without binding the current pass to it.
+- `{FEATURE_ROOT}/proof/proof.html` - self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then the matrix, findings, selected reviewed media, redacted diagnostics, prior repair history when present, limitations, and final status. Do not publish or share unless asked.
 
 Keep secrets, credentials, private customer data, and unnecessary local paths out of both artifacts. Preserve full raw evidence in its owning tool's report bundle and reference it without copying sensitive content.
 
-**DONE when:** both proof artifacts are self-locating; every in-scope row has a status backed by inspected primary evidence; all scoped repairable failures are fixed and freshly reproven or explicitly unresolved; aggregate `PASS` is used only when every row passes; any supplied candidate tuple and scope hash still match; `proof.json` records that exact proven product state; and the HTML artifact accurately presents the evidence and limitations.
+**DONE when:** both proof artifacts are self-locating; every in-scope row has a status backed by inspected primary evidence; aggregate `PASS` is used only when every row passes; the authorized scope hash still matches; observed start/finish state and unresolved findings are recorded; and the HTML accurately presents the evidence and limitations. DONE means the pass completed, regardless of aggregate status.
 
 ## Handoff
 
-Report the proven journeys, artifacts, evidence reviewed, repair iterations, limitations, aggregate status, and unresolved rows.
+Return `PROOF_RESULT`: aggregate status · run id · failed row ids · finding fingerprints/classifications · evidence paths · limitations · `needs_authority`, plus the proven journeys and artifact paths. Keep full evidence in the artifacts.
 
-- `--orchestrated` → return the proof result to the parent goal without user-facing Next Steps.
+- `--orchestrated` → return the proof result to the parent without user-facing Next Steps.
 - Standalone `PASS` → `Next (recommended): /spectre:ship-it — every in-scope proof row passed with reviewed evidence.`
-- Standalone non-PASS → repair, diagnose, or route via `/spectre:fix`, `/spectre:scope`, `/spectre:ux`, or the named proof prerequisite, then resume. Qualified proof status alone never gates `/spectre:ship-it`.
+- Standalone non-PASS → report once, then recommend `/spectre:fix`, `/spectre:scope`, `/spectre:ux`, or the named proof prerequisite. Qualified proof status alone never gates `/spectre:ship-it`.
 
 If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: /spectre:handoff {feature}` with the failing rows, evidence paths, and exact resume action.
 
@@ -86,6 +84,4 @@ If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: /spectre:handof
 - Acceptance sources conflict or omit the observable outcome.
 - Adequate tooling requires a new dependency and the user has not selected an option.
 - Proof depends on unavailable credentials, external services, OS permissions, hardware, or subjective product judgment.
-- Repair changes approved requirements or no safe in-scope action remains without new authority.
-
-Never escalate for failed/recurring proof, attempt count, or related growth required by acceptance.
+- Resolving a finding would change approved requirements or needs new authority.

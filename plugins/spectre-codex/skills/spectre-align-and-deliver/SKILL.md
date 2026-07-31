@@ -1,6 +1,6 @@
 ---
 name: "spectre-align-and-deliver"
-description: "Run one abbreviated spectre-scope confirmation for a feature or bug fix, then autonomously deliver implementation, final proof, and a draft PR. Use for one grounded scope prompt before execution. Do NOT use for no-gate delivery (use spectre-deliver), broad discovery, or non-code work."
+description: "Run one abbreviated spectre-scope confirmation for a feature or bug fix, then autonomously deliver implementation, acceptance proof, and a draft PR. Use for one grounded scope prompt before execution. Do NOT use for no-gate delivery (use spectre-deliver), broad discovery, or non-code work."
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -39,10 +39,10 @@ Run one-confirmation `spectre-scope` for a low-ambiguity feature or fix, then pr
 - A user-confirmed canonical `SCOPE_FILE` plus `SCOPE_SHA256` from `spectre-scope`, with all required sections and immutable boundaries.
 - A bounded `quick_task_plan.md`: Agreed Scope · Research Summary · Approach · dependency-ordered Implementation Tasks · Success Criteria; plus light `execute.md`/`tasks.json` when the feature route needs them.
 - Tested implementation with conventional commits; affected verification and repair/routing evidence; one advisory post-rebase full-suite observation; clean and rebased branch with backup/restore evidence.
-- Sanitized `proof.json` and `proof.html` proving the immutable final candidate tuple `{BASE_SHA, HEAD_SHA, DIFF_SHA256}`.
+- Sanitized `proof.json` and `proof.html` recording acceptance evidence separately from the final candidate tuple.
 - A pushed branch and draft PR grounded in the actual diff; a separate proof capsule and PR URL returned together for review.
 
-**DONE when:** the scope was confirmed before product implementation; implementation completed affected verification; repairable review/proof findings were repaired or routed; the post-rebase full suite ran once and its qualified status is disclosed; cleanup and rebase safety contracts pass; proof status is recorded for the final candidate; and the draft PR URL is returned. Non-green verification/review/proof status never prevents PR creation by itself; CI owns merge-gating full-suite validation. No merge, deploy, release, or public proof publication occurs.
+**DONE when:** the scope was confirmed before product implementation; implementation completed affected verification; repairable review/proof findings were repaired or routed; the post-rebase full suite ran once and its qualified status is disclosed; cleanup and rebase safety contracts pass; acceptance proof and final candidate state are recorded separately; and the draft PR URL is returned. Non-green verification/review/proof status never prevents PR creation by itself; CI owns merge-gating full-suite validation. No merge, deploy, release, or public proof publication occurs.
 
 ## Method / guardrails
 
@@ -69,7 +69,7 @@ Invoke every named child skill with the stated arguments; do not merely describe
    3. Attribute failures as `branch-caused`, `unrelated`, or `indeterminate`. Prefer target-SHA CI evidence; otherwise reproduce only the failing test/check at the target SHA. Group branch-caused failures by invariant/root-cause family, repair, and rerun failing plus affected checks. Route unrelated findings and continue; disclose persistent indeterminate findings. Never rerun the full suite after repairs; set `CI: pending` for authoritative final-candidate full validation.
    4. Capture the current candidate tuple: `BASE_SHA=git rev-parse {TARGET_BRANCH}`, `HEAD_SHA=git rev-parse HEAD`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`.
    5. Set `REQUIREMENTS_SOURCE=DETAIL_FILE` when structured tasks exist, otherwise `QUICK_PLAN_FILE`. Recompute `SCOPE_SHA256` before each child and return `NEEDS_AUTHORITY` only on genuine scope-authority drift. Run `Skill(spectre-code_review)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `REQUIREMENTS_SOURCE`, the candidate tuple, and `--orchestrated`. CRITICAL/HIGH defects enter repair/adaptation; related-file growth is not scope change. After repair, run affected verification, recapture the tuple, and rerun only the affected review. Route non-defects and continue.
-   6. Run `Skill(spectre-proof)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, the current candidate tuple, `EVIDENCE_DIRS`, and `--orchestrated`. Repair product or proof-infrastructure findings, run affected verification, recapture the tuple, and rerun proof. A non-green status is disclosed, never converted into a generic blocker or user gate.
+   6. Preserve acceptance ownership. Feature: consume execute's proof `PASS`; never reprove for candidate drift or finalization. Fix: run one `Skill(spectre-proof)` pass with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, `EVIDENCE_DIRS`, and `--orchestrated`, without the candidate tuple. After observable-behavior repair, resume execute (feature) or run a fresh proof pass (fix); non-behavior changes never trigger proof.
 7. **Open the review boundary.** Build compact `VERIFICATION_SUMMARY` from the full-suite observation, attribution, repairs, focused final checks, and `CI: pending`. Run `Skill(spectre-create_pr)` with `{TARGET_BRANCH}`, `EXPECTED_BASE_SHA={BASE_SHA}`, `EXPECTED_HEAD_SHA={HEAD_SHA}`, `EXPECTED_DIFF_SHA256={DIFF_SHA256}`, `EVIDENCE_DIRS`, `VERIFICATION_SUMMARY`, `--draft`, and `--orchestrated`. If it returns `PR_CANDIDATE_STALE`, refresh the tuple and retry without a cap. Keep workflow evidence separate from the PR diff. Never force-push unrelated history, bypass hooks/checks, suppress failures, merge, deploy, or release.
 
 ## Handoff

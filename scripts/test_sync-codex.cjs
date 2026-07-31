@@ -407,7 +407,7 @@ test('spectre-execute keeps verification failures in affected repair flow and av
       /distinct invariant families have independent histories and there is no global sentinel\/fix cap/,
     );
     assert.match(skill, /--finalization-owner parent/);
-    assert.match(skill, /Plain `--orchestrated` changes handoff only and never transfers finalization ownership/);
+    assert.match(skill, /Plain `--orchestrated` changes handoff only; proof ownership never transfers/);
     assert.match(skill, /Verification continuation invariant/);
     assert.match(skill, /repository-wide baselines and full suites do not belong to execute/);
     assert.match(skill, /Affected deterministic verification/);
@@ -417,7 +417,8 @@ test('spectre-execute keeps verification failures in affected repair flow and av
     assert.match(skill, /record or route unrelated failures and continue/);
     assert.match(skill, /Never run a complete baseline for attribution/);
     assert.match(skill, /Do not rerun affected commands, dispatch final `spectre-code_review`, or create a test guide/);
-    assert.match(skill, /Return `IMPLEMENTATION_READY`/);
+    assert.match(skill, /Prepare the `IMPLEMENTATION_READY` manifest/);
+    assert.match(skill, /after proof `PASS`, return `IMPLEMENTATION_READY`/);
     assert.match(skill, /FINALIZATION_OWNER=self/);
     assert.match(skill, /run one cumulative affected verification/);
     assert.match(skill, /never run the repository root suite/);
@@ -641,7 +642,7 @@ test('plan-direct quality gates use the explicit plan and derivative execution e
   }
 });
 
-test('plan-direct goal composition resumes execute before proof from durable state', () => {
+test('plan-direct goal composition lets execute own proof closure from durable state', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -650,15 +651,14 @@ test('plan-direct goal composition resumes execute before proof from durable sta
       'utf8',
     );
     const executeIndex = goal.indexOf('Skill(spectre-execute)');
-    const proofIndex = goal.indexOf('Skill(spectre-proof)');
 
     assert.match(goal, /source plan plus (?:its )?`execution_state\.md`/i);
-    assert.match(goal, /plan-direct mode from `execution_state\.md` plus proof state/i);
+    assert.match(goal, /plan-direct mode from `execution_state\.md`/i);
     assert.match(goal, /invoke `?Skill\(spectre-execute\)`? with the source-plan path/i);
-    assert.match(goal, /`?Skill\(spectre-proof\)`? with `PLAN_SOURCE`, `OUT_DIR`/i);
+    assert.match(goal, /execute owns single-pass proof invocation plus repair\/reinvoke closure/i);
     assert.match(goal, /require only readable plan\/runtime inputs/i);
     assert.ok(executeIndex !== -1);
-    assert.ok(proofIndex > executeIndex);
+    assert.doesNotMatch(goal, /Skill\(spectre-proof\)/);
     assert.doesNotMatch(
       goal,
       /(?:in )?plan-direct mode,?\s+(?:requires?|validates?)[^\n]*(?:complete|approved|reviewed)[^\n]*plan/i,
@@ -666,7 +666,7 @@ test('plan-direct goal composition resumes execute before proof from durable sta
   }
 });
 
-test('proof contract requires reviewed user evidence and a continuing repair flow', () => {
+test('proof contract is one reviewed evidence pass without repair or candidate attestation', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -683,22 +683,22 @@ test('proof contract requires reviewed user evidence and a continuing repair flo
     assert.match(skill, /PASS`, `PARTIAL`, `DIAGNOSTIC_ONLY`, or `FAIL/);
     assert.match(skill, /Captured-but-unreviewed media does not count/);
     assert.match(skill, /When assertions and pixels disagree, pixels win/);
-    assert.match(skill, /compact repair history/);
-    assert.match(skill, /Recurrence changes diagnosis\/route and continues/);
-    assert.doesNotMatch(skill, /at most three repair attempts/);
+    assert.match(skill, /Each invocation is exactly one proof pass/);
+    assert.match(skill, /Never modify product\/proof infrastructure/);
+    assert.match(skill, /PROOF_RESULT/);
+    assert.match(skill, /DONE means the pass completed, regardless of aggregate status/);
     assert.match(skill, /proof status alone never gates `(?:\/)?spectre(?::|-)?ship-it`/);
-    assert.match(skill, /Never escalate for failed\/recurring proof/);
-    assert.match(skill, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
-    assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
-    assert.match(skill, /PR_CANDIDATE_STALE/);
-    assert.match(skill, /CANDIDATE_CHANGED/);
+    assert.doesNotMatch(skill, /Skill\(spectre-tdd\)/);
+    assert.doesNotMatch(skill, /@spectre(?::|_)dev/);
+    assert.doesNotMatch(skill, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
+    assert.doesNotMatch(skill, /PR_CANDIDATE_STALE|CANDIDATE_CHANGED/);
     assert.match(skill, /proof\/proof\.json/);
     assert.match(skill, /proof\/proof\.html/);
     assert.doesNotMatch(skill, /subspace-app-harness/i);
   }
 });
 
-test('goal prompts preserve the completion contract and require execute then portable proof', () => {
+test('goal prompts preserve execute-owned proof closure', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -712,7 +712,6 @@ test('goal prompts preserve the completion contract and require execute then por
     );
     const goal = fs.readFileSync(goalPath, 'utf8');
     const executeIndex = goal.indexOf('Skill(spectre-execute)');
-    const proofIndex = goal.indexOf('Skill(spectre-proof)');
 
     assert.match(goal, /goal-prompts\.md/);
     assert.match(goal, /Portable strict/);
@@ -723,8 +722,9 @@ test('goal prompts preserve the completion contract and require execute then por
     assert.match(goal, /\*\*Iteration\*\*/);
     assert.match(goal, /\*\*Stop\*\*/);
     assert.ok(executeIndex !== -1);
-    assert.ok(proofIndex > executeIndex);
-    assert.match(goal, /aggregate `PASS`/);
+    assert.doesNotMatch(goal, /Skill\(spectre-proof\)/);
+    assert.match(goal, /aggregate proof `PASS`/);
+    assert.match(goal, /execute DONE explicitly includes aggregate proof `PASS`/);
     assert.match(goal, /transcript/i);
     assert.match(goal, /Structured prompt/);
     assert.match(goal, /Compact prompt/);
@@ -815,8 +815,9 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(createTasks, /no adequate UX\/prototype acceptance source/);
     assert.match(createTasks, /--orchestrated.*without user-facing Next Steps/);
 
-    assert.match(execute, /Otherwise → .*spectre-proof/);
-    assert.match(execute, /[Pp]roof is explicitly deferred/);
+    assert.match(execute, /Acceptance closure — always owned by execute/);
+    assert.match(execute, /Skill\(spectre-proof\)/);
+    assert.match(execute, /proof aggregate is `PASS`/);
     assert.match(execute, /--orchestrated.*without user-facing Next Steps/);
     assert.match(validate, /Standalone `Complete`.*spectre-proof/);
     assert.match(proof, /Standalone `PASS`.*spectre-ship-it/);
@@ -935,7 +936,10 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       assert.match(skill, /VERIFICATION_SUMMARY/);
       assert.match(skill, /CRITICAL\/HIGH defects enter repair\/adaptation/);
       assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
-      assert.match(skill, /A non-green status is disclosed, never converted into a generic blocker/);
+      assert.match(skill, /Feature: consume execute's proof `PASS`/);
+      assert.match(skill, /never reprove for candidate drift or finalization/);
+      assert.match(skill, /Skill\(spectre-proof\)[^\n]*without the candidate tuple/);
+      assert.match(skill, /acceptance proof and final candidate state are recorded separately/);
       assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
       assert.match(skill, /collision-safe `QUICK_PLAN_FILE`/);
       assert.match(skill, /EXPECTED_BASE_SHA=\{BASE_SHA\}/);

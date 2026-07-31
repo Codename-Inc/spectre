@@ -1,6 +1,6 @@
 ---
 name: "spectre-execute"
-description: "Build a planned feature from either a compact execute.md/tasks.json work source or an explicit readable plan, dispatching parallel task waves through affected-scope verification, lightweight sentinel review, one risk-triggered adversarial checkpoint, autonomous repair/adaptation, and an optional parent-owned finalization boundary. Trigger after structured task artifacts or an executable plan exist, or to resume a partial run. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (spectre-prune)."
+description: "Build and acceptance-prove a planned feature from either a compact execute.md/tasks.json work source or an explicit readable plan, dispatching parallel task waves through affected verification, review, autonomous repair/adaptation, and an optional parent-owned downstream finalization boundary. Trigger after structured task artifacts or an executable plan exist, or to resume a partial run. Do NOT trigger for scoping/planning, unplanned bug-fixing, or dead-code cleanup (spectre-prune)."
 user-invocable: true
 ---
 
@@ -11,7 +11,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 ## Inputs
 
 - `$ARGUMENTS` — optional explicit feature name/root, descendant execute/task/plan artifact, wave/scope hints, plus `--orchestrated` when a parent goal owns the final user-facing handoff.
-- Optional `--finalization-owner parent`. It is valid only with `--orchestrated`; otherwise stop. Without it, `FINALIZATION_OWNER=self` and execute preserves its cumulative affected verification/review/test-guide contract. With it, execute returns `IMPLEMENTATION_READY` after wave completion and the named parent owns downstream cleanup, review, proof, and delivery.
+- Optional `--finalization-owner parent`. It is valid only with `--orchestrated`; otherwise stop. Without it, `FINALIZATION_OWNER=self` and execute preserves its cumulative affected verification/review/test-guide contract. With it, the named parent owns downstream cleanup, candidate review, and delivery. Execute always owns acceptance-proof closure before returning.
 - Plan-direct input may also provide an explicit readable plan path and a confirmed canonical feature root.
 - **Structured mode:** an explicit valid execute index with a resolvable `tasks.json`; preserve the existing indexed-task workflow.
 - **Plan-direct mode:** an explicit argument naming another readable plan document; resolve it as `PLAN_SOURCE`. Plan-direct mode never routes to `/spectre:create_tasks`.
@@ -41,7 +41,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
   - Use `{FEATURE_ROOT}/execution_state.md`; if `PLAN_SOURCE` is a legacy input, record its repo-relative path under **Source Plan**.
   - If that path records a different source-plan path, use `{plan-stem}-{short-sha256-of-plan-path}.execution_state.md`.
 - Wave diff per gate: `git diff <parent-of-first-wave-commit>..HEAD`; files-touched manifest; structured mode uses verbatim ACs/context from the selected parent-task slice, while plan-direct mode uses transient verbatim source-anchored plan text for the active-wave workstreams.
-- Record `FINALIZATION_OWNER` (`self|parent`) in the structured execution summary or plan-direct **Runtime Status**. Plain `--orchestrated` changes handoff only and never transfers finalization ownership.
+- Record `FINALIZATION_OWNER` (`self|parent`) in the structured execution summary or plan-direct **Runtime Status**. Plain `--orchestrated` changes handoff only; proof ownership never transfers.
 
 ## Method / guardrails
 
@@ -55,7 +55,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
   4. **Active Wave** — only the currently dispatchable bounded assignments, owners, plan anchors, expected outputs/consumers/replacements, and verification signals.
   5. **Wave History** — completed assignments, commits, changed files, affected verification commands/results, sentinel/checkpoint classification/result, compact repair ledger (`invariant_family · finding_fingerprint · attempt · route · test topology · disposition`), routed unrelated findings, and E2E completeness signal.
   6. **Plan-Backed Adaptations** — discovered gap, source-plan relationship, disposition, and affected future workstream.
-  7. **Final Quality State** — checkpoint/final code-review reports and verdicts, requirement-delivery coverage status, test-guide path, unresolved findings, and normal proof-handoff state.
+  7. **Final Quality State** — checkpoint/final code-review reports and verdicts, requirement-delivery coverage status, test-guide path, proof runs/result, and unresolved findings.
 - The initial map must coarsely cover every plan-native workstream, preserving plan names and source order unless dependency evidence requires documented reordering. Keep detailed assignment content only in **Active Wave**; do not create a parallel JSON task graph, enumerate future subtasks, generate exhaustive acceptance criteria, or durably copy plan excerpts. Stop decomposing as soon as the next safe wave can be dispatched.
 - Before resume, recompute `sha256` over the full source-plan bytes and compare the recorded byte length. If unchanged, continue from `EXECUTION_STATE`. If changed, treat the current plan as authoritative, refresh only affected derivative mappings, preserve **Wave History**, and record the reconciliation. Resume/adaptation updates only derivative state and never rewrites the plan.
 - Re-read `EXECUTION_STATE` before each wave and update it after every dispatch/gate/adaptation.
@@ -98,7 +98,7 @@ Execute work in parallel waves without loading or generating an exhaustive task 
 7. **Next wave.** Structured mode recomputes pending status from `TASKS_JSON` projections. Plan-direct mode re-reads `EXECUTION_STATE`, clears completed **Active Wave** detail into **Wave History**, and derives only the next safe assignments. Gather prior completion reports into `## Prior-Wave Context`, then repeat.
 
 **Finalization ownership.** After the mode-specific work projection is `done`/`skipped`:
-- `FINALIZATION_OWNER=parent`: validate that every wave completed affected verification, no attributable CRITICAL/HIGH remains, and the task/workstream completion projection is satisfied. Do not rerun affected commands, dispatch final `spectre-code_review`, or create a test guide. Return `IMPLEMENTATION_READY` with the cumulative diff/base, commits/files, affected package/workspace and test-root manifest, exact commands/results, sentinel/checkpoint evidence, compact repair/routing ledger, source requirements paths/slices, and unresolved Medium/Low findings. The parent must use these sources without implementer rationale.
+- `FINALIZATION_OWNER=parent`: validate that every wave completed affected verification, no attributable CRITICAL/HIGH remains, and the task/workstream completion projection is satisfied. Do not rerun affected commands, dispatch final `spectre-code_review`, or create a test guide. Prepare the `IMPLEMENTATION_READY` manifest with cumulative diff/base, commits/files, affected package/workspace and test roots, exact commands/results, sentinel/checkpoint evidence, compact repair/routing ledger, source requirement paths/slices, and unresolved Medium/Low findings. Return it only after acceptance closure; the parent must use these sources without implementer rationale.
 - `FINALIZATION_OWNER=self`: run one cumulative affected verification over the registered changed surfaces and demonstrated dependency boundaries; never run the repository root suite. Then run the expensive review once over the cumulative feature diff:
   - Run `Skill(spectre-code_review)` with `{FEATURE_ROOT} --orchestrated` over the cumulative diff. Pass the exact feature root unchanged. That skill owns the pinned high-effort opposing-runtime reviewer, same-contract native fallback, adversarial lenses, evidence rules, and saved report.
   - Structured-mode reviewer inputs are limited to cumulative diff, files-touched manifest, `SCOPE_DOCS`, and every applicable completed `TASKS_JSON` requirement/AC slice. Plan-direct mode passes the source plan plus relevant execution-state evidence instead of `tasks.json` slices; `PLAN_SOURCE` remains requirements authority and `EXECUTION_STATE` is routing/evidence only. Do not use dev reports or implementer rationale as evidence.
@@ -110,30 +110,32 @@ Execute work in parallel waves without loading or generating an exhaustive task 
     - In both modes, pass the exact feature root unchanged.
   - In plan-direct mode, write the final review verdict, requirement-delivery coverage status, and test-guide result to **Final Quality State** without copying requirements from `PLAN_SOURCE`.
 
+**Acceptance closure — always owned by execute.** Invoke `Skill(spectre-proof)` once with `{FEATURE_ROOT} --orchestrated` plus `PLAN_SOURCE` in plan-direct mode. `PASS` closes acceptance. Otherwise apply the disposition, repair, affected-verification/review rules above, then invoke a fresh pass using paths and failed/impact-linked row ids—not raw evidence or a candidate tuple. Attempt count and ordinary failure never stop; return `NEEDS_AUTHORITY` only for conflicting acceptance, unavailable authority/capability, or required scope change. Later observable-behavior repair resumes this execute source; formatting, lint, evidence, rebase, and commit-only changes do not.
+
 ## Outputs + DONE
 
 - Complete implementation, committed per structured parent task or plan-direct workstream assignment.
 - Structured mode: `TASKS_JSON` statuses reflect completed/skipped/adapted work and parse after final write.
 - Plan-direct mode: `EXECUTION_STATE` retains pointer-only plan anchors, complete coarse-map/adaptation statuses, wave history, and final quality evidence.
+- `{FEATURE_ROOT}/proof/{proof.json,proof.html}` with aggregate `PASS`.
 - `FINALIZATION_OWNER=self`: `{FEATURE_ROOT}/testing/test_guide.md` from `Skill(spectre-create_test_guide)`.
-- `FINALIZATION_OWNER=parent`: an `IMPLEMENTATION_READY` handoff with the manifest required above; no claim that downstream review, proof, delivery, or repository-wide CI verification has run.
+- `FINALIZATION_OWNER=parent`: an `IMPLEMENTATION_READY` handoff with the manifest required above; no claim that downstream candidate review, delivery, or repository-wide CI verification has run.
 - Completion summary: tasks done · waves · affected verification commands/results · routed unrelated findings · sentinel review counts (`skip`/`wiring`/`risk-checkpoint`) · invariant-family repair counts · finalization owner/status · final review status when self-owned · requirement-delivery coverage status when self-owned · test-guide path when self-owned · Task Evolution Summary · E2E Gaps Addressed · Unresolved Findings.
 - **Structured DONE:** every structured task is `done`/`skipped`.
 - **Plan-direct DONE:** every plan-native workstream in the initial coarse map plus every recorded adaptation is `done`/`skipped`, and **Runtime Status** states the map's source-plan coverage.
-- **IMPLEMENTATION_READY when parent-owned:** the selected mode's completion rule holds; every wave completed affected verification plus any required sentinel/checkpoint review; no attributable CRITICAL/HIGH remains; and the complete parent handoff manifest is returned.
-- **DONE when self-owned:** the selected mode's completion rule holds; every wave completed affected verification plus any required sentinel/checkpoint review; cumulative affected verification has no attributable failure; final adversarial review's exhaustive delivery coverage is clean or gaps repaired/routed; test guide is written; and the summary is returned.
+- **IMPLEMENTATION_READY when parent-owned:** the selected mode's completion rule holds; every wave completed affected verification plus any required sentinel/checkpoint review; no attributable CRITICAL/HIGH remains; proof aggregate is `PASS`; and the complete parent handoff manifest is returned.
+- **DONE when self-owned:** the selected mode's completion rule holds; every wave completed affected verification plus any required sentinel/checkpoint review; cumulative affected verification has no attributable failure; final adversarial review's exhaustive delivery coverage is clean or gaps repaired/routed; test guide is written; proof aggregate is `PASS`; and the summary is returned.
 
 ## Handoff
 
 Report the summary inline (counts, affected verification, repair/routing iterations, finalization owner/status, unresolved findings, and test-guide path when self-owned).
 
-- `--orchestrated --finalization-owner parent` → return `IMPLEMENTATION_READY`, the required manifest, unresolved findings, and artifact paths to the parent goal without user-facing Next Steps.
-- Plain `--orchestrated` → preserve self-owned finalization, then return DONE status, unresolved findings, and artifact paths to the parent goal without user-facing Next Steps.
+- `--orchestrated --finalization-owner parent` → after proof `PASS`, return `IMPLEMENTATION_READY`, the required manifest, unresolved findings, and artifact paths to the parent goal without user-facing Next Steps.
+- Plain `--orchestrated` → preserve self-owned finalization and proof closure, then return DONE status, unresolved findings, and artifact paths to the parent goal without user-facing Next Steps.
 - Standalone → choose the first applicable route:
   1. Unresolved CRITICAL/HIGH review or delivery-coverage gap → `/spectre:fix`, then rerun the affected gate.
   2. A concrete automated-coverage risk remains → `/spectre:test`.
-  3. Proof is explicitly deferred or no meaningful public proof surface exists → `/spectre:clean`.
-  4. Otherwise → `/spectre:proof`.
+  3. Otherwise → `/spectre:clean`.
 
 Render exactly one `Next (recommended): ... — because {observed execution status}.` Add at most one conditional alternative. If pausing after completed or `needs-authority` execution, offer `Pause: /spectre:handoff {feature}` with task status, unresolved findings, and the selected next step.
 

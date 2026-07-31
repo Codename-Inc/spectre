@@ -1,6 +1,6 @@
 ---
 name: "spectre-goal"
-description: "Generate portable, transcript-verifiable `/goal` prompts from finalized Spectre task artifacts or existing plan-direct execution state, requiring spectre-execute followed by spectre-proof before success. Use when spectre-plan routes here after task generation/review, or when regenerating an autonomous execution handoff from existing structured or plan-direct state. Do NOT use to create planning/execution artifacts, run implementation, or handle quick one-step work."
+description: "Generate portable, transcript-verifiable `/goal` prompts from finalized Spectre task artifacts or existing plan-direct execution state, relying on spectre-execute to build and acceptance-prove the result. Use when spectre-plan routes here after task generation/review, or when regenerating an autonomous execution handoff from existing structured or plan-direct state. Do NOT use to create planning/execution artifacts, run implementation, or handle quick one-step work."
 user-invocable: true
 ---
 
@@ -33,10 +33,10 @@ Turn existing Spectre planning and execution-state artifacts into a copy-ready a
 Derive every prompt from six load-bearing elements:
 
 1. **Outcome** — the concrete approved end state, not “finish the plan.”
-2. **Verification** — `spectre-execute` satisfies its DONE contract, then `spectre-proof` records aggregate `PASS`; require the agent to print a concise evidence capsule into the transcript.
+2. **Verification** — `spectre-execute` satisfies its DONE contract, which includes aggregate proof `PASS`; require the agent to print a concise evidence capsule into the transcript.
 3. **Constraints (must not)** — preserve canonical scope and Out-of-Bounds; do not weaken/delete tests, silently change public behavior, add unapproved proof dependencies, ship, publish, or share.
 4. **Scope** — exact canonical artifact paths and permitted repository boundary.
-5. **Iteration** — resume structured mode from `tasks.json` plus proof state, or plan-direct mode from `execution_state.md` plus proof state. Follow skill repair rules without a global cap.
+5. **Iteration** — resume structured mode from `tasks.json`, or plan-direct mode from `execution_state.md`; execute owns durable proof state and repair without a global cap.
 6. **Stop** — verification defines success; otherwise adapt until an authority impasse. A turn cap is a durable checkpoint, never a failure, blocker, or approval gate.
 
 Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and report the checkpoint, then resume when the platform permits; it is not a workflow blocker or completion state.
@@ -52,9 +52,8 @@ Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and re
 3. Require this process order in both prompt forms:
    - Structured mode runs `Skill(spectre-execute)` with `EXECUTE_INDEX --orchestrated`.
    - Plan-direct mode: invoke `Skill(spectre-execute)` with the source-plan path, `{FEATURE_ROOT}`, and `--orchestrated`.
-   - Structured mode: after execute DONE, run `Skill(spectre-proof)` with `OUT_DIR --orchestrated` until `PASS` or an authority impasse.
-   - Plan-direct mode: after execute DONE, run `Skill(spectre-proof)` with `PLAN_SOURCE`, `OUT_DIR`, and `--orchestrated` until `PASS` or an authority impasse.
-   - Do not imitate, summarize away, or bypass either skill's current contract.
+   - Execute owns single-pass proof invocation plus repair/reinvoke closure; the goal never calls `spectre-proof` directly.
+   - Do not imitate, summarize away, or bypass execute's current contract.
 4. Require a final transcript evidence capsule containing task status counts, deterministic checks and exit results, final review/validation status, proof-matrix counts and aggregate status, artifact paths, repairs, and limitations. This makes one prompt verifiable by both Codex and transcript-only evaluators.
 5. Write `goal-prompts.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, then:
    - source-artifact manifest and visible assumptions;
@@ -64,8 +63,7 @@ Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and re
 6. Check each copyable prompt independently:
    - at most 4,000 characters;
    - concrete outcome and real verification surfaces;
-   - execute appears before proof;
-   - aggregate `PASS` is the only success state;
+   - execute DONE explicitly includes aggregate proof `PASS`;
    - cap and durable continuation/authority paths are explicit;
    - no vague finish line, judgment-only criterion, wrong/proxy metric, invented command, duplicated PRD, transcript-blind claim, or weakened must-not.
 
@@ -79,18 +77,18 @@ Substitute actual values from the artifacts; do not emit placeholders.
 /goal <one-sentence approved end state>
 
 Outcome: <measurable user-visible result>
-Verification: <execute DONE evidence>; then <proof.json aggregate PASS>; print <evidence capsule> in the transcript.
+Verification: <execute DONE evidence, including proof.json aggregate PASS>; print <evidence capsule> in the transcript.
 Constraints (must not): <canonical Out-of-Bounds and regression fences>
 Scope: <repository boundary plus exact mode-specific source-manifest paths>
-Process: run Skill(spectre-execute) with <execute index or source-plan path> --orchestrated; only after DONE, run Skill(spectre-proof) with <output directory in structured mode; source-plan path and output directory in plan-direct mode> --orchestrated.
-Iteration: <resume durable tasks or execution-state plus proof state, record evidence, choose the next skill-authorized move>
-Stop: success = execute DONE plus proof PASS; otherwise adapt. At <cap>, persist evidence and resume action, then resume when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
+Process: run Skill(spectre-execute) with <execute index or source-plan path> --orchestrated; execute owns acceptance-proof closure.
+Iteration: <resume durable tasks or execution-state, record evidence, choose the next execute-authorized move>
+Stop: success = execute DONE, including proof PASS; otherwise adapt. At <cap>, persist evidence and resume action, then resume when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
 ```
 
 **Compact prompt**
 
 ```text
-/goal <approved end state>, verified by Skill(spectre-execute) completing <execute index or source plan> --orchestrated, then Skill(spectre-proof) recording PASS with <output directory, plus source plan in plan-direct mode> --orchestrated. Preserve <scope and must-nots>; resume durable execution/proof state and print the evidence capsule. Otherwise adapt; at <cap>, persist the resume action and continue when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
+/goal <approved end state>, verified by Skill(spectre-execute) completing <execute index or source plan> --orchestrated with proof PASS. Preserve <scope and must-nots>; resume durable execution/proof state and print the evidence capsule. Otherwise adapt; at <cap>, persist the resume action and continue when possible. Report NEEDS_AUTHORITY only when safe progress requires user input.
 ```
 
 ## Outputs + DONE
@@ -105,7 +103,7 @@ Stop: success = execute DONE plus proof PASS; otherwise adapt. At <cap>, persist
 Report `GOAL_FILE`, the chosen cap, and the exact source artifacts.
 
 - `--orchestrated` → return the generated prompt path and validation result to the caller without user-facing Next Steps.
-- Standalone → `Next (recommended): run the structured portable-strict /goal prompt in {GOAL_FILE} — it preserves the approved execute→proof completion contract.` Add `Alternative: /spectre:execute — use the direct interactive path instead of goal mode.` Offer the compact prompt only when a shorter copy/paste surface is useful, and `/spectre:handoff` only when pausing before execution.
+- Standalone → `Next (recommended): run the structured portable-strict /goal prompt in {GOAL_FILE} — it preserves execute-owned acceptance closure.` Add `Alternative: /spectre:execute — use the direct interactive path instead of goal mode.` Offer the compact prompt only when a shorter copy/paste surface is useful, and `/spectre:handoff` only when pausing before execution.
 
 ## Escalate-If
 
