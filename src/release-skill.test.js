@@ -12,6 +12,15 @@ const RELEASE_SKILL = path.join(
   'release',
   'SKILL.md',
 );
+const RELEASE_GATE = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '.claude',
+  'skills',
+  'verify-spectre',
+  'scripts',
+  'gate5_release.mjs',
+);
 
 test('local release executes and verifies persistent Codex and Claude installs', () => {
   const skill = fs.readFileSync(RELEASE_SKILL, 'utf8');
@@ -76,4 +85,19 @@ test('release command record prints only the Codex install branch that ran', () 
   assert.match(finalRecord, /codex plugin add spectre@spectre/);
   assert.match(finalRecord, /codex plugin remove spectre@spectre/);
   assert.match(finalRecord, /Then restart an existing Codex session/);
+});
+
+test('public release uses GitHub marketplaces without npm publication', () => {
+  const skill = fs.readFileSync(RELEASE_SKILL, 'utf8');
+  const publicMode = skill.slice(skill.indexOf('## Public Mode'));
+  const gate = fs.readFileSync(RELEASE_GATE, 'utf8');
+
+  assert.match(publicMode, /GitHub for the Claude Code and Codex marketplaces/);
+  assert.match(publicMode, /gh release create/);
+  assert.match(publicMode, /git ls-remote --exit-code origin refs\/tags\/vX\.Y\.Z/);
+  assert.match(publicMode, /gh release view vX\.Y\.Z/);
+  assert.doesNotMatch(publicMode, /npm (?:login|publish|view|whoami)|npx --yes/);
+
+  assert.match(gate, /run\('gh', \['auth', 'status'\]\)/);
+  assert.doesNotMatch(gate, /npm.*(?:whoami|publish|login)/);
 });

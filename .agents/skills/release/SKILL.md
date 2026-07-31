@@ -1,6 +1,6 @@
 ---
 name: release
-description: Deploy the current Spectre checkout for persistent local user testing, or run the full public GitHub and npm release workflow. Use when asked to deploy Spectre locally, refresh local Spectre installs, release Spectre, publish a version, or ship Spectre publicly.
+description: Deploy the current Spectre checkout for persistent local user testing, or run the full public GitHub marketplace release workflow. Use when asked to deploy Spectre locally, refresh local Spectre installs, release Spectre, publish a version, or ship Spectre publicly.
 user-invocable: true
 ---
 
@@ -107,7 +107,7 @@ Local mode deploys the current checkout for this user's persistent local use. It
 
 ## Public Mode
 
-Public mode publishes a new version to GitHub and npm. It requires `patch`, `minor`, `major`, or an exact `X.Y.Z`.
+Public mode publishes a new version to GitHub for the Claude Code and Codex marketplaces. It requires `patch`, `minor`, `major`, or an exact `X.Y.Z`.
 
 ### Version Contract
 
@@ -135,7 +135,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
    node .claude/skills/verify-spectre/scripts/verify.mjs --release
    ```
 
-   This must pass before creating or pushing a tag. In particular, npm authentication must be proven before irreversible release actions.
+   This must pass before creating or pushing a tag. In particular, GitHub authentication must be proven before irreversible release actions.
 
 6. Complete Persistent Local Install Refresh for both Codex and Claude Code from the release checkout.
 
@@ -153,32 +153,14 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
    gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <changelog-file>
    ```
 
-10. Hand npm publication to the user. Do not run `npm login` or `npm publish` on their behalf:
+10. Verify the exact public tag and GitHub release:
 
     ```bash
-    npm login
-    npm publish --access public
+    git ls-remote --exit-code origin refs/tags/vX.Y.Z
+    gh release view vX.Y.Z --json url,tagName,targetCommitish
     ```
 
-    If npm requires an OTP:
-
-    ```bash
-    npm publish --access public --otp=<code>
-    ```
-
-    Wait for confirmation that publication succeeded.
-
-11. Verify the exact public package and refresh global Codex from that package:
-
-    ```bash
-    npm view @codename_inc/spectre@X.Y.Z version
-    codex plugin marketplace upgrade spectre
-    codex plugin remove spectre@spectre
-    codex plugin add spectre@spectre
-    npx --yes @codename_inc/spectre@X.Y.Z doctor codex --scope user
-    ```
-
-12. Finish with `Public release complete: vX.Y.Z`. Include the commit, tag, GitHub release URL, npm package, checks run, and both command sections below.
+11. Finish with `Public release complete: vX.Y.Z`. Include the commit, tag, GitHub release URL, marketplace versions, checks run, and both command sections below.
 
 ## Final Command Record
 
@@ -265,5 +247,5 @@ Claude Code, update an existing public install:
 
 - Local mode would require a public side effect: stop rather than broadening scope.
 - Public mode has no version argument: ask for one.
-- Version surfaces disagree, release gates fail, npm authentication is missing, or the tag already exists: stop before tagging.
-- Push, GitHub release, npm publish, exact-package verification, local Codex or Claude refresh, installed-byte comparison, managed-agent comparison, or doctor fails: fix if local and in scope; otherwise report the blocker precisely.
+- Version surfaces disagree, release gates fail, GitHub authentication is missing, or the tag already exists: stop before tagging.
+- Push, GitHub release, remote tag/release verification, local Codex or Claude refresh, installed-byte comparison, managed-agent comparison, or doctor fails: fix if local and in scope; otherwise report the blocker precisely.

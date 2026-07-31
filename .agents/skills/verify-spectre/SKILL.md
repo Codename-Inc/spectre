@@ -33,7 +33,7 @@ Report the PASS/FAIL summary. On failure, each check already names what was expe
 | 2 | **tests** | `npm test` passes; reports the test count so a silent drop (deleted tests, not fixed ones) is visible |
 | 3 | **codex** | `sync-codex --check` is clean — the committed mirror matches canonical source · generated hooks reference `.mjs`, never `.cjs`, and every referenced script exists · skills rewritten to `.agents/skills/` and bare skill names |
 | 4 | **real-cli** | The CLI and hooks actually run, in throwaway temp dirs with a fresh `CODEX_HOME` (see below) |
-| 5 | **release** | Clean tree · mirror in sync · versions in lockstep · tag free · **npm authenticated** |
+| 5 | **release** | Clean tree · mirror in sync · versions in lockstep · tag free · **GitHub authenticated** |
 
 ## Why gate 4 is the one that counts
 
