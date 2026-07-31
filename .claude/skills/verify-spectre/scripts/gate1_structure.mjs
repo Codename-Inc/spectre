@@ -194,6 +194,7 @@ g.check(dangling.length === 0, 'all skill/agent cross-references resolve',
 const versionFiles = {
   'package.json': (j) => j.version,
   '.claude-plugin/marketplace.json': (j) => j.version,
+  '.agents/plugins/marketplace.json': (j) => j.version,
   'plugins/spectre/.claude-plugin/plugin.json': (j) => j.version,
 };
 const versions = {};
@@ -206,14 +207,15 @@ for (const [file, pick] of Object.entries(versionFiles)) {
   versions[file] = pick(JSON.parse(fs.readFileSync(full, 'utf8')));
 }
 const distinct = [...new Set(Object.values(versions))];
-g.check(distinct.length === 1, 'three version files agree',
+g.check(distinct.length === 1, 'four canonical version files agree',
   Object.entries(versions).map(([f, v]) => `${f}=${v}`).join(', '));
 
-// marketplace nests a second copy of the version — it drifts easily
-const marketplacePath = path.join(REPO, '.claude-plugin', 'marketplace.json');
-if (fs.existsSync(marketplacePath)) {
+// Each marketplace nests a second copy of the version — both drift easily.
+for (const relativePath of ['.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json']) {
+  const marketplacePath = path.join(REPO, relativePath);
+  if (!fs.existsSync(marketplacePath)) continue;
   const mk = JSON.parse(fs.readFileSync(marketplacePath, 'utf8'));
-  g.check(mk.plugins?.[0]?.version === mk.version, 'marketplace nested plugin version matches top-level',
+  g.check(mk.plugins?.[0]?.version === mk.version, `${relativePath} nested plugin version matches top-level`,
     `top=${mk.version}, plugins[0]=${mk.plugins?.[0]?.version}`);
 }
 

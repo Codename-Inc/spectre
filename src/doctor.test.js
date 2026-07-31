@@ -9,6 +9,9 @@ import { refreshKnowledgeIndex } from '../plugins/spectre/hooks/scripts/knowledg
 import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 
 const CLI_PATH = path.resolve('bin/spectre.js');
+const GENERATED_PLUGIN_VERSION = JSON.parse(
+  fs.readFileSync(path.resolve('plugins/spectre-codex/.codex-plugin/plugin.json'), 'utf8'),
+).version;
 
 function makeFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-doctor-'));
@@ -217,7 +220,7 @@ test('doctor reports native plugin generation, managed agents, and legacy residu
   const doctor = doctorJson(fixture);
   assert.equal(doctor.nativePlugin.marketplace.targetsGeneratedPlugin, true);
   assert.equal(doctor.nativePlugin.generated.present, true);
-  assert.equal(doctor.nativePlugin.generated.version, '6.0.0');
+  assert.equal(doctor.nativePlugin.generated.version, GENERATED_PLUGIN_VERSION);
   assert.equal(doctor.nativePlugin.generated.hooksUsePluginRoot, true);
   assert.ok(doctor.nativePlugin.generated.agents.includes('spectre_dev.toml'));
   assert.ok(doctor.nativePlugin.agents.installed.includes('spectre_dev.toml'));
@@ -236,7 +239,7 @@ test('doctor recognizes the installed native plugin JSON shape and cache capabil
     'cache',
     'spectre',
     'spectre',
-    '6.0.0',
+    GENERATED_PLUGIN_VERSION,
   );
   fs.cpSync(path.resolve('plugins/spectre-codex'), cachePath, { recursive: true });
   fs.writeFileSync(
@@ -284,7 +287,7 @@ test('doctor recognizes the installed native plugin JSON shape and cache capabil
           pluginId: 'spectre@spectre',
           name: 'spectre',
           marketplaceName: 'spectre',
-          version: '6.0.0',
+          version: GENERATED_PLUGIN_VERSION,
           installed,
           enabled,
           source: { source: 'local', path: path.resolve('plugins/spectre-codex') },

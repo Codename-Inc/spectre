@@ -115,6 +115,7 @@ Bump these public version surfaces in sync:
 
 - `package.json` -> `version`
 - `.claude-plugin/marketplace.json` -> top-level `version` and `plugins[0].version`
+- `.agents/plugins/marketplace.json` -> top-level `version` and `plugins[0].version`
 - `plugins/spectre/.claude-plugin/plugin.json` -> `version`
 
 Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root Codex manifest was removed. The Codex plugin manifest is generated under `plugins/spectre-codex/.codex-plugin/plugin.json`.
@@ -127,7 +128,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
    - Use a descriptive implementation commit.
    - Leave unrelated dirty files untouched.
 3. Complete Shared Preflight. If sync generated new `plugins/spectre-codex/` changes, inspect and commit them before continuing.
-4. Update the three Version Contract surfaces and commit only those files with `release: vX.Y.Z`.
+4. Update the four Version Contract files and commit only those files with `release: vX.Y.Z`.
 5. Require a clean release working tree, then run the complete release gate:
 
    ```bash

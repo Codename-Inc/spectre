@@ -41,6 +41,9 @@ function collectFiles(root) {
 
 test('packed npm artifact contains portable Claude and Codex knowledge runtimes with no retired surface', { concurrency: false }, async () => {
   const repoRoot = path.resolve('.');
+  const packageVersion = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
+  ).version;
   const packDir = makeTempDir('spectre-pack-');
   const projectDir = makeTempDir('spectre-pack-install-');
   const homeDir = makeTempDir('spectre-pack-home-');
@@ -64,7 +67,7 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
       fs.readFileSync(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
     );
     assert.equal(manifest.name, 'spectre');
-    assert.equal(manifest.version, '6.0.0');
+    assert.equal(manifest.version, packageVersion);
     assert.equal('skills' in manifest, false);
     assert.equal('agents' in manifest, false);
 
@@ -72,7 +75,7 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
       fs.readFileSync(path.join(installedPackage, '.agents', 'plugins', 'marketplace.json'), 'utf8'),
     );
     assert.equal(marketplace.plugins[0].source, './plugins/spectre-codex');
-    assert.equal(marketplace.plugins[0].version, '6.0.0');
+    assert.equal(marketplace.plugins[0].version, packageVersion);
 
     for (const relativePath of [
       'skills/spectre-scope/SKILL.md',
