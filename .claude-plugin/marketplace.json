@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "spectre - Contract-driven agentic workflow for AI coding. Scope, Plan, Execute, Clean, Test, Rebase, and Learn with Claude Code and Codex.",
-    "homepage": "https://github.com/Codename-Inc/spectre"
+    "homepage": "https://github.com/joenandez/spectre"
   },
   "plugins": [
     {

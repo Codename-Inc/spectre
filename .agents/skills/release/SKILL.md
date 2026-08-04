@@ -221,7 +221,7 @@ Codex, fresh user-level install or update from the exact published native plugin
 
 ```bash
 # Fresh install
-codex plugin marketplace add Codename-Inc/spectre
+codex plugin marketplace add joenandez/spectre
 codex plugin add spectre@spectre
 
 # Existing install
@@ -233,7 +233,7 @@ codex plugin add spectre@spectre
 Claude Code, fresh public install:
 
 ```text
-/plugin marketplace add Codename-Inc/spectre
+/plugin marketplace add joenandez/spectre
 /plugin install spectre@spectre
 ```
 

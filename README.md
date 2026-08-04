@@ -20,8 +20,8 @@ SPECTRE covers the core software development lifecycle: scoping a feature, defin
 
 ```bash
 # Add marketplace and install
-/plugin marketplace add Codename-Inc/spectre
-/plugin install spectre@codename
+/plugin marketplace add joenandez/spectre
+/plugin install spectre@spectre
 ```
 
 Then start building:
@@ -35,7 +35,7 @@ That's it. You just start with 1 command to build features.
 ### Within Codex
 
 ```bash
-codex plugin marketplace add Codename-Inc/spectre
+codex plugin marketplace add joenandez/spectre
 codex plugin add spectre@spectre
 ```
 
@@ -371,7 +371,7 @@ spectre/
 
 Skills update automatically when you update the plugin:
 
-`/plugin update spectre`
+`/plugin update spectre@spectre`
 
 ## License
 
@@ -379,7 +379,7 @@ MIT License - see LICENSE file for details
 
 ## Support and/or Feedback
 
-Issues: https://github.com/codename-inc/spectre/issues
+Issues: https://github.com/joenandez/spectre/issues
 
 Email: [joe@bycodename.com](mailto:joe@bycodename.com?subject=Spectre%20Feedback)
 

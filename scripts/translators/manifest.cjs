@@ -29,8 +29,8 @@ function buildPluginManifest(repoRoot) {
       name: 'Joe Fernandez',
       email: 'joe@bycodename.com',
     },
-    homepage: metadata.homepage || 'https://github.com/Codename-Inc/spectre#readme',
-    repository: metadata.repository?.url || 'https://github.com/Codename-Inc/spectre',
+    homepage: metadata.homepage || 'https://github.com/joenandez/spectre#readme',
+    repository: metadata.repository?.url || 'https://github.com/joenandez/spectre',
     license: metadata.license || 'MIT',
     keywords: metadata.keywords || [],
     interface: {
@@ -41,7 +41,7 @@ function buildPluginManifest(repoRoot) {
       developerName: 'Joe Fernandez',
       category: 'Developer Tools',
       capabilities: ['Interactive', 'Write'],
-      websiteURL: metadata.homepage || 'https://github.com/Codename-Inc/spectre',
+      websiteURL: metadata.homepage || 'https://github.com/joenandez/spectre',
       defaultPrompt: [
         'Use spectre-scope to define a new feature, then continue through the Spectre workflow.',
       ],

@@ -66,7 +66,7 @@ function codexPluginRequiredMessage(command) {
     'Codex native plugin installation is required for Spectre 6.0.0.',
     '',
     'Fresh install:',
-    '  codex plugin marketplace add Codename-Inc/spectre',
+    '  codex plugin marketplace add joenandez/spectre',
     '  codex plugin add spectre@spectre',
     '',
     'Update:',

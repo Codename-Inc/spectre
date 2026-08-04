@@ -33,7 +33,7 @@ Open an issue describing:
 ### Local Development
 
 ```bash
-git clone https://github.com/Codename-Inc/spectre.git
+git clone https://github.com/joenandez/spectre.git
 cd spectre
 ```
 

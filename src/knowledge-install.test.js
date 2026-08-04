@@ -427,9 +427,9 @@ test('active documentation describes metadata registry, neutral search, and exac
   assert.equal(fs.existsSync(capabilityPath), true);
   assert.match(readme, /\.\/docs\/codex-capability-matrix\.md/);
   for (const text of [readme, capability]) {
-    assert.match(text, /\/plugin marketplace add Codename-Inc\/spectre/);
-    assert.match(text, /\/plugin install spectre@codename/);
-    assert.match(text, /codex plugin marketplace add Codename-Inc\/spectre/);
+    assert.match(text, /\/plugin marketplace add joenandez\/spectre/);
+    assert.match(text, /\/plugin install spectre@spectre/);
+    assert.match(text, /codex plugin marketplace add joenandez\/spectre/);
     assert.match(text, /codex plugin add spectre@spectre/);
   }
   assert.match(activeDocs, /SessionStart/);
@@ -440,6 +440,22 @@ test('active documentation describes metadata registry, neutral search, and exac
   assert.match(activeDocs, /recordDirectory/);
   assert.match(activeDocs, /resources/);
   assert.doesNotMatch(activeDocs, /spectre-recall|UserPromptSubmit/);
+
+  const activeRepositorySurfaces = [
+    'README.md',
+    'CONTRIBUTING.md',
+    'package.json',
+    '.claude-plugin/marketplace.json',
+    '.agents/plugins/marketplace.json',
+    '.agents/skills/release/SKILL.md',
+    'docs/getting-started.md',
+    'docs/codex-capability-matrix.md',
+    'src/main.js',
+    'scripts/translators/manifest.cjs',
+  ].map((filePath) => fs.readFileSync(path.resolve(filePath), 'utf8')).join('\n');
+  assert.doesNotMatch(activeRepositorySurfaces, /Codename-Inc\/spectre/i);
+  assert.doesNotMatch(activeRepositorySurfaces, /spectre@codename/);
+  assert.match(activeRepositorySurfaces, /github\.com\/joenandez\/spectre/);
 
   const manifestSource = fs.readFileSync(
     path.resolve('scripts/translators/manifest.cjs'),

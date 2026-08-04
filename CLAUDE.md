@@ -145,7 +145,7 @@ Workflow:
 /plugin marketplace add /path/to/spectre
 
 # Install from it
-/plugin install spectre@codename
+/plugin install spectre@spectre
 ```
 
 ### Releasing to Users
@@ -168,8 +168,8 @@ The release command is defined in `.claude/commands/release.md`.
 
 Users update via:
 ```bash
-/plugin marketplace update codename
-/plugin update spectre@codename
+/plugin marketplace update spectre
+/plugin update spectre@spectre
 ```
 
 ## Important Notes

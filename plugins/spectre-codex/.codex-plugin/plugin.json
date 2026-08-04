@@ -6,8 +6,8 @@
     "name": "Joe Fernandez",
     "email": "joe@bycodename.com"
   },
-  "homepage": "https://github.com/Codename-Inc/spectre#readme",
-  "repository": "git+https://github.com/Codename-Inc/spectre.git",
+  "homepage": "https://github.com/joenandez/spectre#readme",
+  "repository": "git+https://github.com/joenandez/spectre.git",
   "license": "MIT",
   "keywords": [
     "ai",
@@ -29,7 +29,7 @@
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/Codename-Inc/spectre#readme",
+    "websiteURL": "https://github.com/joenandez/spectre#readme",
     "defaultPrompt": [
       "Use spectre-scope to define a new feature, then continue through the Spectre workflow."
     ],

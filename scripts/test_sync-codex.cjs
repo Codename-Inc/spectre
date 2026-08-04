@@ -29,10 +29,10 @@ function createFixture(root) {
       name: '@codename_inc/spectre',
       version: '6.0.0',
       description: 'Fixture Spectre package.',
-      homepage: 'https://github.com/Codename-Inc/spectre#readme',
+      homepage: 'https://github.com/joenandez/spectre#readme',
       repository: {
         type: 'git',
-        url: 'git+https://github.com/Codename-Inc/spectre.git',
+        url: 'git+https://github.com/joenandez/spectre.git',
       },
       license: 'MIT',
       keywords: ['workflow'],

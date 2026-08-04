@@ -3,13 +3,13 @@
   "version": "7.0.3",
   "description": "Contract-driven agentic coding workflow for Claude Code and Codex.",
   "type": "module",
-  "homepage": "https://github.com/Codename-Inc/spectre#readme",
+  "homepage": "https://github.com/joenandez/spectre#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Codename-Inc/spectre.git"
+    "url": "git+https://github.com/joenandez/spectre.git"
   },
   "bugs": {
-    "url": "https://github.com/Codename-Inc/spectre/issues"
+    "url": "https://github.com/joenandez/spectre/issues"
   },
   "license": "MIT",
   "keywords": [
