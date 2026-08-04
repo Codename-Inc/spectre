@@ -1,114 +1,59 @@
 ---
 name: "spectre-plan_review"
-description: "Independent adversarial review of plan.md before task generation. Use a pinned high-effort opposite-runtime reviewer; fall back to one native reviewer with the same contract when unavailable. Trigger after create_plan and before create_tasks. Do NOT review generated tasks, finished code, or apply scope changes."
+description: "Simplify plan.md before task generation: remove over-engineering, prefer boring reuse, and cap each Test Opportunity at one happy + primary-failure test. Use after create_plan and before create_tasks. Do not review tasks/code or change scope."
 user-invocable: true
 ---
 
 # plan_review
 
-Plan-only adversarial review: stabilize intent before `execute.md`/`tasks.json` exist. Clear on WHAT, silent on HOW. Reviews scope/PRD/UX/context plus `plan.md`; never authors tasks or implementation.
+## Purpose
+
+Plan-only simplification gate: find the simplest path that delivers every agreed requirement, then remove everything else before task generation.
 
 ## Inputs
 
-- `$ARGUMENTS` - explicit feature name/root or descendant plan artifact, `--mode adversarial` (default) or `--mode full`, optional `--auto-apply scope-safe`, and optional `--review-again` only when the user's latest instruction explicitly requests another plan review.
-- Required: `{FEATURE_ROOT}/specs/plan.md`. Helpful: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, `task_context.md`, `research/*.md`.
-- If `plan.md` is absent -> stop, route to `/spectre:create_plan`. Do not ask the user to create missing optional artifacts.
+- `$ARGUMENTS`: explicit feature name/root or descendant `plan.md`; optional `--auto-apply scope-safe`.
+- Required: `{FEATURE_ROOT}/specs/plan.md`. Read canonical scope in order: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, explicit requirements in `task_context.md`; read relevant `research/*.md`. Missing plan -> `/spectre:create_plan`.
 
 ## Working Set
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
-- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
-- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
-- Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it.
-- An explicit legacy `docs/tasks/**` plan remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new review report and record the legacy source.
-- `TASK_DIR = FEATURE_ROOT`.
-- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/plan_review.md`; `mkdir -p`. A user-authorized `--review-again` writes `plan_review_{YYYY-MM-DD_HHMMSS}.md`; no other condition may select a second report.
-- `REVIEW_ATTEMPT = {FEATURE_ROOT}/reviews/plan_review_attempt.json`; create it atomically immediately before the first reviewer launch with `status: started`, the report path, route, timestamp, and `authorization: initial|explicit-user-review-again`. Update it to `complete` or `failed` when the round ends.
-- Canonical scope source, in order: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, explicit requirements in `task_context.md`.
-
-## Canonical Scope Invariant
-
-Reviewers may recommend deleting unrequested implementation, unnecessary abstractions, weak verification, hallucinated refs, bad deps, or bad sequencing. They **MUST NOT** cut, narrow, expand, or reinterpret agreed scope. If scope itself looks wrong or incomplete, emit **Scope Change Required**; never auto-apply it.
-
-## Method / guardrails
-
-**One-review hard stop**
-
-1. Before constructing a prompt or launching any reviewer, check `REVIEW_ATTEMPT` and `REVIEW_REPORT`.
-2. If either shows that a plan-review round already started, **do not launch, resume, repair, fall back, or synthesize another semantic review**. Return the existing report/attempt status to the caller. Artifact changes, final-gate feedback, discussion points, stale hashes, failed/partial prior attempts, and uncertainty never reopen the gate.
-3. The only override is `--review-again` backed by the user's latest instruction explicitly asking for another plan review. A planner or orchestrator **MUST NOT** infer, manufacture, or add this flag. Record the user's authorization in `REVIEW_ATTEMPT` before launching the explicitly requested round.
-4. An initial external attempt, its report-only repair, and its native fallback belong to one review round. They may finish that already-started round; they do not authorize a later round after the skill returns or is interrupted.
-
-**External-first selection**
-1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
-2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
-3. Launch each external review attempt as a long-running process and keep polling it. Allow up to 20 minutes for completion; quiet output or elapsed time below that limit is not failure. Do not pass launcher timeout or duration guidance to the reviewer.
-4. If the opposite CLI is missing, exits non-zero, does not complete within that launcher window, cannot write `REVIEW_REPORT`, or produces an invalid report after one repair attempt, record the reason and fall back to one native `@spectre:reviewer`; unavailable opposing runtimes never block completion.
-5. Primary-agent self-review is prohibited except compiling explicit fallback subagent returns.
-6. Do not probe for startup commands. Use exactly the recipe below.
-
-**Opposite-runtime initiation recipe**
-
-From Codex primary:
-```bash
-claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write,Task" --output-format text "$REVIEW_PROMPT"
-```
-
-From Claude Code primary:
-```bash
-codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
-```
-
-External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
-
-Run from repo root. Do not add approval flags, resume flags, broad bypass flags, `codex review`, project discovery commands, shell pipelines, or temp prompt files unless argument length requires a file. If a prompt file is unavoidable, keep the same command shape and pass `$(cat /tmp/plan_review_prompt.txt)` as the final argument.
-
-`REVIEW_PROMPT` includes the exact feature root, feature name, TASK_DIR, REVIEW_REPORT, mode, present/absent manifest, canonical scope source, Canonical Scope Invariant, write permission limited to REVIEW_REPORT, required report sections, required review metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`), and: "Use the supplied Feature Root unchanged. The reviewer must not rederive the feature root from the branch or repository activity. In full mode, dispatch one independent subagent per review lens only when each worker inherits the parent reviewer model and effort; otherwise review all lenses in this pinned parent process. Wait for all lens returns, then synthesize the final report yourself." External reviewer may write only REVIEW_REPORT.
-
-**Review lenses**
-
-| Lens | Fallback agent | Finds |
-|---|---|---|
-| YAGNI / familiar-shape bias | `@spectre:reviewer` | unrequested abstractions, speculative generality, missing Out-of-Bounds fences; nominate the single highest-leverage scope-safe deletion or "none" |
-| Verifiability | `@spectre:analyst` | prose verification, weak "succeeds when", missing test/observable/state signal, unreviewable assumptions |
-| Existence / hallucination | `@spectre:finder` | nonexistent paths, symbols, packages, CLIs, env vars; cite expected vs actual |
-| Canonical reference quality | `@spectre:patterns` | vague "follow existing pattern" claims; propose concrete file:line anchors or reuse targets |
-
-- **Adversarial mode:** one opposite-runtime pass focused on execution readiness.
-- **Full mode:** opposite-runtime reviewer fans out one worker per lens only with pinned-model inheritance; otherwise the pinned parent reviews all four lenses, then writes the report.
-- **Native fallback:** dispatch one clean-context `@spectre:reviewer` with the same artifact manifest, scope invariant, lenses, severity rules, evidence requirements, and report schema from `REVIEW_PROMPT`. In full mode this single reviewer evaluates every lens itself; it does not delegate. Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged. Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
-- Severity: **Blocker**, **High**, **Medium**, **Low**, **Scope Change Required**.
-
-**Write-back**
-- Read `REVIEW_REPORT` fully before edits.
-- `--auto-apply scope-safe`: apply scope-safe Blocker+High to `plan.md`; Medium/Low only when unambiguous and scope-neutral. Never apply Scope Change Required.
-- Otherwise present the findings table and ask `all` / `blockers` / `1,3,5` / `skip`; wait.
-- Edit only `plan.md`; do not edit `execute.md`, `tasks.json`, scope, PRD, UX, or context files.
-- Self-check: cited refs exist, plan verification remains executable, Out-of-Bounds preserved, canonical scope still fully represented.
+- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact; otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; disclose it in an existing user gate or normal response without waiting. Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. Inferred names use the first free `.spectre/features/<name>[-N]/`.
+- Initialize new roots with lifecycle-neutral `feature.json`. The physical feature directory is authoritative; repair stale feature name/root metadata before continuing. Pass the exact feature root unchanged to every reviewer. Legacy plans are readable; new reports require a confirmed `.spectre/features/<feature-name>/` root.
+- `REVIEW_REPORT={FEATURE_ROOT}/reviews/plan_review.md`; if it exists, write `plan_review_{timestamp}.md`.
 
 ## Outputs + DONE
 
-`REVIEW_REPORT` required sections:
-0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
-1. **Must-Delete (Lens 1 - YAGNI)** - one nominated scope-safe cut or "No scope-safe deletion found".
-2. **Findings** - table `# | Severity | Lens | Location | Finding | Suggested Edit`.
-3. **Summary** - counts per severity; Blocker/High must resolve before task generation.
-4. **Review Metadata** - reviewed artifacts, canonical scope source, auto-apply mode, ISO8601 timestamp, `Mode:`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
+`REVIEW_REPORT` is self-locating with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`. It contains: Simplest Viable Plan; Must Delete; Collapse/Reuse/Defer; Test Opportunities (requirement + representative pair + removals); Required Complexity Retained; findings (`# | Severity | Location | Finding | Suggested Edit`); Before -> After; summary + reviewer metadata. `No scope-safe deletion found` is valid only with requirement/necessity traceability for everything retained.
 
-DONE when one review round is recorded in `REVIEW_ATTEMPT`; the report exists before edits; every finding has a location + concrete suggested edit; runtime/model/effort/route metadata is recorded; any native fallback reason is recorded; applied edits touch only `plan.md`; scope-change recommendations are left unapplied; post-edit self-check passes. Later edits do not invalidate the completed round or trigger another one.
+DONE when every retained element and Test Opportunity is source-backed; each opportunity has one representative happy + primary-failure test; `plan.md` carries the accepted Test Opportunity inventory; the plan is smaller or the report proves no safe reduction; scope changes remain unapplied; and post-edit checks preserve scope and Out-of-Bounds.
+
+## Method / guardrails
+
+**Canonical Scope Invariant:** remove implementation choices, tasks, tests, dependencies, and process, but **MUST NOT** narrow, expand, or reinterpret agreed scope. Changes to scope become **Scope Change Required** and are never auto-applied.
+
+**Simplify:** trace every component/abstraction/dependency/task/test/process step to a requirement and removal failure. Delete speculation, premature hardening, redundant verification, and artifacts. Collapse single-caller/pass-through/duplicate/fragmented work. Reuse concrete patterns instead of frameworks, factories, adapters, config layers, dependencies, or novelty. Defer extensibility, telemetry, optimization, compatibility, migration tooling, and broad coverage. Prefer boring solutions; delete/defer anything untraceable.
+
+**Test Opportunity budget:** A Test Opportunity is the smallest behavior unit: a function, route, bug fix, or acceptance criterion. Derive it from assigned behavior. Do not manufacture extra opportunities solely from files, layers, tasks, helpers, branches, or internal steps. Per opportunity, keep exactly one representative happy-path test and one representative primary-failure test — then stop; existing tests may satisfy either. Another opportunity requires distinct required behavior and a cited requirement. Reject third cases, matrices, implementation-detail tests, and elaborate setup; defer broader coverage.
+
+**Anti-expansion guardrail:** this review is simplification-only. Do not add architecture, layers, tasks, dependencies, tests, matrices, references, or docs for completeness. Add only minimum replacement detail after a larger cut or to resolve an execution-blocking nonexistent reference, dependency, or verification gap exposed while simplifying. Review in one pinned process; do not delegate.
+
+Severity: **Blocker** = scope cannot ship; **High** = scope-safe over-engineering, manufactured Test Opportunity, or excess tests; **Medium** = material collapse/reuse/boring substitution; **Scope Change Required** = user approval needed. No Low/style findings.
+
+**Write-back ownership:** the reviewer may write only `REVIEW_REPORT`; it never edits planning sources. The primary directly edits `plan.md` after reading the report; never dispatch a subagent or external reviewer to apply findings. `--auto-apply scope-safe` selects scope-safe Blocker/High and unambiguous Medium simplifications, otherwise ask `all|blockers|IDs|skip`. During application, replace broad test matrices with the accepted Test Opportunity inventory, edit only `plan.md`, and never apply scope changes.
+
+**Reviewer route:** prefer the opposite runtime, launch long-running, and poll. Allow up to 20 minutes for completion. Do not pass launcher timeout or duration guidance to the reviewer. Mechanical report corrections — verified counts, paths, citations, or schema formatting that do not change semantic judgment, severity, or recommendation — are made directly by the primary and never trigger review. A semantically unusable report gets one same-route report-only repair, then native fallback. Unavailable opposing runtimes never block completion.
+
+```bash
+claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Write" --output-format text "$REVIEW_PROMPT"
+codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
+```
+
+`REVIEW_PROMPT` includes the exact feature root, scope invariant, simplification contract, schema, and report-only write permission. It forbids editing planning sources. The reviewer must not rederive the feature root from branch or repository activity. Codex -> Claude Code: `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`. Claude Code -> Codex: `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`. Native fallback uses one clean-context `@spectre:reviewer`, the same semantic contract, no delegation, and returns the report for the primary to persist unchanged; record route metadata and reason. The primary must not originate or materially reinterpret semantic findings; mechanical correction and authorized plan write-back are not self-review.
 
 ## Handoff
 
-Surface reviewer runtime, fallback reason, findings table, `Review report saved: {path}`, `Applied: {#s}. Skipped: {#s}. Scope-change recommendations not applied: {list or "none"}`, and updated `plan.md` path.
-
-- `--orchestrated` → return the review result and updated plan path to the caller without user-facing Next Steps.
-- Existing attempt without explicit `--review-again` → return `Plan review hard stop: prior round {status}; no reviewer launched`, plus the attempt/report paths.
-- Standalone + unresolved Blocker/High → remain in remediation; scope-change findings route to `/spectre:scope`.
-- Standalone + resolved Blocker/High → `Next (recommended): /spectre:create_tasks — the reviewed plan is ready for task compilation.` Offer `/spectre:handoff` only when stopping at this durable review boundary.
+Return route/fallback, Simplest Viable Plan, Before -> After, findings, report path, applied/skipped, withheld scope changes, and updated plan. Orchestrated calls return directly; standalone blockers stay in remediation, otherwise recommend `/spectre:create_tasks`.
 
 ## Escalate-If
 
-- `plan.md` absent -> stop; route to `/spectre:create_plan`.
-- A finding requires changing agreed scope -> emit Scope Change Required and do not apply it.
-- Self-check fails after an applied edit -> surface the failure and ask before continuing.
+- Plan missing; simplification needs scope change; or post-edit scope/Out-of-Bounds checks fail.

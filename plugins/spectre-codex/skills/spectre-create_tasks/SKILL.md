@@ -6,7 +6,7 @@ user-invocable: true
 
 # create_tasks
 
-Transform requirements into two execution artifacts: `execute.md` for primary-agent orchestration and `tasks.json` for full task detail/status. The executor reads the index whole and slices JSON detail by parent task id; it never pays the token cost of the entire task graph.
+Transform requirements into two execution artifacts: `execute.md` for primary-agent orchestration and `tasks.json` for full task detail/status. The invoking primary owns synthesis and directly writes both artifacts; research agents return evidence only. The executor reads the index whole and slices JSON detail by parent task id; it never pays the token cost of the entire task graph.
 
 ## Inputs
 
@@ -20,12 +20,12 @@ Transform requirements into two execution artifacts: `execute.md` for primary-ag
 - Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 - Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
-- Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- Pass the exact feature root unchanged into the loaded skill context and every research prompt; never rederive it.
 - An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for new canonical documents and record the legacy source in the document manifest.
 - Ensure `{FEATURE_ROOT}/specs` exists.
 - Default pair: `EXECUTE_FILE={FEATURE_ROOT}/specs/execute.md`, `DETAIL_FILE={FEATURE_ROOT}/specs/tasks.json`. If either exists for another feature, write a scoped pair with the same basename: `{name}.execute.md` + `{name}.tasks.json`.
 - Reference fixtures: `references/execute.example.md`, `references/tasks.example.json`, and `references/legacy-continuation.example.json`.
-- Research only if plan/context do not name target files/patterns: dispatch `@spectre_finder`, `@spectre_analyst`, `@spectre_patterns`; fold returns into `task_context.md` `## Technical Research`. Skip for LIGHT or clear single-component scope.
+- Research only if plan/context do not name target files/patterns: dispatch `@spectre_finder`, `@spectre_analyst`, `@spectre_patterns`. Research agents return evidence only and never write planning artifacts; the primary folds returns into `task_context.md` `## Technical Research`. Skip for LIGHT or clear single-component scope.
 
 ## Method / guardrails
 
@@ -44,7 +44,7 @@ Transform requirements into two execution artifacts: `execute.md` for primary-ag
 
 ## Artifact Contract
 
-Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not create a Markdown fallback/converter.
+The primary directly writes `execute.md` and `tasks.json`; never dispatch a subagent or external process to author or revise them. Write **both** files. This is a hard cutover: do not emit `tasks.md`, and do not create a Markdown fallback/converter.
 
 ### `tasks.json`
 

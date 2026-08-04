@@ -36,7 +36,7 @@ You output **proposals for human review**. When a load-bearing element cannot su
 ## SPECTRE FACTS (load-bearing reference — formerly `task_context.md`)
 
 **Locked decisions** (override generic rules on conflict):
-1. **Fork source** = `plugins/spectre/skills/` in *this* repo (the `tasks.md` flow) — not the installed `execute.md` + `tasks.json` variant.
+1. **Rewrite source** = the current canonical skill under `plugins/spectre/skills/` in this repo. Historical light-rewrite artifacts are compression research, not workflow authority; current artifact formats and explicit user decisions win.
 2. **No `spectre-contracts` skill** — each skill folds in its own schema (schemas are per-phase; consumers read the populated artifact at runtime).
 3. **Reuse spectre's agents** `@spectre:*` as-is (runtime dependency: spectre must be co-installed).
 4. **No `spectre-guide`** — the footer is an inline one-line Next-Steps convention.
@@ -50,7 +50,7 @@ You output **proposals for human review**. When a load-bearing element cannot su
 | create_tasks | tasks contract: Predecessor/Unblocks graph · 3-type ACs (test/observable/state) · RED test pairing · Produces/Consumed-by/Replaces · Phase 0 dependency-verify · Out-of-Bounds banner |
 | scope | scope.md as immutable anchor; no silent narrow/expand without a user gate |
 | ux | flow-approval gate before the detailed spec; the state vocabulary + required sections (specifics, not prose) |
-| execute | per-wave gate: deterministic pre-gate (lint/typecheck/build) → dual clean-room reviewer (diff + criteria only, never dev reports); bounded fix loop |
+| execute | affected deterministic verification before review; reviews only when every source-owned subtask in a phase is complete; exactly one final comprehensive adversarial review; proof only at the end; autonomous repair without a global attempt cap |
 | clean | conservative removal (investigate→validate before delete); commit gate (lint+tests pass, rollback on fail); no `--no-verify` / `eslint-disable` |
 | test | P0–P3 risk classification (P0 = auth/payment/security/PII); no `--no-verify` |
 | rebase | backup ref before rebase + rollback instruction |

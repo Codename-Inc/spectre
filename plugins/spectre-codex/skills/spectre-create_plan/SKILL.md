@@ -6,24 +6,24 @@ user-invocable: true
 
 # create_plan
 
-Transform a scoped PRD into a technical implementation plan. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
+Transform a scoped PRD into a technical implementation plan. The invoking primary owns synthesis and directly writes `plan.md`; research agents return evidence only. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
 
 ## Inputs
 - `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
-- `{FEATURE_ROOT}/task_context.md` — reuse an existing `## Technical Research` section if comprehensive; skip new research. Under `--depth light`, also reuse substantive router research (file locations, code understanding, patterns, impact) if already present.
+- `{FEATURE_ROOT}/task_context.md` — at every depth, reuse an existing substantive `## Technical Research` section and skip new research. In orchestrated calls from `spectre-plan`, router research **MUST** be reused rather than re-dispatched.
 
 ## Working Set
 - Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
 - Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 - Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
-- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged to every routed child; a child never rederives it.
+- `OUT_DIR = FEATURE_ROOT`. Pass the exact feature root unchanged into the loaded skill context and every research prompt; never rederive it.
 - An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the new plan and record the legacy source in its manifest.
-- Research agents: `@spectre_finder` (where code lives), `@spectre_analyst` (how it works + data access), `@spectre_patterns` (canonical "follow this file" anchors). Run in parallel, await all, then read the real code at each step — don't trust filenames or summaries.
+- Research agents: `@spectre_finder` (where code lives), `@spectre_analyst` (how it works + data access), `@spectre_patterns` (canonical "follow this file" anchors). Research agents return evidence only; they never write or revise planning artifacts. Run in parallel, await all, then the primary reads the real code at each step — don't trust filenames or summaries.
 - `CLAUDE.md` / `README.md` for rules + major components.
 
 ## Outputs + DONE
-Write the plan to `{FEATURE_ROOT}/specs/plan.md` (scoped name if one exists). Every `plan.md` begins immediately below its title with:
+The primary directly writes `plan.md` to `{FEATURE_ROOT}/specs/plan.md` (scoped name if one exists); never delegate plan authoring or revision. Every `plan.md` begins immediately below its title with:
 
 ```text
 Feature: <feature-name>
@@ -46,7 +46,7 @@ Derive both values from the physical feature directory. The plan is DONE when it
 **`--depth light`:** concise, not shallow — keep all seven spine sections, ~1 short paragraph or 3–5 bullets each. One clear path following existing patterns; no alternatives enumeration. No standalone clarification/review gates, no `plan_review`, no expanded architecture.
 
 ## Method / guardrails
-- **Research first** (unless reused): `@spectre_finder`/`@spectre_analyst`/`@spectre_patterns` in parallel → trace entry points and data flow end-to-end → cross-reference `CLAUDE.md`/`README.md` → validate discoveries against real code. If research was newly done, update `task_context.md` `## Technical Research`.
+- **Research first** (unless reused): an existing substantive `## Technical Research` section counts as reused at every depth; an orchestrated `spectre-plan` call never launches replacement research agents. Otherwise run `@spectre_finder`/`@spectre_analyst`/`@spectre_patterns` in parallel → trace entry points and data flow end-to-end → cross-reference `CLAUDE.md`/`README.md` → validate discoveries against real code. If research was newly done, update `task_context.md` `## Technical Research`.
 - **Clarifications:** generate up to 10 technical questions, only for ambiguity not answered by the PRD or discoverable in code; present approach choices with Pros/Cons/Trade-offs. Prefer `AskUserQuestion` (batches ≤4, most critical first); fall back to intelligent defaults if unavailable. Return clarification findings in-thread — do not write clarification files.
 - **`--depth light`:** do NOT stop for clarifications — use conservative, codebase-consistent defaults and record them under **Filled Assumptions**.
 - Use judgment on section length, not on inclusion.

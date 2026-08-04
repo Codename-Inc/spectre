@@ -34,7 +34,7 @@ test("production task review owns the explicit medium-effort orchestration seque
 
   const orderedContract = [
     "task-review-safety.mjs` `preflight",
-    "launch the selected opposite-runtime command",
+    "launch it as a long-running process",
     "poll",
     "task-review-safety.mjs` `validate-report",
     "one report-only repair attempt",
@@ -58,21 +58,32 @@ test("production task review owns the explicit medium-effort orchestration seque
     /Missing Coverage or Index Alignment summaries request repair or become an advisory/,
   );
   assert.match(taskReview, /Allow up to 20 minutes for completion/);
-  assert.match(taskReview, /Atomically write `REVIEW_ATTEMPT`/);
-  assert.match(taskReview, /Record pass\/failure in `REVIEW_ATTEMPT`/);
+  assert.match(taskReview, /primary first makes any verified mechanical corrections/i);
+  assert.match(taskReview, /do not change semantic judgment/i);
+  assert.match(taskReview, /Primary-agent semantic self-review is prohibited/i);
+  assert.match(taskReview, /initialize it atomically immediately before the first launch/);
+  assert.match(taskReview, /On pass atomically set `round_status: complete`/);
   assert.match(
     taskReview,
     /Do not pass launcher timeout or duration guidance to the reviewer/,
   );
 });
 
-test("task review is one-shot and helper impact can never trigger another semantic review", () => {
-  assert.match(taskReview, /One-review hard stop/i);
+test("task review hard-stops after one completed report while recovering incomplete routes", () => {
+  assert.match(taskReview, /Completed-review hard stop/i);
   assert.match(taskReview, /--review-again/);
   assert.match(taskReview, /task_review_attempt\.json/);
   assert.match(
     taskReview,
-    /do not launch, resume, repair, fall back, or synthesize another semantic review/i,
+    /One completed semantic review means one valid report, not one launcher attempt/i,
+  );
+  assert.match(
+    taskReview,
+    /missing\/invalid report[^\n]*MUST be recovered without `--review-again`/i,
+  );
+  assert.match(
+    taskReview,
+    /immediately dispatch the native fallback under the same round and report path/i,
   );
   assert.match(
     taskReview,
@@ -181,7 +192,7 @@ test("review gates retain their route-specific models and efforts", () => {
   );
 });
 
-test("plan routing and both review gates require explicit user authorization for any second round", () => {
+test("plan owns automatic review boundaries while standalone plan review has no recovery ledger", () => {
   const plan = readFileSync(
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
     "utf8",
@@ -198,25 +209,20 @@ test("plan routing and both review gates require explicit user authorization for
     "utf8",
   );
 
-  assert.match(plan, /One-review hard stop/);
-  assert.match(plan, /at most one plan-review round/);
-  assert.match(plan, /at most one task-review round/);
+  assert.match(plan, /Single automatic plan review/);
+  assert.match(plan, /invokes `spectre-plan_review` at most once before task generation/);
+  assert.match(plan, /Later artifact edits or scope-preserving feedback never trigger another plan review/);
   assert.match(plan, /do not re-run `plan_review` or `task_review`/);
-  assert.match(plan, /Explicit review-again request/);
+  assert.match(plan, /Explicit review request/);
+  assert.match(plan, /invoke `spectre-plan_review` normally/);
   assert.doesNotMatch(
     plan,
     /apply the smallest `plan\.md` edit, re-run `plan_review/,
   );
 
-  assert.match(planReview, /One-review hard stop/);
-  assert.match(planReview, /--review-again/);
-  assert.match(planReview, /plan_review_attempt\.json/);
-  assert.match(
-    planReview,
-    /do not launch, resume, repair, fall back, or synthesize another semantic review/i,
-  );
-  assert.match(
-    planReview,
-    /planner or orchestrator \*\*MUST NOT\*\* infer, manufacture, or add this flag/,
-  );
+  assert.match(planReview, /if it exists, write `plan_review_\{timestamp\}\.md`/);
+  assert.doesNotMatch(planReview, /Completed-review hard stop/i);
+  assert.doesNotMatch(planReview, /--review-again/);
+  assert.doesNotMatch(planReview, /plan_review_attempt\.json/);
+  assert.doesNotMatch(planReview, /round_status/);
 });
