@@ -1,6 +1,6 @@
 ---
 name: "spectre-deliver"
-description: "Autonomously take a tightly scoped feature or bug fix from request to tested implementation, reviewed acceptance proof, and a draft PR. Use when the user wants Spectre to infer a bounded scope and proceed without a confirmation gate. Do NOT use for ambiguous or broad work, non-code work, or when the user wants to confirm scope first (use spectre-align-and-deliver)."
+description: "Deliver a bounded feature or fix as tested code, acceptance proof, and a draft PR without a scope-confirmation gate. Use for low-ambiguity autonomous delivery; not for broad/non-code work or user-confirmed scope (use spectre-align-and-deliver)."
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,77 +9,62 @@ disable-model-invocation: true
 
 ## Purpose
 
-Turn one low-ambiguity feature or bug-fix request into a proven, reviewer-ready draft PR without routine user gates. Infer the smallest coherent scope, preserve it through delivery, and stop before merge, deploy, or release.
+Turn one low-ambiguity feature/fix into a proven draft PR. Infer and preserve the smallest coherent scope; stop before merge, deploy, or release.
 
 ## Inputs
 
-- `$ARGUMENTS` — feature request or bug report, referenced context, and an optional target branch stated in natural language. If empty, ask for the task and wait.
-- Optional explicit managed feature name/root or an artifact beneath one.
-- Default target: `origin/main`.
-- Read referenced files completely before decomposing the work.
+- `$ARGUMENTS`: request, references, optional natural-language target branch, and optional managed feature/root/descendant. If empty, ask and wait. Default target: `origin/main`.
+- Read referenced files completely before decomposition.
 
 ## Working Set
 
-- Late-bind branch, worktree, remotes, diff, repository instructions, and test/lint/build commands.
-- `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved once below and passed unchanged to every child.
-- Canonical artifacts: `{FEATURE_ROOT}/concepts/scope.md`; `{FEATURE_ROOT}/specs/{quick_task_plan.md,execute.md,tasks.json}` when needed; final verification/review reports; and `{FEATURE_ROOT}/proof/{proof.json,proof.html}`.
+- Late-bind repository/checkout/diff/command state. Resolve `FEATURE_ROOT=.spectre/features/<feature-name>/` once and pass it unchanged.
+- Canonical artifacts: `concepts/scope.md`; needed `specs/{quick_task_plan.md,execute.md,tasks.json}`; verification/reviews; and `proof/{proof.json,proof.html}` beneath `FEATURE_ROOT`.
 
 ## Feature root contract
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
-- When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
-- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
-- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
-- Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
+- Resolve an explicit feature/root/descendant or one unambiguous current-thread artifact; otherwise derive lowercase kebab-case and use the first free `.spectre/features/<name>[-N]/` without waiting. Never select existing work by branch, recency, lifecycle, or scanning; auto-continue a collision; or accept an explicitly selected unmanaged directory. The physical directory is authoritative, and an explicitly selected managed feature continues under its safeguards.
+- Before the first artifact, initialize a new root with lifecycle-neutral `feature.json`: `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`. Never add branch, status, active-pointer, alias, or absolute-path state.
 - If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
 - Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid. Pass the exact selected `FEATURE_ROOT` unchanged to every child call.
 
 ## Outputs + DONE
 
-- A compact `SCOPE_FILE` plus `SCOPE_SHA256`: **Alignment: inferred** · Type (`feature | fix`) · Objective · IN · OUT · ANTI-SCOPE · Acceptance Criteria · Proof Journeys · Assumptions · Target Branch.
-- A bounded `quick_task_plan.md`: Agreed Scope · Research Summary · Approach · dependency-ordered Implementation Tasks · Success Criteria; plus light `execute.md`/`tasks.json` when the feature route needs them.
-- Tested implementation with conventional commits; affected verification and repair/routing evidence; one advisory post-rebase full-suite observation; clean and rebased branch with backup/restore evidence.
-- Sanitized `proof.json` and `proof.html` recording acceptance evidence separately from the final candidate tuple.
-- A pushed branch and draft PR grounded in the actual diff; a separate proof capsule and PR URL returned together for review.
+- `SCOPE_FILE` + hash: **Alignment: inferred** · Type `feature|fix` · Objective · IN/OUT/ANTI-SCOPE · ACs · Proof Journeys · Assumptions · Target Branch.
+- Bounded `quick_task_plan.md`: Agreed Scope · Research · Approach · dependency-ordered Tasks · Success Criteria; light structured artifacts only when needed.
+- Tested conventional commits, affected verification/dispositions, one advisory post-rebase full-suite observation, clean/rebased safety evidence, separate sanitized proof, pushed branch, and diff-grounded draft PR.
 
-**DONE when:** implementation completed affected verification; repairable review/proof findings were repaired or routed; the post-rebase full suite ran once and its qualified status is disclosed; cleanup and rebase safety contracts pass; acceptance proof and final candidate state are recorded separately; and the draft PR URL is returned. Non-green verification/review/proof status never prevents PR creation by itself; CI owns merge-gating full-suite validation. No merge, deploy, release, or public proof publication occurs.
+**DONE:** affected verification complete; every code review ran once with at most one consolidated repair pass and honest dispositions; proof had at most one repair/reproof; post-rebase full-suite status disclosed; cleanup/rebase safe; acceptance proof and final candidate state are recorded separately; draft PR returned. Non-green verification/review/proof status never prevents PR creation by itself; CI merge-gates. No merge, deploy, release, or public proof publication occurs.
 
 ## Method / guardrails
 
-Invoke every named child skill with the stated arguments; do not merely describe or inline it. Validate each returned DONE contract before advancing.
+Invoke named child skills with stated arguments and validate their DONE contracts.
 
-1. **Resolve the execution location; isolate only when needed.** Before any artifact or product write, snapshot the entry state with `git status --porcelain=v1 --untracked-files=all` and distinguish the primary/local checkout from a linked worktree.
-   - **Clean linked worktree:** stay in the current directory. Reuse its non-protected branch; when it is on `main`/`master` or detached `HEAD`, create a collision-safe feature branch in that same worktree. Never create another worktree.
-   - **Dirty linked worktree:** leave it byte-for-byte untouched and create a clean sibling worktree plus collision-safe feature branch from committed `HEAD`. Do not stash, reset, commit, copy, or otherwise carry its pre-existing changes into the delivery worktree.
-   - **Primary/local checkout:** whether clean or dirty, leave it untouched and create a clean linked worktree plus collision-safe feature branch from committed `HEAD`.
-   - Apply this routing without a confirmation gate, run every child in the selected checkout, and never commit directly to `main`/`master`. Refuse unrelated or sensitive changes.
-2. **Infer the delivery brief.** Ground with targeted `@spectre:finder`, `@spectre:analyst`, and `@spectre:patterns` reads. Write the compact scope without confirmation, capture its actual path as `SCOPE_FILE`, and record `SCOPE_SHA256=sha256(bytes(SCOPE_FILE))`; use a scoped filename rather than overwriting another task. Record material assumptions. Once mutation begins, scope is immutable: no silent narrowing, expansion, or reinterpretation.
+1. **Resolve the execution location.** Before any artifact or product write, snapshot `git status --porcelain=v1 --untracked-files=all`. A clean linked worktree stays in place, reusing its non-protected branch or creating one there when protected/detached. For a dirty linked worktree or any primary/local checkout, leave the source byte-for-byte untouched and create a clean sibling worktree plus collision-safe branch from committed `HEAD`; never stash, reset, commit, copy, or carry pre-existing changes. Route without confirmation, run every child in the selected checkout, never commit to `main`/`master`, and refuse unrelated or sensitive changes.
+2. **Infer the brief.** Use targeted primary reads; dispatch only a specialist whose independent search resolves material uncertainty. Write collision-safe `SCOPE_FILE` without confirmation, hash its bytes, record assumptions, and keep scope immutable after mutation begins.
 3. **Plan and route.** Write a bounded quick plan to a collision-safe `QUICK_PLAN_FILE`; keep it within roughly three phases/eight parents and map every IN item to work and proof.
    - Tiny `feature` — exactly one dependency-safe sequential workstream with no structured resume/parallelization need → run `Skill(spectre-execute)` with `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, and `--finalization-owner parent` in plan-direct mode. Do not create `execute.md`/`tasks.json` merely as ceremony.
    - Other `feature` → run `Skill(spectre-create_tasks)` with `SCOPE_FILE`, `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, and `--depth light` for ≤3 parents or `--depth standard` otherwise. Capture returned `EXECUTE_FILE` and `DETAIL_FILE`, verify both, then run `Skill(spectre-execute)` with `EXECUTE_FILE`, `--orchestrated`, and `--finalization-owner parent`.
    - `fix` → run `Skill(spectre-fix-core)` with the bug report, `PHASE=full`, `PARENT=spectre-deliver`, `PARENT_AUTHORIZATION={SCOPE_FILE}`, `AUTHORIZED_SCOPE_SHA256={SCOPE_SHA256}`, `ALIGNMENT_MODE=inferred`, and `--orchestrated`. Preserve root cause and RED-before-GREEN repair; the explicit `/spectre:deliver` invocation replaces only diagnosis approval.
-4. **Accept implementation readiness, not finalization.** A feature route must return `IMPLEMENTATION_READY` with its required execute manifest and `ACCEPTANCE_PENDING`; a fix route must return its root cause, RED→GREEN evidence, affected paths/test roots, and relevant deterministic results. Repair attributable CRITICAL/HIGH findings through the owning child; route unrelated findings and continue. Do not run a pre-rebase final code review, proof pass, or separate `spectre-validate`; the candidate review and end-only proof below own finalization.
-5. **Prepare, observe, and repair the candidate.** Continue without a global cycle cap; failures and findings create repair/routing work, not blockers:
-   1. Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`, then `Skill(spectre-rebase)` with `{TARGET_BRANCH}`, `--orchestrated`, `--verification-owner parent`, and its mandatory backup ref. Require `REBASE_READY`; Deliver now owns post-rebase verification.
+4. **Accept readiness, not finalization.** Feature: `IMPLEMENTATION_READY` manifest + `ACCEPTANCE_PENDING`. Fix: root cause, RED→GREEN, affected paths/roots/results. No pre-rebase final review/proof or `spectre-validate`; finalization is below.
+5. **Prepare, observe, and repair the candidate.** Deterministic failures permit normal root-cause repair/routing; each scheduled review permits one consolidated repair pass and no repair-validation review:
+   1. Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`, then `Skill(spectre-rebase)` with target, `--orchestrated`, `--verification-owner parent`, and mandatory backup ref. Require `REBASE_READY`; Deliver owns post-rebase verification.
    2. Set `EVIDENCE_DIRS={FEATURE_ROOT}/{reviews,verification,proof}`. Capture `FULL_SUITE_SHA=git rev-parse HEAD`, then run the single repository-authoritative root suite once; do not run a baseline or duplicate package suites. Persist compact command/results/duration/runtime plus exact failing identities under `{FEATURE_ROOT}/verification/`; keep raw output out of child prompts.
-   3. Attribute failures as `branch-caused`, `unrelated`, or `indeterminate`. Prefer target-SHA CI evidence; otherwise reproduce only the failing test/check at the target SHA. Group branch-caused failures by invariant/root-cause family, repair, and rerun failing plus affected checks. Route unrelated findings and continue; disclose persistent indeterminate findings. Never rerun the full suite after repairs; set `CI: pending` for authoritative final-candidate full validation.
+   3. Attribute `branch-caused|unrelated|indeterminate`; prefer target-SHA CI, else reproduce only the failed check there. Root-cause repair branch failures and rerun failed+affected checks; route unrelated and disclose persistent indeterminate. Never rerun the full suite after repairs; final candidate is `CI: pending`.
    4. Capture the current candidate tuple: `BASE_SHA=git rev-parse {TARGET_BRANCH}`, `HEAD_SHA=git rev-parse HEAD`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`.
-   5. Set `REQUIREMENTS_SOURCE=DETAIL_FILE` when structured tasks exist, otherwise `QUICK_PLAN_FILE`. Recompute `SCOPE_SHA256` before each child and return `NEEDS_AUTHORITY` only on genuine scope-authority drift. Run the delivery's one comprehensive `Skill(spectre-code_review)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `REQUIREMENTS_SOURCE`, the candidate tuple, and `--orchestrated`. CRITICAL/HIGH defects enter repair/adaptation; related-file growth is not scope change. After repair, run affected verification, recapture the tuple, and dispatch only one focused affected-boundary `@spectre:reviewer`; never rerun the comprehensive review. Route non-defects and continue.
-   6. Run acceptance proof only now, after deterministic verification and review remediation are complete. Invoke `Skill(spectre-proof)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, `REQUIREMENTS_SOURCE`, `EVIDENCE_DIRS`, and `--orchestrated`, without the candidate tuple. After observable-behavior repair, resume execute for a feature or `spectre-fix-core` for a fix, run affected verification plus focused affected-boundary review, recapture the tuple, then invoke a fresh final proof pass. Non-behavior changes never trigger reproof.
-6. **Open the review boundary.** Build compact `VERIFICATION_SUMMARY` from the full-suite observation, attribution, repairs, focused final checks, and `CI: pending`. Run `Skill(spectre-create_pr)` with `{TARGET_BRANCH}`, `EXPECTED_BASE_SHA={BASE_SHA}`, `EXPECTED_HEAD_SHA={HEAD_SHA}`, `EXPECTED_DIFF_SHA256={DIFF_SHA256}`, `EVIDENCE_DIRS`, `VERIFICATION_SUMMARY`, `--draft`, and `--orchestrated`. If it returns `PR_CANDIDATE_STALE`, refresh the tuple and retry without a cap. Keep workflow evidence separate from the PR diff. Never force-push unrelated history, bypass hooks/checks, suppress failures, merge, deploy, or release.
+   5. Use `REQUIREMENTS_SOURCE=DETAIL_FILE` for structured tasks, otherwise `QUICK_PLAN_FILE`; recheck scope hash, then run one comprehensive `Skill(spectre-code_review)` with root, scope, requirements, candidate tuple, and `--orchestrated`. Route non-defects; give attributable CRITICAL/HIGH one consolidated root-cause repair pass by primary/owner. Run affected checks, record `repaired-verified|repaired-unverified|unresolved|scope-change|unrelated`, and recapture the tuple. Related-file growth is not scope change. Never dispatch a reviewer to validate the repair or rerun the comprehensive review.
+   6. Run acceptance proof only now. Invoke `Skill(spectre-proof)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, `REQUIREMENTS_SOURCE`, `EVIDENCE_DIRS`, and `--orchestrated`, without the candidate tuple. An observable failure gets one behavior-repair pass through execute or `spectre-fix-core`, affected verification, tuple recapture, and one fresh proof over failed/impact-linked rows—never a code review. Disclose persistent failure; non-behavior changes never trigger reproof.
+6. **Open the review boundary.** Build compact `VERIFICATION_SUMMARY` from observation, attribution, dispositions, affected final checks, and `CI: pending`. Run `Skill(spectre-create_pr)` with target, `EXPECTED_BASE_SHA={BASE_SHA}`, `EXPECTED_HEAD_SHA={HEAD_SHA}`, `EXPECTED_DIFF_SHA256={DIFF_SHA256}`, evidence, summary, `--draft`, `--orchestrated`. On `PR_CANDIDATE_STALE`, refresh the tuple and retry without a cap. Keep workflow evidence outside the PR diff; never force-push unrelated history, bypass checks, suppress failures, merge, deploy, or release.
 
 ## Handoff
 
-Return: proof status and artifact paths · `{BASE_SHA, HEAD_SHA, DIFF_SHA256}` · scope hash · full-suite observation SHA/status · attribution/repair/routing summary · focused final checks · `CI: pending` · review result · rebase target, backup ref, and restore command · limitations · draft PR URL.
+Return proof paths/status · candidate tuple · scope hash · full-suite observation · dispositions/affected checks · `CI: pending` · review · rebase/restore evidence · limitations · draft PR URL.
 
 End with: `Next (recommended): review the proof and draft PR.`
 
 ## Escalate-If
 
-- No safe, cohesive low-ambiguity interpretation exists before mutation → recommend `/spectre:align-and-deliver`; route broad/multi-area work to `/spectre:plan`.
-- Acceptance truth conflicts, a repair changes product requirements, or a required proof dependency/credential/permission needs user authority. A technical repair that touches related files is not a scope change.
-- A required child skill/orchestrated mode is unavailable and no equivalent safe route exists.
-- Git cannot provide the required safe checkout, or the requested delivery depends on pre-existing dirty changes deliberately left behind.
-- Rebase requires semantic product judgment, remote history diverged unexpectedly, or secrets/PII appear in the working set or evidence.
-- Never escalate solely for test/lint/type/build failures, red baselines, unavailable broad suites, review/proof findings, repair count, diff growth, or candidate drift that can be refreshed.
+- No cohesive low-ambiguity interpretation before mutation → `/spectre:align-and-deliver`; broad/multi-area → `/spectre:plan`.
+- Conflicting acceptance, requirement-changing repair, or missing authority/credential/capability. Related-file technical repair is not scope change.
+- Unsafe checkout/dirty dependency, semantic rebase/diverged remote, secrets/PII, or no equivalent child route.
+- Never escalate solely for test/lint/type/build failures, red baselines, unavailable broad suites, review/proof findings, diff growth, or candidate drift that can be refreshed; disclose unresolved results in the draft PR.

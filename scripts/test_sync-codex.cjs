@@ -400,14 +400,18 @@ test('spectre-execute preserves affected verification, phase review, and finaliz
     assert.match(contract, /only when all its source-owned tasks\/workstreams[\s\S]*`done\|skipped`/);
     assert.match(contract, /Never review a partial phase or review every wave/);
     assert.match(contract, /newly completed phases in one lightweight `@spectre(?::|_)reviewer` call/);
-    assert.match(contract, /finding_fingerprint = sha256/);
-    assert.match(contract, /invariant_family = sha256/);
-    assert.match(contract, /there is no global repair\/review cap/);
+    assert.match(contract, /Each scheduled review runs once/);
+    assert.match(contract, /one consolidated root-cause repair pass/);
+    assert.match(contract, /Never dispatch a reviewer solely to validate a repair/);
+    assert.match(contract, /later scheduled review may rediscover the issue/);
+    assert.match(contract, /there is no global lifetime cap across distinct scheduled reviews/);
     assert.match(contract, /Run only stale or uncovered checks/);
     assert.match(contract, /`IMPLEMENTATION_READY` \+ `ACCEPTANCE_PENDING`/);
     assert.match(contract, /Skill\(spectre-code_review\)`[^\n]*exactly once, high effort/);
-    assert.match(contract, /do not rerun the comprehensive review/);
+    assert.match(contract, /never (?:rerun or replace|dispatch a reviewer to validate the repair or rerun) the comprehensive review/i);
     assert.match(contract, /Proof is always the last acceptance gate/);
+    assert.match(contract, /proof failure gets one behavior-repair pass/);
+    assert.doesNotMatch(contract, /focused phase\/boundary review|reopened phases require fresh[\s\S]*phase review/);
     assert.doesNotMatch(contract, /Skill\(spectre-create_test_guide\)|Skill\(spectre-validate\)/);
     assert.doesNotMatch(contract, /Dual clean-room review|dispatch two .*reviewer|risk checkpoint/);
     assert.doesNotMatch(contract, /at least 20 minutes/i);
@@ -751,7 +755,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(createTasks, /no adequate UX\/prototype acceptance source/);
     assert.match(createTasks, /--orchestrated.*without user-facing Next Steps/);
 
-    assert.match(execute, /Only after review remediation closes/);
+    assert.match(execute, /After review dispositions are recorded/);
     assert.match(execute, /Skill\(spectre-proof\)/);
     assert.match(execute, /Proof is always the last acceptance gate/);
     assert.match(execute, /Parent-owned runs[^\n]*without user-facing next steps/i);
@@ -870,12 +874,15 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
       assert.match(skill, /Never rerun the full suite after repairs/);
       assert.match(skill, /CI: pending/);
       assert.match(skill, /VERIFICATION_SUMMARY/);
-      assert.match(skill, /CRITICAL\/HIGH defects enter repair\/adaptation/);
+      assert.match(skill, /CRITICAL\/HIGH one consolidated root-cause repair pass/);
       assert.doesNotMatch(skill, /Skill\(spectre-validate\)/);
       assert.match(skill, /`ACCEPTANCE_PENDING`/);
       assert.match(skill, /Run acceptance proof only now/);
       assert.match(skill, /one comprehensive `Skill\(spectre-code_review\)`/);
-      assert.match(skill, /never rerun the comprehensive review/);
+      assert.match(skill, /Never dispatch a reviewer to validate the repair or rerun the comprehensive review/);
+      assert.match(skill, /each scheduled review permits one consolidated repair pass and no repair-validation review/);
+      assert.match(skill, /one behavior-repair pass[\s\S]*never a code review/);
+      assert.doesNotMatch(skill, /focused affected-boundary|focused final checks/);
       assert.match(skill, /Skill\(spectre-proof\)[^\n]*without the candidate tuple/);
       assert.match(skill, /acceptance proof and final candidate state are recorded separately/);
       assert.match(skill, /git diff --binary --full-index --no-ext-diff --no-color/);
@@ -891,23 +898,13 @@ test('deliver workflows replace quick_dev and ship with scope-aware feature and 
         skill,
         /Before any artifact or product write[^\n]*git status --porcelain=v1 --untracked-files=all/,
       );
+      assert.match(skill, /A clean linked worktree stays in place/);
+      assert.match(skill, /dirty linked worktree or any primary\/local checkout[\s\S]*clean sibling worktree[\s\S]*from committed `HEAD`/);
       assert.match(
         skill,
-        /Clean linked worktree:[\s\S]*stay in the current directory[\s\S]*Never create another worktree/,
+        /never stash, reset, commit, copy, or carry pre-existing changes/,
       );
-      assert.match(
-        skill,
-        /Dirty linked worktree:[\s\S]*create a clean sibling worktree[\s\S]*from committed `HEAD`/,
-      );
-      assert.match(
-        skill,
-        /Primary\/local checkout:[\s\S]*create a clean linked worktree[\s\S]*from committed `HEAD`/,
-      );
-      assert.match(
-        skill,
-        /Do not stash, reset, commit, copy, or otherwise carry its pre-existing changes/,
-      );
-      assert.match(skill, /Apply this routing without a confirmation gate/);
+      assert.match(skill, /Route without confirmation/);
       assert.match(skill, /run every child in the selected checkout/);
     }
 
