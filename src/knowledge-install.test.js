@@ -421,25 +421,15 @@ test('active documentation describes metadata registry, neutral search, and exac
   );
 
   const readme = fs.readFileSync(path.resolve('README.md'), 'utf8');
-  const capabilityPath = path.resolve('docs/codex-capability-matrix.md');
-  const capability = fs.readFileSync(capabilityPath, 'utf8');
-  const activeDocs = `${readme}\n${capability}`;
-  assert.equal(fs.existsSync(capabilityPath), true);
-  assert.match(readme, /\.\/docs\/codex-capability-matrix\.md/);
-  for (const text of [readme, capability]) {
-    assert.match(text, /\/plugin marketplace add joenandez\/spectre/);
-    assert.match(text, /\/plugin install spectre@spectre/);
-    assert.match(text, /codex plugin marketplace add joenandez\/spectre/);
-    assert.match(text, /codex plugin add spectre@spectre/);
-  }
-  assert.match(activeDocs, /SessionStart/);
-  assert.match(activeDocs, /activation cue alone is insufficient/i);
-  assert.match(activeDocs, /spectre knowledge search/);
-  assert.match(activeDocs, /spectre knowledge load/);
-  assert.match(activeDocs, /spectre knowledge registry/);
-  assert.match(activeDocs, /recordDirectory/);
-  assert.match(activeDocs, /resources/);
-  assert.doesNotMatch(activeDocs, /spectre-recall|UserPromptSubmit/);
+  assert.match(readme, /\/plugin marketplace add joenandez\/spectre/);
+  assert.match(readme, /\/plugin install spectre@spectre/);
+  assert.match(readme, /codex plugin marketplace add joenandez\/spectre/);
+  assert.match(readme, /codex plugin add spectre@spectre/);
+  assert.match(readme, /SessionStart/);
+  assert.match(readme, /task subject and a record's use condition match/i);
+  assert.match(readme, /neutral knowledge CLI to search and load records/i);
+  assert.match(readme, /verifies and loads the full record/i);
+  assert.doesNotMatch(readme, /spectre-recall|UserPromptSubmit/);
 
   const activeRepositorySurfaces = [
     'README.md',
@@ -448,8 +438,6 @@ test('active documentation describes metadata registry, neutral search, and exac
     '.claude-plugin/marketplace.json',
     '.agents/plugins/marketplace.json',
     '.agents/skills/release/SKILL.md',
-    'docs/getting-started.md',
-    'docs/codex-capability-matrix.md',
     'src/main.js',
     'scripts/translators/manifest.cjs',
   ].map((filePath) => fs.readFileSync(path.resolve(filePath), 'utf8')).join('\n');

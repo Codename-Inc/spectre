@@ -13,14 +13,6 @@
     "active_tasks": "docs/active_tasks/"
   },
   "occurrences": {
-    "README.md": { "d6e1442cbc09:1:1": "compatibility_clause" },
-    "docs/codex-capability-matrix.md": { "515eaec26ff7:1:1": "compatibility_clause" },
-    "docs/command-reference.md": { "64e66439fc0b:1:1": "compatibility_clause" },
-    "docs/extending-spectre.md": { "d1e151ecb8d3:1:1": "compatibility_clause" },
-    "docs/getting-started.md": { "c734493fbd80:1:1": "compatibility_clause" },
-    "docs/spectre-memory-technical.md": { "a6d2335149ef:1:1": "compatibility_clause", "fd3f695e6482:1:1": "compatibility_clause" },
-    "docs/spectre-memory.md": { "29fcf920aa8e:1:1": "compatibility_clause", "a7cf69efb600:1:1": "compatibility_clause" },
-    "docs/workflow-guide.md": { "320b11ec45d9:1:1": "compatibility_clause", "12b0c8cc8c57:1:1": "compatibility_clause" },
     "plugins/spectre/hooks/scripts/test_handoff-resume.mjs": { "fe5eb345d6a6:1:1": "fixture" },
     "plugins/spectre/skills/spectre-clean/SKILL.md": { "9bf224528534:1:1": "compatibility_clause" },
     "plugins/spectre/skills/spectre-code_review/SKILL.md": { "03dfccfb9f19:1:1": "compatibility_clause" },

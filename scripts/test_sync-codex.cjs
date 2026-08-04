@@ -782,11 +782,15 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
 
 test('workflow documentation matches proof-independent shipping', () => {
   const readme = fs.readFileSync(path.resolve(__dirname, '..', 'README.md'), 'utf8');
+  const shipItSection = readme.match(
+    /  - `\/spectre:ship-it`[\s\S]*?(?=\n\n## )/,
+  )?.[0];
 
-  assert.match(readme, /Each outermost command ends with one task-aware/);
-  assert.doesNotMatch(readme, /proof-status reporting/);
-  assert.doesNotMatch(readme, /optional proof status/);
-  assert.doesNotMatch(readme, /--require-proof/);
+  assert.match(readme, /every final agent response[^\n]*guides you to what is next/i);
+  assert.ok(shipItSection);
+  assert.doesNotMatch(shipItSection, /proof-status reporting/);
+  assert.doesNotMatch(shipItSection, /optional proof status/);
+  assert.doesNotMatch(shipItSection, /--require-proof/);
 });
 
 test('ship-it composes focused skills without a proof prerequisite', () => {

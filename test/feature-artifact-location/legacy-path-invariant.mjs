@@ -17,13 +17,8 @@ function collectFiles(directory) {
 }
 
 export function scopedFiles(projectRoot) {
-  const topLevelDocs = readdirSync(join(projectRoot, 'docs'), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-    .map((entry) => join(projectRoot, 'docs', entry.name));
-
   return [
     join(projectRoot, 'README.md'),
-    ...topLevelDocs,
     ...collectFiles(join(projectRoot, 'plugins', 'spectre')),
     ...collectFiles(join(projectRoot, 'plugins', 'spectre-codex')),
     ...collectFiles(join(projectRoot, 'src')),

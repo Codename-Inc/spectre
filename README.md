@@ -304,6 +304,8 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 | `/spectre:scope` | Interactive feature scoping |
 | `/spectre:plan` | Research codebase, create implementation plan |
 | `/spectre:execute` | Wave-based parallel execution with code review |
+| `/spectre:deliver` | Autonomous delivery with inferred scope |
+| `/spectre:align-and-deliver` | Autonomous delivery after one scope confirmation |
 | `/spectre:proof` | User-level acceptance proof with reviewed evidence |
 | `/spectre:ship-it` | Completed-branch closeout: clean, rebase, PR |
 
