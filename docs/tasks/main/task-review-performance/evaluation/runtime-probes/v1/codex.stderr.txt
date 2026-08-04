@@ -1,4 +1,0 @@
-Reading additional input from stdin...
-real 4.23
-user 1.52
-sys 1.56

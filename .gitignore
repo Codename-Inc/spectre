@@ -104,16 +104,10 @@ tmp/
 .env.local
 .env.*.local
 *.local.json
-.spectre/manifest.json
-.spectre/bin/
-.spectre/handoffs/
+.spectre/
+DESIGN.md
+PRODUCT.md
 .memsearch/
-
-# Spectre local runtime state (credentials, transcripts, session scratch).
-# `.spectre/features/` stays trackable — canonical feature records are committed.
-.spectre/build-session.json
-.spectre/claude-subagent/
-.spectre/codex-subagent/
 
 # Local agent/tool state
 .helm/
