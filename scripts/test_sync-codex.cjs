@@ -388,7 +388,7 @@ const readExecuteContract = (repoRoot, rootName) => {
   return [fs.readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8'), ...references].join('\n');
 };
 
-test('spectre-execute preserves affected verification, phase review, and finalization gates', () => {
+test('spectre-execute preserves affected verification, risk-triggered review routing, and finalization gates', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -396,14 +396,20 @@ test('spectre-execute preserves affected verification, phase review, and finaliz
     assert.match(contract, /primary independently runs affected lint\/typecheck\/build/);
     assert.match(contract, /Never run a repository baseline\/root suite/);
     assert.match(contract, /`branch-caused`:[\s\S]*`unrelated`:[\s\S]*`indeterminate`:/);
-    assert.match(contract, /Review phase milestones/);
-    assert.match(contract, /only when all its source-owned tasks\/workstreams[\s\S]*`done\|skipped`/);
-    assert.match(contract, /Never review a partial phase or review every wave/);
-    assert.match(contract, /newly completed phases in one lightweight `@spectre(?::|_)reviewer` call/);
-    assert.match(contract, /Each scheduled review runs once/);
+    assert.match(contract, /Route intermediate review by compounding risk/);
+    assert.match(contract, /phase may be reviewed only after all source-owned tasks\/workstreams[\s\S]*`done\|skipped`/);
+    assert.match(contract, /completion alone is not a trigger/);
+    assert.match(contract, /independently implemented batches converg(?:e|ing) on a shared contract\/consumer/);
+    assert.match(contract, /downstream dependency on a changed interface\/state whose defect would compound/);
+    assert.match(contract, /auth\/trust, persistence\/migration, concurrency\/order\/retry/);
+    assert.match(contract, /concrete wiring\/correctness risk[\s\S]*E2E `Gap\|Adaptation`/);
+    assert.match(contract, /Subagent\/wave\/phase completion, agent count, and diff size alone are not triggers/);
+    assert.match(contract, /trigger at final completion belongs to `Skill\(spectre-code_review\)`/);
+    assert.match(contract, /never run both reviews over the final surface/i);
+    assert.match(contract, /Each triggered intermediate or final review runs once/);
     assert.match(contract, /one consolidated root-cause repair pass/);
     assert.match(contract, /Never dispatch a reviewer solely to validate a repair/);
-    assert.match(contract, /later scheduled review may rediscover the issue/);
+    assert.match(contract, /later risk-triggered intermediate or final review may independently rediscover the issue/);
     assert.match(contract, /there is no global lifetime cap across distinct scheduled reviews/);
     assert.match(contract, /Run only stale or uncovered checks/);
     assert.match(contract, /`IMPLEMENTATION_READY` \+ `ACCEPTANCE_PENDING`/);
@@ -412,6 +418,7 @@ test('spectre-execute preserves affected verification, phase review, and finaliz
     assert.match(contract, /Proof is always the last acceptance gate/);
     assert.match(contract, /proof failure gets one behavior-repair pass/);
     assert.doesNotMatch(contract, /focused phase\/boundary review|reopened phases require fresh[\s\S]*phase review/);
+    assert.doesNotMatch(contract, /one review per completed phase|send all newly completed phases/);
     assert.doesNotMatch(contract, /Skill\(spectre-create_test_guide\)|Skill\(spectre-validate\)/);
     assert.doesNotMatch(contract, /Dual clean-room review|dispatch two .*reviewer|risk checkpoint/);
     assert.doesNotMatch(contract, /at least 20 minutes/i);
@@ -539,7 +546,7 @@ test('plan-direct execute creates lazy durable execution state before dispatch',
       assert.match(execute, new RegExp(section));
     }
     assert.match(execute, /Before first dispatch, create the complete coarse map/i);
-    assert.match(execute, /After every dispatch, gate, review, or adaptation, update it/i);
+    assert.match(execute, /After every dispatch, gate, review-routing decision, review, or adaptation, update it/i);
     assert.match(execute, /one coarse row per plan-native/i);
     assert.match(execute, /Active Wave[^\n]*only currently dispatchable bounded assignments/i);
     assert.match(execute, /full-byte SHA-256/);
@@ -1180,6 +1187,20 @@ test('code review is adversarial and self-finalizing execute delegates the final
     assert.doesNotMatch(execute, /Skill\(spectre-validate\)/);
     assert.doesNotMatch(execute, /Dispatch multi-lens clean-room review/);
   }
+});
+
+test('public release invocation requires only release-notes approval', () => {
+  const release = fs.readFileSync(
+    path.resolve(__dirname, '..', '.agents', 'skills', 'release', 'SKILL.md'),
+    'utf8',
+  );
+
+  assert.match(release, /valid public invocation authorizes the resolved version bump, commits, local tag creation, pushes, and GitHub release publication/i);
+  assert.match(release, /release-notes approval[\s\S]*only user approval gate/i);
+  assert.match(release, /Resolve and report `current -> next`; continue without a confirmation gate/);
+  assert.match(release, /After changelog approval, create `vX\.Y\.Z` and run/);
+  assert.doesNotMatch(release, /confirm `current -> next` with the user/i);
+  assert.doesNotMatch(release, /then ask before running/i);
 });
 
 test('legacy path invariant covers canonical and generated assets after translation', async () => {

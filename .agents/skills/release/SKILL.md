@@ -109,6 +109,8 @@ Local mode deploys the current checkout for this user's persistent local use. It
 
 Public mode publishes a new version to GitHub for the Claude Code and Codex marketplaces. It requires `patch`, `minor`, `major`, or an exact `X.Y.Z`.
 
+A valid public invocation authorizes the resolved version bump, commits, local tag creation, pushes, and GitHub release publication. Do not ask for separate version, tag, push, or publication confirmation. The release-notes approval in Execution step 7 is the only user approval gate after invocation.
+
 ### Version Contract
 
 Bump these public version surfaces in sync:
@@ -122,7 +124,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 
 ### Execution
 
-1. Resolve the requested version and confirm `current -> next` with the user.
+1. Resolve and report `current -> next`; continue without a confirmation gate.
 2. Inspect and commit relevant non-version changes first:
    - Stage explicit files only.
    - Use a descriptive implementation commit.
@@ -140,7 +142,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 6. Complete Persistent Local Install Refresh for both Codex and Claude Code from the release checkout.
 
 7. Build a concise user-facing changelog from commits since the previous tag. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog.
-8. Create `vX.Y.Z`, then ask before running:
+8. After changelog approval, create `vX.Y.Z` and run:
 
    ```bash
    git push

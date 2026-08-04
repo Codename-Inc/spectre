@@ -13,9 +13,9 @@ Expand affected checks only across demonstrated dependency/consumer/integration/
 ## Review findings
 
 - Classify CRITICAL/HIGH as `defect` (completed requirement violated; related-file growth allowed), `scheduled` (pending source work owns it), `scope-change` (authority required), or `unrelated`.
-- Each scheduled review runs once. Group compatible defects into one consolidated root-cause repair pass; the primary handles bounded local work and uses `@spectre_dev` only for independent work or material context protection.
+- Each triggered intermediate or final review runs once. Group compatible defects into one consolidated root-cause repair pass; the primary handles bounded local work and uses `@spectre_dev` only for independent work or material context protection.
 - Run affected verification, then record `repaired-verified|repaired-unverified|unresolved|scheduled|scope-change|unrelated`. The original review remains unchanged; a failed check creates check work, not another review pass.
-- Never dispatch a reviewer solely to validate a repair. A later scheduled review may rediscover the issue and gets its own pass; there is no global lifetime cap across distinct scheduled reviews.
+- Never dispatch a reviewer solely to validate a repair. A later risk-triggered intermediate or final review may independently rediscover the issue and gets its own pass; there is no global lifetime cap across distinct scheduled reviews.
 
 ## Adaptation and proof
 

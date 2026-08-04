@@ -16,16 +16,16 @@ Place `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-na
 2. **Runtime Status** — `pending|running|repairing|needs-authority|done`; current/last wave; timestamps; current HEAD; finalization owner; coarse-map source coverage. Cumulative diff is only `baseline..HEAD`.
 3. **Workstream & Parallelization Map** — one coarse row per plan-native phase/workstream/item, preserving names and source order unless dependency evidence records reordering. Include source anchor, status, dependencies/shared contracts/change surfaces, and readiness/parallelization rationale.
 4. **Active Wave** — only currently dispatchable bounded assignments, owners, source anchors, outputs/consumers/replacements, and verification signals.
-5. **Wave History** — completed assignments, commits/files, verified HEADs and covered surfaces, command/results, scheduled reviews, repair passes and finding dispositions, routed failures, and E2E status.
+5. **Wave History** — completed assignments, commits/files, verified HEADs and covered surfaces, command/results, completed-phase review routing (`intermediate:<trigger>|final-only`), repair passes and finding dispositions, routed failures, and E2E status.
 6. **Plan-Backed Adaptations** — discovered gap, source-plan relationship, disposition, and affected future workstream.
-7. **Final Quality State** — phase/final review reports and verdicts, final verification coverage, requirement-delivery coverage, proof runs/result, and unresolved findings.
+7. **Final Quality State** — intermediate/final review reports and verdicts, final verification coverage, requirement-delivery coverage, proof runs/result, and unresolved findings.
 
 Do not create a parallel JSON graph, enumerate all future subtasks, manufacture acceptance criteria, or persist active-wave plan excerpts. Stop decomposition once the next safe wave is dispatchable.
 
 ## Lifecycle
 
 - Before first dispatch, create the complete coarse map and bounded Active Wave.
-- Before every wave, reread state. After every dispatch, gate, review, or adaptation, update it.
+- Before every wave, reread state. After every dispatch, gate, review-routing decision, review, or adaptation, update it.
 - Dev assignments contain transient verbatim plan text for only the active workstreams plus the exact Active Wave slice. Never persist that text in state.
 - On resume, recompute plan SHA-256 and byte length. If unchanged, continue. If changed, treat the current plan as authoritative, refresh only affected derivative mappings, preserve Wave History, and record reconciliation.
 - After a wave, move completed Active Wave detail into Wave History, clear it, and derive only the next safe assignments.
