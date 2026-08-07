@@ -2,6 +2,7 @@ import path from 'path';
 import readline from 'readline/promises';
 import fs from 'fs';
 import { runDoctor } from './lib/doctor.js';
+import { main as runWorkflowCli } from '../plugins/spectre/hooks/scripts/workflow-cli.mjs';
 import { resolveKnowledgeProjectDir } from '../plugins/spectre/hooks/scripts/knowledge/cli-arguments.mjs';
 import {
   formatCanonicalKnowledgeLoad,
@@ -58,6 +59,7 @@ function usage() {
   spectre knowledge registry [--host claude|codex] [--project-dir <path>] [--json]
   spectre knowledge register --record <path> [--project-dir <path>] [--json]
   spectre knowledge migrate [--project-dir <path>] [--json]
+  spectre workflow <run|stage|phase|wave|agent|task|gate|human-input|cleanup|purge> ... [--json]
 `;
 }
 
@@ -274,6 +276,11 @@ export async function main(argv) {
       'UNKNOWN_KNOWLEDGE_COMMAND',
       `Unknown knowledge command "${target || ''}".`
     );
+  }
+
+  if (command === 'workflow') {
+    await runWorkflowCli(argv.slice(1));
+    return;
   }
 
   if (target !== 'codex') {

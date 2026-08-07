@@ -18,6 +18,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readStdinWithTimeout } from './lib.mjs';
+import { cleanupAllWorkflowStores } from './workflow/retention.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -139,10 +140,17 @@ async function main() {
 
   const removed = cleanupStalePaths(pluginRoot);
   const agentSetup = ensureCodexAgents(pluginRoot);
+  const workflowCleanup = await cleanupAllWorkflowStores().catch((error) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
 
-  if (agentSetup && !agentSetup.ok) {
+  if ((agentSetup && !agentSetup.ok) || !workflowCleanup.ok) {
+    const failures = [];
+    if (agentSetup && !agentSetup.ok) failures.push(`agent setup: ${agentSetup.message}`);
+    if (!workflowCleanup.ok) failures.push(`workflow cleanup: ${workflowCleanup.error}`);
     process.stdout.write(JSON.stringify({
-      systemMessage: `bootstrap: Spectre Codex agent setup skipped: ${agentSetup.message}`
+      systemMessage: `bootstrap: Spectre maintenance skipped: ${failures.join('; ')}`
     }) + '\n');
   } else if (removed > 0 || agentSetup?.changed > 0) {
     const parts = [];

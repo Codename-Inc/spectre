@@ -1,0 +1,4 @@
+#!/bin/sh
+# Host-local launcher for the bundled workflow event runtime.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec node "$SCRIPT_DIR/../hooks/scripts/workflow-cli.mjs" "$@"

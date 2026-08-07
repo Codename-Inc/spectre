@@ -86,6 +86,9 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
       'hooks/scripts/bootstrap.mjs',
       'hooks/scripts/load-knowledge.mjs',
       'hooks/scripts/knowledge-cli.mjs',
+      'hooks/scripts/workflow-cli.mjs',
+      'hooks/scripts/workflow/store.mjs',
+      'hooks/scripts/workflow/retention.mjs',
       'hooks/scripts/knowledge/activity.mjs',
       'hooks/scripts/knowledge/loader.mjs',
       'hooks/scripts/knowledge/preview.mjs',
@@ -99,12 +102,16 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
         `packed plugin is missing ${relativePath}`,
       );
     }
+    assert.ok(fs.existsSync(path.join(claudePluginRoot, 'bin', 'spectre-workflow')));
 
     for (const root of [claudePluginRoot, pluginRoot]) {
       for (const relativePath of [
         'hooks/hooks.json',
         'hooks/scripts/load-knowledge.mjs',
         'hooks/scripts/knowledge-cli.mjs',
+        'hooks/scripts/workflow-cli.mjs',
+        'hooks/scripts/workflow/store.mjs',
+        'hooks/scripts/workflow/retention.mjs',
         'hooks/scripts/knowledge/activity.mjs',
         'hooks/scripts/knowledge/loader.mjs',
         'hooks/scripts/knowledge/preview.mjs',
@@ -265,6 +272,52 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
       }]);
       assert.equal(loaded.activity.successfulLoads, expectedLoads);
     }
+
+    const workflowHome = path.join(homeDir, '.spectre-workflow');
+    const workflowSource = path.join(
+      projectDir,
+      '.spectre',
+      'features',
+      'packed-runtime',
+      'specs',
+      'tasks.json',
+    );
+    fs.mkdirSync(path.dirname(workflowSource), { recursive: true });
+    fs.writeFileSync(workflowSource, JSON.stringify({
+      meta: { schema_version: 1, feature_root: '.spectre/features/packed-runtime' },
+      phases: [{
+        id: '1',
+        parents: [{ id: '1.1', status: 'pending', subtasks: [{ id: '1.1.1', status: 'pending' }] }],
+      }],
+    }));
+    const workflowEnv = { ...process.env, SPECTRE_HOME: workflowHome };
+    const workflowStart = spawnSync(process.execPath, [
+      path.join(installedPackage, 'bin', 'spectre.js'),
+      'workflow',
+      'run',
+      'start',
+      '--source',
+      workflowSource,
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], { cwd: projectDir, env: workflowEnv, encoding: 'utf8' });
+    assert.equal(workflowStart.status, 0, workflowStart.stderr);
+    const workflowRun = JSON.parse(workflowStart.stdout);
+    const packedMarker = spawnSync(process.execPath, [
+      path.join(pluginRoot, 'hooks', 'scripts', 'workflow-cli.mjs'),
+      'stage',
+      'start',
+      '--run-id',
+      workflowRun.runId,
+      '--actor-id',
+      workflowRun.primaryActorId,
+      '--project-dir',
+      projectDir,
+      '--json',
+    ], { cwd: projectDir, env: workflowEnv, encoding: 'utf8' });
+    assert.equal(packedMarker.status, 0, packedMarker.stderr);
+    assert.equal(JSON.parse(packedMarker.stdout).events[0].type, 'stage.started');
 
     const codexHome = path.join(homeDir, '.codex');
     const result = spawnSync('npx', [

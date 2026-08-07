@@ -71,6 +71,7 @@ description: "\\ud83d\\udc7b | Create implementation plans after /spectre:scope.
 
 Read .claude/skills/example/SKILL.md, then invoke /spectre:create_tasks.
 Load @skill-spectre:spectre-tdd and dispatch @spectre:tester plus @dev.
+Record lifecycle markers with spectre-workflow task start.
 `,
   );
 
@@ -140,6 +141,8 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
     assert.match(skill, /Skill\(spectre-tdd\)/);
     assert.match(skill, /@spectre_tester/);
     assert.match(skill, /@spectre_dev/);
+    assert.match(skill, /node "\$\{PLUGIN_ROOT\}\/hooks\/scripts\/workflow-cli\.mjs" task start/);
+    assert.doesNotMatch(skill, /\bspectre-workflow\b/);
     assert.match(skill, /Codex Agent Preflight/);
     assert.doesNotMatch(skill, /\.claude\/skills\//);
     assert.doesNotMatch(skill, /\/spectre:create_tasks/);
