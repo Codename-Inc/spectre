@@ -398,27 +398,22 @@ test('retired apply and recall-template assets have no active readers or placeho
 });
 
 test('active documentation describes metadata registry, neutral search, and exact load', () => {
-  for (const skillRoot of ['.claude', '.agents']) {
-    const guidance = fs.readFileSync(
-      path.resolve(skillRoot, 'skills', 'verify-spectre', 'SKILL.md'),
-      'utf8',
-    );
-    assert.match(guidance, /Metadata-only registry delivery/);
-    assert.match(guidance, /task-subject and use-condition alignment/);
-    assert.match(guidance, /activation cue alone is insufficient/);
-    assert.match(guidance, /neutral lexical search/);
-    assert.match(guidance, /verified exact-ID load/);
-    assert.match(guidance, /recordDirectory/);
-    assert.match(guidance, /resources/);
-    assert.match(guidance, /registry exposure is a delivery diagnostic/);
-    assert.match(guidance, /search match\/miss is discovery evidence/);
-    assert.match(guidance, /sole registry-rank signal/);
-    assert.doesNotMatch(guidance, /UserPromptSubmit|capability-only SessionStart|spectre-recall/);
-  }
-  assert.match(
-    fs.readFileSync(path.resolve('.agents/skills/verify-spectre/SKILL.md'), 'utf8'),
-    /Codex-facing skill/,
+  const guidance = fs.readFileSync(
+    path.resolve('.agents', 'skills', 'verify-spectre', 'SKILL.md'),
+    'utf8',
   );
+  assert.match(guidance, /Metadata-only registry delivery/);
+  assert.match(guidance, /task-subject and use-condition alignment/);
+  assert.match(guidance, /activation cue alone is insufficient/);
+  assert.match(guidance, /neutral lexical search/);
+  assert.match(guidance, /verified exact-ID load/);
+  assert.match(guidance, /recordDirectory/);
+  assert.match(guidance, /resources/);
+  assert.match(guidance, /registry exposure is a delivery diagnostic/);
+  assert.match(guidance, /search match\/miss is discovery evidence/);
+  assert.match(guidance, /sole registry-rank signal/);
+  assert.match(guidance, /single canonical copy tracked by the public repository/);
+  assert.doesNotMatch(guidance, /UserPromptSubmit|capability-only SessionStart|spectre-recall/);
 
   const readme = fs.readFileSync(path.resolve('README.md'), 'utf8');
   assert.match(readme, /\/plugin marketplace add joenandez\/spectre/);

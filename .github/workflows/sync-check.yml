@@ -26,3 +26,6 @@ jobs:
 
       - name: Fail on generated drift
         run: git diff --exit-code plugins/spectre-codex/
+
+      - name: Enforce repository and package boundaries
+        run: npm run check:boundary

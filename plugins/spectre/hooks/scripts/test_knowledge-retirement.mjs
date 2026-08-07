@@ -59,7 +59,7 @@ describe('retired active recall surface', () => {
       )),
       false,
     );
-    const expected = read('.claude/skills/verify-spectre/references/expected-skills.txt')
+    const expected = read('.agents/skills/verify-spectre/references/expected-skills.txt')
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'));
@@ -89,7 +89,7 @@ describe('retired active recall surface', () => {
 
   it('updates package and structural verification expectations to the replacement surface', () => {
     const packTest = read('src/pack.test.js');
-    const structureGate = read('.claude/skills/verify-spectre/scripts/gate1_structure.mjs');
+    const structureGate = read('.agents/skills/verify-spectre/scripts/gate1_structure.mjs');
     assert.match(packTest, /hooks\/scripts\/knowledge-cli\.mjs/);
     assert.doesNotMatch(packTest, /skills\/spectre-recall|user-prompt-submit/);
     assert.match(packTest, /'UserPromptSubmit' in hooksConfig\.hooks, false/);

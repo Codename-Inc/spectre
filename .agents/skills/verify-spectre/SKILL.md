@@ -13,13 +13,13 @@ The reason this exists as scripts rather than a checklist: Spectre's real failur
 ## Run it
 
 ```bash
-node .claude/skills/verify-spectre/scripts/verify.mjs            # gates 1-4 (default, pre-commit)
-node .claude/skills/verify-spectre/scripts/verify.mjs --fast     # gates 1-2 (seconds, on every change)
-node .claude/skills/verify-spectre/scripts/verify.mjs --release  # gates 1-5 (before publishing)
-node .claude/skills/verify-spectre/scripts/verify.mjs --gate 4   # one gate, when iterating on a fix
+node .agents/skills/verify-spectre/scripts/verify.mjs            # gates 1-4 (default, pre-commit)
+node .agents/skills/verify-spectre/scripts/verify.mjs --fast     # gates 1-2 (seconds, on every change)
+node .agents/skills/verify-spectre/scripts/verify.mjs --release  # gates 1-5 (before publishing)
+node .agents/skills/verify-spectre/scripts/verify.mjs --gate 4   # one gate, when iterating on a fix
 ```
 
-The scripts live under `.claude/skills/verify-spectre/scripts/` and are the single canonical copy — this Codex-facing skill runs the same files rather than duplicating them. Two copies of a 600-line suite drift, and drift in a validation suite is worse than no suite: it reports green against rules nobody is enforcing. (This repo already has that problem elsewhere — `feature-codex-spectre-implementation` differs by 332 lines between `.claude/` and `.agents/`.)
+The scripts live alongside this skill under `.agents/skills/verify-spectre/scripts/` and are the single canonical copy tracked by the public repository. Keeping the executable gates beside the skill makes a fresh clone independently verifiable without relying on ignored `.claude/` state.
 
 Run from the repo root. The scripts locate the repo from their own path, so they work regardless of your working directory.
 

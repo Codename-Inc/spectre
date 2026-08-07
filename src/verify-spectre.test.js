@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const GATE4 = path.resolve('.claude/skills/verify-spectre/scripts/gate4_cli.mjs');
-const VERIFY = path.resolve('.claude/skills/verify-spectre/scripts/verify.mjs');
+const GATE4 = path.resolve('.agents/skills/verify-spectre/scripts/gate4_cli.mjs');
+const VERIFY = path.resolve('.agents/skills/verify-spectre/scripts/verify.mjs');
 
 test('verification reports test counts from the current Node test reporter', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-verify-count-'));

@@ -15,7 +15,7 @@ const RELEASE_SKILL = path.join(
 const RELEASE_GATE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
-  '.claude',
+  '.agents',
   'skills',
   'verify-spectre',
   'scripts',
