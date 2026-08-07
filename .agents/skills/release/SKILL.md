@@ -1,6 +1,6 @@
 ---
 name: release
-description: Deploy the current Spectre checkout for persistent local user testing, or run the full public GitHub marketplace release workflow. Use when asked to deploy Spectre locally, refresh local Spectre installs, release Spectre, publish a version, or ship Spectre publicly.
+description: Switch persistent Spectre installs between this checkout and the public marketplace, deploy the checkout for local testing, or run the full public GitHub marketplace release workflow. Use when asked to activate local or public Spectre, deploy or refresh local installs, release Spectre, publish a version, or ship Spectre publicly.
 user-invocable: true
 ---
 
@@ -13,6 +13,8 @@ Internal Spectre deployment workflow. Keep local deployment and public release a
 Supported invocations:
 
 ```text
+activate local
+activate public
 local
 public patch
 public minor
@@ -20,7 +22,7 @@ public major
 public X.Y.Z
 ```
 
-Treat `$ARGUMENTS` as one of these forms. If the first argument is missing or is not `local` or `public`, ask which mode to run. Never infer or default to a public release.
+Treat `$ARGUMENTS` as one of these forms. `local` is the backward-compatible alias for `activate local`. `activate public` switches installed sources but does not publish; `public <version>` publishes a release. If the first argument is missing or invalid, ask which mode to run. Never infer or default to a public release.
 
 ## Shared Preflight
 
@@ -36,21 +38,40 @@ Treat `$ARGUMENTS` as one of these forms. If the first argument is missing or is
 3. Stop and fix any sync, test, structure, Codex, or real-CLI failure before deploying.
 4. Never stage unrelated files or use `git add -A`.
 
-## Persistent Local Install Refresh
+## Persistent Local Source Activation
 
-Both local and public modes refresh persistent user-level installs themselves. These commands are deployment actions, not a handoff for the user to finish.
+`activate local`, `local`, and Public Mode's pre-release deployment activate persistent user-level installs from this checkout. These commands are deployment actions, not a handoff for the user to finish.
+
+Before changing anything, run all four inventory commands and retain their JSON for the final source report:
+
+```bash
+codex plugin marketplace list --json
+codex plugin list --json
+claude plugin marketplace list --json
+claude plugin list --json
+```
+
+The local and public catalogs intentionally share marketplace name `spectre` and plugin identity `spectre@spectre`; they are alternatives, not side-by-side installs. Mutate only that exact marketplace and plugin. For Claude Code, mutate only user scope. Never remove a project/local-scope declaration; stop if one shadows the requested user source or leaves another enabled `spectre@spectre` install.
 
 ### Codex
 
-1. Run `codex plugin marketplace list --json`. If the `spectre` marketplace is absent, add this checkout with `codex plugin marketplace add "$PWD"`. If it exists, require it to be a directory marketplace whose real path is `$PWD`; stop rather than refreshing a different marketplace. Do not run `codex plugin marketplace upgrade` for this local source: Codex only upgrades Git marketplaces and reads directory marketplaces directly.
-2. A local marketplace source does not replace an installed same-version plugin. If `spectre@spectre` is installed at user scope, remove its cached install, then reinstall it. If it is not installed, install it directly:
+1. Inspect the `spectre` marketplace. If absent, add this checkout. If its source is not a local path whose real path is `$PWD`, remove the installed plugin if present, remove only the conflicting marketplace, and add this checkout:
+
+   ```bash
+   codex plugin remove spectre@spectre
+   codex plugin marketplace remove spectre
+   codex plugin marketplace add "$PWD"
+   ```
+
+   Run only the applicable commands: do not call `plugin remove` when the plugin is absent or `marketplace remove` when the marketplace is absent. Do not run `codex plugin marketplace upgrade` for the requested local source; Codex only upgrades Git marketplaces and reads local marketplaces directly.
+2. A local marketplace source does not replace an installed same-version plugin. If `spectre@spectre` remains installed, remove its cached install, then reinstall it. If it is absent, install it directly:
 
    ```bash
    codex plugin remove spectre@spectre
    codex plugin add spectre@spectre
    ```
 
-3. Run `codex plugin list --json` and require exactly one enabled user-scope `spectre@spectre` entry whose version matches `plugins/spectre-codex/.codex-plugin/plugin.json`.
+3. Rerun both Codex JSON inventory commands. Require exactly one marketplace named `spectre` with `marketplaceSource.sourceType == "local"` and a source whose real path is `$PWD`. Require exactly one enabled `spectre@spectre` entry whose marketplace source is that same local path and whose version matches `plugins/spectre-codex/.codex-plugin/plugin.json`.
 4. Resolve that entry's install/cache path and run:
 
    ```bash
@@ -72,8 +93,16 @@ Existing Codex sessions may need a restart before newly installed or updated cus
 
 ### Claude Code
 
-1. Run `claude plugin marketplace list --json`. If the `spectre` marketplace is absent, add this checkout with `claude plugin marketplace add "$PWD"`. If it exists, require it to be a directory marketplace whose real path is `$PWD`; stop rather than refreshing a different marketplace.
-2. Refresh the marketplace source:
+1. Inspect the `spectre` marketplace. If absent, add this checkout at user scope. If its source is not a directory whose real path is `$PWD`, uninstall the user plugin if present, remove only the user marketplace declaration, and add this checkout:
+
+   ```bash
+   claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+   claude plugin marketplace remove spectre --scope user
+   claude plugin marketplace add "$PWD" --scope user
+   ```
+
+   Run only the applicable commands. If removal exposes a project/local marketplace named `spectre`, stop instead of removing it.
+2. Refresh the active local marketplace source:
 
    ```bash
    claude plugin marketplace update spectre
@@ -86,7 +115,7 @@ Existing Codex sessions may need a restart before newly installed or updated cus
    claude plugin install spectre@spectre --scope user
    ```
 
-4. Run `claude plugin list --json` and require exactly one enabled user-scope `spectre@spectre` entry whose version matches `plugins/spectre/.claude-plugin/plugin.json`.
+4. Rerun both Claude JSON inventory commands. Require exactly one effective marketplace named `spectre` with `source == "directory"` and a path whose real path is `$PWD`. Require exactly one enabled user-scope `spectre@spectre` entry, no project/local-scope Spectre install, and a version matching `plugins/spectre/.claude-plugin/plugin.json`.
 5. Resolve that entry's `installPath` and run:
 
    ```bash
@@ -96,14 +125,66 @@ Existing Codex sessions may need a restart before newly installed or updated cus
    A zero exit proves the installed plugin cache contains the current checkout bytes. Treat any marketplace, install, JSON identity, version, enabled-state, or byte-comparison failure as a failed deployment.
 6. Existing Claude Code sessions still require `/reload-plugins`; report that as the only remaining interactive action.
 
+## Persistent Public Source Activation
+
+`activate public` switches persistent user-level installs to `joenandez/spectre` without creating a version, commit, tag, push, or GitHub release. It does not install from the current checkout.
+
+Run the four inventory commands from Persistent Local Source Activation before changing anything. Apply the same exact-identity and Claude user-scope guards.
+
+### Codex
+
+1. If the current `spectre` marketplace is absent, add `joenandez/spectre`. If it is not a Git marketplace normalized to `https://github.com/joenandez/spectre.git`, remove the installed plugin if present, remove only the conflicting marketplace, and add the public marketplace:
+
+   ```bash
+   codex plugin remove spectre@spectre
+   codex plugin marketplace remove spectre
+   codex plugin marketplace add joenandez/spectre
+   ```
+
+   Run only the applicable commands. If the public marketplace is already configured, refresh it with `codex plugin marketplace upgrade spectre` instead of removing it.
+2. Remove any remaining cached `spectre@spectre` install and reinstall it from the active marketplace:
+
+   ```bash
+   codex plugin remove spectre@spectre
+   codex plugin add spectre@spectre
+   ```
+
+3. Rerun both Codex JSON inventory commands. Require exactly one marketplace named `spectre`, with `marketplaceSource.sourceType == "git"` and a source normalized to `https://github.com/joenandez/spectre.git`. Require exactly one enabled `spectre@spectre` entry tied to that marketplace.
+4. Resolve the marketplace `root`, the plugin source declared by its `.agents/plugins/marketplace.json`, and the installed plugin source/cache path. Require the installed version to match the public marketplace and plugin manifests, then run `diff -qr` between the resolved marketplace plugin root and installed plugin root.
+5. Run `ensure-codex-agents.mjs --ensure --json` from the resolved installed public plugin root and compare every bundled agent TOML to `${CODEX_HOME:-$HOME/.codex}/agents/`. Any source, identity, enabled-state, version, byte, or managed-agent mismatch fails activation.
+
+### Claude Code
+
+1. If the current `spectre` marketplace is absent, add `joenandez/spectre` at user scope. If it is not the GitHub marketplace `joenandez/spectre`, uninstall the user plugin if present, remove only the user marketplace declaration, and add the public marketplace:
+
+   ```bash
+   claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+   claude plugin marketplace remove spectre --scope user
+   claude plugin marketplace add joenandez/spectre --scope user
+   ```
+
+   Run only the applicable commands. If removal exposes a project/local marketplace named `spectre`, stop instead of removing it. If the public marketplace is already configured, refresh it with `claude plugin marketplace update spectre` instead of removing it.
+2. Remove any remaining cached user install while preserving data, then reinstall it from the active marketplace:
+
+   ```bash
+   claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+   claude plugin install spectre@spectre --scope user
+   ```
+
+3. Rerun both Claude JSON inventory commands. Require exactly one effective marketplace named `spectre`, with `source == "github"` and `repo == "joenandez/spectre"`. Require exactly one enabled user-scope `spectre@spectre` entry and no project/local-scope Spectre install.
+4. Resolve the marketplace `installLocation`, the plugin source declared by its `.claude-plugin/marketplace.json`, and the installed entry's `installPath`. Require the installed version to match the public marketplace and plugin manifests, then run `diff -qr` between the resolved marketplace plugin root and `installPath`. Any source, identity, scope, enabled-state, version, or byte mismatch fails activation.
+5. Existing Claude Code sessions require `/reload-plugins`; report that as the only remaining interactive action.
+
+## Activation Mode
+
+- `activate local`: complete Shared Preflight, then Persistent Local Source Activation.
+- `activate public`: complete Persistent Public Source Activation. Do not run checkout preflight as proof of public bytes; verify against the fetched public marketplace snapshot instead.
+
+Neither activation mode bumps versions, commits, pushes, tags, creates a GitHub release, or publishes npm. Finish with `Local source active` or `Public source active`, then report for each runtime the normalized marketplace source, installed identity/version/scope, byte-comparison result, and exact mutation commands actually executed.
+
 ## Local Mode
 
-Local mode deploys the current checkout for this user's persistent local use. It does not publish anything.
-
-1. Complete Shared Preflight.
-2. Complete Persistent Local Install Refresh for both Codex and Claude Code.
-3. Do not bump versions, commit, push, tag, create a GitHub release, or publish npm.
-4. Finish with `Local deploy complete` and print the exact Codex and Claude Code commands executed from the Executed Local Install Commands section below as an audit record. Do not present them as work the user still needs to run.
+`local` is retained as an alias for `activate local`. Follow Activation Mode exactly and do not present its executed commands as work the user still needs to run.
 
 ## Public Mode
 
@@ -139,7 +220,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 
    This must pass before creating or pushing a tag. In particular, GitHub authentication must be proven before irreversible release actions.
 
-6. Complete Persistent Local Install Refresh for both Codex and Claude Code from the release checkout.
+6. Complete Persistent Local Source Activation for both Codex and Claude Code from the release checkout.
 
 7. Build a concise user-facing changelog from commits since the previous tag. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog.
 8. After changelog approval, create `vX.Y.Z` and run:
@@ -162,13 +243,13 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
     gh release view vX.Y.Z --json url,tagName,targetCommitish
     ```
 
-11. Finish with `Public release complete: vX.Y.Z`. Include the commit, tag, GitHub release URL, marketplace versions, checks run, and both command sections below.
+11. Finish with `Public release complete: vX.Y.Z`. Include the commit, tag, GitHub release URL, marketplace versions, checks run, the exact local activation commands executed, and the public consumer commands below.
 
 ## Final Command Record
 
-### Executed Local Install Commands
+Always print the exact mutation command branch executed at the end of Activation, Local, or Public Mode as an audit record. The user does not need to rerun it. Do not print templates or branches that did not run.
 
-Always print the exact command branch executed at the end of either mode as an audit record of commands the workflow already ran. The user does not need to rerun them. Do not print both the one-time and refresh branches unless both were actually executed.
+### Local Source Command Branches
 
 Codex, one-time persistent user-level native plugin install from this checkout:
 
@@ -182,7 +263,16 @@ done
 node bin/spectre.js doctor codex --scope user --project-dir "$PWD"
 ```
 
-Codex, refresh an existing persistent user-level install from the configured local `spectre` directory marketplace:
+Codex, switch an existing public source to this checkout:
+
+```bash
+codex plugin remove spectre@spectre
+codex plugin marketplace remove spectre
+codex plugin marketplace add "$PWD"
+codex plugin add spectre@spectre
+```
+
+Codex, refresh an existing persistent user-level install from the configured local `spectre` marketplace:
 
 ```bash
 codex plugin remove spectre@spectre
@@ -199,7 +289,17 @@ Then restart an existing Codex session if newly installed or updated `spectre_*`
 Claude Code, one-time persistent user-level install from this checkout:
 
 ```bash
-claude plugin marketplace add "$PWD"
+claude plugin marketplace add "$PWD" --scope user
+claude plugin install spectre@spectre --scope user
+```
+
+Claude Code, switch an existing public source to this checkout:
+
+```bash
+claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+claude plugin marketplace remove spectre --scope user
+claude plugin marketplace add "$PWD" --scope user
+claude plugin marketplace update spectre
 claude plugin install spectre@spectre --scope user
 ```
 
@@ -213,7 +313,59 @@ claude plugin install spectre@spectre --scope user
 
 Then run `/reload-plugins` in an existing Claude Code session. The uninstall/install is intentional: Claude's version cache can skip same-version local source changes.
 
-### Public Install Commands
+### Public Source Command Branches
+
+Codex, one-time install from the public marketplace:
+
+```bash
+codex plugin marketplace add joenandez/spectre
+codex plugin add spectre@spectre
+```
+
+Codex, switch this checkout or another source to the public marketplace:
+
+```bash
+codex plugin remove spectre@spectre
+codex plugin marketplace remove spectre
+codex plugin marketplace add joenandez/spectre
+codex plugin add spectre@spectre
+```
+
+Codex, refresh an already configured public marketplace:
+
+```bash
+codex plugin marketplace upgrade spectre
+codex plugin remove spectre@spectre
+codex plugin add spectre@spectre
+```
+
+Claude Code, one-time user-level install from the public marketplace:
+
+```bash
+claude plugin marketplace add joenandez/spectre --scope user
+claude plugin install spectre@spectre --scope user
+```
+
+Claude Code, switch this checkout or another user source to the public marketplace:
+
+```bash
+claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+claude plugin marketplace remove spectre --scope user
+claude plugin marketplace add joenandez/spectre --scope user
+claude plugin install spectre@spectre --scope user
+```
+
+Claude Code, refresh an already configured public marketplace:
+
+```bash
+claude plugin marketplace update spectre
+claude plugin uninstall spectre@spectre --scope user --keep-data --yes
+claude plugin install spectre@spectre --scope user
+```
+
+Then run `/reload-plugins` in an existing Claude Code session.
+
+### Public Consumer Commands
 
 Print this section only after Public Mode completes successfully.
 
@@ -248,6 +400,7 @@ Claude Code, update an existing public install:
 ## Escalate If
 
 - Local mode would require a public side effect: stop rather than broadening scope.
+- Source activation reveals a project/local-scope Claude marketplace or plugin that conflicts with the requested user source: stop without removing that broader-scope state.
 - Public mode has no version argument: ask for one.
 - Version surfaces disagree, release gates fail, GitHub authentication is missing, or the tag already exists: stop before tagging.
-- Push, GitHub release, remote tag/release verification, local Codex or Claude refresh, installed-byte comparison, managed-agent comparison, or doctor fails: fix if local and in scope; otherwise report the blocker precisely.
+- Push, GitHub release, remote tag/release verification, source activation, installed-byte comparison, managed-agent comparison, or doctor fails: fix if local and in scope; otherwise report the blocker precisely.
