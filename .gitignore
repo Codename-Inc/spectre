@@ -16,6 +16,10 @@ grove-logs/
 !.agents/skills/**
 !.agents/plugins/
 !.agents/plugins/marketplace.json
+.agents/product-marketing.md
+.agents/skills/product-marketing/
+.agents/skills/spectre-workflow-analysis/
+.agents/skills/spectre-workflow-analysis-workspace/
 AGENTS.override.md
 
 # Node.js
@@ -113,3 +117,8 @@ PRODUCT.md
 .helm/
 .impeccable/
 scratchpad/
+
+# Private Spectre Studio content lives in the sibling `spectre-studio` repo.
+brand/
+site/
+skills-lock.json
