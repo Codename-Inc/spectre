@@ -72,7 +72,7 @@ Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
 
 - SPECTRE saves canonical feature docs under `.spectre/features/<feature-name>/`, and `/spectre:handoff` saves branch-keyed session state under `.spectre/handoffs/<branch-name>/`. Keep `.spectre/features/` checked into git so your Agent and teammates can reference durable feature records in the future; handoffs remain local session state.
 
-- `/spectre:plan`, `/spectre:execute`, and `/spectre:ship-it` workflows are **meta workflows**. They combine a number of skills into a single workflow that your primary agent runs and subagents execute.
+- `/spectre:plan`, `/spectre:execute`, and `/spectre:ship` workflows are **meta workflows**. They combine a number of skills into a single workflow that your primary agent runs and subagents execute.
 
   - `/spectre:plan` will
     - research your codebase
@@ -87,8 +87,8 @@ Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
     - dispatch `@spectre:dev` subagents in Claude Code or `@spectre_dev` in Codex with *only* the context they require to deliver their task
     - run affected verification after each wave and use intermediate reviewers only when compounding risk is recorded
     - run one opposite-runtime (Codex or Claude Code) adversarial Code Review and one consolidated repair pass to address the feedback
-    - finally, run `/spectre:proof` to break the scope/ux into explicit acceptance criteria and *prove* through your existing test harness or another suitable proof tool that the product works as expected. It will take screenshots and video when the work is visual, evaluate them and the logs, and create a final reviewable `proof.html` artifact for your review.
-  - `/spectre:ship-it` is what you run when you are ready to check a feature in and create a PR. It will:
+    - finally, run `/spectre:prove` to break the scope/ux into explicit acceptance criteria and *prove* through your existing test harness or another suitable proof tool that the product works as expected. It will take screenshots and video when the work is visual, evaluate them and the logs, and create a final reviewable `proof.html` artifact for your review.
+  - `/spectre:ship` is what you run when you are ready to check a feature in and create a PR. It will:
     - run `/spectre:clean` which is itself a meta workflow. `/spectre:prune` finds dead and unreachable code, flags duplicates, temp logs, and slop. `/spectre:test` runs a risk-weighted assessment to identify test coverage gaps, classify gaps as P0, P1, P2, and P3 behavior and write tests for the most important gaps. Then, it will run `/spectre:rebase` to rebase onto the parent branch (if there is one) and `/spectre:create_pr` to open the PR.
 
 ## 🛑 When NOT to use SPECTRE
@@ -176,7 +176,7 @@ For example:
 - I iterated on the /spectre:clean and /spectre:test workflows until it felt automatic that we were sticking to our linting rules, every new feature was well tested/covered, the commits were grouped logically with the appropriate amount of detail.
 - I iterated on the /spectre:learn workflow and the registry/search/load flow until 1) your Agent reached for relevant knowledge before starting work, 2) captured the *right* details and insights, and 3) kept relevant knowledge current as we make changes and learn more.
 - I iterated on the /spectre:handoff workflow until the status update had the appropriate detail/context, and worked perfectly if I'm working across MANY sessions or just one.
-- I added the new `/spectre:proof` workflow when it became clear I was spending far too much time validating the features were built right, and gave the agent a feedback loop to check its own work.
+- I added the new `/spectre:prove` workflow when it became clear I was spending far too much time validating the features were built right, and gave the agent a feedback loop to check its own work.
 
 SPECTRE made products like New June and Subspace possible, and it is making it possible for me, an ex-Meta, ex-Amazon Technical Product Manager to build, ship, and iterate on products 100x the complexity of anything I've ever built in the past.
 
@@ -261,13 +261,13 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 
   - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
 
-- then run /spectre:execute to use parallel subagents to work through the tasks. Execute also runs one final /spectre:code_review and an end-only /spectre:proof pass.
+- then run /spectre:execute to use parallel subagents to work through the tasks. Execute also runs one final /spectre:code_review and an end-only /spectre:prove pass.
 
   - side note /spectre:validate is a killer prompt. It breaks down the original tasks and dispatches subagents to verify. find stuff missing all the time with this.
 
   - when initial execution is complete, i run another /spectre:handoff to get the context window clean for fixes/touch ups.
 
-- for low-ambiguity features and fixes where I trust the agent end-to-end, I use /spectre:deliver. Brain dump what I want, walk away, and review the proof plus draft PR — zero routine confirmation gates.
+- for small, unambiguous features and reproducible fixes where I want Spectre to work autonomously, I use /spectre:delegate. Brain dump what I want, walk away, and review the proof plus draft PR — zero routine confirmation gates.
 
 - From here — I review the proof and do any additional manual testing and fixing.
 
@@ -286,7 +286,7 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
   - finding obvious dead code/AI slop, and
   - grouping changes logically with descriptive conventional commits
 
-- Once wrapping up, /spectre:ship-it is a much deeper cleanup that
+- Once wrapping up, /spectre:ship is a much deeper cleanup that
 
   - dispatches subagents to find dead code, duplicates, verifies, lint, commits any stragglers, etc.
   - runs /spectre:test does deep analysis and dispatches subagents to write tests based on a risk-adjusted framework focusing on behavior not implementation details,
@@ -304,10 +304,9 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 | `/spectre:scope` | Interactive feature scoping |
 | `/spectre:plan` | Research codebase, create implementation plan |
 | `/spectre:execute` | Wave-based parallel execution with code review |
-| `/spectre:deliver` | Autonomous delivery with inferred scope |
-| `/spectre:align-and-deliver` | Autonomous delivery after one scope confirmation |
-| `/spectre:proof` | User-level acceptance proof with reviewed evidence |
-| `/spectre:ship-it` | Completed-branch closeout: clean, rebase, PR |
+| `/spectre:delegate` | Autonomous compact flow for clear features and reproducible fixes |
+| `/spectre:prove` | User-level acceptance proof with reviewed evidence |
+| `/spectre:ship` | Completed-branch closeout: clean, rebase, PR |
 
 ### Discovery & Research
 

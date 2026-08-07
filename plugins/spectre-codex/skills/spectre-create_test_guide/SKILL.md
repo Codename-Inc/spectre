@@ -53,7 +53,7 @@ Feature-section shape:
 ## Handoff
 - Return the coverage summary in-thread (no extra docs).
 - `--orchestrated` → return the guide path and coverage summary to the caller without user-facing Next Steps.
-- Standalone → recommend `spectre-proof` when the completed feature has an observable public workflow; recommend `spectre-test` only for an identified automation gap; recommend `spectre-clean` only when proof is explicitly deferred. Emit one primary recommendation with its observed reason.
+- Standalone → recommend `spectre-prove` when the completed feature has an observable public workflow; recommend `spectre-test` only for an identified automation gap; recommend `spectre-clean` only when proof is explicitly deferred. Emit one primary recommendation with its observed reason.
 
 ## Escalate-If
 - Task context is too thin to identify the changed features or personas — ask before guessing.

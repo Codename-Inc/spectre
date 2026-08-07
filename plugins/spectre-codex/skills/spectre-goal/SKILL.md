@@ -52,7 +52,7 @@ Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and re
 3. Require this process order in both prompt forms:
    - Structured mode runs `Skill(spectre-execute)` with `EXECUTE_INDEX --orchestrated`.
    - Plan-direct mode: invoke `Skill(spectre-execute)` with the source-plan path, `{FEATURE_ROOT}`, and `--orchestrated`.
-   - Execute owns single-pass proof invocation plus repair/reinvoke closure; the goal never calls `spectre-proof` directly.
+   - Execute owns single-pass proof invocation plus repair/reinvoke closure; the goal never calls `spectre-prove` directly.
    - Do not imitate, summarize away, or bypass execute's current contract.
 4. Require a final transcript evidence capsule containing task status counts, deterministic checks and exit results, final review/validation status, proof-matrix counts and aggregate status, artifact paths, repairs, and limitations. This makes one prompt verifiable by both Codex and transcript-only evaluators.
 5. Write `goal-prompts.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, then:

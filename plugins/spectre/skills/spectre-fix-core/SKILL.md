@@ -1,6 +1,6 @@
 ---
 name: "spectre-fix-core"
-description: "Internal diagnose-and-repair engine for Spectre workflows. Use only when invoked by spectre-fix, spectre-deliver, or spectre-align-and-deliver with an explicit phase and authorization contract. Do NOT invoke directly for user requests."
+description: "Internal diagnose-and-repair engine for Spectre workflows. Use only when invoked by spectre-fix or spectre-delegate with an explicit phase and authorization contract. Do NOT invoke directly for user requests."
 user-invocable: false
 ---
 
@@ -8,46 +8,49 @@ user-invocable: false
 
 ## Purpose
 
-Own one reusable bug flow: reproduce the failure, identify the root cause, and implement a verified RED-before-GREEN repair. Keep user approval in the standalone `spectre-fix` parent while allowing delivery parents to supply scope-bound authorization.
+Own one reusable bug flow: reproduce the failure, ground the root cause and behavioral blast radius, then implement a verified RED-before-GREEN repair. Keep user approval in the standalone `spectre-fix` parent while allowing orchestrated parents to supply scope-bound authorization.
 
 ## Inputs
 
 - Bug report: error, stack trace, reproduction, and referenced context.
 - `PHASE=diagnose | repair | full`.
-- `repair` requires the exact diagnosis plus `USER_APPROVED_DIAGNOSIS=true`.
-- `full` requires `PARENT=spectre-deliver | spectre-align-and-deliver`, `PARENT_AUTHORIZATION={scope.md}`, `AUTHORIZED_SCOPE_SHA256`, and the matching `ALIGNMENT_MODE=inferred | confirmed`.
+- `repair` requires the exact diagnosis and experience contract plus `USER_APPROVED_FIX_CONTRACT=true`.
+- `full` requires `PARENT=spectre-delegate`, `PARENT_AUTHORIZATION={scope.md}`, `AUTHORIZED_SCOPE_SHA256`, and `ALIGNMENT_MODE=inferred`.
 - `--orchestrated` — return to the parent without user-facing routing.
 
 ## Working Set
 
 - Read affected paths and recent changes just-in-time.
-- Use one `@spectre:analyst` per leading hypothesis; no scratch reports.
+- Use `@spectre:analyst` for causal and impact traces; keep returns compact and in-thread, with no scratch reports.
 - In parent-authorized `full`, read the scope artifact before any code write.
 
 ## Outputs + DONE
 
-- `diagnose` → `DIAGNOSIS_READY`: reproduction, root cause, affected files, proposed repair, and regression-test opportunity; no code writes.
-- `repair | full` → `FIX_COMPLETE`: diagnosis plus confirmed RED evidence, implementation, GREEN checks, `[🪳 TEMP {TOPIC}]` diagnostic logging, changed files, and limitations.
+Experience-contract rows map technical evidence to product behavior: `journey/surface | current experience | expected experience | technical path/consumer | disposition=intended-change|preserved-invariant|collateral-change|unresolved | evidence | verification`.
+- `diagnose` → `DIAGNOSIS_READY`: reproduction, root cause, affected files, candidate repair, evidence-backed experience contract, and regression/invariant opportunities; no code writes.
+- `repair | full` → `FIX_COMPLETE`: diagnosis, row-level contract evidence, confirmed RED, implementation, GREEN checks, `[🪳 TEMP {TOPIC}]` diagnostic logging, changed files, and limitations.
 
-**DONE when:** root cause is grounded, authorization is valid, the regression is RED→GREEN, affected checks have no attributable failure, unrelated findings are routed, and the parent receives the result.
+**DONE when:** root cause is grounded; the product and technical direct blast radius was independently explored after the candidate repair boundary was known; authorization is valid with no `unresolved` row; the intended regression is RED→GREEN; affected checks have no attributable failure; unrelated findings are routed; and the parent receives the result.
 
 ## Method / guardrails
 
 1. **Diagnose.** Generate 5–7 plausible sources, reduce to the 1–2 strongest from data flow, recent changes, error evidence, and affected paths, then dispatch parallel `@spectre:analyst` traces. Reproduce the failure and synthesize one cause-level repair.
-2. **Honor phase.** `diagnose` returns `DIAGNOSIS_READY` before any code write.
-3. **Verify authorization before repair.**
-   - `repair` proceeds only when the parent supplies the exact diagnosis previously shown to the user plus `USER_APPROVED_DIAGNOSIS=true`.
-   - `full` proceeds only when the named delivery parent supplies a readable scope artifact whose recomputed SHA-256 equals `AUTHORIZED_SCOPE_SHA256`, whose alignment mode matches the parent (`deliver=inferred`, `align-and-deliver=confirmed`), and the diagnosis plus repair remain inside it. Parent authorization replaces only the post-diagnosis approval pause.
-4. **Repair test-first.** Write the regression test, confirm RED for the diagnosed reason, implement the smallest root-cause fix plus `[🪳 TEMP {TOPIC}]` logging, then reach GREEN and run affected deterministic checks.
-5. **Attribute and continue.** Classify extra failures `branch-caused|unrelated|indeterminate`; repair branch-caused families, route unrelated findings, and use a focused target-state check when unclear. A red repository-wide baseline never blocks.
-6. **Contain scope.** Do not broaden behavior, hide failures, weaken assertions, bypass checks, or treat an unrelated defect as authorized.
+2. **Explore product + technical impact.** Once root cause and candidate repair boundary are grounded, dispatch ≥1 independent read-only `@spectre:analyst`; parallelize separable product journeys or technical boundaries. Trace shared callers, state, and data paths through to user/operator-observable outcomes. Return compact experience-contract rows that explicitly identify experiences that change, remain invariant, or are unresolved; synthesize and deduplicate the results.
+3. **Honor phase.** `diagnose` returns `DIAGNOSIS_READY` before any code write.
+4. **Verify authorization before repair.**
+   - `repair` proceeds only when the parent supplies the exact diagnosis and experience contract shown to the user plus `USER_APPROVED_FIX_CONTRACT=true`.
+   - `full` proceeds only when Delegate supplies a readable scope artifact whose recomputed SHA-256 equals `AUTHORIZED_SCOPE_SHA256`, whose alignment mode is `inferred`, and the diagnosis, repair, and every experience-contract row remain inside it. Parent authorization replaces only the post-diagnosis approval pause.
+   - An `unresolved` row or unapproved/out-of-scope collateral change blocks repair.
+5. **Repair test-first.** Confirm the intended-change regression RED for the diagnosed reason; capture risk-proportional preserved-invariant checks; implement the smallest root-cause fix plus `[🪳 TEMP {TOPIC}]` logging; then prove the contract and affected deterministic checks GREEN.
+6. **Attribute and continue.** Classify extra failures `branch-caused|unrelated|indeterminate`; repair branch-caused families, route unrelated findings, and use a focused target-state check when unclear. A red repository-wide baseline never blocks.
+7. **Contain scope.** Do not broaden behavior, hide failures, weaken assertions, bypass checks, or treat an unrelated defect as authorized. A new or changed experience-contract row or repair boundary returns to authorization.
 
 ## Handoff
 
-Return the phase status, diagnosis, authorization path/hash/mode, RED/GREEN evidence, changed files, checks, limitations, and exact validation steps. The parent owns all user-facing Next Steps.
+Return the phase status, diagnosis, experience contract with row-level evidence, authorization path/hash/mode, RED/GREEN evidence, changed files, checks, limitations, and exact validation steps. The parent owns all user-facing Next Steps.
 
 ## Escalate-If
 
-- The report is too thin to form testable hypotheses, reproduction is unavailable, or no root cause can be grounded.
-- Authorization is absent, stale, unreadable, hash/mode-mismatched, does not match the diagnosis, or the repair exceeds the authorized scope.
+- The report is too thin to form testable hypotheses, reproduction is unavailable, no root cause can be grounded, impact evidence conflicts, or desired behavior remains unresolved.
+- Authorization is absent, stale, unreadable, hash/mode-mismatched, does not match the diagnosis/experience contract, or the repair exceeds the authorized scope.
 - The regression cannot establish the cause, evidence contradicts it, or further safe action needs authority. Never escalate for unrelated red checks, unavailable broad suites, attempt count, or authorized related-file growth.

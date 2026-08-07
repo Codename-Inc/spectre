@@ -57,7 +57,7 @@ Guardrails:
 `NEEDS_AUTHORITY` reports its phase/impasse and manual-review list. Ordinary test/lint/build failures never produce it; repair or route them. Otherwise report commits.
 
 - `--orchestrated` → return the result to the caller without user-facing Next Steps.
-- Standalone → `Next (recommended): /spectre:rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `/spectre:proof` only as a conditional alternative when acceptance evidence is still desired before shipping.
+- Standalone → `Next (recommended): /spectre:rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `/spectre:prove` only as a conditional alternative when acceptance evidence is still desired before shipping.
 
 ## Escalate-If
 

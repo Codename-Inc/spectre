@@ -1,11 +1,11 @@
 ---
-name: "spectre-ship-it"
+name: "spectre-ship"
 description: "Turn completed branch work into a reviewer-ready PR: clean, rebase, observe one advisory full suite, repair/route failures, and open via spectre-create_pr. Use when asked to ship finished work. Proof is optional. Do NOT use for implementation, main/master pushes, releases, or autonomous request-to-PR delivery."
 user-invocable: true
 disable-model-invocation: true
 ---
 
-# ship-it
+# ship
 
 Clean, rebase, observe the repository suite once without gating the PR, then open it. Load focused skills; do not duplicate them.
 

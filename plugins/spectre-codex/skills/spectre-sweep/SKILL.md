@@ -36,7 +36,7 @@ One or more conventional commits covering the changes. DONE when:
 
 ## Handoff
 - `--orchestrated` → return commit hashes and verification status to the caller without user-facing Next Steps.
-- Standalone → emit one repo-state-grounded recommendation: `spectre-proof` if completed user-observable work still needs acceptance evidence; otherwise `spectre-rebase` when the branch is ready for merge preparation, or `spectre-create_pr` only when already current with the target.
+- Standalone → emit one repo-state-grounded recommendation: `spectre-prove` if completed user-observable work still needs acceptance evidence; otherwise `spectre-rebase` when the branch is ready for merge preparation, or `spectre-create_pr` only when already current with the target.
 
 ## Escalate-If
 - A secret/credential appears in the diff — stop, surface it, do not commit until resolved.

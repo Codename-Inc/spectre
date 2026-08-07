@@ -112,7 +112,7 @@ DONE when the self-locating report exists with all nine numbered sections plus m
 
 ## Handoff
 
-- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Blockers → `/spectre:fix`; otherwise choose `/spectre:proof` for completed user-observable work, `/spectre:test` for a concrete coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary recommendation tied to the verdict, not an equal-weight menu.
+- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Blockers → `/spectre:fix`; otherwise choose `/spectre:prove` for completed user-observable work, `/spectre:test` for a concrete coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary recommendation tied to the verdict, not an equal-weight menu.
 - `--orchestrated`: return the verdict, requirement-delivery status counts, CRITICAL/HIGH findings with their evidence chains and both identities, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
 
 ## Escalate-If

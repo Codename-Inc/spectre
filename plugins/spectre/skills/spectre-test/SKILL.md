@@ -50,7 +50,7 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 Report inline: files triaged by tier, tests added per tier, lint/test status, commit list.
 
 - `--orchestrated` or an orchestrator-provided risk plan → return results to the caller without user-facing Next Steps.
-- Standalone → choose from live state: completed user-observable work not yet acceptance-proven → `/spectre:proof`; remaining uncommitted hygiene → `/spectre:sweep`; clean, proven-or-explicitly-deferred work → `/spectre:rebase`.
+- Standalone → choose from live state: completed user-observable work not yet acceptance-proven → `/spectre:prove`; remaining uncommitted hygiene → `/spectre:sweep`; clean, proven-or-explicitly-deferred work → `/spectre:rebase`.
 
 Render one primary recommendation with its observed reason; never jump directly to rebase merely because tests passed.
 

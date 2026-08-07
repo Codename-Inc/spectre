@@ -30,7 +30,7 @@ Treat `$ARGUMENTS` as one of these forms. If the first argument is missing or is
    ```bash
    npm run sync-codex -- --quiet
    npm run sync-codex -- --check --quiet
-   node .claude/skills/verify-spectre/scripts/verify.mjs
+   node .agents/skills/verify-spectre/scripts/verify.mjs
    ```
 
 3. Stop and fix any sync, test, structure, Codex, or real-CLI failure before deploying.
@@ -134,7 +134,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 5. Require a clean release working tree, then run the complete release gate:
 
    ```bash
-   node .claude/skills/verify-spectre/scripts/verify.mjs --release
+   node .agents/skills/verify-spectre/scripts/verify.mjs --release
    ```
 
    This must pass before creating or pushing a tag. In particular, GitHub authentication must be proven before irreversible release actions.

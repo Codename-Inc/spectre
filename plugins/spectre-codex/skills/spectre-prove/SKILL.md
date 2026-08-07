@@ -1,16 +1,17 @@
 ---
-name: "spectre-proof"
+name: "spectre-prove"
 description: "Run one acceptance-proof pass over completed work and publish reviewed user-facing evidence. Use from spectre-execute or standalone for acceptance evidence, screenshots/video/logs, or an HTML proof artifact. Do NOT use for implementation checks, repairs, unit tests, planning, or code review."
 user-invocable: true
 ---
 
-# proof
+# prove
 
 Independently prove the completed experience against its approved contract. Treat implementation reports, tests, DOM/state assertions, and developer claims as leads, not proof. Observable behavior and reviewed evidence decide the result.
 
 ## Inputs
 
 - `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, explicitly passed source-plan path, scope/UX/prototype/test-guide paths, journey hints, a prior proof run to extend, an authorized scope hash, explicit `EVIDENCE_DIRS`, and `--orchestrated` when a parent owns the next action.
+- Optional `--profile focused`, valid only with `--orchestrated`: use existing proof tools/scenarios only, run no tooling research or dependency-selection gate, and record unavailable proof capability as `PARTIAL` with limitation `PROOF_TOOLING_UNAVAILABLE`.
 - Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
 - Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 - Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
@@ -27,7 +28,7 @@ Each invocation is exactly one proof pass. Record the observed repository/runtim
 
 - Inventory available skills, repository scripts, automation, runnable applications, public interfaces, and existing scenarios before choosing tools. Prefer the project's established proof stack and reusable scenarios.
 - Match the mechanism to the actual surface: visible app, browser, desktop/mobile runtime, CLI/TUI, API/service, library, or background workflow. Exercise the same public controls and interfaces a user would use.
-- When no adequate proof tool exists, read `references/proof-tools.md`; use `@spectre:web-research` when available to verify current options against primary sources; then offer the user 2-4 suitable choices with a recommendation, trade-offs, installation impact, and evidence capabilities. Hold for selection before adding a dependency or committing to a materially weaker proof method.
+- When no adequate proof tool exists: focused profile records affected rows `PARTIAL` with `PROOF_TOOLING_UNAVAILABLE` and continues without research or a user gate. Otherwise read `references/proof-tools.md`, use `@spectre_web_research` when available to verify current options against primary sources, then offer the user 2-4 suitable choices with a recommendation, trade-offs, installation impact, and evidence capabilities; hold for selection before adding a dependency or committing to a materially weaker proof method.
 - Identify missing proof infrastructure separately from product findings; this skill reports the required capability but never installs, writes, or repairs it.
 
 ## Proof Contract
@@ -71,17 +72,28 @@ Keep secrets, credentials, private customer data, and unnecessary local paths ou
 
 ## Handoff
 
-Return `PROOF_RESULT`: aggregate status · run id · failed row ids · finding fingerprints/classifications · evidence paths · limitations · `needs_authority`, plus the proven journeys and artifact paths. Keep full evidence in the artifacts.
+Return `PROOF_RESULT`: profile · aggregate status · run id · failed/partial row ids · finding fingerprints/classifications · evidence paths · limitations · `needs_authority`, plus the proven journeys and artifact paths. Keep full evidence in the artifacts.
 
 - `--orchestrated` → return the proof result to the parent without user-facing Next Steps.
-- Standalone `PASS` → `Next (recommended): /spectre:ship-it — every in-scope proof row passed with reviewed evidence.`
-- Standalone non-PASS → report once, then recommend `/spectre:fix`, `/spectre:scope`, `/spectre:ux`, or the named proof prerequisite. Qualified proof status alone never gates `/spectre:ship-it`.
+- Standalone `PASS` → `Next (recommended): spectre-ship — every in-scope proof row passed with reviewed evidence.`
+- Standalone non-PASS → report once, then recommend `spectre-fix`, `spectre-scope`, `spectre-ux`, or the named proof prerequisite. Qualified proof status alone never gates `spectre-ship`.
 
-If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: /spectre:handoff {feature}` with the failing rows, evidence paths, and exact resume action.
+If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: spectre-handoff {feature}` with the failing rows, evidence paths, and exact resume action.
 
 ## Escalate-If
 
 - Acceptance sources conflict or omit the observable outcome.
-- Adequate tooling requires a new dependency and the user has not selected an option.
+- Outside focused profile, adequate tooling requires a new dependency and the user has not selected an option.
+- `--profile focused` is supplied without `--orchestrated`.
 - Proof depends on unavailable credentials, external services, OS permissions, hardware, or subjective product judgment.
 - Resolving a finding would change approved requirements or needs new authority.
+
+## Codex Agent Preflight
+
+Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
+
+```bash
+node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
+```
+
+If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

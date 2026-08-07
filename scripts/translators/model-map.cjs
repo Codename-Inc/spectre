@@ -20,12 +20,37 @@ const roleHints = {
   tester: 'mutating',
 };
 
+const codexDefaultsByClaudeModel = {
+  'claude-sonnet-5-0': {
+    model: 'gpt-5.6-terra',
+    model_reasoning_effort: 'high',
+  },
+  'claude-opus-5-0': {
+    model: 'gpt-5.6-sol',
+    model_reasoning_effort: 'xhigh',
+  },
+  'claude-haiku-4-5-20251001': {
+    model: 'gpt-5.6-luna',
+    model_reasoning_effort: 'xhigh',
+  },
+};
+
 function defaultsForAgent(agentName) {
   const role = roleHints[agentName] || 'mutating';
   return defaultsByRole[role];
 }
 
+function codexDefaultsForClaudeModel(claudeModel) {
+  const defaults = codexDefaultsByClaudeModel[claudeModel];
+  if (!defaults) {
+    throw new Error(`Unsupported Claude agent model "${claudeModel}"`);
+  }
+  return defaults;
+}
+
 module.exports = {
+  codexDefaultsByClaudeModel,
+  codexDefaultsForClaudeModel,
   defaultsByRole,
   roleHints,
   defaultsForAgent,

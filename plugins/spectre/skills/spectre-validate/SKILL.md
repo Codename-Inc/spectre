@@ -70,7 +70,7 @@ Return a short summary: status, {X of Y} delivered, gap count, scope-creep count
 
 - `--orchestrated` → return the summary and gap categories to the caller without user-facing Next Steps.
 - Standalone `Needs Work` / `Significant Gaps` → `Next (recommended): /spectre:fix — validation found {gap signal}; rerun /spectre:validate afterward.` Route boundary/requirement ambiguity to `/spectre:scope`; route user-flow/state/copy ambiguity to `/spectre:ux`.
-- Standalone `Complete` → `Next (recommended): /spectre:proof — wiring is delivered, but the public user workflow still needs acceptance evidence.` Use test/clean only when proof is explicitly unnecessary or deferred.
+- Standalone `Complete` → `Next (recommended): /spectre:prove — wiring is delivered, but the public user workflow still needs acceptance evidence.` Use test/clean only when proof is explicitly unnecessary or deferred.
 
 Offer `/spectre:handoff` only when pausing on a standalone validation boundary.
 

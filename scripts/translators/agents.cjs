@@ -2,11 +2,16 @@
 
 const fs = require('fs');
 const path = require('path');
-const { defaultsForAgent } = require('./model-map.cjs');
+const {
+  codexDefaultsForClaudeModel,
+  defaultsForAgent,
+} = require('./model-map.cjs');
 
 const REQUIRED_FIELDS = [
   'name',
   'description',
+  'model',
+  'model_reasoning_effort',
   'sandbox_mode',
   'developer_instructions',
 ];
@@ -71,6 +76,8 @@ function renderToml(fields) {
     `# ${MANAGED_AGENT_MARKER}`,
     `name = ${tomlString(fields.name)}`,
     `description = ${tomlString(fields.description)}`,
+    `model = ${tomlString(fields.model)}`,
+    `model_reasoning_effort = ${tomlString(fields.model_reasoning_effort)}`,
     `sandbox_mode = ${tomlString(fields.sandbox_mode)}`,
     `developer_instructions = ${tomlMultilineString(fields.developer_instructions)}`,
     '',
@@ -125,11 +132,16 @@ function buildAgentToml(source, filePath) {
   if (!frontmatter.description) {
     throw new Error(`Missing required agent frontmatter field "description" in ${filePath}`);
   }
+  if (!frontmatter.model) {
+    throw new Error(`Missing required agent frontmatter field "model" in ${filePath}`);
+  }
 
   const defaults = defaultsForAgent(sourceName);
+  const codexDefaults = codexDefaultsForClaudeModel(frontmatter.model);
   return renderToml({
     name: toTomlAgentName(sourceName),
     description: frontmatter.description,
+    ...codexDefaults,
     sandbox_mode: frontmatter.codex_sandbox_mode || defaults.sandbox_mode,
     developer_instructions: body.trim(),
   });

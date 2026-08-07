@@ -24,9 +24,9 @@ You output **proposals for human review**. When a load-bearing element cannot su
 
 ## GROUND YOURSELF FIRST (read, do not summarize back)
 
-1. `docs/tasks/spectre-light/concepts/research-distillation.md` — the principles, the freedom-tier framing (§5), the **DO-NOT-STRIP** list (§4), the contract fields (§2), cache-stable + progressive-disclosure rules. (Note: size budget is the token tripwire in `scope.md §3`, not the old char ranges.)
-2. `docs/tasks/spectre-light/concepts/scope.md` — IN/OUT/ANTI-SCOPE. **Anti-scope is binding:** no new capability, no phase-model change, no subagent-roster change.
-3. `docs/tasks/spectre-light/specs/plan.md` — §2 contract template, the Type A/B/C/D cross-ref remap, §6 Out-of-Bounds.
+1. `resources/spectre-light/concepts/research-distillation.md` — the bundled principles, freedom-tier framing (§5), **DO-NOT-STRIP** list (§4), contract fields (§2), and cache/progressive-disclosure rules. (The size budget is the token tripwire in `scope.md §3`, not the old char ranges.)
+2. `resources/spectre-light/concepts/scope.md` — bundled IN/OUT/ANTI-SCOPE. **Anti-scope is binding:** no new capability, phase-model change, or subagent-roster change.
+3. `resources/spectre-light/specs/plan.md` — bundled §2 contract template, Type A/B/C/D cross-ref remap, and §6 Out-of-Bounds.
 4. The **source skill(s)** in full.
 
 (The Spectre-specific facts that used to live in `task_context.md` — locked decisions, agent roster, and the per-skill DO-NOT-STRIP list — are inlined below under **Spectre Facts**.)
@@ -61,7 +61,7 @@ You output **proposals for human review**. When a load-bearing element cannot su
 
 ## PROTOCOL (execute in order)
 
-**1 — Classify freedom tier & note the budget.** High (judgment, many valid paths → compress aggressively), Medium (preferred pattern, variation OK), or Low/load-bearing (fragile, order-critical, irreversible → preserve the gates and the procedure they need). **Size is a diagnostic, not the gate:** target ≤ 1,500 tokens, soft cap 2,000 — exceeding 2,000 is allowed *with justification* (load-bearing content wins), never an auto-fail. Measure with `python3 docs/tasks/spectre-light/scripts/count_tokens.py <draft>` (exact with `ANTHROPIC_API_KEY`, estimate otherwise).
+**1 — Classify freedom tier & note the budget.** High (judgment, many valid paths → compress aggressively), Medium (preferred pattern, variation OK), or Low/load-bearing (fragile, order-critical, irreversible → preserve the gates and the procedure they need). **Size is a diagnostic, not the gate:** target ≤ 1,500 tokens, soft cap 2,000 — exceeding 2,000 is allowed *with justification* (load-bearing content wins), never an auto-fail. Resolve `resources/spectre-light/scripts/count_tokens.py` relative to this `SKILL.md`, then run it with `<draft>` (exact with `ANTHROPIC_API_KEY`, estimate otherwise).
 
 **2 — Block-level triage.** Walk the source top to bottom. For each block, assign one verdict + a one-line reason:
 - `KEEP` — changes behavior measurably (trigger, allowed tools, required artifact, DONE/AC, gate, scope bound, verify postcondition, escalation).
