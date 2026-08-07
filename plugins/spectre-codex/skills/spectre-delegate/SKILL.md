@@ -1,6 +1,6 @@
 ---
 name: "spectre-delegate"
-description: "Delegate one small, unambiguous feature or reproducible bug fix to Spectre's autonomous TDD→review→proof→draft-PR flow. Not for ambiguous/multi-area/high-risk/non-code work."
+description: "Delegate one small, unambiguous feature or reproducible bug fix to Spectre's autonomous TDD→opposite-runtime review→proof→draft-PR flow. Not for ambiguous/multi-area/high-risk/non-code work."
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -32,9 +32,9 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 
 - `SCOPE_FILE` + hash: **Alignment: inferred** · Type `feature|fix` · Objective · IN/OUT/ANTI-SCOPE · ACs · Proof Journeys · Assumptions · Target Branch.
 - Collision-safe `QUICK_PLAN_FILE`: Agreed Scope · Research · Approach · 1–2 ordered Workstreams · Success Criteria; map every IN item to implementation/proof.
-- RED→GREEN commits, affected-check evidence, adversarial review before focused proof, rebase, tuple, `CI: pending`, draft PR.
+- RED→GREEN commits, affected-check evidence, one opposite-runtime-first `Skill(spectre-code_review)` before focused proof, rebase, tuple, `CI: pending`, draft PR.
 
-**DONE:** immutable scope and affected TDD cover the blast radius; one adversarial review ran after all implementation/checks and before proof; bounded review/proof repairs are dispositioned; the branch is rebased with only explicit evidence residue; draft PR URL returned. No root suite, cleanup meta-flow, merge, deploy, release, or public proof publication. Non-green status is disclosed but does not alone prevent a draft PR; CI merge-gates.
+**DONE:** immutable scope and affected TDD cover the blast radius; one opposite-runtime-first adversarial `Skill(spectre-code_review)` ran after all implementation/checks and before proof; bounded review/proof repairs are dispositioned; the branch is rebased with only explicit evidence residue; draft PR URL returned. No root suite, cleanup meta-flow, merge, deploy, release, or public proof publication. Non-green status is disclosed but does not alone prevent a draft PR; CI merge-gates.
 
 ## Method / guardrails
 
@@ -42,13 +42,13 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 2. **Infer and plan.** Use targeted reads; dispatch a specialist only for material uncertainty. Write/hash `SCOPE_FILE` without confirmation, record assumptions, then write `QUICK_PLAN_FILE`. Scope freezes when mutation begins.
 3. **Execute test-first.** Feature: run `Skill(spectre-execute)` in plan-direct mode with `QUICK_PLAN_FILE`, `{FEATURE_ROOT}`, `--orchestrated`, `--finalization-owner parent`, and `--review-profile final-only`; require RED-before-GREEN TDD, assignment commits, affected checks, and `IMPLEMENTATION_READY` + `ACCEPTANCE_PENDING` + `FINAL_REVIEW_PENDING`. Fix: run `Skill(spectre-fix-core)` with the bug report, `PHASE=full`, `PARENT=spectre-delegate`, `PARENT_AUTHORIZATION={SCOPE_FILE}`, `AUTHORIZED_SCOPE_SHA256={SCOPE_SHA256}`, `ALIGNMENT_MODE=inferred`, and `--orchestrated`.
 4. **Close out directly.** Never invoke `spectre-create_tasks`, `spectre-clean`, `spectre-test`, `spectre-sweep`, `spectre-prune`, `spectre-validate`, or a root suite. Run `git diff --check`; confirm current affected evidence and no unrelated/sensitive changes; conventionally commit workflow-owned residue. Run `Skill(spectre-rebase)` with target, mandatory backup, `--orchestrated`, and `--verification-owner parent`; require `REBASE_READY`.
-5. **Pin and adversarially review.** Set `EVIDENCE_DIRS={FEATURE_ROOT}/{reviews,verification,proof}`. Do not dispatch until every implementation workstream/task is complete and current affected checks exist. Capture `BASE_SHA`, `HEAD_SHA`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`. Give one clean-context `@spectre_reviewer`, as adversarial code reviewer, a P2 brief (objective, output, read-only tools, boundaries) plus scope/plan/tuple/diff/evidence. Require a 1–2K self-locating return with Feature/Feature Root/tuple: evidence-backed CRITICAL/HIGH correctness, integration/reachability, security, and test findings; per-AC `Delivered|Partial|Missing`; verdict `CLEAN|FINDINGS`. Verify tuple unchanged; persist the return unchanged as `DELEGATE_REVIEW={FEATURE_ROOT}/reviews/delegate_review.md`. Attributable findings get ≤1 consolidated repair pass through the same owner: rerun affected checks, commit repair residue, record `repaired-verified|repaired-unverified|unresolved|scope-change|unrelated`, and recapture the tuple. Never rerun or validate the review; disclose persistent findings.
+5. **Pin and run the final adversarial review.** Set `EVIDENCE_DIRS={FEATURE_ROOT}/{reviews,verification,proof}`. Do not invoke review until every implementation workstream/task is complete and current affected checks exist. Capture `BASE_SHA`, `HEAD_SHA`, and `DIFF_SHA256=sha256(bytes(git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}))`. Run `Skill(spectre-code_review)` exactly once with `{FEATURE_ROOT}`, `SCOPE_FILE`, `QUICK_PLAN_FILE` as the explicit source plan, the candidate tuple, evidence dirs, and `--orchestrated`. Its external-first contract owns opposite-runtime selection; accept a native fallback only with its recorded reason. Require the report path, reviewer runtime/model/effort/route, verdict, CRITICAL/HIGH findings, and per-AC delivery coverage. Verify the tuple is unchanged. Attributable findings get ≤1 consolidated repair pass through the same owner: rerun affected checks, commit repair residue, record `repaired-verified|repaired-unverified|unresolved|scope-change|unrelated`, and recapture the tuple. Never rerun or validate the review; disclose persistent findings.
 6. **Prove after review.** Only after review findings are dispositioned and affected checks are current, run `Skill(spectre-prove)` with `{FEATURE_ROOT}`, `SCOPE_FILE`, `SCOPE_SHA256`, `QUICK_PLAN_FILE`, evidence dirs, `--profile focused`, and `--orchestrated`. Give attributable observable failures ≤1 behavior-repair pass through the same owner, rerun affected checks, commit repair residue, and reprove only failed/impact-linked rows. Never rerun the code review. Recapture the tuple; disclose persistent failures.
 7. **Open the boundary.** Build `VERIFICATION_SUMMARY`: TDD/affected scope, dispositions, no root-suite run, `CI: pending`. Run `Skill(spectre-create_pr)` with target, `EXPECTED_BASE_SHA={BASE_SHA}`, `EXPECTED_HEAD_SHA={HEAD_SHA}`, `EXPECTED_DIFF_SHA256={DIFF_SHA256}`, evidence dirs, summary, `--draft`, and `--orchestrated`. On `PR_CANDIDATE_STALE`, refresh the tuple and retry without a cap. Never force-push unrelated history, bypass/suppress checks, merge, deploy, or release.
 
 ## Handoff
 
-Return scope hash · affected evidence · review dispositions · proof paths/status · tuple · rebase/restore · limitations · `CI: pending` · PR URL.
+Return scope hash · affected evidence · review report/runtime/route/dispositions · proof paths/status · tuple · rebase/restore · limitations · `CI: pending` · PR URL.
 
 End with: `Next (recommended): review the proof and draft PR.`
 
@@ -57,13 +57,3 @@ End with: `Next (recommended): review the proof and draft PR.`
 - Mini eligibility fails → `spectre-fix` for fixes or `spectre-plan` for features; unclear boundaries → `spectre-scope`.
 - Conflicting acceptance, scope-changing repair, missing authority/capability, unsafe checkout/rebase/remote, or secrets/PII.
 - Never escalate solely for repairable/disclosable check, review, proof, or candidate-drift failures.
-
-## Codex Agent Preflight
-
-Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
-
-```bash
-node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
-```
-
-If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

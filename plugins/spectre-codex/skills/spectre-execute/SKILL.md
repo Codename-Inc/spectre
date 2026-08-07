@@ -11,7 +11,7 @@ Build the selected source without an exhaustive graph in primary context. Preser
 ## Inputs
 
 - `$ARGUMENTS`: optional feature/artifact/plan path, wave hints, `--orchestrated`, and orchestrated-only `--finalization-owner parent`. Default owner: `self`.
-- Optional `--review-profile final-only`, valid only with `--orchestrated --finalization-owner parent`; it transfers all independent review to a parent that explicitly owns one final candidate review. Default: risk-routed intermediate review.
+- Optional `--review-profile final-only`, valid only with `--orchestrated --finalization-owner parent`; it defers all intermediate review and requires the orchestrating caller to invoke `Skill(spectre-code_review)` exactly once over the final candidate. The caller owns sequencing, never semantic review. Default: risk-routed intermediate review.
 - `structured`: execute index + resolvable `tasks.json`; malformed structured input escalates, never becomes a plan.
 - `plan-direct`: any other explicit readable plan; it alone owns requirements; never rewrite, approve, or route it through `spectre-create_tasks`.
 - No path: structured mode at `{FEATURE_ROOT}/specs/execute.md`.
@@ -49,7 +49,7 @@ Build the selected source without an exhaustive graph in primary context. Preser
 
 Compute coverage from the ledger. Run only stale or uncovered checks; never blanket-rerun cumulative verification or a root suite.
 
-- `parent`: require wave gates plus any triggered-review dispositions. Return cumulative diff/base, commits/files, package/test roots, verification coverage, review route (`intermediate:<trigger>|final-only`), repair/routing ledger, requirement sources/slices, unresolved findings, and `ACCEPTANCE_PENDING`; add `FINAL_REVIEW_PENDING` for the final-only profile.
+- `parent`: require wave gates plus any triggered-review dispositions. Return cumulative diff/base, commits/files, package/test roots, verification coverage, review route (`intermediate:<trigger>|final-only`), repair/routing ledger, requirement sources/slices, unresolved findings, and `ACCEPTANCE_PENDING`; add `FINAL_REVIEW_PENDING` for the final-only profile. That status requires the caller to invoke `Skill(spectre-code_review)` once under its opposite-runtime-first contract before proof.
 - `self`: invoke `Skill(spectre-code_review)` exactly once, high effort, over cumulative diff + requirements/scope without implementer rationale. Structured mode passes completed requirement/AC slices; plan-direct passes `PLAN_SOURCE` plus relevant `EXECUTION_STATE` evidence as routing only. It owns delivery/reachability, scope-creep, dead-computation, old-path, and single-source audits; never also invoke `spectre-validate`. Record its result as a review gate. Give attributable CRITICAL/HIGH one consolidated repair pass, affected verification, and honest dispositions—never a validation reviewer.
 - After review dispositions are recorded, invoke `Skill(spectre-prove)` once over final requirements and record its result as a proof gate. A proof failure gets one behavior-repair pass, affected verification, and one fresh proof over failed/impact-linked rows—never a code review. Proof is always the last acceptance gate; surface a persistent failure instead of looping. Formatting, lint, evidence, rebase, or commit-only changes do not trigger reproof. Finish structured runs with the truthful terminal event.
 
@@ -60,7 +60,7 @@ Return counts, affected/final coverage, review profile/routing/final-review stat
 ## Escalate-If
 
 - Structured index/task detail is missing or malformed → `spectre-create_tasks`; unreadable plan or genuine authority/safety impasse → `NEEDS_AUTHORITY` against that plan.
-- Invalid parent ownership; `--review-profile final-only` without an orchestrated parent that explicitly owns final independent review; unsafe/unrelated prompt slice; conflicting acceptance; unavailable authority/capability; required scope change; or unauthorized destructive action.
+- Invalid parent ownership; `--review-profile final-only` without an orchestrated caller that explicitly owns the one final `Skill(spectre-code_review)` invocation; unsafe/unrelated prompt slice; conflicting acceptance; unavailable authority/capability; required scope change; or unauthorized destructive action.
 - Never escalate solely for check failure, unavailable/red baseline, review/proof finding, diff growth, or related-file changes; repair once where this contract permits, route or disclose the result, and continue independent work while authority-bound work pauses.
 
 ## Codex Agent Preflight

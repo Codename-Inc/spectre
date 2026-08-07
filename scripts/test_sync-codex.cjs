@@ -442,6 +442,8 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
     assert.match(contract, /`IMPLEMENTATION_READY` \+ `ACCEPTANCE_PENDING`/);
     assert.match(contract, /--review-profile final-only/);
     assert.match(contract, /valid only with `--orchestrated --finalization-owner parent`/);
+    assert.match(contract, /requires the orchestrating caller to invoke `Skill\(spectre-code_review\)` exactly once/);
+    assert.match(contract, /caller owns sequencing, never semantic review/);
     assert.match(contract, /record each verified completed phase as `final-only` without loading review routing or dispatching a reviewer/);
     assert.match(contract, /`FINAL_REVIEW_PENDING`/);
     assert.match(contract, /Skill\(spectre-code_review\)`[^\n]*exactly once, high effort/);
@@ -941,7 +943,7 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     const fixCoreIndex = delegate.indexOf('Skill(spectre-fix-core)');
     const rebaseIndex = delegate.indexOf('Skill(spectre-rebase)');
     const candidatePinIndex = delegate.indexOf('DIFF_SHA256=sha256');
-    const compactReviewIndex = delegate.indexOf('DELEGATE_REVIEW=');
+    const codeReviewIndex = delegate.indexOf('Skill(spectre-code_review)', candidatePinIndex);
     const proofIndex = delegate.indexOf('Skill(spectre-prove)');
     const createPrIndex = delegate.indexOf('Skill(spectre-create_pr)');
 
@@ -953,8 +955,8 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.ok(fixCoreIndex !== -1);
     assert.ok(rebaseIndex > fixCoreIndex);
     assert.ok(candidatePinIndex > rebaseIndex);
-    assert.ok(compactReviewIndex > candidatePinIndex);
-    assert.ok(proofIndex > compactReviewIndex);
+    assert.ok(codeReviewIndex > candidatePinIndex);
+    assert.ok(proofIndex > codeReviewIndex);
     assert.ok(createPrIndex > proofIndex);
     assert.match(delegate, /Mini eligibility/);
     assert.match(delegate, /(?:at most two|≤2) dependency-safe workstreams/);
@@ -966,13 +968,13 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.match(delegate, /`ACCEPTANCE_PENDING` \+ `FINAL_REVIEW_PENDING`/);
     assert.match(delegate, /git diff --check/);
     assert.match(delegate, /--verification-owner parent/);
-    assert.match(delegate, /Pin and adversarially review/);
-    assert.match(delegate, /Do not dispatch until every implementation workstream\/task is complete and current affected checks exist/);
-    assert.match(delegate, /adversarial code reviewer/);
-    assert.match(delegate, /clean-context `?@(?:spectre:|spectre_)?reviewer`?/);
-    assert.match(delegate, /P2 brief \(objective, output, read-only tools, boundaries\)/);
-    assert.match(delegate, /1–2K self-locating return with Feature\/Feature Root\/tuple/);
-    assert.match(delegate, /per-AC `Delivered\|Partial\|Missing`/);
+    assert.match(delegate, /Pin and run the final adversarial review/);
+    assert.match(delegate, /Do not invoke review until every implementation workstream\/task is complete and current affected checks exist/);
+    assert.match(delegate, /Skill\(spectre-code_review\)` exactly once/);
+    assert.match(delegate, /external-first contract owns opposite-runtime selection/);
+    assert.match(delegate, /native fallback only with its recorded reason/);
+    assert.match(delegate, /reviewer runtime\/model\/effort\/route/);
+    assert.doesNotMatch(delegate, /@(?:spectre:|spectre_)?reviewer/);
     assert.match(delegate, /Skill\(spectre-prove\)[\s\S]*--profile focused/);
     assert.match(delegate, /Only after review findings are dispositioned and affected checks are current/);
     assert.match(delegate, /≤1 consolidated repair pass/);
@@ -999,7 +1001,6 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.doesNotMatch(delegate, /Skill\(spectre-sweep\)/);
     assert.doesNotMatch(delegate, /Skill\(spectre-prune\)/);
     assert.doesNotMatch(delegate, /Skill\(spectre-validate\)/);
-    assert.doesNotMatch(delegate, /Skill\(spectre-code_review\)/);
     assert.doesNotMatch(delegate, /repository-authoritative root suite/);
     assert.match(
       delegate,
