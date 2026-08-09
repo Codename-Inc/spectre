@@ -108,17 +108,17 @@ Find relevant files.
   ]);
   assert.equal(fields.name, 'spectre_finder');
   assert.equal(fields.description, 'Locate files.');
-  assert.equal(fields.model, 'gpt-5.6-luna');
+  assert.equal(fields.model, 'gpt-5.6-terra');
   assert.equal(fields.model_reasoning_effort, 'xhigh');
   assert.equal(fields.sandbox_mode, 'read-only');
   assert.equal(fields.developer_instructions, 'Find relevant files.');
 });
 
-test('agent translator maps each supported Claude model to its Codex equivalent', () => {
+test('agent translator maps every supported Claude model to Terra for Codex', () => {
   const cases = [
     ['claude-sonnet-5-0', 'gpt-5.6-terra', 'high'],
-    ['claude-opus-5-0', 'gpt-5.6-sol', 'xhigh'],
-    ['claude-haiku-4-5-20251001', 'gpt-5.6-luna', 'xhigh'],
+    ['claude-opus-5-0', 'gpt-5.6-terra', 'xhigh'],
+    ['claude-haiku-4-5-20251001', 'gpt-5.6-terra', 'xhigh'],
   ];
 
   for (const [claudeModel, codexModel, effort] of cases) {

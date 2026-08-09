@@ -26,11 +26,11 @@ const codexDefaultsByClaudeModel = {
     model_reasoning_effort: 'high',
   },
   'claude-opus-5-0': {
-    model: 'gpt-5.6-sol',
+    model: 'gpt-5.6-terra',
     model_reasoning_effort: 'xhigh',
   },
   'claude-haiku-4-5-20251001': {
-    model: 'gpt-5.6-luna',
+    model: 'gpt-5.6-terra',
     model_reasoning_effort: 'xhigh',
   },
 };
