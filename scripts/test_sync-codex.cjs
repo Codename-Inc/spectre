@@ -114,10 +114,10 @@ Find relevant files.
   assert.equal(fields.developer_instructions, 'Find relevant files.');
 });
 
-test('agent translator maps every supported Claude model to Terra for Codex', () => {
+test('agent translator replaces Luna with Terra while preserving the Sol reviewer tier', () => {
   const cases = [
     ['claude-sonnet-5-0', 'gpt-5.6-terra', 'high'],
-    ['claude-opus-5-0', 'gpt-5.6-terra', 'xhigh'],
+    ['claude-opus-5-0', 'gpt-5.6-sol', 'xhigh'],
     ['claude-haiku-4-5-20251001', 'gpt-5.6-terra', 'xhigh'],
   ];
 
