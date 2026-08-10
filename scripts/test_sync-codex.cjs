@@ -44,7 +44,7 @@ function createFixture(root) {
     `---
 name: dev
 description: Implementation specialist.
-model: claude-sonnet-5-0
+model: claude-sonnet-5
 ---
 
 Write code carefully.
@@ -55,7 +55,7 @@ Write code carefully.
     `---
 name: tester
 description: Test specialist.
-model: claude-sonnet-5-0
+model: claude-sonnet-5
 ---
 
 Write tests carefully.
@@ -116,8 +116,8 @@ Find relevant files.
 
 test('agent translator replaces Luna with Terra while preserving the Sol reviewer tier', () => {
   const cases = [
-    ['claude-sonnet-5-0', 'gpt-5.6-terra', 'high'],
-    ['claude-opus-5-0', 'gpt-5.6-sol', 'xhigh'],
+    ['claude-sonnet-5', 'gpt-5.6-terra', 'high'],
+    ['claude-opus-5', 'gpt-5.6-sol', 'xhigh'],
     ['claude-haiku-4-5-20251001', 'gpt-5.6-terra', 'xhigh'],
   ];
 
