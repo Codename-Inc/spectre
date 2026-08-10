@@ -1,5 +1,5 @@
 {
   "name": "spectre",
-  "version": "7.0.7",
+  "version": "7.0.8",
   "description": "Contract-driven agentic coding workflow. spectre guides you through Scope, Plan, Execute, Clean, Test, Rebase, and Learn flows."
 }
