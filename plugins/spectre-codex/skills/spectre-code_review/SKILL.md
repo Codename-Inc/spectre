@@ -119,13 +119,3 @@ DONE when the self-locating report exists with all nine numbered sections plus m
 
 - Diff/work scope remains ambiguous after reading available task/plan artifacts and git state -> ask what to review before dispatching.
 - A proposed finding changes requirements rather than identifying a defect -> label it `Scope Change Required`; do not include it in the blocking verdict.
-
-## Codex Agent Preflight
-
-Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
-
-```bash
-node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
-```
-
-If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

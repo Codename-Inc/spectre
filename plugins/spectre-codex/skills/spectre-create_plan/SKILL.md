@@ -62,13 +62,3 @@ Render exactly one primary recommendation tied to the observed plan/depth, at mo
 
 ## Escalate-If
 - **`--depth light` and** the plan needs >3 critical files, a new abstraction, data migration, public-API change, or an unresolved scope / security-privacy / data-correctness / public-API-behavior decision → STOP, return a **tier-reassessment recommendation to `plan`** instead of guessing.
-
-## Codex Agent Preflight
-
-Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
-
-```bash
-node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
-```
-
-If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

@@ -57,13 +57,3 @@ Return route/fallback, Simplest Viable Plan, Before -> After, findings, report p
 ## Escalate-If
 
 - Plan missing; simplification needs scope change; or post-edit scope/Out-of-Bounds checks fail.
-
-## Codex Agent Preflight
-
-Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
-
-```bash
-node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
-```
-
-If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

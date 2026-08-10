@@ -84,13 +84,3 @@ Render exactly one `Next (recommended): ... — because {mode + observed signal}
 ## Escalate if
 - Spec contradicts the prototype (post-ux): ask which is authoritative per contradiction, then update `ux.md` and the HTML together and re-run the portability check.
 - No usable visual anchor and no inferable aesthetic, or required context docs are missing/unreadable when a mode expects them.
-
-## Codex Agent Preflight
-
-Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:
-
-```bash
-node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json
-```
-
-If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.

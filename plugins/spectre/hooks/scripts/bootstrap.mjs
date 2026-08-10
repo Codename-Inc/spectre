@@ -128,6 +128,23 @@ function ensureCodexAgents(pluginRoot) {
   }
 }
 
+function buildBootstrapOutput({ removed, agentSetup, workflowCleanup }) {
+  if ((agentSetup && !agentSetup.ok) || !workflowCleanup.ok) {
+    const failures = [];
+    if (agentSetup && !agentSetup.ok) failures.push(`agent setup: ${agentSetup.message}`);
+    if (!workflowCleanup.ok) failures.push(`workflow cleanup: ${workflowCleanup.error}`);
+    return {
+      systemMessage: `bootstrap: Spectre maintenance skipped: ${failures.join('; ')}`,
+    };
+  }
+  if (removed > 0) {
+    return {
+      systemMessage: `bootstrap: cleaned ${removed} stale file${removed > 1 ? 's' : ''}`,
+    };
+  }
+  return {};
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Main
 // ──────────────────────────────────────────────────────────────────
@@ -145,32 +162,16 @@ async function main() {
     error: error instanceof Error ? error.message : String(error),
   }));
 
-  if ((agentSetup && !agentSetup.ok) || !workflowCleanup.ok) {
-    const failures = [];
-    if (agentSetup && !agentSetup.ok) failures.push(`agent setup: ${agentSetup.message}`);
-    if (!workflowCleanup.ok) failures.push(`workflow cleanup: ${workflowCleanup.error}`);
-    process.stdout.write(JSON.stringify({
-      systemMessage: `bootstrap: Spectre maintenance skipped: ${failures.join('; ')}`
-    }) + '\n');
-  } else if (removed > 0 || agentSetup?.changed > 0) {
-    const parts = [];
-    if (removed > 0) {
-      parts.push(`cleaned ${removed} stale file${removed > 1 ? 's' : ''}`);
-    }
-    if (agentSetup?.changed > 0) {
-      parts.push('updated managed Codex agents; start a new Codex session before dispatching @spectre_* agents');
-    }
-    process.stdout.write(JSON.stringify({
-      systemMessage: `bootstrap: ${parts.join('; ')}`
-    }) + '\n');
-  } else {
-    process.stdout.write(JSON.stringify({}) + '\n');
-  }
+  process.stdout.write(`${JSON.stringify(buildBootstrapOutput({
+    removed,
+    agentSetup,
+    workflowCleanup,
+  }))}\n`);
 
   process.exit(0);
 }
 
-export { cleanupStalePaths, ensureCodexAgents, STALE_PATHS };
+export { buildBootstrapOutput, cleanupStalePaths, ensureCodexAgents, STALE_PATHS };
 
 if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename)) {
   main();

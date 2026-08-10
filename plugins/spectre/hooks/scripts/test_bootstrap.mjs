@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { cleanupStalePaths, STALE_PATHS } from './bootstrap.mjs';
+import { buildBootstrapOutput, cleanupStalePaths, STALE_PATHS } from './bootstrap.mjs';
 import { readStdinWithTimeout, STDIN_TIMEOUT } from './lib.mjs';
 
 function createTempDir() {
@@ -93,5 +93,40 @@ describe('bootstrap', () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it('keeps successful managed-agent checks and repairs silent', () => {
+    const workflowCleanup = { ok: true };
+
+    assert.deepStrictEqual(buildBootstrapOutput({
+      removed: 0,
+      agentSetup: { ok: true, changed: 0 },
+      workflowCleanup,
+    }), {});
+    assert.deepStrictEqual(buildBootstrapOutput({
+      removed: 0,
+      agentSetup: { ok: true, changed: 8 },
+      workflowCleanup,
+    }), {});
+  });
+
+  it('reports stale cleanup without reporting a managed-agent repair', () => {
+    assert.deepStrictEqual(buildBootstrapOutput({
+      removed: 2,
+      agentSetup: { ok: true, changed: 8 },
+      workflowCleanup: { ok: true },
+    }), {
+      systemMessage: 'bootstrap: cleaned 2 stale files',
+    });
+  });
+
+  it('keeps genuine managed-agent setup failures visible', () => {
+    assert.deepStrictEqual(buildBootstrapOutput({
+      removed: 0,
+      agentSetup: { ok: false, message: 'unowned collision' },
+      workflowCleanup: { ok: true },
+    }), {
+      systemMessage: 'bootstrap: Spectre maintenance skipped: agent setup: unowned collision',
+    });
   });
 });

@@ -105,28 +105,6 @@ function rewriteCodexAgentRefs(source, agentNames = []) {
   return rewritten;
 }
 
-function agentPreflightBlock() {
-  return [
-    '',
-    '## Codex Agent Preflight',
-    '',
-    'Before dispatching any `@spectre_*` custom agent, run the bundled setup helper once:',
-    '',
-    '```bash',
-    'node "${PLUGIN_ROOT}/skills/spectre-scope/scripts/ensure-codex-agents.mjs" --ensure --json',
-    '```',
-    '',
-    'If the helper reports agents were installed or updated in this session, continue directly only for lookup/scoping work that can be completed without a subagent. For other agent-dependent workflows, stop with a clear one-session restart requirement so Codex can discover the new custom agents.',
-    '',
-  ].join('\n');
-}
-
-function addAgentPreflightIfNeeded(body) {
-  if (!/@spectre_[A-Za-z0-9_]+/.test(body)) return body;
-  if (body.includes('## Codex Agent Preflight')) return body;
-  return `${body.trimEnd()}\n${agentPreflightBlock()}`;
-}
-
 function rewriteTextForCodex(source, agentNames = []) {
   return rewriteCodexAgentRefs(
     rewriteCodexCommandRefs(rewriteProjectSkillPaths(source))
@@ -151,7 +129,7 @@ function rewriteSkillForCodex(source, agentNames = []) {
       rewriteTextForCodex(String(value), agentNames),
     ]),
   );
-  const rewrittenBody = addAgentPreflightIfNeeded(rewriteTextForCodex(body, agentNames));
+  const rewrittenBody = rewriteTextForCodex(body, agentNames);
   return renderFrontmatter(rewrittenFrontmatter, rewrittenBody);
 }
 

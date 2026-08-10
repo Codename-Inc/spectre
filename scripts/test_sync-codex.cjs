@@ -167,7 +167,7 @@ test('sync generates agents, rewrites skills, and rewrites hook roots', () => {
     assert.match(skill, /@spectre_dev/);
     assert.match(skill, /node "\$\{PLUGIN_ROOT\}\/hooks\/scripts\/workflow-cli\.mjs" task start/);
     assert.doesNotMatch(skill, /\bspectre-workflow\b/);
-    assert.match(skill, /Codex Agent Preflight/);
+    assert.doesNotMatch(skill, /Codex Agent Preflight|ensure-codex-agents\.mjs|start a new Codex session before dispatching/);
     assert.doesNotMatch(skill, /\.claude\/skills\//);
     assert.doesNotMatch(skill, /\/spectre:create_tasks/);
     assert.doesNotMatch(skill, /@skill-spectre:/);
