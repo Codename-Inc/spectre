@@ -222,7 +222,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 
 6. Complete Persistent Local Source Activation for both Codex and Claude Code from the release checkout.
 
-7. Build a concise user-facing changelog from commits since the previous tag. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog.
+7. Build a concise user-facing changelog from commits since the previous tag. Write at a 12th-grade reading level: use plain, direct English and avoid internal workflow terms unless a public reader needs them. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog.
 8. After changelog approval, create `vX.Y.Z` and run:
 
    ```bash
