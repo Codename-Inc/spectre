@@ -2,67 +2,57 @@
 
 ## Purpose
 
-Render concise historical guidance at Spectre Plan's two STANDARD/COMPREHENSIVE user gates. Estimates are planning aids, never commitments, invoices, or reasons to hold a gate.
+Render one concise time estimate at each of Spectre Plan's two STANDARD/COMPREHENSIVE user gates. Estimates are planning aids, never commitments or reasons to hold a gate.
 
 ## Source precedence
 
-1. Prefer `.spectre/telemetry/workflow-estimates.json` when it is readable and includes a compatible contract version, `as_of`, inclusion boundary, cohort size, confidence, wait-exclusion policy, token definition, and pricing basis.
+1. Prefer `.spectre/telemetry/workflow-estimates.json` when it is readable and includes a compatible contract version, `as_of`, inclusion boundary, cohort size, confidence, wait-exclusion policy, and observed durations.
 2. Otherwise use the dated SPECTRE seed prior below.
-3. Otherwise render the unavailable state and continue.
+3. Otherwise omit the estimate and continue.
 
-Do not scan transcripts during a live Plan. Do not combine Plan, Execute, and optional delivery-tail observations into one duration. Use P50/P80 only for at least five comparable successful runs; with smaller cohorts, show a nearest analog or observed envelope and label confidence low.
+Do not scan transcripts during a live Plan. Do not combine Plan, Execute, and optional delivery-tail observations into one duration. Use P50/P80 only for at least five comparable successful runs; with smaller cohorts, use a nearest analog or observed envelope. Confidence and evidence quality are internal eligibility signals, never user-facing labels.
 
-## Required cost language
+## Presentation invariant
 
-Call the token measure **processed tokens** when it includes root plus linked child-agent usage and cache reads/writes.
+At either gate, render at most one bold duration sentence immediately before the approval sentence. Do not add a heading, bullets, caveats, confidence labels, cohort details, token usage, monetary estimates, billing explanations, graph details, or follow-on guidance. If no valid analog exists, omit the estimate without an unavailable-state warning.
 
-- **Claude or Codex subscription-authenticated usage:** dollars are directional **API-equivalent**, not the user's incremental charge or invoice. A subscription may cover all usage, so incremental spend can be zero.
-- **Direct API or per-token billing:** dollars represent estimated API spend only when the agent states the provider/model, input/cache/output rate basis (or authoritative price-table source), and pricing `as_of` date. If that basis cannot be established, omit dollars and show tokens only.
+Historical analysis may retain richer telemetry for offline evaluation, but the live Plan workflow presents time only.
 
-Always state which basis applies. Never call API-equivalent guidance “cost paid.”
+## Gate 1 — Remaining planning time
 
-## Gate 1 — Historical guidance
-
-Place this immediately before the exact high-level-design approval sentence:
+Select the tier-compatible Plan estimate. Its duration excludes time waiting for the user's response. Round endpoints to the nearest 10 minutes and place exactly this sentence immediately before the high-level-design approval sentence:
 
 ```text
-Historical guidance · {confidence}
-- Remaining Plan agent work after approval: {duration range} ({n} comparable completed plans).
-- Typical full {tier} Plan expenditure: {processed-token guidance}; {dollar guidance and basis}.
-- Excludes time waiting for your response. Execute guidance follows when tasks and dependency waves are known.
+**Estimated remaining planning time: about {rounded duration or range}, based on completed plans of similar scope.**
 ```
-
-Use the selected tier only. Keep the block to these three lines.
 
 ## Gate 2 — Implementation time estimate
 
 After task artifacts and reviews settle, count parents, subtasks, and dependency waves. Select the closest contract-compatible successful analog by waves first, then parents; do not fit a regression from the seed cohort.
 
-Confidence is an internal eligibility signal at this gate, not user-facing copy. When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the final approval sentence:
+When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the final approval sentence:
 
 ```text
 **Estimated implementation time: about {rounded duration}, based on completed projects of similar size.**
 ```
 
-Do not expose confidence, task-graph counts, analog details, tokens, API-equivalent dollars, cost basis, or delivery-tail guidance at this gate. If no valid analog exists, omit the estimate without rendering an unavailable-state warning and continue to the final approval sentence.
-
 ## Shipped seed prior
 
-`as_of: 2026-08-06` · transcript-derived · user waits removed · low confidence unless noted · dollars priced from the historical run's model/rate mapping and therefore directional API-equivalent for subscription use.
+`as_of: 2026-08-06` · transcript-derived · user waits removed · confidence retained internally.
 
 ### Plan
 
-- STANDARD: ~25–45 min remaining agent work after approval (`n=3` completed plans, low confidence). Typical full-plan expenditure was roughly 12M processed tokens and $15–$21 API-equivalent across this small cohort.
-- COMPREHENSIVE: ~40–70 min remaining agent work after approval (`n=10` comparable completed plans). Typical full-plan expenditure: median ~32M processed tokens / ~$32 API-equivalent; P80 ~61M / ~$47.
+- STANDARD: ~25–45 min remaining agent work after approval (`n=3` completed plans).
+- COMPREHENSIVE: ~40–70 min remaining agent work after approval (`n=10` comparable completed plans).
 
 ### Execute analog ladder
 
-- 6 parents / 4 waves → 2h 26m agent work · 54M processed tokens · ~$43 API-equivalent.
-- 19 parents / 8 waves → 4h 1m · 1.78B · ~$1,085 API-equivalent.
-- 22 parents / 11 waves → 7h 36m · 3.11B · ~$1,913 API-equivalent.
+- 6 parents / 4 waves → 2h 26m agent work.
+- 19 parents / 8 waves → 4h 1m.
+- 22 parents / 11 waves → 7h 36m.
 
-The structured Execute seed has only three successful analogs, so confidence is low. Linked child agents accounted for about 90% of processed tokens across the broader included workflow corpus.
+The structured Execute seed has only three successful analogs; treat evidence quality as an internal eligibility signal.
 
 ## Unavailable state
 
-At Gate 1, render one line and continue: `Historical guidance unavailable for this gate; no compatible local or shipped estimate was found.` At Gate 2, omit the implementation estimate when no valid analog exists.
+At either gate, omit the estimate when no valid analog exists.

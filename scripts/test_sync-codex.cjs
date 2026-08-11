@@ -761,7 +761,7 @@ test('plan generates portable strict goal prompts after task artifacts are final
   }
 });
 
-test('plan surfaces historical guidance and a user-focused implementation estimate', () => {
+test('plan surfaces time-only planning and implementation estimates', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -772,15 +772,23 @@ test('plan surfaces historical guidance and a user-focused implementation estima
       'utf8',
     );
 
-    assert.match(plan, /Historical guidance/);
+    assert.match(plan, /Estimated remaining planning time/);
     assert.match(plan, /Estimated implementation time/);
     assert.doesNotMatch(plan, /Execution guidance/);
     assert.match(plan, /never delays or blocks the gate/);
-    assert.match(guidance, /Excludes time waiting for your response/);
-    assert.match(guidance, /directional \*\*API-equivalent\*\*/);
-    assert.match(guidance, /Direct API or per-token billing/);
-    assert.match(guidance, /provider\/model/);
-    assert.match(guidance, /pricing `as_of` date/);
+    assert.doesNotMatch(plan, /Historical guidance/);
+    assert.doesNotMatch(plan, /API-equivalent/);
+    assert.doesNotMatch(guidance, /API-equivalent|processed tokens|Typical full .* expenditure/);
+
+    const gate1 = guidance.match(
+      /## Gate 1 — Remaining planning time([\s\S]*?)## Gate 2 — Implementation time estimate/,
+    )?.[1] || '';
+    assert.match(
+      gate1,
+      /\*\*Estimated remaining planning time: about \{rounded duration or range\}, based on completed plans of similar scope\.\*\*/,
+    );
+    assert.match(gate1, /excludes time waiting for the user's response/);
+    assert.doesNotMatch(gate1, /Historical guidance|confidence|tokens|monetary|billing|unavailable/);
 
     const gate2 = guidance.match(
       /## Gate 2 — Implementation time estimate([\s\S]*?)## Shipped seed prior/,
@@ -789,10 +797,9 @@ test('plan surfaces historical guidance and a user-focused implementation estima
       gate2,
       /\*\*Estimated implementation time: about \{rounded duration\}, based on completed projects of similar size\.\*\*/,
     );
-    assert.match(gate2, /Confidence is an internal eligibility signal/);
-    assert.match(gate2, /omit the estimate without rendering an unavailable-state warning/);
     assert.doesNotMatch(gate2, /Execution guidance/);
     assert.doesNotMatch(gate2, /Nearest historical analog/);
+    assert.doesNotMatch(gate2, /confidence|tokens|monetary|billing|unavailable/);
   }
 
   assert.ok(!fs.existsSync(
