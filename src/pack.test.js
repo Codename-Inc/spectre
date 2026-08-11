@@ -317,7 +317,9 @@ test('packed npm artifact contains portable Claude and Codex knowledge runtimes 
       '--json',
     ], { cwd: projectDir, env: workflowEnv, encoding: 'utf8' });
     assert.equal(packedMarker.status, 0, packedMarker.stderr);
-    assert.equal(JSON.parse(packedMarker.stdout).events[0].type, 'stage.started');
+    const packedStage = JSON.parse(packedMarker.stdout);
+    assert.equal(packedStage.ok, true);
+    assert.match(packedStage.eventId, /^evt_/);
 
     const codexHome = path.join(homeDir, '.codex');
     const result = spawnSync('npx', [

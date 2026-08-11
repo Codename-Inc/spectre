@@ -36,7 +36,7 @@ Primary-direct work uses `task start` and `task submit` with `PRIMARY_ACTOR_ID`;
 
 ## Verification and acceptance
 
-Start/finish waves and phases with their typed commands. After the primary's affected wave checks, record one verification gate with task ids and repo-relative evidence paths:
+Start/finish waves and phases with their typed commands. After the primary's affected batch checks, record one verification gate with task ids and repo-relative evidence paths:
 
 ```bash
 spectre-workflow gate record --run-id "$RUN_ID" --actor-id "$PRIMARY_ACTOR_ID" --kind verification --status pass --tasks "<ids>" --wave-id "<wave>" --evidence "<comma-separated paths>" --project-dir "$PROJECT_ROOT" --json

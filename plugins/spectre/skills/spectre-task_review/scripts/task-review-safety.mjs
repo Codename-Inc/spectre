@@ -224,6 +224,10 @@ function parentProjection(tasks, failures) {
       seen.add(id);
       parents.push({
         id,
+        title: typeof parent?.title === "string" ? parent.title.trim() : "",
+        subtask_ids: (Array.isArray(parent?.subtasks) ? parent.subtasks : [])
+          .map((subtask) => String(subtask?.id ?? "").trim())
+          .filter(Boolean),
         predecessor: splitReferences(parent.predecessor),
         unblocks: splitReferences(parent.unblocks),
       });
@@ -286,12 +290,23 @@ function validateParentDependencies(parents, failures) {
 
 function executeProjection(execute, parents, failures) {
   const parentIds = new Set(parents.map(({ id }) => id));
-  const indexEntries = inlineObjects(section(execute, "Parent Task Index"))
-    .map((objectText) => stringProperty(objectText, "id"))
-    .filter(Boolean);
+  const parentsById = new Map(parents.map((parent) => [parent.id, parent]));
+  const indexRecords = inlineObjects(section(execute, "Parent Task Index"))
+    .map((objectText) => ({
+      id: stringProperty(objectText, "id"),
+      title: stringProperty(objectText, "title") ?? "",
+      subtasks: arrayProperty(objectText, "subtasks"),
+      predecessor: splitReferences(stringProperty(objectText, "predecessor")),
+      unblocks: splitReferences(stringProperty(objectText, "unblocks")),
+    }))
+    .filter(({ id }) => id);
+  const indexEntries = indexRecords.map(({ id }) => id);
   const seenIndex = new Set();
+  const sameValues = (left, right) =>
+    [...left].sort().join("\0") === [...right].sort().join("\0");
 
-  for (const id of indexEntries) {
+  for (const record of indexRecords) {
+    const { id } = record;
     if (seenIndex.has(id)) {
       failures.push(
         hardFailure(
@@ -310,7 +325,41 @@ function executeProjection(execute, parents, failures) {
           { parent_id: id },
         ),
       );
+      continue;
     }
+    const parent = parentsById.get(id);
+    if (record.title !== parent.title) {
+      failures.push(
+        hardFailure(
+          "INDEX_PARENT_MISMATCH",
+          `Parent Task Index title does not match task parent ${id}.`,
+          { parent_id: id },
+        ),
+      );
+    }
+    if (
+      !sameValues(record.subtasks, parent.subtask_ids) ||
+      !sameValues(record.predecessor, parent.predecessor) ||
+      !sameValues(record.unblocks, parent.unblocks)
+    ) {
+      failures.push(
+        hardFailure(
+          "INDEX_DEPENDENCY_MISMATCH",
+          `Parent Task Index fields do not match task parent ${id}.`,
+          { parent_id: id },
+        ),
+      );
+    }
+  }
+  const missingIndex = [...parentIds].filter((id) => !seenIndex.has(id));
+  if (missingIndex.length > 0) {
+    failures.push(
+      hardFailure(
+        "INDEX_PARENT_MISSING",
+        "Parent Task Index omits task graph parents.",
+        { parent_ids: missingIndex },
+      ),
+    );
   }
 
   const waves = inlineObjects(section(execute, "Wave Plan")).map(
@@ -338,6 +387,7 @@ function executeProjection(execute, parents, failures) {
   }
 
   const selectedParents = new Set();
+  const parentWave = new Map();
   for (const wave of waves) {
     for (const id of wave.parent_task_ids) {
       if (selectedParents.has(id)) {
@@ -350,6 +400,9 @@ function executeProjection(execute, parents, failures) {
         );
       }
       selectedParents.add(id);
+      if (wave.id && !parentWave.has(id)) {
+        parentWave.set(id, wave.id);
+      }
       if (!parentIds.has(id)) {
         failures.push(
           hardFailure(
@@ -371,6 +424,18 @@ function executeProjection(execute, parents, failures) {
         );
       }
     }
+  }
+  const missingWaveParents = [...parentIds].filter(
+    (id) => !selectedParents.has(id),
+  );
+  if (missingWaveParents.length > 0) {
+    failures.push(
+      hardFailure(
+        "WAVE_PARENT_MISSING",
+        "Wave Plan omits task graph parents.",
+        { parent_ids: missingWaveParents },
+      ),
+    );
   }
 
   const waveAdjacency = new Map(
@@ -401,7 +466,82 @@ function executeProjection(execute, parents, failures) {
     );
   }
 
+  const wavesById = new Map(waves.map((wave) => [wave.id, wave]));
+  function waveDependsOn(waveId, dependencyId, visited = new Set()) {
+    if (waveId === dependencyId || visited.has(waveId)) {
+      return false;
+    }
+    visited.add(waveId);
+    return (wavesById.get(waveId)?.after ?? []).some(
+      (afterId) =>
+        afterId === dependencyId ||
+        waveDependsOn(afterId, dependencyId, visited),
+    );
+  }
+  const invalidWaveGraph = failures.some(({ code }) =>
+    [
+      "WAVE_REFERENCE_UNRESOLVED",
+      "WAVE_PARENT_UNRESOLVED",
+      "WAVE_PARENT_DUPLICATE",
+      "WAVE_PARENT_MISSING",
+      "DEPENDENCY_CYCLE",
+    ].includes(code),
+  );
+  if (!invalidWaveGraph) {
+    for (const parent of parents) {
+      const currentWave = parentWave.get(parent.id);
+      for (const predecessor of parent.predecessor) {
+        const predecessorWave = parentWave.get(predecessor);
+        if (
+          currentWave &&
+          predecessorWave &&
+          !waveDependsOn(currentWave, predecessorWave)
+        ) {
+          failures.push(
+            hardFailure(
+              "WAVE_DEPENDENCY_MISMATCH",
+              `Wave for parent ${parent.id} does not follow predecessor ${predecessor}.`,
+              { parent_id: parent.id, predecessor },
+            ),
+          );
+        }
+      }
+      for (const unblocked of parent.unblocks) {
+        const unblockedWave = parentWave.get(unblocked);
+        if (
+          currentWave &&
+          unblockedWave &&
+          !waveDependsOn(unblockedWave, currentWave)
+        ) {
+          failures.push(
+            hardFailure(
+              "WAVE_DEPENDENCY_MISMATCH",
+              `Wave for parent ${unblocked} does not follow declared unblock from ${parent.id}.`,
+              { parent_id: unblocked, predecessor: parent.id },
+            ),
+          );
+        }
+      }
+    }
+  }
+
   return { index_parent_ids: indexEntries, waves };
+}
+
+function executionSummaryCounts(execute) {
+  const summary = section(execute, "Execution Summary");
+  const read = (label) => {
+    const match = summary.match(
+      new RegExp(`^\\s*[-*]\\s*${label}\\s*:\\s*(\\d+)\\s*$`, "im"),
+    );
+    return match ? Number(match[1]) : null;
+  };
+  return {
+    phases: read("Phases"),
+    parents: read("Parent tasks"),
+    subtasks: read("Subtasks"),
+    waves: read("Waves"),
+  };
 }
 
 async function hashDescriptor(path) {
@@ -469,6 +609,7 @@ const KNOWN_PARENT_FIELDS = new Set([
   "description",
   "type",
   "status",
+  "risk",
   "predecessor",
   "unblocks",
   "produces",
@@ -500,6 +641,7 @@ function parentSemanticRecord(phaseId, parent) {
       "title",
       "description",
       "type",
+      "risk",
       "replaces",
     ]),
     subtasks: subtasks.map((subtask) => ({
@@ -1038,19 +1180,19 @@ async function impact(options) {
 async function preflight(options) {
   const result = resultFor("preflight");
   const taskDir = resolve(options["task-dir"]);
-  const executeRequested = options.execute
-    ? resolve(options.execute)
-    : resolve(taskDir, "specs", "execute.md");
-  const executePath = await resolveReadable([executeRequested]);
+  const tasksRequested = options.tasks
+    ? resolve(options.tasks)
+    : resolve(taskDir, "specs", "tasks.json");
+  const tasksPath = await resolveReadable([tasksRequested]);
   const planCandidates = [
     resolve(taskDir, "specs", "plan.md"),
-    resolve(dirname(executeRequested), "plan.md"),
+    resolve(dirname(tasksRequested), "plan.md"),
   ];
-  if (basename(executeRequested).endsWith(".execute.md")) {
+  if (basename(tasksRequested).endsWith(".tasks.json")) {
     planCandidates.push(
       resolve(
-        dirname(executeRequested),
-        basename(executeRequested).replace(/\.execute\.md$/, ".plan.md"),
+        dirname(tasksRequested),
+        basename(tasksRequested).replace(/\.tasks\.json$/, ".plan.md"),
       ),
     );
   }
@@ -1065,6 +1207,69 @@ async function preflight(options) {
       ),
     );
   }
+  if (!tasksPath) {
+    result.hard_failures.push(
+      hardFailure(
+        "ARTIFACT_MISSING",
+        "Required task graph is missing or unreadable.",
+        { artifact: "tasks" },
+      ),
+    );
+  }
+  if (!tasksPath) {
+    result.status = "hard_failure";
+    return result;
+  }
+
+  let tasks;
+  try {
+    tasks = JSON.parse(await readFile(tasksPath, "utf8"));
+  } catch (error) {
+    result.hard_failures.push(
+      hardFailure(
+        "TASK_JSON_INVALID",
+        "Task detail JSON does not parse.",
+        { error: error.message },
+      ),
+    );
+    result.status = "hard_failure";
+    return result;
+  }
+
+  const parents = parentProjection(tasks, result.hard_failures);
+  validateParentDependencies(parents, result.hard_failures);
+
+  result.projection = {
+    parents,
+  };
+  result.protected_hashes = {};
+  result.stage_hashes = {
+    tasks: await hashDescriptor(tasksPath),
+  };
+  if (planPath) {
+    result.protected_hashes.plan = await hashDescriptor(planPath);
+  }
+  const scopePath = await resolveReadable([
+    resolve(taskDir, "concepts", "scope.md"),
+    resolve(taskDir, "specs", "prd.md"),
+  ]);
+  if (scopePath) {
+    result.protected_hashes.scope = await hashDescriptor(scopePath);
+  }
+
+  if (result.hard_failures.length > 0) {
+    result.status = "hard_failure";
+  }
+  return result;
+}
+
+async function validatePair(options) {
+  const result = resultFor("validate-pair");
+  const taskDir = resolve(options["task-dir"]);
+  const executeRequested = options.execute
+    ? resolve(options.execute)
+    : resolve(taskDir, "specs", "execute.md");
+  const executePath = await resolveReadable([executeRequested]);
   if (!executePath) {
     result.hard_failures.push(
       hardFailure(
@@ -1073,23 +1278,27 @@ async function preflight(options) {
         { artifact: "execute" },
       ),
     );
-  }
-  if (!executePath) {
     result.status = "hard_failure";
     return result;
   }
 
   const execute = await readFile(executePath, "utf8");
-  const sourceSection = section(execute, "Task Detail Source");
-  const declaredSource = referencedPath(sourceSection, "Tasks JSON");
+  const declaredSource = referencedPath(
+    section(execute, "Task Detail Source"),
+    "Tasks JSON",
+  );
   const fallbackSource = basename(executePath).endsWith(".execute.md")
     ? basename(executePath).replace(/\.execute\.md$/, ".tasks.json")
     : "tasks.json";
-  const tasksPath = await resolveReference(
+  const explicitTasks = options.tasks
+    ? await resolveReadable([resolve(options.tasks)])
+    : null;
+  const declaredTasks = await resolveReference(
     declaredSource ?? fallbackSource,
     executePath,
     taskDir,
   );
+  const tasksPath = explicitTasks ?? declaredTasks;
   if (!tasksPath) {
     result.hard_failures.push(
       hardFailure(
@@ -1100,6 +1309,18 @@ async function preflight(options) {
     );
     result.status = "hard_failure";
     return result;
+  }
+  if (
+    explicitTasks &&
+    (!declaredTasks || (await realpath(explicitTasks)) !== (await realpath(declaredTasks)))
+  ) {
+    result.hard_failures.push(
+      hardFailure(
+        "TASK_SOURCE_MISMATCH",
+        "Task Detail Source does not identify the validated task graph.",
+        { source: declaredSource ?? fallbackSource },
+      ),
+    );
   }
 
   let tasks;
@@ -1124,38 +1345,41 @@ async function preflight(options) {
     parents,
     result.hard_failures,
   );
-
   result.projection = {
     parents,
     index_parent_ids: executeData.index_parent_ids,
     waves: executeData.waves,
   };
-  result.protected_hashes = {};
-  if (planPath) {
-    result.protected_hashes.plan = await hashDescriptor(planPath);
-  }
-  result.protected_hashes.execute = await hashDescriptor(executePath);
-  result.protected_hashes.tasks = await hashDescriptor(tasksPath);
-
-  const scopeSource = referencedPath(
-    section(execute, "Document Manifest"),
-    "Scope",
+  const actualCounts = {
+    phases: Array.isArray(tasks?.phases) ? tasks.phases.length : 0,
+    parents: parents.length,
+    subtasks: parents.reduce(
+      (count, parent) => count + parent.subtask_ids.length,
+      0,
+    ),
+    waves: executeData.waves.length,
+  };
+  const declaredCounts = executionSummaryCounts(execute);
+  const countMismatches = Object.keys(actualCounts).filter(
+    (key) => declaredCounts[key] !== actualCounts[key],
   );
-  const scopePath = await resolveReference(
-    scopeSource,
-    executePath,
-    taskDir,
-  );
-  if (scopePath) {
-    result.protected_hashes.scope = await hashDescriptor(scopePath);
-  } else if (scopeSource) {
-    result.advisories.push({
-      code: "OPTIONAL_SCOPE_UNRESOLVABLE",
-      message: "The listed scope artifact was not available for hashing.",
-      source: scopeSource,
-    });
+  if (countMismatches.length > 0) {
+    result.hard_failures.push(
+      hardFailure(
+        "EXECUTION_COUNT_MISMATCH",
+        "Execution Summary counts do not match the final task graph and wave plan.",
+        {
+          fields: countMismatches,
+          declared: declaredCounts,
+          actual: actualCounts,
+        },
+      ),
+    );
   }
-
+  result.hashes = {
+    execute: await hashDescriptor(executePath),
+    tasks: await hashDescriptor(tasksPath),
+  };
   if (result.hard_failures.length > 0) {
     result.status = "hard_failure";
   }
@@ -1170,7 +1394,7 @@ function isWithin(parent, child) {
 function reportFindings(report, failures) {
   const findingsSection = section(report, "Findings");
   if (/\bno findings\b/i.test(findingsSection)) {
-    return { count: 0, explicit_no_findings: true };
+    return { count: 0, explicit_no_findings: true, ids: [] };
   }
 
   const rows = findingsSection
@@ -1200,7 +1424,7 @@ function reportFindings(report, failures) {
         "Report must contain a parseable Findings table or explicit no-findings form.",
       ),
     );
-    return { count: 0, explicit_no_findings: false };
+    return { count: 0, explicit_no_findings: false, ids: [] };
   }
 
   const headers = rows[headerIndex].map((cell) =>
@@ -1241,7 +1465,92 @@ function reportFindings(report, failures) {
   return {
     count: findings.length,
     explicit_no_findings: false,
+    ids: findings.map((row) => row[0]?.trim()).filter(Boolean),
   };
+}
+
+function reportDispositions(report, findingIds, failures) {
+  if (findingIds.length === 0) {
+    return { count: 0 };
+  }
+  const rows = section(report, "Dispositions")
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|.*\|\s*$/.test(line))
+    .map((line) =>
+      line
+        .trim()
+        .slice(1, -1)
+        .split("|")
+        .map((cell) => cell.trim()),
+    );
+  const headerIndex = rows.findIndex((row) => {
+    const normalized = row.map((cell) =>
+      cell.toLowerCase().replace(/[^a-z]/g, ""),
+    );
+    return normalized.includes("finding") && normalized.includes("disposition");
+  });
+  if (headerIndex < 0) {
+    failures.push(
+      hardFailure(
+        "REPORT_DISPOSITIONS_INVALID",
+        "Every finding requires one parseable disposition.",
+      ),
+    );
+    return { count: 0 };
+  }
+
+  const headers = rows[headerIndex].map((cell) =>
+    cell.toLowerCase().replace(/[^a-z]/g, ""),
+  );
+  const findingIndex = headers.indexOf("finding");
+  const dispositionIndex = headers.indexOf("disposition");
+  const resultingEditIndex = headers.indexOf("resultingtaskedit");
+  if (resultingEditIndex < 0) {
+    failures.push(
+      hardFailure(
+        "REPORT_DISPOSITIONS_INVALID",
+        "Disposition table requires a Resulting Task Edit column.",
+      ),
+    );
+    return { count: 0 };
+  }
+  const allowed = new Set(["applied", "skipped", "unresolved", "scope-change"]);
+  const dispositions = rows.slice(headerIndex + 1).filter((row) =>
+    !row.every((cell) => /^:?-{3,}:?$/.test(cell)),
+  );
+  const byFinding = new Map();
+  for (const row of dispositions) {
+    const id = row[findingIndex]?.trim();
+    const disposition = row[dispositionIndex]?.trim().toLowerCase();
+    const resultingEdit = row[resultingEditIndex]?.trim();
+    if (
+      !id ||
+      !allowed.has(disposition) ||
+      byFinding.has(id) ||
+      (disposition === "applied" && !resultingEdit)
+    ) {
+      failures.push(
+        hardFailure(
+          "REPORT_DISPOSITIONS_INVALID",
+          "Disposition rows require a unique finding id and an allowed status.",
+          { finding_id: id ?? null },
+        ),
+      );
+      continue;
+    }
+    byFinding.set(id, disposition);
+  }
+  const missing = findingIds.filter((id) => !byFinding.has(id));
+  if (missing.length > 0) {
+    failures.push(
+      hardFailure(
+        "REPORT_DISPOSITIONS_INVALID",
+        "Every finding requires exactly one disposition.",
+        { finding_ids: missing },
+      ),
+    );
+  }
+  return { count: byFinding.size };
 }
 
 function metadataValue(report, label) {
@@ -1364,6 +1673,11 @@ async function validateReport(options) {
 
   if (report !== null && result.hard_failures.length === 0) {
     result.report = reportFindings(report, result.hard_failures);
+    result.dispositions = reportDispositions(
+      report,
+      result.report.ids,
+      result.hard_failures,
+    );
     const requiredMetadata = [
       "Mode",
       "Reviewer Runtime",
@@ -1403,6 +1717,10 @@ async function main() {
     operation = parsed.operation;
     if (operation === "preflight") {
       finish(await preflight(parsed.options));
+      return;
+    }
+    if (operation === "validate-pair") {
+      finish(await validatePair(parsed.options));
       return;
     }
     if (operation === "impact") {

@@ -750,13 +750,17 @@ test('plan generates portable strict goal prompts after task artifacts are final
     assert.ok(
       comprehensive.indexOf('spectre-goal') > comprehensive.indexOf('spectre-task_review'),
     );
+    assert.ok(comprehensive.indexOf('--tasks-only') < comprehensive.indexOf('spectre-task_review'));
+    assert.ok(comprehensive.indexOf('--finalize-index') > comprehensive.indexOf('spectre-task_review'));
+    assert.ok(comprehensive.indexOf('validate-pair') > comprehensive.indexOf('--finalize-index'));
+    assert.ok(comprehensive.indexOf('spectre-goal') > comprehensive.indexOf('validate-pair'));
     assert.match(plan, /MICRO skips goal-prompt artifacts/);
     assert.match(plan, /goal-prompts\.md/);
     assert.match(plan, /Skill\(spectre-goal\)/);
   }
 });
 
-test('plan surfaces wait-excluded historical guidance with explicit billing semantics', () => {
+test('plan surfaces historical guidance and a user-focused implementation estimate', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -768,13 +772,26 @@ test('plan surfaces wait-excluded historical guidance with explicit billing sema
     );
 
     assert.match(plan, /Historical guidance/);
-    assert.match(plan, /Execution guidance/);
+    assert.match(plan, /Estimated implementation time/);
+    assert.doesNotMatch(plan, /Execution guidance/);
     assert.match(plan, /never delays or blocks the gate/);
     assert.match(guidance, /Excludes time waiting for your response/);
     assert.match(guidance, /directional \*\*API-equivalent\*\*/);
     assert.match(guidance, /Direct API or per-token billing/);
     assert.match(guidance, /provider\/model/);
     assert.match(guidance, /pricing `as_of` date/);
+
+    const gate2 = guidance.match(
+      /## Gate 2 — Implementation time estimate([\s\S]*?)## Shipped seed prior/,
+    )?.[1] || '';
+    assert.match(
+      gate2,
+      /\*\*Estimated implementation time: about \{rounded duration\}, based on completed projects of similar size\.\*\*/,
+    );
+    assert.match(gate2, /Confidence is an internal eligibility signal/);
+    assert.match(gate2, /omit the estimate without rendering an unavailable-state warning/);
+    assert.doesNotMatch(gate2, /Execution guidance/);
+    assert.doesNotMatch(gate2, /Nearest historical analog/);
   }
 
   assert.ok(!fs.existsSync(
@@ -1173,8 +1190,9 @@ test('review gates pin route-specific opposing models and retain native fallback
       } else if (skillName === 'spectre-task_review') {
         assert.match(skill, /task-review-safety\.mjs` `preflight/);
         assert.match(skill, /task-review-safety\.mjs` `validate-report/);
-        assert.match(skill, /one report-only repair attempt/);
-        assert.match(skill, /focused post-check/);
+        assert.match(skill, /one same-route report-only repair attempt/);
+        assert.match(skill, /post-write `preflight`/);
+        assert.match(skill, /final `validate-pair`/);
         assert.match(skill, /Completed-review hard stop/);
         assert.match(skill, /--review-again/);
         assert.match(skill, /task_review_attempt\.json/);
@@ -1222,7 +1240,7 @@ test('plan review restores simplification and the Test Opportunity speed budget'
   }
 });
 
-test('planning artifacts have one primary writer and reviewers only return findings', () => {
+test('planning artifact ownership confines reviewer-authored scope-safe writeback', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -1238,8 +1256,8 @@ test('planning artifacts have one primary writer and reviewers only return findi
     const taskReview = readSkill('spectre-task_review');
     const codeReview = readSkill('spectre-code_review');
 
-    assert.match(plan, /primary planning agent owns synthesis and directly writes every planning artifact/i);
-    assert.match(plan, /Skill invocation loads procedure into that same primary; it does not transfer ownership/i);
+    assert.match(plan, /primary planning agent owns synthesis, routing, and deterministic finalization/i);
+    assert.match(plan, /explicit scope-safe reviewer write surfaces/i);
     assert.match(plan, /Research agents return evidence only and never write planning artifacts/i);
     assert.doesNotMatch(plan, /never write `plan\.md`, `execute\.md`, or `tasks\.json` content yourself/i);
 
@@ -1247,21 +1265,22 @@ test('planning artifacts have one primary writer and reviewers only return findi
     assert.match(createPlan, /Research agents return evidence only/i);
     assert.match(createPlan, /at every depth, reuse an existing substantive `## Technical Research` section/i);
     assert.match(createPlan, /orchestrated `spectre-plan` call never launches replacement research agents/i);
-    assert.match(createTasks, /primary directly writes `execute\.md` and `tasks\.json`/i);
+    assert.match(createTasks, /primary directly writes the mode-selected artifact/i);
     assert.match(createTasks, /Research agents return evidence only/i);
 
-    assert.match(planReview, /reviewer may write only `REVIEW_REPORT`/i);
-    assert.match(planReview, /primary directly edits `plan\.md`/i);
-    assert.match(planReview, /never dispatch a subagent or external reviewer to apply findings/i);
+    assert.match(planReview, /reviewer may write only `REVIEW_REPORT` and `plan\.md`/i);
+    assert.match(planReview, /writes the complete findings before editing `plan\.md`/i);
+    assert.match(planReview, /Resulting Plan Edit/i);
+    assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
     assert.match(planReview, /Mechanical report corrections/i);
     assert.match(planReview, /do not change semantic judgment/i);
     assert.doesNotMatch(planReview, /allowedTools "[^"]*Task/);
 
-    assert.match(taskReview, /primary directly edits `TASKS_JSON` and affected `EXECUTE_INDEX` rows/i);
-    assert.match(taskReview, /never dispatch a subagent or external reviewer to apply findings/i);
-    assert.match(taskReview, /primary first makes any verified mechanical corrections/i);
-    assert.match(taskReview, /do not change semantic judgment/i);
-    assert.match(taskReview, /Primary-agent semantic self-review is prohibited/i);
+    assert.match(taskReview, /reviewer may write only `TASKS_JSON` and `REVIEW_REPORT`/i);
+    assert.match(taskReview, /writes the complete Findings section before editing `TASKS_JSON`/i);
+    assert.match(taskReview, /Resulting Task Edit/i);
+    assert.match(taskReview, /primary does not recreate or semantically reconfirm/i);
+    assert.doesNotMatch(taskReview, /primary directly edits `TASKS_JSON`/i);
 
     assert.match(codeReview, /primary directly corrects only verified mechanical defects/i);
     assert.match(codeReview, /do not change semantic judgment/i);

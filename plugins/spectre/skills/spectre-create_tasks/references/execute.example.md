@@ -32,7 +32,7 @@ Use targeted parsing only: status projections, selected parent-task slices, revi
 - Phase 1 — Define Contract
   - `{ id: "1.1", title: "Example detail artifact", subtasks: ["1.1.1", "1.1.2"], predecessor: "none", unblocks: "2.1" }`
 - Phase 2 — Consumer Slice
-  - `{ id: "2.1", title: "Inline selected parent tasks into dispatch", subtasks: ["2.1.1"], predecessor: "1.1", unblocks: "terminal" }`
+  - `{ id: "2.1", title: "Inline selected parent tasks into dispatch", subtasks: ["2.1.1"], predecessor: "1.1", unblocks: "terminal", risk: "shared-contract" }`
 
 ## Slicing Rules
 Read this index to plan waves. For each owner, choose selected parent task ids from the Wave Plan and batching rules, then query only those parent tasks from `tasks.json` using `jq`, `node -e`, or direct targeted mechanics. Inline the selected parent-task slice under `<task_assignment>`.

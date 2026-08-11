@@ -83,9 +83,36 @@ function commonOptions(flags) {
   };
 }
 
-function outputResult(result, flags, output = process.stdout) {
+// Recorded events keep full fidelity in the run log for consumers; stdout
+// returns only the confirmation fields downstream commands actually need.
+function confirmation(resource, action, result) {
+  if (!result || result.ok === false) return result;
+  if (resource === 'cleanup' || resource === 'purge') return result;
+  if (resource === 'run' && action === 'start') {
+    return {
+      ok: true,
+      resumed: Boolean(result.resumed),
+      runId: result.runId,
+      primaryActorId: result.primaryActorId,
+      status: result.status,
+    };
+  }
+  const compact = { ok: true };
+  if (result.idempotent) compact.idempotent = true;
+  const eventId = result.events?.[0]?.eventId;
+  if (eventId) compact.eventId = eventId;
+  if (resource === 'run' && action === 'finish') compact.status = result.status;
+  if (resource === 'agent' && action === 'dispatch') {
+    compact.workerActorId = result.workerActorId;
+    compact.assignmentId = result.assignmentId;
+    compact.taskIds = result.taskIds;
+  }
+  return compact;
+}
+
+function outputResult(result, compact, flags, output = process.stdout) {
   if (flags.get('--json')) {
-    output.write(`${JSON.stringify(result)}\n`);
+    output.write(`${JSON.stringify(compact)}\n`);
     return;
   }
   const event = result.events?.at(-1);
@@ -93,7 +120,7 @@ function outputResult(result, flags, output = process.stdout) {
     output.write(`${event.type} ${event.eventId} (${result.runId})\n`);
     return;
   }
-  output.write(`${JSON.stringify(result, null, 2)}\n`);
+  output.write(`${JSON.stringify(compact, null, 2)}\n`);
 }
 
 function idempotencyKey(flags, fallback) {
@@ -338,7 +365,7 @@ export async function main(argv, io = {}) {
   } else {
     throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown workflow command ${resource}`);
   }
-  outputResult(result, flags, stdout);
+  outputResult(result, confirmation(resource, action, result), flags, stdout);
   return result;
 }
 

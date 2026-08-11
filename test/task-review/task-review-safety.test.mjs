@@ -174,8 +174,17 @@ function runHelper(fixture, operation, args = []) {
 
 function runPreflight(fixture) {
   return runHelper(fixture, "preflight", [
+    "--tasks",
+    fixture.tasksPath,
+  ]);
+}
+
+function runPairCheck(fixture) {
+  return runHelper(fixture, "validate-pair", [
     "--execute",
     fixture.executePath,
+    "--tasks",
+    fixture.tasksPath,
   ]);
 }
 
@@ -201,6 +210,12 @@ function validReport() {
 | # | Severity | Lens | Location | Finding | Suggested Edit |
 |---|---|---|---|---|---|
 | 1 | High | Coverage | specs/tasks.json parent 1.2 | A concrete problem. | Make the smallest concrete edit. |
+
+## Dispositions
+
+| Finding | Disposition | Resulting Task Edit |
+|---|---|---|
+| 1 | applied | Updated parent 1.2 description. |
 
 ## Review Metadata
 
@@ -257,9 +272,10 @@ async function snapshot(root) {
   return files.sort(([left], [right]) => left.localeCompare(right));
 }
 
-test("preflight returns projections and hashes without writing inputs", async () => {
+test("tasks-first preflight returns projections and audit hashes without execute.md", async () => {
   const fixture = await createFixture();
   try {
+    await rm(fixture.executePath);
     const before = await snapshot(fixture.root);
     const result = runPreflight(fixture);
 
@@ -272,8 +288,9 @@ test("preflight returns projections and hashes without writing inputs", async ()
     );
     assert.deepEqual(
       Object.keys(result.output.protected_hashes).sort(),
-      ["execute", "plan", "scope", "tasks"],
+      ["plan", "scope"],
     );
+    assert.deepEqual(Object.keys(result.output.stage_hashes), ["tasks"]);
     assert.equal(result.output.semantic_judgments, undefined);
     assert.deepEqual(await snapshot(fixture.root), before);
   } finally {
@@ -281,7 +298,7 @@ test("preflight returns projections and hashes without writing inputs", async ()
   }
 });
 
-test("preflight hard-fails the closed artifact and parse failures", async (t) => {
+test("tasks-first preflight hard-fails required artifact and parse failures", async (t) => {
   const cases = [
     {
       name: "missing plan",
@@ -289,17 +306,9 @@ test("preflight hard-fails the closed artifact and parse failures", async (t) =>
       mutate: ({ planPath }) => rm(planPath),
     },
     {
-      name: "missing execute index",
+      name: "missing task graph",
       code: "ARTIFACT_MISSING",
-      mutate: ({ executePath }) => rm(executePath),
-    },
-    {
-      name: "unresolvable task source",
-      code: "TASK_SOURCE_UNRESOLVABLE",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace(/Tasks JSON: `[^`]+`/, "Tasks JSON: `missing.json`"),
-        ),
+      mutate: ({ tasksPath }) => rm(tasksPath),
     },
     {
       name: "invalid task JSON",
@@ -324,7 +333,7 @@ test("preflight hard-fails the closed artifact and parse failures", async (t) =>
   }
 });
 
-test("preflight hard-fails duplicate or unresolved sliced parents", async (t) => {
+test("tasks-first preflight hard-fails duplicate task parents", async (t) => {
   const cases = [
     {
       name: "duplicate task parent id",
@@ -333,49 +342,6 @@ test("preflight hard-fails duplicate or unresolved sliced parents", async (t) =>
         mutateJson(tasksPath, (tasks) => {
           tasks.phases[0].parents[1].id = "1.1";
         }),
-    },
-    {
-      name: "duplicate parent index id",
-      code: "INDEX_PARENT_DUPLICATE",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace(
-            "## Slicing Rules",
-            `  - \`{ id: "1.1", title: "Again", subtasks: [], predecessor: "none", unblocks: "terminal" }\`
-
-## Slicing Rules`,
-          ),
-        ),
-    },
-    {
-      name: "unresolved parent index id",
-      code: "INDEX_PARENT_UNRESOLVED",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace('id: "1.2", title:', 'id: "9.9", title:'),
-        ),
-    },
-    {
-      name: "duplicate wave parent selection",
-      code: "WAVE_PARENT_DUPLICATE",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace(
-            'parent_task_ids: ["1.2"]',
-            'parent_task_ids: ["1.1", "1.2"]',
-          ),
-        ),
-    },
-    {
-      name: "unresolved wave parent",
-      code: "WAVE_PARENT_UNRESOLVED",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace(
-            'parent_task_ids: ["1.2"]',
-            'parent_task_ids: ["9.9"]',
-          ),
-        ),
     },
   ];
 
@@ -394,27 +360,8 @@ test("preflight hard-fails duplicate or unresolved sliced parents", async (t) =>
   }
 });
 
-test("preflight hard-fails unresolved references and dependency cycles", async (t) => {
+test("tasks-first preflight hard-fails unresolved references and dependency cycles", async (t) => {
   const cases = [
-    {
-      name: "unresolved wave dependency",
-      code: "WAVE_REFERENCE_UNRESOLVED",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace('after: ["wave-1"]', 'after: ["wave-missing"]'),
-        ),
-    },
-    {
-      name: "wave dependency cycle",
-      code: "DEPENDENCY_CYCLE",
-      mutate: ({ executePath }) =>
-        mutateText(executePath, (text) =>
-          text.replace(
-            'parent_task_ids: ["1.1"], after: []',
-            'parent_task_ids: ["1.1"], after: ["wave-2"]',
-          ),
-        ),
-    },
     {
       name: "unresolved parent predecessor",
       code: "DEPENDENCY_PARENT_UNRESOLVED",
@@ -484,10 +431,6 @@ test("schema and semantic imperfections outside the closed set remain launch-per
         },
       ];
     });
-    await mutateText(fixture.executePath, (text) =>
-      text.replace("- Parent tasks: 2", "- Parent tasks: 999"),
-    );
-
     const result = runPreflight(fixture);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.output.status, "pass");
@@ -570,6 +513,24 @@ test("validate-report enforces path, readability, findings, and metadata", async
         "",
       ),
     },
+    {
+      name: "finding missing disposition",
+      code: "REPORT_DISPOSITIONS_INVALID",
+      reportPath: ({ reportPath }) => reportPath,
+      report: validReport().replace(
+        /## Dispositions[\s\S]+?## Review Metadata/,
+        "## Review Metadata",
+      ),
+    },
+    {
+      name: "applied finding missing resulting edit",
+      code: "REPORT_DISPOSITIONS_INVALID",
+      reportPath: ({ reportPath }) => reportPath,
+      report: validReport().replace(
+        "| 1 | applied | Updated parent 1.2 description. |",
+        "| 1 | applied | |",
+      ),
+    },
   ];
 
   for (const fixtureCase of cases) {
@@ -602,8 +563,32 @@ test("validate-report enforces path, readability, findings, and metadata", async
   }
 });
 
-test("validate-report detects every protected input mutation and never repairs it", async (t) => {
-  for (const protectedName of ["plan", "execute", "tasks", "scope"]) {
+test("validate-report permits reviewer-owned task edits but rejects upstream mutation", async (t) => {
+  await t.test("tasks may change", async () => {
+    const fixture = await createFixture();
+    try {
+      const preflight = runPreflight(fixture);
+      assert.equal(preflight.status, 0, preflight.stderr);
+      const hashesPath = await writeProtectedHashes(fixture, preflight.output);
+      await writeFile(fixture.reportPath, validReport());
+      await mutateJson(fixture.tasksPath, (tasks) => {
+        tasks.phases[0].parents[1].description = "Reviewer-owned correction.";
+      });
+
+      const result = runHelper(fixture, "validate-report", [
+        "--report",
+        fixture.reportPath,
+        "--protected-hashes",
+        hashesPath,
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.output.status, "pass");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  for (const protectedName of ["plan", "scope"]) {
     await t.test(protectedName, async () => {
       const fixture = await createFixture();
       try {
@@ -633,6 +618,170 @@ test("validate-report detects every protected input mutation and never repairs i
           await readFile(protectedPath, "utf8"),
           `${original}mutation\n`,
         );
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("final pair validation accepts aligned output and rejects index drift", async (t) => {
+  await t.test("aligned pair", async () => {
+    const fixture = await createFixture();
+    try {
+      const result = runPairCheck(fixture);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.output.status, "pass");
+      assert.deepEqual(
+        result.output.projection.index_parent_ids,
+        ["1.1", "1.2"],
+      );
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  const cases = [
+    {
+      name: "duplicate parent index id",
+      code: "INDEX_PARENT_DUPLICATE",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(
+            "## Slicing Rules",
+            `  - \`{ id: "1.1", title: "Again", subtasks: [], predecessor: "none", unblocks: "terminal" }\`
+
+## Slicing Rules`,
+          ),
+        ),
+    },
+    {
+      name: "missing parent index entry",
+      code: "INDEX_PARENT_MISSING",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(
+            '  - `{ id: "1.2", title: "Parent 1.2", subtasks: ["1.2.1"], predecessor: "1.1", unblocks: "terminal" }`\n',
+            "",
+          ),
+        ),
+    },
+    {
+      name: "parent index dependency drift",
+      code: "INDEX_DEPENDENCY_MISMATCH",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(
+            'id: "1.2", title: "Parent 1.2", subtasks: ["1.2.1"], predecessor: "1.1"',
+            'id: "1.2", title: "Parent 1.2", subtasks: ["1.2.1"], predecessor: "none"',
+          ),
+        ),
+    },
+    {
+      name: "parent index title drift",
+      code: "INDEX_PARENT_MISMATCH",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace('title: "Parent 1.2"', 'title: "Stale title"'),
+        ),
+    },
+    {
+      name: "unresolved parent index id",
+      code: "INDEX_PARENT_UNRESOLVED",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace('id: "1.2", title:', 'id: "9.9", title:'),
+        ),
+    },
+    {
+      name: "duplicate wave parent selection",
+      code: "WAVE_PARENT_DUPLICATE",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(
+            'parent_task_ids: ["1.2"]',
+            'parent_task_ids: ["1.1", "1.2"]',
+          ),
+        ),
+    },
+    {
+      name: "missing wave parent",
+      code: "WAVE_PARENT_MISSING",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace('parent_task_ids: ["1.2"]', "parent_task_ids: []"),
+        ),
+    },
+    {
+      name: "wave ordering ignores parent dependency",
+      code: "WAVE_DEPENDENCY_MISMATCH",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace('after: ["wave-1"]', "after: []"),
+        ),
+    },
+    {
+      name: "wave ordering ignores declared unblock",
+      code: "WAVE_DEPENDENCY_MISMATCH",
+      mutate: async ({ executePath, tasksPath }) => {
+        await mutateJson(tasksPath, (tasks) => {
+          tasks.phases[0].parents[1].predecessor = "none";
+        });
+        await mutateText(executePath, (text) =>
+          text
+            .replace(
+              'id: "1.2", title: "Parent 1.2", subtasks: ["1.2.1"], predecessor: "1.1"',
+              'id: "1.2", title: "Parent 1.2", subtasks: ["1.2.1"], predecessor: "none"',
+            )
+            .replace('after: ["wave-1"]', "after: []"),
+        );
+      },
+    },
+    {
+      name: "unresolved wave dependency",
+      code: "WAVE_REFERENCE_UNRESOLVED",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace('after: ["wave-1"]', 'after: ["wave-missing"]'),
+        ),
+    },
+    {
+      name: "wave dependency cycle",
+      code: "DEPENDENCY_CYCLE",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(
+            'parent_task_ids: ["1.1"], after: []',
+            'parent_task_ids: ["1.1"], after: ["wave-2"]',
+          ),
+        ),
+    },
+    {
+      name: "execution summary count drift",
+      code: "EXECUTION_COUNT_MISMATCH",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace("- Parent tasks: 2", "- Parent tasks: 999"),
+        ),
+    },
+    {
+      name: "task detail source differs from validated graph",
+      code: "TASK_SOURCE_MISMATCH",
+      mutate: ({ executePath }) =>
+        mutateText(executePath, (text) =>
+          text.replace(/Tasks JSON: `[^`]+`/, "Tasks JSON: `other.json`"),
+        ),
+    },
+  ];
+
+  for (const fixtureCase of cases) {
+    await t.test(fixtureCase.name, async () => {
+      const fixture = await createFixture();
+      try {
+        await fixtureCase.mutate(fixture);
+        const result = runPairCheck(fixture);
+        assert.equal(result.status, 2, result.stderr);
+        assert.ok(failureCodes(result).includes(fixtureCase.code));
       } finally {
         await rm(fixture.root, { recursive: true, force: true });
       }

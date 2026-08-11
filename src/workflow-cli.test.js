@@ -70,7 +70,75 @@ test('top-level and bundled workflow CLIs share stable JSON commands', (t) => {
     '--json',
   ], value);
   assert.equal(stage.status, 0, stage.stderr);
-  assert.equal(JSON.parse(stage.stdout).events[0].type, 'stage.started');
+  const stageResult = JSON.parse(stage.stdout);
+  assert.equal(stageResult.ok, true);
+  assert.match(stageResult.eventId, /^evt_/);
+  assert.deepEqual(Object.keys(stageResult).sort(), ['eventId', 'ok']);
+});
+
+test('workflow CLI returns minimal confirmations across the task lifecycle', (t) => {
+  const value = makeFixture(t);
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const run = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, ...common,
+  ], value).stdout);
+  assert.deepEqual(
+    Object.keys(run).sort(),
+    ['ok', 'primaryActorId', 'resumed', 'runId', 'status'],
+  );
+
+  const ids = ['--run-id', run.runId, '--actor-id', run.primaryActorId];
+  const dispatch = invoke(BUNDLED_CLI_PATH, [
+    'agent', 'dispatch', ...ids, '--tasks', '1.1,1.1.1', '--attempt', '1', ...common,
+  ], value);
+  assert.equal(dispatch.status, 0, dispatch.stderr);
+  const dispatched = JSON.parse(dispatch.stdout);
+  assert.equal(dispatched.ok, true);
+  assert.match(dispatched.workerActorId, /^actor_/);
+  assert.match(dispatched.assignmentId, /^assignment_/);
+  assert.deepEqual(dispatched.taskIds, ['1.1', '1.1.1']);
+  assert.doesNotMatch(dispatch.stdout, /taskDefinitions|payload|sourceRawHash/);
+
+  for (const taskId of ['1.1', '1.1.1']) {
+    for (const action of ['start', 'submit']) {
+      const step = invoke(BUNDLED_CLI_PATH, [
+        'task', action, '--run-id', run.runId,
+        '--actor-id', dispatched.workerActorId,
+        '--task-id', taskId, ...common,
+      ], value);
+      assert.equal(step.status, 0, step.stderr);
+      const confirmed = JSON.parse(step.stdout);
+      assert.deepEqual(Object.keys(confirmed).sort(), ['eventId', 'ok']);
+      assert.doesNotMatch(step.stdout, /taskDefinition|sourceStatus/);
+    }
+  }
+
+  const source = JSON.parse(fs.readFileSync(value.sourcePath, 'utf8'));
+  source.phases[0].status = 'done';
+  source.phases[0].parents[0].status = 'done';
+  source.phases[0].parents[0].subtasks[0].status = 'done';
+  fs.writeFileSync(value.sourcePath, JSON.stringify(source));
+
+  const gate = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
+    '--tasks', '1.1,1.1.1', '--wave-id', '1', ...common,
+  ], value).stdout);
+  assert.deepEqual(Object.keys(gate).sort(), ['eventId', 'ok']);
+
+  for (const taskId of ['1.1.1', '1.1']) {
+    const complete = invoke(BUNDLED_CLI_PATH, [
+      'task', 'complete', ...ids, '--task-id', taskId,
+      '--gate-event-id', gate.eventId, ...common,
+    ], value);
+    assert.equal(complete.status, 0, complete.stderr);
+    assert.deepEqual(Object.keys(JSON.parse(complete.stdout)).sort(), ['eventId', 'ok']);
+  }
+
+  const replay = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
+    '--tasks', '1.1,1.1.1', '--wave-id', '1', ...common,
+  ], value).stdout);
+  assert.deepEqual(replay, { ok: true, idempotent: true, eventId: gate.eventId });
 });
 
 test('workflow CLI reports stable coded JSON errors', (t) => {

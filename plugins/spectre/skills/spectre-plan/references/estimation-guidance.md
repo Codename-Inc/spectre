@@ -34,20 +34,17 @@ Historical guidance · {confidence}
 
 Use the selected tier only. Keep the block to these three lines.
 
-## Gate 2 — Execution guidance
+## Gate 2 — Implementation time estimate
 
 After task artifacts and reviews settle, count parents, subtasks, and dependency waves. Select the closest contract-compatible successful analog by waves first, then parents; do not fit a regression from the seed cohort.
 
-Place this immediately before the exact final approval sentence:
+Confidence is an internal eligibility signal at this gate, not user-facing copy. When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the final approval sentence:
 
 ```text
-Execution guidance · {confidence}
-- Planned size: {parents} parents / {subtasks} subtasks / {waves} dependency waves.
-- Nearest historical analog: {analog graph} → {agent-work duration}; {processed tokens}; {dollar guidance and basis}.
-- Optional delivery tail, if requested: ~49 min median. Excludes user wait, queueing, credentials, external outages, and scope changes.
+**Estimated implementation time: about {rounded duration}, based on completed projects of similar size.**
 ```
 
-If two analogs bracket the graph closely, show a compact observed envelope instead. Do not imply that tokens scale linearly with elapsed time: delegation and context size materially affect expenditure.
+Do not expose confidence, task-graph counts, analog details, tokens, API-equivalent dollars, cost basis, or delivery-tail guidance at this gate. If no valid analog exists, omit the estimate without rendering an unavailable-state warning and continue to the final approval sentence.
 
 ## Shipped seed prior
 
@@ -68,4 +65,4 @@ The structured Execute seed has only three successful analogs, so confidence is 
 
 ## Unavailable state
 
-Render one line and continue: `Historical guidance unavailable for this gate; no compatible local or shipped estimate was found.`
+At Gate 1, render one line and continue: `Historical guidance unavailable for this gate; no compatible local or shipped estimate was found.` At Gate 2, omit the implementation estimate when no valid analog exists.
