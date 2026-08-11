@@ -69,11 +69,11 @@ test("task review hard-stops after one completed report while recovering incompl
   assert.match(taskReview, /task_review_attempt\.json/);
   assert.match(
     taskReview,
-    /One completed semantic review means one valid report, not one launcher attempt/i,
+    /One completed semantic review means one semantically usable reviewer output, finalized as a valid report through primary-owned normalization when needed/i,
   );
   assert.match(
     taskReview,
-    /missing\/invalid report[^\n]*MUST be recovered without `--review-again`/i,
+    /missing or semantically unusable report[^\n]*MUST be recovered without `--review-again`/i,
   );
   assert.match(
     taskReview,
@@ -229,11 +229,31 @@ test("plan review authors its report and applies only scope-safe plan edits", ()
   assert.match(planReview, /does not repeat semantic review/i);
   assert.match(planReview, /primary validates/i);
   assert.match(planReview, /does not recreate or semantically reconfirm/i);
+  assert.match(planReview, /Once a route returns a semantically usable review, the semantic review is complete/i);
+  assert.match(planReview, /invalid or forbidden enum values such as `Low`/i);
+  assert.match(planReview, /never triggers another reviewer or fallback/i);
+  assert.doesNotMatch(planReview, /same-route report-only repair/i);
   assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
   assert.doesNotMatch(planReview, /Completed-review hard stop/i);
   assert.doesNotMatch(planReview, /--review-again/);
   assert.doesNotMatch(planReview, /plan_review_attempt\.json/);
   assert.doesNotMatch(planReview, /round_status/);
+});
+
+test("usable review reports are normalized by the primary without reviewer repair", () => {
+  const skill = (name) =>
+    readFileSync(
+      join(repositoryRoot, "plugins", "spectre", "skills", name, "SKILL.md"),
+      "utf8",
+    );
+
+  for (const name of ["spectre-plan_review", "spectre-task_review", "spectre-code_review"]) {
+    const review = skill(name);
+    assert.match(review, /Once a route returns a semantically usable review, the semantic review is complete/i);
+    assert.match(review, /primary directly normalizes report-only contract defects/i);
+    assert.match(review, /invalid (?:or forbidden )?enum values/i);
+    assert.doesNotMatch(review, /same-route report-only repair/i);
+  }
 });
 
 test("comprehensive planning reviews tasks before finalizing execute.md", () => {

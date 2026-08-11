@@ -1192,7 +1192,8 @@ test('review gates pin route-specific opposing models and retain native fallback
       } else if (skillName === 'spectre-task_review') {
         assert.match(skill, /task-review-safety\.mjs` `preflight/);
         assert.match(skill, /task-review-safety\.mjs` `validate-report/);
-        assert.match(skill, /one same-route report-only repair attempt/);
+        assert.match(skill, /primary directly normalizes report-only contract defects/);
+        assert.doesNotMatch(skill, /same-route report-only repair/);
         assert.match(skill, /post-write `preflight`/);
         assert.match(skill, /final `validate-pair`/);
         assert.match(skill, /Completed-review hard stop/);
@@ -1274,18 +1275,21 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
     assert.match(planReview, /writes the complete findings before editing `plan\.md`/i);
     assert.match(planReview, /Resulting Plan Edit/i);
     assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
-    assert.match(planReview, /Mechanical report corrections/i);
-    assert.match(planReview, /do not change semantic judgment/i);
+    assert.match(planReview, /primary directly normalizes report-only contract defects/i);
+    assert.match(planReview, /invalid or forbidden enum values such as `Low`/i);
+    assert.match(planReview, /never triggers another reviewer or fallback/i);
     assert.doesNotMatch(planReview, /allowedTools "[^"]*Task/);
 
     assert.match(taskReview, /reviewer may write only `TASKS_JSON` and `REVIEW_REPORT`/i);
     assert.match(taskReview, /writes the complete Findings section before editing `TASKS_JSON`/i);
     assert.match(taskReview, /Resulting Task Edit/i);
     assert.match(taskReview, /primary does not recreate or semantically reconfirm/i);
+    assert.match(taskReview, /primary directly normalizes report-only contract defects/i);
+    assert.doesNotMatch(taskReview, /same-route report-only repair/i);
     assert.doesNotMatch(taskReview, /primary directly edits `TASKS_JSON`/i);
 
-    assert.match(codeReview, /primary directly corrects only verified mechanical defects/i);
-    assert.match(codeReview, /do not change semantic judgment/i);
+    assert.match(codeReview, /primary directly normalizes report-only contract defects/i);
+    assert.doesNotMatch(codeReview, /same-route report-only repair/i);
     assert.match(codeReview, /Primary-agent semantic self-review is prohibited/i);
   }
 });
