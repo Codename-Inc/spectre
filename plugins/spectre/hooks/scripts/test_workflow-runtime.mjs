@@ -429,4 +429,153 @@ describe('workflow retention', () => {
     assert.equal(JSON.parse(fs.readFileSync(paths.statePath, 'utf8')).status, 'interrupted');
     assert.equal(JSON.parse(fs.readFileSync(paths.summaryPath, 'utf8')).status, 'interrupted');
   });
+
+  it('runs a plan-direct markdown source end-to-end with lazily registered workstreams', async (t) => {
+    const value = fixture(t);
+    const planPath = path.join(
+      value.projectDir, '.spectre', 'features', 'runtime-test', 'specs', 'plan.md',
+    );
+    fs.writeFileSync(planPath, [
+      '# Runtime test plan',
+      '',
+      'Feature: runtime-test',
+      'Feature Root: .spectre/features/runtime-test',
+      'Execution Mode: direct',
+      '',
+      '## Overview',
+      'Plan-direct fixture.',
+    ].join('\n'));
+
+    const started = await startWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      source: planPath,
+      owner: 'self',
+    });
+    const dispatch = await recordWorkflowEvents({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+      events: [{
+        type: 'agent.dispatched',
+        actorId: started.primaryActorId,
+        assignmentId: 'assignment_1',
+        attempt: 1,
+        payload: {
+          workerActorId: 'actor_00000000-0000-4000-8000-000000000001',
+          taskDefinitions: [{ id: 'ws-1' }],
+        },
+      }, {
+        type: 'task.assigned',
+        actorId: started.primaryActorId,
+        taskId: 'ws-1',
+        assignmentId: 'assignment_1',
+        attempt: 1,
+        payload: { assignedActorId: 'actor_00000000-0000-4000-8000-000000000001' },
+      }],
+    });
+    assert.equal(dispatch.events[0].payload.taskDefinitions[0].level, 'workstream');
+    const workerActorId = dispatch.events[0].payload.workerActorId;
+    for (const type of ['task.started', 'task.submitted']) {
+      await recordWorkflowEvents({
+        projectDir: value.projectDir,
+        spectreHome: value.spectreHome,
+        runId: started.runId,
+        events: [{ type, actorId: workerActorId, taskId: 'ws-1', attempt: 1, payload: {} }],
+      });
+    }
+    const verification = await recordWorkflowEvents({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+      events: [{
+        type: 'gate.recorded',
+        actorId: started.primaryActorId,
+        payload: { kind: 'verification', status: 'pass', taskIds: ['ws-1'] },
+      }],
+    });
+    await recordWorkflowEvents({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+      events: [{
+        type: 'task.completed',
+        actorId: started.primaryActorId,
+        taskId: 'ws-1',
+        payload: { gateEventId: verification.events[0].eventId },
+      }],
+    });
+    await recordWorkflowEvents({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+      events: [{
+        type: 'gate.recorded',
+        actorId: started.primaryActorId,
+        payload: { kind: 'proof', status: 'pass', taskIds: ['ws-1'] },
+      }],
+    });
+    const finished = await recordWorkflowEvents({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+      events: [{ type: 'run.completed', actorId: started.primaryActorId, payload: {} }],
+    });
+    assert.equal(finished.status, 'passed');
+    const loaded = await readWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+    });
+    assert.equal(loaded.state.planDirect, true);
+    assert.equal(loaded.state.tasks['ws-1'].state, 'completed');
+  });
+
+  it('still requires a passing verification gate before plan-direct completion', async (t) => {
+    const value = fixture(t);
+    const planPath = path.join(
+      value.projectDir, '.spectre', 'features', 'runtime-test', 'specs', 'plan.md',
+    );
+    fs.writeFileSync(planPath, 'Execution Mode: direct\n');
+    const started = await startWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      source: planPath,
+    });
+    for (const type of ['task.started', 'task.submitted']) {
+      await recordWorkflowEvents({
+        projectDir: value.projectDir,
+        spectreHome: value.spectreHome,
+        runId: started.runId,
+        events: [{ type, actorId: started.primaryActorId, taskId: 'ws-1', attempt: 1, payload: {} }],
+      });
+    }
+    await assert.rejects(
+      recordWorkflowEvents({
+        projectDir: value.projectDir,
+        spectreHome: value.spectreHome,
+        runId: started.runId,
+        events: [{
+          type: 'task.completed',
+          actorId: started.primaryActorId,
+          taskId: 'ws-1',
+          payload: { gateEventId: 'evt_missing' },
+        }],
+      }),
+      /PASSING_GATE_REQUIRED|passing verification gate/,
+    );
+  });
+
+  it('keeps rejecting malformed structured JSON sources', async (t) => {
+    const value = fixture(t);
+    fs.writeFileSync(value.sourcePath, '# not json\n');
+    await assert.rejects(
+      startWorkflowRun({
+        projectDir: value.projectDir,
+        spectreHome: value.spectreHome,
+        source: value.sourcePath,
+      }),
+      /TASK_SOURCE_MALFORMED|not valid JSON/,
+    );
+  });
 });

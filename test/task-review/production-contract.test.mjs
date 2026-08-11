@@ -210,7 +210,7 @@ test("plan review authors its report and applies only scope-safe plan edits", ()
   );
 
   assert.match(plan, /Single automatic plan review/);
-  assert.match(plan, /invokes `spectre-plan_review` at most once before task generation/);
+  assert.match(plan, /invokes `spectre-plan_review` at most once, before task generation \(structured\) or goal generation \(direct\)/);
   assert.match(plan, /Later artifact edits or scope-preserving feedback never trigger another plan review/);
   assert.match(plan, /do not re-run `plan_review` or `task_review`/);
   assert.match(plan, /Explicit review request/);

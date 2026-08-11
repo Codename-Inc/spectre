@@ -1,10 +1,10 @@
 # Execute workflow events
 
-Load for structured `tasks.json` execution only. Plan-direct execution is not instrumented in v1.
+Load for structured `tasks.json` execution and plan-direct execution. Plan-direct passes its source plan path as `--source`, uses stable coarse-map workstream ids (`ws-<n>`) as task ids, and emits workstream-granularity events only — no per-subtask events and no wave/phase boundaries beyond those its state records. Instructions below that persist status into `tasks.json` apply to structured mode only; plan-direct persists status in its execution state.
 
 ## Start or resume
 
-Run once after resolving `TASKS_JSON` and `FEATURE_ROOT`:
+Run once after resolving the source artifact (`TASKS_JSON`, or `PLAN_SOURCE` in plan-direct mode) and `FEATURE_ROOT`:
 
 ```bash
 node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run start --source "$TASKS_JSON" --owner "$FINALIZATION_OWNER" --project-dir "$PROJECT_ROOT" --json

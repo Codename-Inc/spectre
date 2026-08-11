@@ -546,7 +546,8 @@ test('plan-direct execute preserves source-plan authority without a completeness
     const execute = readExecuteContract(repoRoot, rootName).replaceAll('/spectre:', 'spectre-');
 
     assert.match(execute, /The source plan is the sole requirements authority/);
-    assert.match(execute, /Plan-direct starts without a quality\/completeness gate/i);
+    assert.match(execute, /must carry its seven spine sections/i);
+    assert.match(execute, /Legacy unmarked plans start without a quality\/completeness gate/i);
     assert.match(execute, /Never rewrite it or durably copy its prose/i);
     assert.doesNotMatch(
       execute,
@@ -846,13 +847,14 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(prototype, /reclassify as `post-scope`/);
 
     assert.ok(plan.includes('`ux.md` (preferred) or legacy `specs/ux.md`'));
-    assert.match(plan, /Next \(recommended\): .*spectre-execute/);
-    assert.match(plan, /autonomous execute→proof alternative/);
+    assert.match(plan, /copy-ready fenced block as the primary next step/);
+    assert.match(plan, /Alternative: spectre-execute — run the reviewed artifacts interactively/);
     assert.match(plan, /spectre-create_tasks.*--orchestrated/);
     assert.match(plan, /spectre-task_review.*--orchestrated/);
     assert.match(plan, /spectre-goal.*--orchestrated/);
 
-    assert.match(createPlan, /Approved LIGHT plan.*spectre-create_tasks/);
+    assert.match(createPlan, /Approved `Execution Mode: direct` plan.*spectre-execute/);
+    assert.match(createPlan, /Approved LIGHT structured plan.*spectre-create_tasks/);
     assert.match(createPlan, /Approved STANDARD\/COMPREHENSIVE plan.*spectre-plan_review/);
     assert.match(createTasks, /no adequate UX\/prototype acceptance source/);
     assert.match(createTasks, /--orchestrated.*without user-facing Next Steps/);

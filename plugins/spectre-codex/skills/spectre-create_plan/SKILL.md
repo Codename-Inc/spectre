@@ -9,7 +9,7 @@ user-invocable: true
 Transform a scoped PRD into a technical implementation plan. The invoking primary owns synthesis and directly writes `plan.md`; research agents return evidence only. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
 
 ## Inputs
-- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`).
+- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`), `--execution {direct|structured}` (default `structured`; `plan` passes `direct` for LIGHT/STANDARD-DIRECT routes that execute plan-direct without task artifacts).
 - `{FEATURE_ROOT}/task_context.md` — at every depth, reuse an existing substantive `## Technical Research` section and skip new research. In orchestrated calls from `spectre-plan`, router research **MUST** be reused rather than re-dispatched.
 
 ## Working Set
@@ -30,14 +30,14 @@ Feature: <feature-name>
 Feature Root: .spectre/features/<feature-name>
 ```
 
-Derive both values from the physical feature directory. The plan is DONE when it is self-locating, carries the **verification spine**, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
+Derive both values from the physical feature directory. With `--execution direct`, add `Execution Mode: direct` as the third header line; downstream skills route on it (execute runs the plan plan-direct; `create_tasks` refuses it without explicit override). The plan is DONE when it is self-locating, carries the **verification spine**, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
 
 **Required at every depth (the spine):**
 1. **Overview** — problem, solution shape, why this approach.
 2. **Technical Approach** — components touched, data flow, key decisions + rationale; cite `@spectre_patterns` anchors by `file:line`.
 3. **Critical Files** — 1–7 real files from Step-1 research, each tagged *Core logic to modify / Pattern to follow / Interface to implement / Test to extend*. No guesses.
 4. **External Dependencies — Verify Before Implementation** — every third-party package with exact version + one-line existence check (`pkg@1.2.3 — verify: npm view pkg@1.2.3`). State "no new packages" explicitly if so. (Slopsquatting fence: ~20% of AI-suggested packages don't exist.)
-5. **Verification — How We Know This Works** — per major change, 1–3 falsifiable signals (`<change> → verifies by: <test | observable | state/file condition>`). These become acceptance criteria downstream. "It works" is not acceptable.
+5. **Verification — How We Know This Works** — per major change, 1–3 falsifiable signals (`<change> → verifies by: <test | observable | state/file condition>`). These become acceptance criteria downstream. "It works" is not acceptable. With `--execution direct`, every signal must be directly executable — a runnable command or a concrete observable/state condition — because no task-level acceptance criteria are generated downstream and this spine is the sole acceptance authority.
 6. **Out-of-Bounds — DO NOT add** — 4–8 concrete things to NOT add (rate limiting, retry/backoff, caching, soft-delete, telemetry, feature flags, admin UI…). Specific to this feature. YAGNI fence against familiar-shape bias.
 7. **Risks & Filled Assumptions** — *Risks*: what could break + one-line mitigation or "accept and monitor". *Filled Assumptions*: defaults taken because the spec was silent (reviewer-visible by design).
 
@@ -55,8 +55,9 @@ Derive both values from the physical feature directory. The plan is DONE when it
 - **`--no-review` / `--orchestrated`:** save the plan, return its path, depth, filled assumptions, and unresolved findings to the caller. Do not wait for user review and do not render user-facing Next Steps.
 - **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user.
   1. If approval exposes unresolved user-facing flows/states/copy/accessibility → `spectre-ux`; if behavior is settled but visual validation materially matters → `spectre-prototype`. Planning resumes after the product artifact is reconciled.
-  2. Approved LIGHT plan → `spectre-create_tasks`.
-  3. Approved STANDARD/COMPREHENSIVE plan → `spectre-plan_review`.
+  2. Approved `Execution Mode: direct` plan → `spectre-execute` (plan-direct; no task artifacts).
+  3. Approved LIGHT structured plan → `spectre-create_tasks`.
+  4. Approved STANDARD/COMPREHENSIVE plan → `spectre-plan_review`.
 
 Render exactly one primary recommendation tied to the observed plan/depth, at most one conditional alternative, and `Pause: spectre-handoff {feature}` when stopping at the approved standalone-plan boundary.
 

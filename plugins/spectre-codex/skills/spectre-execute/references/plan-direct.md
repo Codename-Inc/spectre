@@ -30,3 +30,11 @@ Do not create a parallel JSON graph, enumerate all future subtasks, manufacture 
 - On resume, recompute plan SHA-256 and byte length. If unchanged, continue. If changed, treat the current plan as authoritative, refresh only affected derivative mappings, preserve Wave History, and record reconciliation.
 - After a wave, move completed Active Wave detail into Wave History, clear it, and derive only the next safe assignments.
 - DONE requires every initial mapped workstream and recorded adaptation `done|skipped`, with Runtime Status reporting complete source-plan coverage.
+
+## Escalation valve
+
+While building or updating the coarse map, if a hard-stop signal surfaces (destructive schema change, data migration, auth/PII, secrets, payments, public API change, concurrency/locking, caching consistency, cross-service change, SLO risk) or a bounded assignment cannot be derived without inventing a cross-workstream contract the plan does not state, pause dispatch, record the trigger under Plan-Backed Adaptations, and recommend routing the plan through `spectre-create_tasks` (structured re-plan) instead of pushing through. Resume only on explicit user/caller direction.
+
+## Telemetry
+
+Follow `references/telemetry.md` with `--source "$PLAN_SOURCE"`. Assign each coarse-map row a stable `ws-<n>` id at creation and use it as the task id for dispatches, `task start`/`submit`/`complete`, and gates. Workstream granularity only — never synthetic subtask events. Record `RUN_ID` in Runtime Status.

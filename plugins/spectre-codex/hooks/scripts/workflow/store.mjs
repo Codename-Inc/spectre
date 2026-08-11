@@ -143,6 +143,20 @@ export function readTaskSource(projectDir, sourcePath) {
   } catch (error) {
     throw codedError('TASK_SOURCE_UNREADABLE', `${relativePath}: ${error.message}`);
   }
+  if (!absolutePath.endsWith('.json')) {
+    // Plan-direct source: an opaque readable plan. Workstream ids register
+    // lazily from events; durable status authority lives in execution state,
+    // so no task graph is flattened or validated here.
+    return {
+      absolutePath,
+      relativePath,
+      rawHash: sha256(raw),
+      definitionHash: sha256(raw),
+      featureRoot: path.dirname(path.dirname(relativePath)),
+      tasks: {},
+      planDirect: true,
+    };
+  }
   let document;
   try {
     document = JSON.parse(raw);
@@ -426,7 +440,7 @@ function applyEvent(state, event) {
       requirePrimary(state, event.actorId);
       const task = sourceTask(state, event);
       assertTaskState(task, ['submitted'], event.type);
-      if (event.payload.sourceStatus !== 'done') {
+      if (!state.planDirect && event.payload.sourceStatus !== 'done') {
         throw codedError('TASK_SOURCE_NOT_DONE', `${task.id} is not done in tasks.json`);
       }
       const gate = state.gates[event.payload.gateEventId];
@@ -446,7 +460,7 @@ function applyEvent(state, event) {
       requirePrimary(state, event.actorId);
       const task = sourceTask(state, event);
       assertTaskState(task, ['pending', 'assigned', 'blocked'], event.type);
-      if (event.payload.sourceStatus !== 'skipped') {
+      if (!state.planDirect && event.payload.sourceStatus !== 'skipped') {
         throw codedError('TASK_SOURCE_NOT_SKIPPED', `${task.id} is not skipped in tasks.json`);
       }
       task.state = 'skipped';
@@ -677,6 +691,7 @@ export async function startWorkflowRun(options) {
       sourceRawHash: source.rawHash,
       sourceDefinitionHash: source.definitionHash,
       featureRoot: source.featureRoot,
+      planDirect: source.planDirect || false,
       contractHash,
       primaryActorId,
       startedAt,
@@ -777,20 +792,20 @@ export async function recordWorkflowEvents(options) {
     const newEvents = [];
     for (const spec of eventSpecs) {
       validateEventSpec(spec);
-      const taskDefinition = spec.taskId ? source.tasks[spec.taskId] : null;
-      if (spec.taskId && !taskDefinition) {
-        throw codedError('UNKNOWN_TASK', `${spec.taskId} is absent from ${state.sourcePath}`);
-      }
+      const resolveDefinition = (id) => {
+        const definition = source.tasks[id];
+        if (definition) return definition;
+        if (source.planDirect) {
+          validateTaskId(id);
+          return { id, level: 'workstream', sourceStatus: null };
+        }
+        throw codedError('UNKNOWN_TASK', `${id} is absent from ${state.sourcePath}`);
+      };
+      const taskDefinition = spec.taskId ? resolveDefinition(spec.taskId) : null;
       const sourceStatus = taskDefinition?.sourceStatus;
       let payload = spec.payload || {};
       if (spec.type === 'agent.dispatched') {
-        const taskDefinitions = (payload.taskDefinitions || []).map(({ id }) => {
-          const definition = source.tasks[id];
-          if (!definition) {
-            throw codedError('UNKNOWN_TASK', `${id} is absent from ${state.sourcePath}`);
-          }
-          return definition;
-        });
+        const taskDefinitions = (payload.taskDefinitions || []).map(({ id }) => resolveDefinition(id));
         payload = { ...payload, taskDefinitions };
       }
       const event = {

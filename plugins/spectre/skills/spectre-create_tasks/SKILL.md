@@ -109,6 +109,7 @@ Render one primary recommendation tied to the observed task/artifact state. Add 
 
 ## Escalate-If
 
+- The source `plan.md` records `Execution Mode: direct` → stop and surface that the plan was routed to plan-direct execution; generate task artifacts only on the user's explicit structured re-route, and update the header to `Execution Mode: structured` before writing them.
 - No requirements artifact and thread context is too thin → stop; route to `/spectre:scope` or `/spectre:plan`.
 - `plan.md` has no Out-of-Bounds or Verification section → flag the gap; proceed only if scope is otherwise clear.
 - A requirement cannot become an executable `test`/`observable`/`state` criterion → surface it instead of writing prose criteria.

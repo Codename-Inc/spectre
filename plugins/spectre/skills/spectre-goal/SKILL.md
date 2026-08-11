@@ -21,12 +21,12 @@ Turn existing Spectre planning and execution-state artifacts into a copy-ready a
 - Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
 - Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
 - An explicit legacy `docs/tasks/**` plan/execute/task artifact remains a compatibility input, but new goal prompts require a confirmed `.spectre/features/<feature-name>/` root and record the legacy source.
-- Resolve `INPUT_MODE`: use structured mode for an explicit/default execute index with its resolvable task source; use plan-direct mode for an explicit readable source plan plus existing readable runtime state.
+- Resolve `INPUT_MODE`: use structured mode for an explicit/default execute index with its resolvable task source; use plan-direct mode for an explicit readable source plan plus existing readable runtime state, or for a plan recording `Execution Mode: direct` (with or without runtime state — including a feature root whose `specs/plan.md` carries the marker and no execute index exists).
 - Structured mode: `OUT_DIR = FEATURE_ROOT`; `EXECUTE_INDEX = explicit path || {FEATURE_ROOT}/specs/execute.md`; resolve `TASKS_JSON` from its `Task Detail Source`.
 - Plan-direct mode: `PLAN_SOURCE = explicit readable plan path`; `EXECUTION_STATE = explicit path || {dirname(PLAN_SOURCE)}/execution_state.md`; `OUT_DIR = FEATURE_ROOT`.
 - `GOAL_FILE = {OUT_DIR}/goal-prompts.md`.
 - `SOURCE_MANIFEST` is mode-specific: structured mode uses `EXECUTE_INDEX`, targeted `TASKS_JSON` projections, and actual files in the execute index's `Document Manifest`; plan-direct mode uses `PLAN_SOURCE`, `EXECUTION_STATE`, and the readable process/scope paths recorded in its source manifest.
-- Read `EXECUTE_INDEX` whole in structured mode and only targeted `TASKS_JSON` projections: `meta`, status counts, requirement trace, and acceptance-criterion text needed to name verification surfaces. Do not load the whole task graph. In plan-direct mode, read `PLAN_SOURCE`, `EXECUTION_STATE`, and the resolved manifest paths whole.
+- Read `EXECUTE_INDEX` whole in structured mode and only targeted `TASKS_JSON` projections: `meta`, status counts, requirement trace, and acceptance-criterion text needed to name verification surfaces. Do not load the whole task graph. In plan-direct mode, read `PLAN_SOURCE`, `EXECUTION_STATE` when present, and the resolved manifest paths whole.
 
 ## Completion contract
 
@@ -45,7 +45,7 @@ Use an explicit user cap, otherwise a visible 40-turn assumption. Persist and re
 
 1. Validate the selected input branch without crossing its boundary:
    - Structured mode validates that the plan/task artifacts are finalized and mutually consistent. If artifacts are missing, task review is still pending, or a required verification signal is not executable, stop and route to `Skill(spectre-plan)`; do not invent a goal.
-   - Plan-direct mode requires only readable plan/runtime inputs. If `PLAN_SOURCE` or `EXECUTION_STATE` is absent or unreadable, stop and report the missing input; do not create it, generate task artifacts, or review plan completeness.
+   - Plan-direct mode requires a readable `PLAN_SOURCE`. When `EXECUTION_STATE` is absent and `PLAN_SOURCE` records `Execution Mode: direct`, generate the prompt pre-execution and name `EXECUTION_STATE` as the path execute will create on first run. Otherwise an absent or unreadable input stops with a report of what is missing; never create state, generate task artifacts, or review plan completeness.
 2. Extract the objective, canonical scope, Out-of-Bounds, exact artifact paths, and primary verification surfaces. Point to source artifacts instead of pasting the PRD or task graph into the prompt.
    - Verify that the evidence measures the approved outcome rather than a convenient proxy; cover material qualities the user asked for, not only the easiest metric.
    - Keep scope broad enough to repair an upstream cause but narrow enough to audit against the canonical artifacts.
