@@ -782,8 +782,8 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
     ]) assert.match(route, new RegExp(`\\b${field}\\b`));
     for (const size of ['XS', 'S', 'M', 'L', 'XL']) assert.match(route, new RegExp(`\\b${size}\\b`));
     assert.match(route, /ATOMIC[^\n]*LOW[^\n]*XS/);
-    assert.match(route, /ATOMIC\/DIRECT[^\n]*LOW[^\n]*S/);
-    assert.match(route, /DIRECT[^\n]*MODERATE\/HIGH[^\n]*M/);
+    assert.match(route, /ATOMIC[^\n]*LOW[^\n]*changed protected boundary[^\n]*OR[^\n]*DIRECT[^\n]*LOW[^\n]*S/);
+    assert.match(route, /ATOMIC\/DIRECT[^\n]*MODERATE\/HIGH[^\n]*M/);
     assert.match(route, /STRUCTURED[^\n]*LOW\/MODERATE[^\n]*L/);
     assert.match(route, /STRUCTURED[^\n]*(?:HIGH uncertainty|HIGH task-graph risk)[^\n]*XL/);
     assert.match(route, /threatened_invariant/);

@@ -32,8 +32,8 @@ DONE when fields validate, any probe is consumed before deciding, and the table 
 | Semantic result | Size · route |
 |---|---|
 | ATOMIC + LOW + no changed protected boundary | XS · `XS_DIRECT` |
-| ATOMIC/DIRECT + LOW, including a changed protected boundary | S · `S_DIRECT` |
-| DIRECT + MODERATE/HIGH | M · `M_REVIEWED_DIRECT` |
+| ATOMIC + LOW + changed protected boundary OR DIRECT + LOW | S · `S_DIRECT` |
+| ATOMIC/DIRECT + MODERATE/HIGH | M · `M_REVIEWED_DIRECT` |
 | STRUCTURED + LOW/MODERATE + ordinary graph risk | L · `L_STRUCTURED` |
 | STRUCTURED + HIGH uncertainty or HIGH task-graph risk | XL · `XL_REVIEWED_STRUCTURED` |
 
