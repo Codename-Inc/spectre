@@ -864,6 +864,55 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
   }
 });
 
+test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+  const legacyPairs = [
+    ['MICRO', 'XS'],
+    ['LIGHT', 'S'],
+    ['STANDARD-DIRECT', 'M'],
+    ['STANDARD', 'L'],
+    ['COMPREHENSIVE', 'XL'],
+  ];
+
+  assert.match(readme, /repository-changing[^\n]*Scope[^\n]*Plan/i);
+  assert.match(readme, /bugs?[^\n]*spectre:fix/i);
+  assert.match(readme, /XS[^\n]*S[^\n]*M[^\n]*L[^\n]*XL/);
+  assert.match(readme, /durable[^\n]*artifact/i);
+  assert.match(readme, /every size[^\n]*explicit[^\n]*approval[^\n]*before[^\n]*code/i);
+  assert.doesNotMatch(readme, /unless the feature is a one line ask/i);
+  assert.doesNotMatch(readme, /Tiny or Small[^\n]*prefer[^\n]*(?:Claude Code|Codex)[^\n]*plan mode/i);
+  assert.doesNotMatch(readme, /for small, unambiguous features[^\n]*spectre:delegate/i);
+  assert.doesNotMatch(readme, /for COMPREHENSIVE plans/i);
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const root = path.join(repoRoot, 'plugins', rootName);
+    const routePath = path.join(root, 'skills', 'spectre-plan-route', 'SKILL.md');
+    const route = fs.readFileSync(routePath, 'utf8');
+    const decisionTable = route.match(/\| Semantic result \| Size · route \|[\s\S]*?(?=\n\n- )/)?.[0] || '';
+    const telemetry = fs.readFileSync(
+      path.join(root, 'hooks', 'scripts', 'workflow', 'plan-telemetry.mjs'),
+      'utf8',
+    );
+
+    assert.match(route, /historical (?:artifact|telemetry)[^\n]*resume/i);
+    for (const [legacy, canonical] of legacyPairs) {
+      assert.match(route, new RegExp(legacy.replace('-', '\\-') + '→' + canonical));
+      assert.match(
+        telemetry,
+        new RegExp("\\['" + legacy.replace('-', '\\-') + "', '" + canonical + "'\\]"),
+      );
+    }
+    assert.doesNotMatch(decisionTable, /MICRO|LIGHT|STANDARD-DIRECT|COMPREHENSIVE/);
+    assert.doesNotMatch(telemetry, /ATOMIC\s*\+\s*LOW|STRUCTURED\s*\+\s*HIGH|Semantic result/);
+    assert.ok(repositoryTokenCount(repoRoot, routePath) < 2000);
+    assert.ok(repositoryTokenCount(
+      repoRoot,
+      path.join(root, 'skills', 'spectre-plan', 'SKILL.md'),
+    ) < 2000);
+  }
+});
+
 test('plan surfaces time-only planning and implementation estimates', () => {
   const repoRoot = path.resolve(__dirname, '..');
 

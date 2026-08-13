@@ -145,13 +145,24 @@ test("plan review runs correctness before simplification and applies only scope-
     "utf8",
   );
 
-  assert.match(plan, /Single automatic plan-review pipeline/);
-  assert.match(plan, /invokes `spectre-plan_review` at most once, before task generation \(structured\) or goal generation \(direct\)/);
-  assert.match(plan, /exactly one correctness stage followed by one simplification stage/);
-  assert.match(plan, /Later artifact edits or scope-preserving feedback never trigger another pipeline/);
-  assert.match(plan, /do not re-run `plan_review` or `task_review`/);
-  assert.match(plan, /Explicit review request/);
-  assert.match(plan, /invoke `spectre-plan_review` normally/);
+  assert.match(
+    plan,
+    /one plan-review pipeline means one [^\n]*spectre-plan_review[^\n]*correctness then simplification/i,
+  );
+  assert.match(
+    plan,
+    /M → [^\n]*spectre-plan_review[^\n]*spectre-goal/,
+  );
+  assert.match(
+    plan,
+    /L → [^\n]*spectre-plan_review[^\n]*spectre-create_tasks/,
+  );
+  assert.match(
+    plan,
+    /XL → [^\n]*spectre-plan_review[^\n]*spectre-create_tasks/,
+  );
+  assert.match(plan, /no repeated review absent an explicit request/i);
+  assert.match(plan, /no unresolved correctness Blocker\/High/i);
   assert.doesNotMatch(
     plan,
     /apply the smallest `plan\.md` edit, re-run `plan_review/,
@@ -206,7 +217,7 @@ test("usable review reports are normalized by the primary without reviewer repai
   }
 });
 
-test("comprehensive planning reviews tasks before finalizing execute.md", () => {
+test("XL planning reviews tasks before finalizing execute.md", () => {
   const plan = readFileSync(
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
     "utf8",
@@ -222,13 +233,13 @@ test("comprehensive planning reviews tasks before finalizing execute.md", () => 
     ),
     "utf8",
   );
-  const comprehensive = plan.match(/\*\*COMPREHENSIVE\*\* → ([^\n]+)/)?.[1] ?? "";
+  const xl = plan.match(/- XL → ([^\n]+)/)?.[1] ?? "";
 
-  const tasksOnly = comprehensive.indexOf("--tasks-only");
-  const taskReviewIndex = comprehensive.indexOf("spectre-task_review");
-  const finalizeIndex = comprehensive.indexOf("--finalize-index");
-  const pairValidation = comprehensive.indexOf("validate-pair");
-  const goal = comprehensive.indexOf("spectre-goal");
+  const tasksOnly = xl.indexOf("--tasks-only");
+  const taskReviewIndex = xl.indexOf("spectre-task_review");
+  const finalizeIndex = xl.indexOf("--finalize-index");
+  const pairValidation = xl.indexOf("validate-pair");
+  const goal = xl.indexOf("spectre-goal");
   assert.ok(tasksOnly >= 0);
   assert.ok(taskReviewIndex > tasksOnly);
   assert.ok(finalizeIndex > taskReviewIndex);

@@ -15,6 +15,7 @@ Return one deterministic `plan-routing/v1` decision to `spectre-plan`. This skil
 - Immutable canonical Scope plus late-bound repository observations.
 - Mode `initial`, or `observed` with the prior decision and the plan's `Routing Observations`.
 - Observations describe semantic work, never a proposed size.
+- Historical artifact or telemetry size is accepted only on resume, validated against the exact legacy enum, then normalized once.
 
 ## Working Set
 

@@ -50,7 +50,7 @@ $spectre-scope
 
 ## 🔁 How It Works
 
-SPECTRE shines for building complete features. You really only need to remember one command. `/spectre:scope`. its the starting point and every final agent response after that point guides you to what is next.
+Repository-changing work enters through Scope and continues through adaptive Plan. You really only need to remember `/spectre:scope`; every final agent response guides you to what is next.
 
 Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
 
@@ -75,13 +75,12 @@ Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
 - `/spectre:plan`, `/spectre:execute`, and `/spectre:ship` workflows are **meta workflows**. They combine a number of skills into a single workflow that your primary agent runs and subagents execute.
 
   - `/spectre:plan` will
-    - research your codebase
-    - generate a high level design proposal for your approval
-    - create an implementation plan
-    - run an independent adversarial review to find simplifications and evaluate through a YAGNI/DRY lens
-    - for COMPREHENSIVE plans, give the generated tasks a final adversarial review for correctness
-    - generate a canonical `execute.md` index which gives your agent instructions on how to parallelize the work (so it doesn't have to read the full `tasks.json` to save on tokens)
-    - generate a `goal-prompts.md` to create `/goal` prompts you can use based on goal prompt best practices to start the execution phase.
+    - classify the work as XS, S, M, L, or XL from its semantic shape, uncertainty, evidence, protected boundaries, and task-graph risk
+    - leave a durable Scope and plan artifact even when the change is XS
+    - add research, plan review, task decomposition, and task review only as the selected size requires
+    - for XL plans, give the generated tasks a final adversarial review for correctness
+    - every size waits for explicit approval before code changes
+    - generate execution artifacts and a `goal-prompts.md` handoff when the selected size requires them
   - `/spectre:execute` guides the primary agent through orchestrating the full implementation. if you use one of the provided `/goal` prompts, the agent is instructed to use `/spectre:execute` directly, you don't have to invoke it. `/spectre:execute`'s meta workflow will:
     - read the `execute.md` to identify what subagents to dispatch with what context
     - dispatch `@spectre:dev` subagents in Claude Code or `@spectre_dev` in Codex with *only* the context they require to deliver their task
@@ -93,12 +92,11 @@ Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
 
 ## 🛑 When NOT to use SPECTRE
 
-SPECTRE excels for building complete medium to large features. Don't use SPECTRE's main workflow in the following scenarios:
+Scope → Plan scales from XS through XL. Use a specialist entry instead in these scenarios:
 
-- Tiny or Small improvements, papercuts, or fixes where the scope is unambiguous. I greatly prefer Claude Code and Codex's plan mode for these.
-- Prototypes. With Prototypes speed is critical. SPECTRE's full workflow can be lengthy - intentionally so to ensure high quality inputs and outputs. For prototypes, I might run one `/spectre:scope` then either use the Agent's native plan mode or just go directly into "build this".
-- Fixing bugs. SPECTRE includes `/spectre:fix` for bugs of all sizes/complexity, but the main SPECTRE workflow is not the right fit
-- Post build iteration. After you build a feature, there are invariably things to iterate on. For these, I almost exclusively use Agent plan mode unless its a truly missing feature or the need is somewhat ambiguous.
+- Read-only diagnosis or review, release operations, and execution of an already-approved artifact do not need a new Scope → Plan cycle.
+- Use `/spectre:prototype` for throwaway interaction exploration; repository changes that result from it still return through Scope → Plan.
+- For bugs, use `/spectre:fix`; diagnosis remains load-bearing, and any code-changing repair leaves a durable repair plan and waits for approval.
 - Massive multi-phase features. SPECTRE is designed for a relatively 'standard' sized feature. If you are building a huge product, and the work needs to be broken up into multiple-phases, typically what I'll do is run one `/spectre:scope` for the complete scope, then work with the agent to break it up into logical phases - saving that doc as `phases.md`. Then I'll run another `/spectre:scope` for the phase I'm building.
 
 ## Scenarios where SPECTRE is particularly useful
@@ -253,11 +251,11 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 
 99.9% of my day is spent using SPECTRE exactly like this.
 
-- start /spectre:scope to get crisp on what's in/out. this is non-negotiable unless the feature is a one line ask.
+- start /spectre:scope to get crisp on what's in/out. this is the durable entry for repository-changing work, including one-line changes.
 
   - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
 
-- /spectre:plan to build out a well researched technical design or set of tasks
+- /spectre:plan to choose the smallest sufficient XS–XL planning path, leave its durable artifact, and wait for explicit pre-code approval
 
   - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
 
@@ -267,13 +265,11 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 
   - when initial execution is complete, i run another /spectre:handoff to get the context window clean for fixes/touch ups.
 
-- for small, unambiguous features and reproducible fixes where I want Spectre to work autonomously, I use /spectre:delegate. Brain dump what I want, walk away, and review the proof plus draft PR — zero routine confirmation gates.
+- for already-approved, tightly bounded autonomous delivery, I use /spectre:delegate as a specialist entry.
 
 - From here — I review the proof and do any additional manual testing and fixing.
 
-  - I largely use Claude Code/Codex built in /plan mode for fixes in this phase.
-
-  - If there is a bug that can't easily be solved, i use the /spectre:fix prompt for a more structured debugging approach.
+  - For bugs, I use `/spectre:fix`; a code-changing repair records the diagnosed work and waits for approval before mutation.
 
   - If something new comes up, or if the scope is not what I'd hoped, I run a new /spectre:scope cycle from within the project.
 
@@ -304,7 +300,7 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 | `/spectre:scope` | Interactive feature scoping |
 | `/spectre:plan` | Research codebase, create implementation plan |
 | `/spectre:execute` | Wave-based parallel execution with code review |
-| `/spectre:delegate` | Autonomous compact flow for clear features and reproducible fixes |
+| `/spectre:delegate` | Autonomous compact flow for already-approved, tightly bounded delivery |
 | `/spectre:prove` | User-level acceptance proof with reviewed evidence |
 | `/spectre:ship` | Completed-branch closeout: clean, rebase, PR |
 
@@ -328,8 +324,8 @@ These are situational commands.
 
 | Command | Description |
 | --- | --- |
-| `/spectre:fix` | Investigate bugs & implement fixes |
-| `/spectre:create_plan` | The meta plan flow uses this, but sometimes if I don't want the full meta plan but I want more research than the built in Codex/Claude Code plan flows use, I use this |
+| `/spectre:fix` | Diagnose bugs, persist a repair plan, and wait for approval before code mutation |
+| `/spectre:create_plan` | Internal plan producer used by the adaptive `/spectre:plan` workflow |
 | `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits. Great if i've accumulated a lot of changes and want to check them in while addressing lint/test failures in the process. |
 | `/spectre:prototype` | If the UX for a given feature is ambiguous, i live by this Skill. It creates HTML prototypes with your existing design system to get clear on the desired ux and interaction. |
 
