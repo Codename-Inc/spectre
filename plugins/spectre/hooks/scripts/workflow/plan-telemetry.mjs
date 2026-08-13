@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { resolveProjectStore } from '../knowledge/store.mjs';
@@ -162,9 +163,17 @@ function normalizeFeatureRoot(projectDir, featureRoot) {
   return normalized;
 }
 
-function scopeHashFrom(options) {
+function scopeHashFrom(options, projectDir) {
   if (options.scopeHash) return validateHash(options.scopeHash, 'scope_hash');
-  if (typeof options.scope === 'string' && options.scope.length > 0) return sha256(options.scope);
+  if (typeof options.scope === 'string' && options.scope.length > 0) {
+    try {
+      const scopePath = canonicalPath(path.resolve(projectDir, options.scope));
+      relativeProjectPath(projectDir, scopePath);
+      return sha256(fs.readFileSync(scopePath));
+    } catch (error) {
+      throw codedError('INVALID_PLAN_PATH', `Unable to read scope path ${JSON.stringify(options.scope)}: ${error.message}`);
+    }
+  }
   throw codedError('INVALID_PLAN_HASH', '--scope-hash or --scope is required');
 }
 
@@ -360,7 +369,7 @@ function eventPayload(eventType, options) {
 async function appendPlanEvent(options, eventType, planRunId, starting = false) {
   const projectDir = canonicalPath(options.projectDir || process.cwd());
   const featureRoot = normalizeFeatureRoot(projectDir, options.featureRoot);
-  const scopeHash = scopeHashFrom(options);
+  const scopeHash = scopeHashFrom(options, projectDir);
   const payload = eventPayload(eventType, options);
   const event = {
     schema_version: PLAN_TELEMETRY_SCHEMA_VERSION,
@@ -419,6 +428,9 @@ export async function startPlanTelemetry(options = {}) {
 
 export async function recordPlanTelemetry(options = {}) {
   validatePlanRunId(options.planRunId);
+  if (options.eventType === 'plan.started') {
+    throw codedError('INVALID_PLAN_ENUM', 'plan.started is only valid through plan start');
+  }
   return appendPlanEvent(options, options.eventType, options.planRunId, false);
 }
 

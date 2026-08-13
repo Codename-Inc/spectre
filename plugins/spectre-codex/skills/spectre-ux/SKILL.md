@@ -77,7 +77,7 @@ Confirm completion inline (screens specified, segments addressed, flows document
 1. Material visual/interaction assumptions remain, stakeholder visual review is needed, or prose alone cannot validate the experience → `spectre-prototype`. Apply surfaced assumptions or contradictions back to `ux.md` before planning.
 2. Otherwise → `spectre-plan`, the unified tier/research/review/task router.
 
-Render `Next (recommended): /spectre:{command} — because {observed UX signal}.` Add at most one conditional alternative; direct `spectre-create_tasks` is valid only for explicitly small, settled, known-pattern work, and direct `spectre-tdd` only for a genuinely MICRO task. If stopping, offer `Pause: spectre-handoff {feature}` with the completed UX path and selected next step.
+Render `Next (recommended): /spectre:{command} — because {observed UX signal}.` Confirmed repository-changing work routes to `spectre-plan`; read-only UX review may stop or hand off without planning. Add at most one conditional alternative. If stopping, offer `Pause: spectre-handoff {feature}` with the completed UX path and selected next step.
 
 ## Escalate-If
 

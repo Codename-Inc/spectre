@@ -13,6 +13,7 @@ Standalone approval-gated bug workflow. Delegate diagnosis and repair mechanics 
 - **bug_report** (`$ARGUMENTS`): error/stack trace, repro steps, context. If empty, ask the user for error message, repro steps, and relevant context before proceeding.
 
 ## Working Set
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - The bug report plus the exact in-thread diagnosis and experience contract returned by `spectre-fix-core`.
 - Affected paths, history, analysts, tests, and diagnostics are owned by the core and read just-in-time.
 
@@ -27,7 +28,7 @@ A self-locating compact managed repair plan, a user-approved observable experien
 
 ## Method / guardrails
 1. Run `Skill(spectre-fix-core)` with the bug report, `PHASE=diagnose`, and `--orchestrated`; require `DIAGNOSIS_READY` and reject symptom-only explanations.
-2. Resolve one managed `FEATURE_ROOT` from explicit/current-thread evidence, then write its self-locating compact repair plan at `{FEATURE_ROOT}/specs/plan.md`; never alter canonical Scope. Present the experience contract first in product language: what users do and observe now, what they will do and observe after repair, and which adjacent journeys change or remain unchanged. Then present the root cause, affected files, repair boundary, and verification plan; resolve every `unresolved` row. **YOU MUST hold for user approval here — do NOT write code (HoldForApproval).**
+2. Write the self-locating compact repair plan at `{FEATURE_ROOT}/specs/plan.md`, using a scoped name if one already exists; never alter canonical Scope or overwrite a reviewed plan. Present the experience contract first in product language: what users do and observe now, what they will do and observe after repair, and which adjacent journeys change or remain unchanged. Then present the root cause, affected files, repair boundary, and verification plan; resolve every `unresolved` row. **YOU MUST hold for user approval here — do NOT write code (HoldForApproval).**
 3. After approval, run the core with the exact diagnosis and approved experience contract, `PHASE=repair`, `USER_APPROVED_FIX_CONTRACT=true`, and `--orchestrated`; require `FIX_COMPLETE`.
 4. Never set parent authorization on the user's behalf. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval.
 

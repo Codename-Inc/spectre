@@ -57,7 +57,7 @@ Derive both values from the physical feature directory. With `--execution direct
 - **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user.
   1. If approval exposes unresolved user-facing flows/states/copy/accessibility → `spectre-ux`; if behavior is settled but visual validation materially matters → `spectre-prototype`. Planning resumes after the product artifact is reconciled.
   2. Approved `Execution Mode: direct` plan → `spectre-execute` (plan-direct; no task artifacts).
-  3. Approved LIGHT structured plan (or XS structured override) → `spectre-create_tasks`.
+  3. Approved LIGHT structured plan → `spectre-create_tasks`; approved XS structured override → `spectre-create_tasks --depth xs`.
   4. Approved STANDARD/COMPREHENSIVE plan → `spectre-plan_review`.
 
 Render exactly one primary recommendation tied to the observed plan/depth, at most one conditional alternative, and `Pause: spectre-handoff {feature}` when stopping at the approved standalone-plan boundary.

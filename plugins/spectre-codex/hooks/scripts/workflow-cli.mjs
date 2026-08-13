@@ -50,8 +50,13 @@ function usage() {
     '  spectre-workflow task assign|start|submit|complete|block|skip --run-id <id> --task-id <id> --actor-id <id> --json',
     '  spectre-workflow gate record --run-id <id> --actor-id <id> --kind verification|review|proof --status pass|fail --json',
     '  spectre-workflow human-input require|resolve --run-id <id> --actor-id <id> --json',
-    '  spectre-workflow plan start --feature-root <path> --scope-hash <sha256>|--scope <text> --classification <size> <semantic flags> --json',
-    '  spectre-workflow plan record --plan-run-id <id> --event-type <type> --feature-root <path> --scope-hash <sha256> <event flags> --json',
+    '  spectre-workflow plan start --feature-root <path> --scope-hash <sha256>|--scope <relative-path> --classification <XS|S|M|L|XL> --shape <ATOMIC|DIRECT|STRUCTURED> --uncertainty <LOW|MODERATE|HIGH> --evidence <SUFFICIENT|PROBE_REQUIRED|PROBED> --task-graph-risk <LOW|HIGH> --route <route> --design-authority-required <true|false> --probe-used <true|false> --probe-sufficient <true|false> --reason-codes <codes> [--protected-boundaries-json <json>] [--plan-hash <sha256>] [--project-dir <path>] [--json]',
+    '  spectre-workflow plan record --plan-run-id <id> --event-type <type> --feature-root <path> --scope-hash <sha256> [--project-dir <path>] [--json]',
+    '    plan.reclassified: --previous-classification <size> --classification <size> --shape <ATOMIC|DIRECT|STRUCTURED> --uncertainty <LOW|MODERATE|HIGH> --evidence <SUFFICIENT|PROBE_REQUIRED|PROBED> --task-graph-risk <LOW|HIGH> --route <route> --design-authority-required <true|false> --regret-direction <NONE|SMALLER|LARGER> --reason-codes <codes> [--protected-boundaries-json <json>] --plan-hash <sha256>',
+    '    plan.review_completed: --review-kind <correctness|simplification|task> --finding-count <n> --applied-count <n> --structure-before <n> --structure-after <n>',
+    '    plan.gate_completed: --gate-kind <design|final> --gate-outcome <approved|feedback|declined> --change-category <none|scope_preserving|scope_change>',
+    '    plan.completed: --artifact-count <n> --artifact-hashes <sha256,...> --planning-elapsed-ms <n> --continuation <execute|goal|pause|cancelled>',
+    '    plan.execution_outcome: --execution-run-id <id> --plan-hash <sha256> --outcome-status <status> --workstream-count <n> --task-count <n> --wave-count <n> --proof-result <PASS|FAIL|PARTIAL|SKIPPED> --execution-review-result <CLEAN|FINDINGS|SKIPPED> --surprise-codes <codes>',
     '  spectre-workflow cleanup [--project-dir <path>] [--dry-run] --json',
     '  spectre-workflow purge [--project-dir <path>] --yes --json',
     '',
@@ -447,7 +452,8 @@ const directPath = canonicalEntryPath(process.argv[1]);
 if (directPath && directPath === canonicalEntryPath(fileURLToPath(import.meta.url))) {
   main(process.argv.slice(2)).catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
-    if (process.argv.includes('--json') && error?.code) {
+    const directResource = process.argv.slice(2).find((value) => !value.startsWith('--'));
+    if ((process.argv.includes('--json') || directResource === 'plan') && error?.code) {
       process.stdout.write(`${JSON.stringify({ ok: false, code: error.code, message })}\n`);
     } else {
       process.stderr.write(`${message}\n`);

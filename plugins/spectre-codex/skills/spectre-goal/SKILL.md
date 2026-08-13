@@ -13,7 +13,7 @@ Write one autonomous completion contract whose success is provable by surfaced e
 ## Inputs
 
 - `$ARGUMENTS`: finalized execute index or readable source plan plus its `execution_state.md`; optional target (`Codex`, `Claude Code`, or `both`), turn/time cap, and `--orchestrated`.
-- **Structured:** reviewed plan, execute index, referenced tasks, and approved scope/UX/PRD when present. COMPREHENSIVE also requires completed task review with scope-safe Blocker/High findings integrated.
+- **Structured:** reviewed plan, execute index, referenced tasks, and approved scope/UX/PRD when present. XL also requires completed task review with scope-safe Blocker/High findings integrated.
 - **Plan-direct:** only readable plan/runtime inputs: a source plan plus its `execution_state.md`, or a plan marked `Execution Mode: direct`; no execute/tasks artifacts or plan/task review required.
 
 ## Working Set

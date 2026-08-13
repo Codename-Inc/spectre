@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Render one concise time estimate at each of Spectre Plan's two STANDARD/COMPREHENSIVE user gates. Estimates are planning aids, never commitments or reasons to hold a gate.
+Render one concise time estimate at an applicable design-authority gate and at every final pre-code approval gate when a valid analog exists. Estimates are planning aids, never commitments or reasons to hold a gate.
 
 ## Source precedence
 
@@ -20,7 +20,7 @@ Historical analysis may retain richer telemetry for offline evaluation, but the 
 
 ## Gate 1 — Remaining planning time
 
-Select the tier-compatible Plan estimate. Its duration excludes time waiting for the user's response. Round endpoints to the nearest 10 minutes and place exactly this sentence immediately before the high-level-design approval sentence:
+Select the size-compatible Plan estimate. Its duration excludes time waiting for the user's response. Round endpoints to the nearest 10 minutes and place exactly this sentence immediately before the design-authority approval sentence:
 
 ```text
 **Estimated remaining planning time: about {rounded duration or range}, based on completed plans of similar scope.**
@@ -28,7 +28,7 @@ Select the tier-compatible Plan estimate. Its duration excludes time waiting for
 
 ## Gate 2 — Implementation time estimate
 
-After task artifacts and reviews settle, count parents, subtasks, and dependency waves. Select the closest contract-compatible successful analog by waves first, then parents; do not fit a regression from the seed cohort.
+After route artifacts and reviews settle, count parents, subtasks, and dependency waves when they exist. Select the closest contract-compatible successful analog by waves first, then parents; do not fit a regression from the seed cohort.
 
 When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the final approval sentence:
 
@@ -42,8 +42,9 @@ When a valid analog exists, round its duration to the nearest 10 minutes and pla
 
 ### Plan
 
-- STANDARD: ~25–45 min remaining agent work after approval (`n=3` completed plans).
-- COMPREHENSIVE: ~40–70 min remaining agent work after approval (`n=10` comparable completed plans).
+- XS, S, and M have no shipped seed analog; omit unless compatible local telemetry exists.
+- L: ~25–45 min remaining agent work after approval (`n=3`; STANDARD legacy analog).
+- XL: ~40–70 min remaining agent work after approval (`n=10`; COMPREHENSIVE legacy analog).
 
 ### Execute analog ladder
 

@@ -59,7 +59,7 @@ function usage() {
   spectre knowledge registry [--host claude|codex] [--project-dir <path>] [--json]
   spectre knowledge register --record <path> [--project-dir <path>] [--json]
   spectre knowledge migrate [--project-dir <path>] [--json]
-  spectre workflow <run|stage|phase|wave|agent|task|gate|human-input|cleanup|purge> ... [--json]
+  spectre workflow <run|stage|phase|wave|agent|task|gate|human-input|plan|cleanup|purge> ... [--json]
 `;
 }
 
@@ -279,7 +279,17 @@ export async function main(argv) {
   }
 
   if (command === 'workflow') {
-    await runWorkflowCli(argv.slice(1));
+    try {
+      await runWorkflowCli(argv.slice(1));
+    } catch (error) {
+      if (argv[1] === 'plan' && error?.code) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stdout.write(`${JSON.stringify({ ok: false, code: error.code, message })}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
     return;
   }
 

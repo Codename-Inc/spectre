@@ -857,6 +857,7 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
     assert.match(plan, /Research agents return evidence only/i);
     assert.match(plan, /reviewer write surfaces/i);
     assert.match(plan, /never silently rerun/i);
+    assert.match(plan, /final planning artifact step.*after any review/i);
     assert.match(plan, /DONE when/i);
 
     assert.ok(repositoryTokenCount(repoRoot, planPath) < 2000);
@@ -894,6 +895,10 @@ test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route'
       path.join(root, 'hooks', 'scripts', 'workflow', 'plan-telemetry.mjs'),
       'utf8',
     );
+    const goal = fs.readFileSync(
+      path.join(root, 'skills', 'spectre-goal', 'SKILL.md'),
+      'utf8',
+    );
 
     assert.match(route, /historical (?:artifact|telemetry)[^\n]*resume/i);
     for (const [legacy, canonical] of legacyPairs) {
@@ -905,6 +910,8 @@ test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route'
     }
     assert.doesNotMatch(decisionTable, /MICRO|LIGHT|STANDARD-DIRECT|COMPREHENSIVE/);
     assert.doesNotMatch(telemetry, /ATOMIC\s*\+\s*LOW|STRUCTURED\s*\+\s*HIGH|Semantic result/);
+    assert.match(goal, /XL also requires completed task review/i);
+    assert.doesNotMatch(goal, /COMPREHENSIVE also requires completed task review/i);
     assert.ok(repositoryTokenCount(repoRoot, routePath) < 2000);
     assert.ok(repositoryTokenCount(
       repoRoot,
@@ -931,6 +938,13 @@ test('plan surfaces time-only planning and implementation estimates', () => {
     assert.doesNotMatch(plan, /Historical guidance/);
     assert.doesNotMatch(plan, /API-equivalent/);
     assert.doesNotMatch(guidance, /API-equivalent|processed tokens|Typical full .* expenditure/);
+    assert.match(guidance, /design-authority gate/i);
+    assert.match(guidance, /final pre-code approval gate/i);
+    assert.match(guidance, /L[\s\S]*STANDARD legacy analog/i);
+    assert.match(guidance, /XL[\s\S]*COMPREHENSIVE legacy analog/i);
+    assert.match(guidance, /XS, S, and M[\s\S]*no shipped seed analog/i);
+    assert.doesNotMatch(guidance, /two STANDARD\/COMPREHENSIVE user gates/i);
+    assert.doesNotMatch(guidance, /tier-compatible Plan estimate/i);
 
     const gate1 = guidance.match(
       /## Gate 1 — Remaining planning time([\s\S]*?)## Gate 2 — Implementation time estimate/,
@@ -965,15 +979,22 @@ test('plan surfaces time-only planning and implementation estimates', () => {
   ));
 });
 
-test('Scope makes Plan the canonical repository-change handoff', () => {
+test('Scope, UX, and prototype make Plan the canonical repository-change handoff', () => {
   const repoRoot = path.resolve(__dirname, '..');
   for (const rootName of ['spectre', 'spectre-codex']) {
-    const scope = fs.readFileSync(
-      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-scope', 'SKILL.md'),
+    const readSkill = (name) => fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', name, 'SKILL.md'),
       'utf8',
     ).replaceAll('/spectre:', 'spectre-');
+    const scope = readSkill('spectre-scope');
+    const ux = readSkill('spectre-ux');
+    const prototype = readSkill('spectre-prototype');
     assert.match(scope, /confirmed repository-changing work[^\n]*spectre-plan/i);
     assert.doesNotMatch(scope, /well-understood non-UI work[^\n]*spectre-create_tasks/i);
+    assert.match(ux, /confirmed repository-changing work[^\n]*spectre-plan/i);
+    assert.doesNotMatch(ux, /spectre-create_tasks|spectre-tdd|genuinely MICRO/i);
+    assert.match(prototype, /post-scope[^\n]*validated scope[^\n]*spectre-plan/i);
+    assert.doesNotMatch(prototype, /post-scope[^\n]*spectre-create_tasks/i);
   }
 });
 
@@ -1010,6 +1031,7 @@ test('create_plan and create_tasks preserve XS/direct routing contracts', () => 
     ]) assert.match(createPlan, new RegExp(field, 'i'));
 
     assert.match(createPlan, /observations are consumed only by `spectre-plan-route`/i);
+    assert.match(createPlan, /XS structured override[^\n]*spectre-create_tasks --depth xs/i);
     assert.doesNotMatch(createPlan, /Escalate-If[\s\S]*(?:>3 critical files|new abstraction|data migration|public-API change|tier-reassessment recommendation)/i);
     assert.doesNotMatch(createPlan, /(?:automatic|independently)\s+(?:escalates?|classif(?:y|ies)|selects?)[^\n]*(?:XS|S|M|L|XL|light|standard|comprehensive)/i);
 
@@ -1034,6 +1056,7 @@ test('Fix persists an approval-gated managed repair plan before mutation', () =>
     assert.ok(repairPlanIndex < fixApprovalIndex);
     assert.ok(fixApprovalIndex < fixRepairIndex);
     assert.match(fix, /repair plan[^\n]*before (?:code )?mutation/i);
+    assert.match(fix, /scoped name if one already exists/i);
   }
 });
 
@@ -1168,6 +1191,7 @@ test('feature-root establishment is centralized behind one concise internal skil
     'spectre-create_test_guide',
     'spectre-delegate',
     'spectre-execute',
+    'spectre-fix',
     'spectre-goal',
     'spectre-kickoff',
     'spectre-plan',
