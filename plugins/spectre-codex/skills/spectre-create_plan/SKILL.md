@@ -9,7 +9,7 @@ user-invocable: true
 Transform a scoped PRD into a technical implementation plan. The invoking primary owns synthesis and directly writes `plan.md`; research agents return evidence only. Role: senior staff engineer biasing to YAGNI · SOLID · KISS · DRY — clear on the plan, no gold-plating.
 
 ## Inputs
-- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`), `--execution {direct|structured}` (default `structured`; `plan` passes `direct` for LIGHT/STANDARD-DIRECT routes that execute plan-direct without task artifacts).
+- `$ARGUMENTS` — explicit feature name/root or descendant scope/PRD artifact + optional flags: `--depth {xs|light|standard|comprehensive}` (default `standard`), `--no-review` (orchestrated by `plan`), `--execution {direct|structured}` (default `structured`; `plan` passes `direct` for XS/LIGHT/STANDARD-DIRECT routes that execute plan-direct without task artifacts).
 - `{FEATURE_ROOT}/task_context.md` — at every depth, reuse an existing substantive `## Technical Research` section and skip new research. In orchestrated calls from `spectre-plan`, router research **MUST** be reused rather than re-dispatched.
 
 ## Working Set
@@ -27,7 +27,7 @@ Feature: <feature-name>
 Feature Root: .spectre/features/<feature-name>
 ```
 
-Derive both values from the physical feature directory. With `--execution direct`, add `Execution Mode: direct` as the third header line; downstream skills route on it (execute runs the plan plan-direct; `create_tasks` refuses it without explicit override). The plan is DONE when it is self-locating, carries the **verification spine**, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
+Derive both values from the physical feature directory. With `--execution direct` or `--depth xs`, add `Execution Mode: direct` as the third header line; downstream skills route on it (execute runs the plan plan-direct; `create_tasks` refuses it without explicit override). The plan is DONE when it is self-locating, carries the **verification spine**, includes `## Routing Observations`, and every required section is present (header + `*N/A — reason*` if genuinely inapplicable; empty or absent headers are not acceptable).
 
 **Required at every depth (the spine):**
 1. **Overview** — problem, solution shape, why this approach.
@@ -40,12 +40,16 @@ Derive both values from the physical feature directory. With `--execution direct
 
 **`--depth comprehensive` adds:** 8. Current State (today's path, `file:line`) · 9. Implementation Phases (each with its own "succeeds when…", sequenced by dependency — migrations before consumers) · 10. Component/Data Architecture (schema deltas) · 11. API Design (signatures, request/response, error contracts — if any API surface changes) · 12. Migration Plan (up/down sketch, backfill, rollback — if any data-layer change) · 13. Testing Strategy (unit/integration/e2e coverage, where tests live, what's deferred).
 
+**`--depth xs`:** direct, compact, and still complete — write `Execution Mode: direct`; keep the seven spine sections; describe one coherent change; cite known verification as a runnable command or concrete observable/state condition; preserve explicit Out-of-Bounds. No alternatives enumeration, standalone clarification gate, `plan_review`, expanded architecture, or task graph.
+
 **`--depth light`:** concise, not shallow — keep all seven spine sections, ~1 short paragraph or 3–5 bullets each. One clear path following existing patterns; no alternatives enumeration. No standalone clarification/review gates, no `plan_review`, no expanded architecture.
+
+**Routing Observations:** every plan includes `## Routing Observations` after the spine/comprehensive addenda. Record observations only; do not derive XS/S/M/L/XL, choose a route, escalate depth, or override the invoking depth. Include workstream count, independent workstreams, dependency sequencing, shared-contract consumers, staged rollout/migration, new abstraction, unresolved material decision, and observed uncertainty. These observations are consumed only by `spectre-plan-route`.
 
 ## Method / guardrails
 - **Research first** (unless reused): an existing substantive `## Technical Research` section counts as reused at every depth; an orchestrated `spectre-plan` call never launches replacement research agents. Otherwise run `@spectre_finder`/`@spectre_analyst`/`@spectre_patterns` in parallel → trace entry points and data flow end-to-end → cross-reference `CLAUDE.md`/`README.md` → validate discoveries against real code. If research was newly done, update `task_context.md` `## Technical Research`.
 - **Clarifications:** generate up to 10 technical questions, only for ambiguity not answered by the PRD or discoverable in code; present approach choices with Pros/Cons/Trade-offs. Prefer `AskUserQuestion` (batches ≤4, most critical first); fall back to intelligent defaults if unavailable. Return clarification findings in-thread — do not write clarification files.
-- **`--depth light`:** do NOT stop for clarifications — use conservative, codebase-consistent defaults and record them under **Filled Assumptions**.
+- **`--depth xs` / `--depth light`:** do NOT stop for clarifications — use conservative, codebase-consistent defaults and record them under **Filled Assumptions**.
 - Use judgment on section length, not on inclusion.
 
 ## Handoff
@@ -53,10 +57,10 @@ Derive both values from the physical feature directory. With `--execution direct
 - **Standalone:** "Implementation plan saved to `{path}`. Review and reply with feedback or 'Approved' to proceed." Wait for user.
   1. If approval exposes unresolved user-facing flows/states/copy/accessibility → `spectre-ux`; if behavior is settled but visual validation materially matters → `spectre-prototype`. Planning resumes after the product artifact is reconciled.
   2. Approved `Execution Mode: direct` plan → `spectre-execute` (plan-direct; no task artifacts).
-  3. Approved LIGHT structured plan → `spectre-create_tasks`.
+  3. Approved LIGHT structured plan (or XS structured override) → `spectre-create_tasks`.
   4. Approved STANDARD/COMPREHENSIVE plan → `spectre-plan_review`.
 
 Render exactly one primary recommendation tied to the observed plan/depth, at most one conditional alternative, and `Pause: spectre-handoff {feature}` when stopping at the approved standalone-plan boundary.
 
 ## Escalate-If
-- **`--depth light` and** the plan needs >3 critical files, a new abstraction, data migration, public-API change, or an unresolved scope / security-privacy / data-correctness / public-API-behavior decision → STOP, return a **tier-reassessment recommendation to `plan`** instead of guessing.
+- Scope is impossible to plan from the confirmed artifacts, or a required artifact write would escape `FEATURE_ROOT` → stop and return the concrete blocker to the caller.

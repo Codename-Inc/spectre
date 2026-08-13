@@ -881,6 +881,49 @@ test('Scope makes Plan the canonical repository-change handoff', () => {
   }
 });
 
+test('create_plan and create_tasks preserve XS/direct routing contracts', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const createPlan = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-create_plan', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const createTasks = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-create_tasks', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+
+    assert.match(createPlan, /--depth \{xs\|light\|standard\|comprehensive\}/);
+    assert.match(createTasks, /--depth xs\|light\|standard\|comprehensive/);
+    assert.match(createPlan, /`--depth xs`[\s\S]*Execution Mode: direct/i);
+    assert.match(createPlan, /`--depth xs`[\s\S]*one coherent change/i);
+    assert.match(createPlan, /`--depth xs`[\s\S]*known verification/i);
+    assert.match(createPlan, /`--depth xs`[\s\S]*explicit Out-of-Bounds/i);
+    assert.match(createPlan, /`--depth xs`[\s\S]*seven spine sections/i);
+    assert.match(createPlan, /## Routing Observations/);
+    for (const field of [
+      'workstream count',
+      'independent workstreams',
+      'dependency sequencing',
+      'shared-contract consumers',
+      'staged rollout/migration',
+      'new abstraction',
+      'unresolved material decision',
+      'observed uncertainty',
+    ]) assert.match(createPlan, new RegExp(field, 'i'));
+
+    assert.match(createPlan, /observations are consumed only by `spectre-plan-route`/i);
+    assert.doesNotMatch(createPlan, /Escalate-If[\s\S]*(?:>3 critical files|new abstraction|data migration|public-API change|tier-reassessment recommendation)/i);
+    assert.doesNotMatch(createPlan, /(?:automatic|independently)\s+(?:escalates?|classif(?:y|ies)|selects?)[^\n]*(?:XS|S|M|L|XL|light|standard|comprehensive)/i);
+
+    assert.match(createTasks, /execution slicing only/i);
+    assert.match(createTasks, /never (?:classifies|derive|derives|selects?) Plan size/i);
+    assert.doesNotMatch(createTasks, /Depth:\s*LIGHT\s*=/);
+    assert.doesNotMatch(createTasks, /(?:depth|--depth)[^\n]*(?:Plan classification|classif(?:y|ies)|route size)/i);
+  }
+});
+
 test('Fix persists an approval-gated managed repair plan before mutation', () => {
   const repoRoot = path.resolve(__dirname, '..');
   for (const rootName of ['spectre', 'spectre-codex']) {

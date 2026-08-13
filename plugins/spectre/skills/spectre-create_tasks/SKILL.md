@@ -12,7 +12,7 @@ Produce a scope-faithful, sliceable task graph and cheap execution index. The pr
 
 ## Inputs
 
-- `$ARGUMENTS`: explicit feature root/name or descendant requirements artifact; `--depth light|standard|comprehensive` (default `standard`); mutually exclusive `--tasks-only` or `--finalize-index`; optional `--orchestrated`.
+- `$ARGUMENTS`: explicit feature root/name or descendant requirements artifact; `--depth xs|light|standard|comprehensive` (default `standard`); mutually exclusive `--tasks-only` or `--finalize-index`; optional `--orchestrated`.
 - Read the selected root's scope/summary, PRD, plan, UX, context, and research artifacts in full. Plan `Out-of-Bounds` and `Verification` are load-bearing. Thin requirements route to `/spectre:plan`; never invent scope.
 
 ## Working Set
@@ -45,7 +45,7 @@ DONE when the mode-selected files satisfy these contracts; `tasks.json` reparses
 4. Pair preceding RED subtasks for STANDARD/COMPREHENSIVE behavior changes; LIGHT requires RED when risky, ambiguous, or regression-prone.
 5. Context is 2-4 file:line references plus one canonical pattern and one plan anchor for STANDARD/COMPREHENSIVE; LIGHT uses 1-2 references plus a plan anchor. Provide evidence, not snippets or implementation scripts.
 6. Mark parent `risk` only for auth/trust, persistence/migration, concurrency/order/retry, destructive, high-fan-out, or shared-contract boundaries. Derive semantic predecessor/unblocks edges and topological waves at parent granularity; phases are organizational.
-7. Depth: LIGHT = 1-3 parents, compact graph, optional waves; STANDARD = normal concise graph; COMPREHENSIVE = full context, RED, coverage, semantic dependencies, and post-review waves.
+7. Execution slicing only: size/depth caps shape task granularity after a plan already exists. This workflow never derives Plan size, acts as a Plan classifier, or overrides `spectre-plan-route`. `xs` = one parent for one direct handoff that was explicitly rerouted to structured; `light` = 1-3 parents, compact graph, optional waves; `standard` = normal concise graph; `comprehensive` = full context, RED, coverage, semantic dependencies, and post-review waves.
 8. Validate coverage, verification mapping, integration consumers, dependencies, and Out-of-Bounds before writing. Address root causes; never encode vague criteria or orphan outputs.
 
 **Mode contract**
