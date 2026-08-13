@@ -18,7 +18,7 @@ Run one independent semantic review of the complete task graph, apply authorized
 
 ## Working Set
 
-- Resolve one authoritative feature root from the explicit/current artifact context; never infer an existing feature from branch, recency, or repository activity. Pass that root unchanged to every reviewer. Legacy task artifacts remain readable, but new review evidence belongs under a confirmed `.spectre/features/<feature>/` root.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - `TASKS_JSON`: selected task graph. `REVIEW_REPORT`: `reviews/task_review.md`, or a timestamped sibling only for authorized `--review-again`.
 - `REVIEW_ATTEMPT`: `reviews/task_review_attempt.json`, the durable one-round recovery ledger with `round_status: in_progress|report_ready|complete|incomplete`, report/authorization/route state, allowed writes, and pre/post task hashes.
 - `PREFLIGHT_JSON`: `reviews/task_review_safety.json`, produced by the adjacent `scripts/task-review-safety.mjs` helper.

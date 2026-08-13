@@ -27,9 +27,8 @@ Produce one HTML prototype at `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`. 
 
 ## Working Set
 
-- Resolve an explicit root/name, descendant, or unambiguous thread artifact; else allocate first free `.spectre/features/<kebab-name>[-N]/` and state it. Never select existing features by branch, recency, lifecycle, or directory scan; an explicitly unmanaged root blocks writes.
-- For a new root, create neutral `feature.json` (`schema_version`, `created_at`, `feature`, `feature_root`). If needed, create `.spectre/.gitignore` containing only `manifest.json`, `bin/`, `handoffs/`, `!features/`; never edit root `.gitignore`; warn if ignored.
-- The physical directory is authoritative. Repair stale metadata and pass the root unchanged. Legacy `docs/tasks/**` is readable but never moved/bulk-rewritten; output requires a confirmed canonical root.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Repair stale feature/root metadata in artifacts this workflow touches.
 
 ## Outputs + DONE
 

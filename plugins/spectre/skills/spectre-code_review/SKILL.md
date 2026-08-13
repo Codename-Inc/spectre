@@ -17,9 +17,8 @@ Try to prove the work wrong, unsafe, unreachable, or unable to meet requirements
 
 ## Working Set
 
-- Resolve one feature root from explicit/current artifacts, never branch, recency, lifecycle, or scanning. Inferred names use the first free `.spectre/features/<name>[-N]/`; an explicit unmanaged root blocks writes. Pass it unchanged to reviewers.
-- New roots receive `feature.json` with `schema_version`, `created_at`, `feature`, `feature_root`. If absent and its parent does not ignore `.spectre/`, create `.spectre/.gitignore` containing `manifest.json`, `bin/`, `handoffs/`, `!features/`; never edit root `.gitignore`. Warn when ignored. Repair stale feature/root metadata in touched artifacts.
-- Keep legacy `docs/tasks/**` inputs in place; new evidence requires a canonical root and records its source.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Repair stale feature/root metadata in artifacts this review touches.
 - `REVIEW_REPORT={FEATURE_ROOT}/reviews/comprehensive_code_review.md`; if occupied, use a timestamped sibling, never overwrite.
 - Late-bind diff/base and tuple, changed files, requirement/AC paths and task ids, dependencies/importers, tests, and exclusions. Reviewers read diffs/task graphs.
 
@@ -28,7 +27,7 @@ Try to prove the work wrong, unsafe, unreachable, or unable to meet requirements
 `REVIEW_REPORT` contains:
 
 0. title, `Feature:`, `Feature Root:`;
-1. **Scope Boundary** — completed work, diff/base, tuple, requirements, files/dependencies/tests, exclusions, legacy source;
+1. **Scope Boundary** — completed work, diff/base, tuple, requirements, files/dependencies/tests, exclusions;
 2. **Verdict** — `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, else `CLEAN`;
 3. **Findings** — `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Finding Fingerprint | Invariant Family | Smallest Fix`, severity-ordered or `No findings`;
 4. **Coverage Record** — inspected/unverified areas and reasons;

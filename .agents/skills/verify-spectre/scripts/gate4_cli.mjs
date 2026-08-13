@@ -163,26 +163,6 @@ function snapshotTree(root) {
   return snapshot;
 }
 
-function featureDocuments(projectDir) {
-  const documents = [];
-  for (const root of ['.spectre/features', 'docs/tasks']) {
-    const absoluteRoot = path.join(projectDir, root);
-    if (!fs.existsSync(absoluteRoot)) continue;
-    const visit = (directory) => {
-      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-        const absolute = path.join(directory, entry.name);
-        if (entry.isDirectory()) {
-          visit(absolute);
-        } else if (/\.(?:html|json|md)$/.test(entry.name)) {
-          documents.push(path.relative(projectDir, absolute));
-        }
-      }
-    };
-    visit(absoluteRoot);
-  }
-  return documents.sort();
-}
-
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
@@ -831,6 +811,30 @@ if (process.env.SPECTRE_GATE4_FEATURE_HOST !== '1') {
     standalonePlanRun.stderr || `transcript: ${standalonePlanRun.stdoutPath}`,
   );
 
+  const missingRootProject = makeProject('feature-host-orchestrated-missing-root');
+  fs.writeFileSync(
+    path.join(missingRootProject, 'README.md'),
+    '# Disposable orchestrated missing-root fixture\n',
+  );
+  commitFixture(missingRootProject, 'test: seed orchestrated missing-root fixture');
+  const missingRootRun = runClaudeFeatureHost(
+    'orchestrated-missing-root',
+    missingRootProject,
+    [
+      '/spectre:spectre-create_test_guide --orchestrated',
+      'No feature root, feature artifact, or current-thread feature exists.',
+      'Return the required feature-root escalation without initializing a root,',
+      'writing a test guide, or asking for a feature name.',
+    ].join(' '),
+  );
+  g.check(
+    missingRootRun.code === 0 &&
+      !fs.existsSync(path.join(missingRootProject, '.spectre', 'features')) &&
+      /feature root|FEATURE_ROOT/.test(missingRootRun.stdout),
+    'orchestrated workflow without a root escalates without allocating one',
+    missingRootRun.stderr || `transcript: ${missingRootRun.stdoutPath}`,
+  );
+
   const scopeBeforeRescope = creatorScopeBody;
   const rescopeRun = runClaudeFeatureHost(
     'rescope',
@@ -1083,171 +1087,6 @@ if (process.env.SPECTRE_GATE4_FEATURE_HOST !== '1') {
     `plan: ${renamedPlan}; guide: ${renamedGuide}`,
   );
 
-  const legacyProject = makeProject('feature-host-legacy-execution');
-  const legacyRoot = path.join(legacyProject, 'docs', 'tasks', 'legacy-host-proof');
-  const legacySpecs = path.join(legacyRoot, 'specs');
-  const canonicalLegacyRoot = path.join(
-    legacyProject,
-    '.spectre',
-    'features',
-    'legacy-execution-proof',
-  );
-  fs.mkdirSync(legacySpecs, { recursive: true });
-  fs.mkdirSync(canonicalLegacyRoot, { recursive: true });
-  fs.writeFileSync(
-    path.join(canonicalLegacyRoot, 'feature.json'),
-    `${JSON.stringify({
-      schema_version: 1,
-      created_at: '2026-07-23T00:00:00.000Z',
-      feature: 'legacy-execution-proof',
-      feature_root: '.spectre/features/legacy-execution-proof',
-    }, null, 2)}\n`,
-  );
-  const legacyExecuteRelative = 'docs/tasks/legacy-host-proof/specs/execute.md';
-  const legacyTasksRelative = 'docs/tasks/legacy-host-proof/specs/tasks.json';
-  fs.writeFileSync(path.join(legacySpecs, 'execute.md'), [
-    '# Execute: Legacy Host Proof',
-    '',
-    'Feature: Legacy Execution Proof',
-    'Feature Root: .spectre/features/legacy-execution-proof',
-    '',
-    '## Document Manifest',
-    '- Scope: `concepts/scope.md`',
-    '',
-    '## Task Detail Source',
-    `- Tasks JSON: \`${legacyTasksRelative}\``,
-    '',
-    '## Execution Summary',
-    '- Phases: 1',
-    '- Parent tasks: 1',
-    '- Subtasks: 1',
-    '- Waves: 1',
-    '',
-    '## Wave Plan',
-    '- Wave 1: `{ id: "wave-1", label: "Host proof", parent_task_ids: ["1.1"], after: [], rationale: "Single isolated proof." }`',
-    '',
-    '## Parent Task Index',
-    '- `{ id: "1.1", title: "Write host proof marker", subtasks: ["1.1.1"], predecessor: "none", unblocks: "terminal" }`',
-    '',
-    '## Slicing Rules',
-    'Slice only parent 1.1, update mutable status fields, and re-parse after writing.',
-    '',
-  ].join('\n'));
-  const legacyTasks = {
-    meta: {
-      feature: 'Legacy Execution Proof',
-      feature_root: '.spectre/features/legacy-execution-proof',
-      generated_at: '2026-07-23T00:00:00.000Z',
-      schema_version: 1,
-      objective: 'Write one deterministic host proof marker.',
-      scope: {
-        in_scope: ['Write src/host-proof.txt'],
-        out_of_scope: ['Change any other product file'],
-      },
-      out_of_bounds: ['Do not add dependencies, helpers, services, or migration behavior'],
-      requirements_trace: [{
-        id: 'REQ-001',
-        description: 'The host proof marker contains the required sentinel.',
-        source: legacyExecuteRelative,
-        tasks: ['1.1'],
-      }],
-      architecture_context: {
-        where_this_fits: ['Disposable Gate 4 project'],
-        technical_approach: ['Write one text marker'],
-        key_decisions: ['No runtime dependency'],
-      },
-      coverage_summary: {
-        requirements_extracted: 1,
-        requirements_with_task_coverage: 1,
-        phases: 1,
-        parent_tasks: 1,
-        subtasks: 1,
-      },
-    },
-    phases: [{
-      id: '1',
-      title: 'Host Proof',
-      summary: 'Exercise one status transition through the real host.',
-      status: 'pending',
-      parents: [{
-        id: '1.1',
-        title: 'Write host proof marker',
-        description: 'Write src/host-proof.txt with the required sentinel.',
-        status: 'pending',
-        predecessor: 'none',
-        unblocks: 'terminal',
-        subtasks: [{
-          id: '1.1.1',
-          title: 'Write deterministic marker',
-          type: 'Build',
-          status: 'pending',
-          produces: 'src/host-proof.txt',
-          consumed_by: 'Gate 4 assertion',
-          replaces: 'N/A',
-          context: [{
-            path: 'src/host-proof.txt',
-            anchor: 'entire file',
-            note: 'The file does not exist before RED and must contain SPECTRE_HOST_LEGACY_GREEN.',
-          }],
-          predecessor: 'none',
-          acceptance_criteria: [
-            {
-              type: 'test',
-              text: 'Before implementation, `test -f src/host-proof.txt` exits nonzero as the observed RED.',
-            },
-            {
-              type: 'state',
-              text: 'After implementation, src/host-proof.txt contains exactly `SPECTRE_HOST_LEGACY_GREEN` plus a newline.',
-            },
-          ],
-        }],
-      }],
-    }],
-  };
-  const legacyTasksPath = path.join(legacySpecs, 'tasks.json');
-  fs.writeFileSync(legacyTasksPath, `${JSON.stringify(legacyTasks, null, 2)}\n`);
-  commitFixture(legacyProject, 'test: seed explicit legacy execution fixture');
-  const legacyBefore = fs.readFileSync(legacyTasksPath, 'utf8');
-  const documentsBefore = new Set(featureDocuments(legacyProject));
-  const legacyRun = runClaudeFeatureHost(
-    'legacy-execution',
-    legacyProject,
-    [
-      `/spectre:spectre-execute ${legacyExecuteRelative}`,
-      'Use the confirmed canonical root .spectre/features/legacy-execution-proof and --orchestrated.',
-      'This explicit legacy execute artifact is the only legacy source.',
-      'Complete the one pending task and the full DONE contract.',
-      'Mutate only existing legacy status fields in place; preserve every other legacy byte.',
-      'Write every new feature document beneath the confirmed canonical root and record the legacy source.',
-    ].join(' '),
-    { budget: '6.00', timeout: 900_000 },
-  );
-  const legacyAfter = fs.readFileSync(legacyTasksPath, 'utf8');
-  const normalizeStatuses = (content) =>
-    content.replace(/("status"\s*:\s*)"[^"]*"/g, '$1"<STATUS>"');
-  g.check(
-    legacyRun.code === 0 &&
-      normalizeStatuses(legacyAfter) === normalizeStatuses(legacyBefore) &&
-      /"status"\s*:\s*"done"/.test(legacyAfter),
-    'legacy execution mutates only status fields in the supplied task artifact',
-    legacyRun.stderr || `transcript: ${legacyRun.stdoutPath}`,
-  );
-  const newDocuments = featureDocuments(legacyProject)
-    .filter((document) => !documentsBefore.has(document));
-  const canonicalPrefix = '.spectre/features/legacy-execution-proof/';
-  g.check(
-    newDocuments.length > 0 &&
-      newDocuments.every((document) => document.startsWith(canonicalPrefix)),
-    'every new feature document is written beneath the confirmed canonical root',
-    `new documents: ${JSON.stringify(newDocuments)}`,
-  );
-  g.check(
-    newDocuments.some((document) =>
-      fs.readFileSync(path.join(legacyProject, document), 'utf8')
-        .includes(legacyExecuteRelative)),
-    'new canonical output records the explicit legacy source',
-    `new documents: ${JSON.stringify(newDocuments)}`,
-  );
   g.check(
     FEATURE_HOST_SOURCE_MISMATCHES.length === 0,
     'plugin-hosted journeys use one immutable scoped source state',

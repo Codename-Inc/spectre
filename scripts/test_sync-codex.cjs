@@ -958,6 +958,71 @@ test('ship composes focused skills without a proof prerequisite', () => {
   }
 });
 
+test('feature-root establishment is centralized behind one concise internal skill', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const callers = [
+    'spectre-clean',
+    'spectre-code_review',
+    'spectre-create_plan',
+    'spectre-create_tasks',
+    'spectre-create_test_guide',
+    'spectre-delegate',
+    'spectre-execute',
+    'spectre-goal',
+    'spectre-kickoff',
+    'spectre-plan',
+    'spectre-plan_review',
+    'spectre-prototype',
+    'spectre-prove',
+    'spectre-prune',
+    'spectre-research',
+    'spectre-scope',
+    'spectre-ship',
+    'spectre-task_review',
+    'spectre-test',
+    'spectre-ux',
+    'spectre-validate',
+  ];
+  const canonicalResolver = 'Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.';
+  const codexResolver = canonicalResolver.replace(
+    '`@skill-spectre:spectre-feature-root`',
+    '`Skill(spectre-feature-root)`',
+  );
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const skillsRoot = path.join(repoRoot, 'plugins', rootName, 'skills');
+    const readSkill = (name) => fs.readFileSync(
+      path.join(skillsRoot, name, 'SKILL.md'),
+      'utf8',
+    );
+    const helper = readSkill('spectre-feature-root');
+    const resolver = rootName === 'spectre' ? canonicalResolver : codexResolver;
+
+    assert.match(helper, /name: "spectre-feature-root"/);
+    assert.match(helper, /user-invocable: false/);
+    assert.match(helper, /Do NOT invoke for existing roots, orchestrated calls missing a root, or direct user requests/);
+    assert.ok(helper.length <= 1900, `feature-root helper exceeds 500 estimated tokens: ${helper.length} chars`);
+    assert.match(helper, /first free `\.spectre\/features\/<name>\[-N\]\/`/);
+    assert.match(helper, /`schema_version`, `created_at`, `feature`, and repo-relative `feature_root`/);
+    assert.match(helper, /`manifest\.json`, `bin\/`, `handoffs\/`, and `!features\/`/);
+    assert.match(helper, /Never edit root `\.gitignore`/);
+    assert.doesNotMatch(helper, /docs\/tasks/);
+    assert.equal(
+      fs.existsSync(path.join(skillsRoot, 'spectre-create_tasks', 'references', 'legacy-continuation.example.json')),
+      false,
+      `${rootName} must not ship the retired legacy continuation fixture`,
+    );
+
+    for (const name of callers) {
+      const skill = readSkill(name);
+      assert.equal(skill.split(resolver).length - 1, 1, `${name} must contain exactly one resolver line`);
+      assert.doesNotMatch(skill, /docs\/tasks\/\*\*/);
+      assert.doesNotMatch(skill, /Before the first artifact in a new root/);
+      assert.doesNotMatch(skill, /Never use branch name, recency, lifecycle state, or directory scanning/);
+    }
+  }
+});
+
 test('delegate replaces quick_dev, deliver, and align-and-deliver with compact autonomous delegation', () => {
   const repoRoot = path.resolve(__dirname, '..');
 

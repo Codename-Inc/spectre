@@ -20,14 +20,7 @@ Codebase research: spawn parallel read-only agents, synthesize their findings in
 
 ## Feature root contract
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
-- When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
-- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
-- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
-- Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
-- If `.spectre/.gitignore` is absent and the repository does not already ignore `.spectre/`, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Do not rewrite a user root ignore file. If the selected feature root is ignored, warn that its records are local-only.
-- Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Method / guardrails
 1. **Immediate reply first** — acknowledge the topic and proposed feature name/root (or ask for the topic) with NO tool calls in the opening turn.

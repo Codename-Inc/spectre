@@ -20,14 +20,7 @@ Deep research entry point: investigate the codebase and external best practices,
 
 ## Feature root contract
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature.
-- When the user explicitly names an existing managed feature, continue it under its existing overwrite safeguards. The physical directory is authoritative.
-- For an inferred name, use the first free `.spectre/features/<name>[-N]/`; never overwrite or auto-continue a collision. An explicitly selected unmanaged directory remains a safety blocker.
-- Initialize an approved new root before its first artifact with a lifecycle-neutral `feature.json` containing `{"schema_version":1,"created_at":"<ISO8601>","feature":"<feature-name>","feature_root":".spectre/features/<feature-name>"}`.
-- Keep the marker lifecycle-neutral: never add branch, status, active-pointer, alias, or absolute-path state.
-- Before writing the first artifact, initialize local-state tenancy. Create `.spectre/.gitignore` only when it is absent and the parent repository does not already ignore `.spectre/`; give it ignore patterns for `manifest.json`, `bin/`, and `handoffs/`, while retaining `!features/`. Never silently rewrite an arbitrary user root `.gitignore`. A blanket parent `.spectre/` ignore requires a warning that the selected feature records are local-only.
-- Write new canonical artifacts only inside `FEATURE_ROOT`; arbitrary output roots are invalid.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Method / guardrails
 1. **Acknowledge first.** Open with a reply naming what we're exploring, the proposed feature name/root, the decision we're heading toward, and what success looks like. No tool calls in this first turn.

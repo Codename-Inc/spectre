@@ -17,7 +17,7 @@ Produce the smallest correct plan via one evidence wave, then correctness and si
 
 ## Working Set
 
-Resolve from an explicit/current-thread artifact; otherwise create the first free `.spectre/features/<kebab-name>[-N]/` with neutral `feature.json`. Never infer from branch, recency, lifecycle, or scans.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 Reports: `reviews/plan_correctness.md` and `reviews/plan_review.md`. Resume a sole correctness report only when its post-edit hash matches `plan.md`; otherwise use absent canonical paths or timestamped siblings. Pass exact paths.
 

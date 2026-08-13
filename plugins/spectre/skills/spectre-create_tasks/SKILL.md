@@ -17,10 +17,9 @@ Produce a scope-faithful, sliceable task graph and cheap execution index. The pr
 
 ## Working Set
 
-- Resolve one root from an explicit root/name, descendant artifact, or unambiguous current-thread artifact. Otherwise allocate the first free `.spectre/features/<kebab-name>[-N]/`. Never select an existing feature by branch, recency, lifecycle, or directory scan; an explicit unmanaged root blocks writes.
-- The physical directory is authoritative. Initialize a new root with lifecycle-neutral `feature.json` (`schema_version`, `created_at`, `feature`, `feature_root`); when needed, create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/`, never edit the root ignore, and warn if ignored. Repair stale metadata in touched artifacts and pass the exact root unchanged.
-- Legacy `docs/tasks/**` artifacts are readable but not moved or bulk-rewritten; new canonical documents require a confirmed feature root and record the legacy source.
-- Ensure `{FEATURE_ROOT}/specs`. Default pair: `EXECUTE_FILE={FEATURE_ROOT}/specs/execute.md`, `DETAIL_FILE={FEATURE_ROOT}/specs/tasks.json`; use same-basename feature-scoped pairs on collision. Fixtures: `references/tasks.example.json`, `execute.example.md`, `legacy-continuation.example.json`.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Repair stale feature/root metadata in artifacts this workflow touches.
+- Ensure `{FEATURE_ROOT}/specs`. Default pair: `EXECUTE_FILE={FEATURE_ROOT}/specs/execute.md`, `DETAIL_FILE={FEATURE_ROOT}/specs/tasks.json`; use same-basename feature-scoped pairs on collision. Fixtures: `references/tasks.example.json`, `execute.example.md`.
 - When plan/context omit target files or patterns, use read-only `@spectre:finder`, `@spectre:analyst`, and `@spectre:patterns` as needed; skip for LIGHT or clear single-component work. Agents return <=2,000-token evidence; the primary folds accepted evidence into `task_context.md`.
 
 ## Outputs + DONE

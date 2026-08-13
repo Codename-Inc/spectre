@@ -18,8 +18,8 @@ Build the selected source without an exhaustive graph in primary context. Maximi
 
 ## Working Set
 
-- Resolve explicit feature/root/artifact or the unambiguous thread artifact; otherwise use the first free kebab-case `.spectre/features/<name>[-N]/`. Never select by branch/recency/lifecycle/scanning. Physical directory wins stale metadata; create only missing lifecycle-neutral `feature.json` and safe `.spectre/.gitignore`, never root `.gitignore`.
-- Keep the invocation checkout. Pass exact `FEATURE_ROOT` to every child. Explicit `docs/tasks/**` inputs remain readable/in-place legacy sources; new canonical artifacts require a confirmed feature root.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Keep the invocation checkout.
 - Structured detail precedence: declared `Tasks JSON` → adjacent `tasks.json` → sibling `.tasks.json`; else escalate. Read the index whole, task detail by targeted slices/projections, and reparse after writes.
 - Structured and plan-direct modes read `references/telemetry.md`, start/resume one local event run, and follow its primary/worker task authority contract; plan-direct emits workstream-granularity events per that reference. Telemetry failure degrades observation, never delivery authority.
 - `SCOPE_DOCS`: structured manifest paths or scope/UX/research paths cited by the plan.

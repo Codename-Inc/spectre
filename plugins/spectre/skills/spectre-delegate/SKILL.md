@@ -17,16 +17,12 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 
 ## Working Set
 
-- Late-bind checkout/diff/commands/target. Resolve `FEATURE_ROOT=.spectre/features/<feature-name>/` once; pass it unchanged.
+- Late-bind checkout, diff, commands, and target.
 - **Mini eligibility:** ≤2 dependency-safe workstreams; no auth/payment/permissions, migration/data-loss, public-contract breakage, concurrency/order/retry, destructive operation, new infrastructure, or unresolved product/UX choice. If ineligible, stop before more mutation: fix → `/spectre:fix`; feature → `/spectre:plan`.
 
 ## Feature root contract
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed with the first free `.spectre/features/<name>[-N]/`. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature; never auto-continue collisions or accept explicit unmanaged dirs. Physical root controls; managed safeguards persist.
-- Before its first artifact, initialize lifecycle-neutral `feature.json` with only `schema_version`, `created_at`, `feature`, and repo-relative `feature_root`.
-- If `.spectre/.gitignore` is absent and `.spectre/` is not ignored, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Never rewrite root `.gitignore`; warn if records are local-only.
-- Write only inside `FEATURE_ROOT`; pass that root to every child.
+- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Outputs + DONE
 
