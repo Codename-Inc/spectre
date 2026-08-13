@@ -168,10 +168,34 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     featureRoot,
     '--scope',
     'PRIVATE_SCOPE_BOUNDARY_MUST_BE_HASHED',
+    '--scope-hash',
+    'a'.repeat(64),
     '--classification',
     'MICRO',
-    '--plan-id',
-    'plan-2.1',
+    '--shape',
+    'ATOMIC',
+    '--uncertainty',
+    'LOW',
+    '--evidence',
+    'PROBED',
+    '--task-graph-risk',
+    'LOW',
+    '--route',
+    'XS_DIRECT',
+    '--design-authority-required',
+    'false',
+    '--probe-used',
+    'true',
+    '--probe-sufficient',
+    'true',
+    '--reason-codes',
+    'known-pattern',
+    '--protected-boundaries-json',
+    JSON.stringify([{
+      type: 'public-api',
+      threatened_invariant: 'PRIVATE_INVARIANT_MUST_BE_HASHED',
+      failure_mode: 'PRIVATE_FAILURE_MODE_MUST_BE_HASHED',
+    }]),
     '--plan-hash',
     'a'.repeat(64),
     ...common,
@@ -180,7 +204,7 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   const start = JSON.parse(started.stdout);
   assert.deepEqual(Object.keys(start).sort(), ['eventId', 'ok', 'planRunId']);
   assert.match(start.planRunId, /^plan_run_/);
-  assert.match(start.eventId, /^evt_/);
+  assert.match(start.eventId, /^plan_evt_/);
 
   const reclassified = invoke(BUNDLED_CLI_PATH, [
     'plan',
@@ -192,13 +216,29 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     '--feature-root',
     '.spectre/features/cli',
     '--scope-hash',
-    'b'.repeat(64),
+    'a'.repeat(64),
     '--classification',
     'STANDARD-DIRECT',
     '--previous-classification',
     'LIGHT',
-    '--reason-code',
+    '--shape',
+    'DIRECT',
+    '--uncertainty',
+    'MODERATE',
+    '--evidence',
+    'SUFFICIENT',
+    '--task-graph-risk',
+    'LOW',
+    '--route',
+    'M_REVIEWED_DIRECT',
+    '--design-authority-required',
+    'false',
+    '--regret-direction',
+    'LARGER',
+    '--reason-codes',
     'routing-change',
+    '--plan-hash',
+    'b'.repeat(64),
     ...common,
   ], value);
   assert.equal(reclassified.status, 0, reclassified.stderr);
@@ -214,11 +254,17 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     '--feature-root',
     '.spectre/features/cli',
     '--scope-hash',
-    'c'.repeat(64),
-    '--review-status',
-    'pass',
+    'a'.repeat(64),
     '--review-kind',
-    'plan',
+    'simplification',
+    '--finding-count',
+    '2',
+    '--applied-count',
+    '1',
+    '--structure-before',
+    '5',
+    '--structure-after',
+    '4',
     ...common,
   ], value);
   assert.equal(review.status, 0, review.stderr);
@@ -233,11 +279,13 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     '--feature-root',
     '.spectre/features/cli',
     '--scope-hash',
-    'd'.repeat(64),
+    'a'.repeat(64),
     '--gate-kind',
-    'planning',
-    '--gate-status',
-    'pass',
+    'final',
+    '--gate-outcome',
+    'approved',
+    '--change-category',
+    'none',
     ...common,
   ], value);
   assert.equal(gate.status, 0, gate.stderr);
@@ -252,9 +300,15 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     '--feature-root',
     '.spectre/features/cli',
     '--scope-hash',
-    'e'.repeat(64),
-    '--completion-status',
-    'ready',
+    'a'.repeat(64),
+    '--artifact-count',
+    '2',
+    '--artifact-hashes',
+    `${'c'.repeat(64)},${'d'.repeat(64)}`,
+    '--planning-elapsed-ms',
+    '1234',
+    '--continuation',
+    'goal',
     ...common,
   ], value);
   assert.equal(completed.status, 0, completed.stderr);
@@ -269,15 +323,23 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     '--feature-root',
     '.spectre/features/cli',
     '--scope-hash',
-    'f'.repeat(64),
-    '--execution-id',
-    'exec-2.1',
-    '--execution-hash',
-    '1'.repeat(64),
+    'a'.repeat(64),
+    '--execution-run-id',
+    'run_11111111-1111-4111-8111-111111111111',
     '--outcome-status',
-    'failed',
-    '--failure-kind',
-    'test',
+    'passed',
+    '--workstream-count',
+    '3',
+    '--task-count',
+    '9',
+    '--wave-count',
+    '2',
+    '--proof-result',
+    'PASS',
+    '--execution-review-result',
+    'CLEAN',
+    '--surprise-codes',
+    'UNPLANNED_DEPENDENCY',
     ...common,
   ], value);
   assert.equal(outcome.status, 0, outcome.stderr);
@@ -285,6 +347,8 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   const telemetryPath = path.join(value.projectDir, '.spectre', 'telemetry', 'plan-classification.jsonl');
   const serialized = fs.readFileSync(telemetryPath, 'utf8');
   assert.doesNotMatch(serialized, /PRIVATE_SCOPE_BOUNDARY_MUST_BE_HASHED/);
+  assert.doesNotMatch(serialized, /PRIVATE_INVARIANT_MUST_BE_HASHED/);
+  assert.doesNotMatch(serialized, /PRIVATE_FAILURE_MODE_MUST_BE_HASHED/);
   const events = serialized.trim().split('\n').map((line) => JSON.parse(line));
   assert.deepEqual(events.map((event) => event.event_type), [
     'plan.started',
@@ -294,9 +358,34 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     'plan.completed',
     'plan.execution_outcome',
   ]);
-  assert.equal(events[0].payload.classification, 'XS');
-  assert.equal(events[1].payload.classification, 'M');
-  assert.equal(events[1].payload.previous_classification, 'S');
+  for (const event of events) {
+    assert.equal(event.schema_version, 1);
+    assert.match(event.event_id, /^plan_evt_/);
+    assert.equal(event.plan_run_id, start.planRunId);
+    assert.match(event.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(event.feature_root, '.spectre/features/cli');
+    assert.equal(event.scope_hash, 'a'.repeat(64));
+  }
+  assert.equal(events[0].payload.size, 'XS');
+  assert.equal(events[0].payload.shape, 'ATOMIC');
+  assert.equal(events[0].payload.probe_used, true);
+  assert.equal(events[0].payload.probe_sufficient, true);
+  assert.equal(events[0].payload.protected_boundaries.length, 1);
+  assert.match(events[0].payload.protected_boundaries[0].invariant_hash, /^[a-f0-9]{64}$/);
+  assert.match(events[0].payload.protected_boundaries[0].failure_mode_hash, /^[a-f0-9]{64}$/);
+  assert.equal(events[1].payload.observed_size, 'M');
+  assert.equal(events[1].payload.initial_size, 'S');
+  assert.equal(events[1].payload.regret_direction, 'LARGER');
+  assert.equal(events[2].payload.finding_count, 2);
+  assert.equal(events[2].payload.structure_after, 4);
+  assert.equal(events[3].payload.gate_kind, 'final');
+  assert.equal(events[3].payload.change_category, 'none');
+  assert.deepEqual(events[4].payload.artifact_hashes, ['c'.repeat(64), 'd'.repeat(64)]);
+  assert.equal(events[4].payload.planning_elapsed_ms, 1234);
+  assert.equal(events[5].execution_run_id, 'run_11111111-1111-4111-8111-111111111111');
+  assert.equal(events[5].payload.task_count, 9);
+  assert.equal(events[5].payload.proof_result, 'PASS');
+  assert.deepEqual(events[5].payload.surprise_codes, ['UNPLANNED_DEPENDENCY']);
   assert.equal(events[5].payload.authoritative, false);
 });
 
