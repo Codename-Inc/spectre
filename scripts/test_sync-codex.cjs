@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -18,6 +19,17 @@ function tempRoot() {
 function writeFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
+}
+
+function repositoryTokenCount(repoRoot, filePath) {
+  const output = execFileSync(
+    process.execPath,
+    [path.join(repoRoot, 'scripts', 'count-tokens.js'), filePath],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  const match = output.match(/^Tokens: ([\d,]+)$/m);
+  assert.ok(match, `missing exact token count for ${filePath}`);
+  return Number(match[1].replaceAll(',', ''));
 }
 
 function createFixture(root) {
@@ -751,35 +763,57 @@ test('goal prompts preserve execute-owned proof closure', () => {
   }
 });
 
-test('plan generates portable strict goal prompts after task artifacts are final', () => {
+test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration authority', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
-    const planPath = path.join(
-      repoRoot,
-      'plugins',
-      rootName,
-      'skills',
-      'spectre-plan',
-      'SKILL.md',
-    );
+    const planPath = path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan', 'SKILL.md');
+    const routePath = path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan-route', 'SKILL.md');
+    assert.ok(fs.existsSync(routePath), `${rootName} must contain spectre-plan-route`);
     const plan = fs.readFileSync(planPath, 'utf8');
-    const light = plan.match(/\*\*LIGHT\*\* → ([^\n]+)/)?.[1] || '';
-    const standard = plan.match(/\*\*STANDARD\*\* → ([^\n]+)/)?.[1] || '';
-    const comprehensive = plan.match(/\*\*COMPREHENSIVE\*\* → ([^\n]+)/)?.[1] || '';
+    const route = fs.readFileSync(routePath, 'utf8');
+    const routeCalls = plan.match(/Skill\(spectre-plan-route\)/g) || [];
 
-    assert.ok(light.indexOf('spectre-goal') > light.indexOf('spectre-create_tasks'));
-    assert.ok(standard.indexOf('spectre-goal') > standard.indexOf('spectre-create_tasks'));
-    assert.ok(
-      comprehensive.indexOf('spectre-goal') > comprehensive.indexOf('spectre-task_review'),
-    );
-    assert.ok(comprehensive.indexOf('--tasks-only') < comprehensive.indexOf('spectre-task_review'));
-    assert.ok(comprehensive.indexOf('--finalize-index') > comprehensive.indexOf('spectre-task_review'));
-    assert.ok(comprehensive.indexOf('validate-pair') > comprehensive.indexOf('--finalize-index'));
-    assert.ok(comprehensive.indexOf('spectre-goal') > comprehensive.indexOf('validate-pair'));
-    assert.match(plan, /MICRO skips goal-prompt artifacts/);
+    assert.match(route, /user-invocable: false/);
+    assert.match(route, /plan-routing\/v1/);
+    for (const field of [
+      'shape', 'uncertainty', 'evidence', 'protected_boundaries', 'task_graph_risk',
+      'design_authority_required', 'size', 'route', 'rationale',
+    ]) assert.match(route, new RegExp(`\\b${field}\\b`));
+    for (const size of ['XS', 'S', 'M', 'L', 'XL']) assert.match(route, new RegExp(`\\b${size}\\b`));
+    assert.match(route, /ATOMIC[^\n]*LOW[^\n]*XS/);
+    assert.match(route, /ATOMIC\/DIRECT[^\n]*LOW[^\n]*S/);
+    assert.match(route, /DIRECT[^\n]*MODERATE\/HIGH[^\n]*M/);
+    assert.match(route, /STRUCTURED[^\n]*LOW\/MODERATE[^\n]*L/);
+    assert.match(route, /STRUCTURED[^\n]*(?:HIGH uncertainty|HIGH task-graph risk)[^\n]*XL/);
+    assert.match(route, /threatened_invariant/);
+    assert.match(route, /failure_mode/);
+    assert.match(route, /at least S/);
+    assert.match(route, /never directly selects L or XL/);
+    assert.match(route, /exactly one bounded classification probe/);
+    assert.match(route, /missing evidence alone is not complexity/i);
+    assert.match(route, /KEEP \| RERUN_SMALLER \| RERUN_LARGER/);
+    assert.match(route, /never invoke planning children, write artifacts, emit telemetry, or present gates/i);
+
+    assert.equal(routeCalls.length, 2);
+    assert.doesNotMatch(plan, /ATOMIC[^\n]*LOW[^\n]*XS/);
+    assert.doesNotMatch(plan, /≤1-file|≤5 files|Hard-stops:|automatic COMPREHENSIVE/i);
+    assert.doesNotMatch(route, /≤1-file|≤5 files|Hard-stops:|automatic COMPREHENSIVE/i);
+    assert.match(plan, /immutable canonical scope/i);
+    assert.match(plan, /design-authority gate/i);
+    assert.match(plan, /final pre-code approval/i);
+    assert.match(plan, /every size/i);
+    assert.match(plan, /one plan-review pipeline/i);
+    assert.match(plan, /XL[^\n]*spectre-task_review[^\n]*--finalize-index[^\n]*validate-pair[^\n]*spectre-goal/);
     assert.match(plan, /goal-prompts\.md/);
     assert.match(plan, /Skill\(spectre-goal\)/);
+    assert.match(plan, /Research agents return evidence only/i);
+    assert.match(plan, /reviewer write surfaces/i);
+    assert.match(plan, /never silently rerun/i);
+    assert.match(plan, /DONE when/i);
+
+    assert.ok(repositoryTokenCount(repoRoot, planPath) < 2000);
+    assert.ok(repositoryTokenCount(repoRoot, routePath) < 2000);
   }
 });
 
