@@ -458,7 +458,7 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
   }
 });
 
-test('spectre-code_review is one final high-effort review and keeps launcher timing out of the reviewer prompt', () => {
+test('spectre-code_review is one final falsification-first review with launcher-only timing', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const skillPaths = [
     path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-code_review', 'SKILL.md'),
@@ -467,20 +467,24 @@ test('spectre-code_review is one final high-effort review and keeps launcher tim
 
   for (const skillPath of skillPaths) {
     const skill = fs.readFileSync(skillPath, 'utf8');
-    assert.match(skill, /one comprehensive adversarial review/);
-    assert.match(skill, /Trigger at the final review boundary/);
+    assert.match(skill, /final adversarial review/);
+    assert.match(skill, /final boundary to falsify correctness, safety, production readiness, and requirement delivery/);
+    assert.match(skill, /Try to prove the work wrong, unsafe, unreachable, or unable to meet requirements/);
+    assert.match(skill, /Falsify; do not confirm/);
+    assert.match(skill, /Actively seek counterexamples, broken invariants, failure paths, false-positive tests, unreachable outcomes/);
     assert.match(skill, /--effort high/);
-    assert.match(skill, /Allow up to 20 minutes for completion/);
-    assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
-    assert.match(skill, /no minimum duration/);
+    assert.match(skill, /20-minute launcher-side poll limit/);
+    assert.match(skill, /do not pass duration guidance to the reviewer/i);
+    assert.match(skill, /Quiet output is not failure/);
+    assert.match(skill, /A usable review ends semantic review/);
     assert.doesNotMatch(skill, /at least 20 minutes|--checkpoint|REVIEW_MODE = checkpoint/i);
-    assert.match(skill, /Requirement delivery \/ reachability/);
-    assert.match(skill, /Scope \/ dead paths/);
-    assert.match(skill, /finding_fingerprint = sha256/);
-    assert.match(skill, /invariant_family = sha256/);
+    assert.match(skill, /requirement reachability/i);
+    assert.match(skill, /scope\/dead paths/i);
+    assert.match(skill, /finding_fingerprint\s*=\s*sha256/);
+    assert.match(skill, /invariant_family\s*=\s*sha256/);
     assert.match(skill, /Requirement Delivery Coverage/);
     assert.match(skill, /Scope and Dead-Path Audit/);
-    assert.match(skill, /every applicable requirement\/AC has one evidence-backed delivery status/);
+    assert.match(skill, /every requirement\/AC has one evidence-backed status/);
   }
 });
 
@@ -635,9 +639,12 @@ test('plan-direct goal composition lets execute own proof closure from durable s
 
     assert.match(goal, /source plan plus (?:its )?`execution_state\.md`/i);
     assert.match(goal, /plan-direct mode from `execution_state\.md`/i);
-    assert.match(goal, /invoke `?Skill\(spectre-execute\)`? with the source-plan path/i);
+    assert.match(
+      goal,
+      /first action[^\n]*invoke and follow `Skill\(spectre-execute\)`:[^\n]*plan-direct mode passes the source-plan path/i,
+    );
     assert.match(goal, /execute owns single-pass proof invocation plus repair\/reinvoke closure/i);
-    assert.match(goal, /require only readable plan\/runtime inputs/i);
+    assert.match(goal, /only readable plan\/runtime inputs/i);
     assert.ok(executeIndex !== -1);
     assert.doesNotMatch(goal, /Skill\(spectre-prove\)/);
     assert.doesNotMatch(
@@ -706,23 +713,38 @@ test('goal prompts preserve execute-owned proof closure', () => {
     );
     const goal = fs.readFileSync(goalPath, 'utf8');
     const executeIndex = goal.indexOf('Skill(spectre-execute)');
+    const promptTemplate = goal.match(/```markdown\n([\s\S]*?)\n```/)?.[1] || '';
+    const requiredSections = [
+      '## Outcome',
+      '## Verification',
+      '## Constraints (must not)',
+      '## Scope',
+      '## Iteration',
+      '## Stop',
+    ];
 
     assert.match(goal, /goal-prompts\.md/);
-    assert.match(goal, /Portable strict/);
-    assert.match(goal, /\*\*Outcome\*\*/);
-    assert.match(goal, /\*\*Verification\*\*/);
-    assert.match(goal, /\*\*Constraints/);
-    assert.match(goal, /\*\*Scope/);
-    assert.match(goal, /\*\*Iteration\*\*/);
-    assert.match(goal, /\*\*Stop\*\*/);
+    assert.match(goal, /contains exactly one copy-ready goal prompt/);
+    assert.match(goal, /no title, preamble, manifest, selection note, rationale, or compact alternative/i);
+    assert.ok(promptTemplate.startsWith('/goal '));
+    for (const section of requiredSections) {
+      assert.match(promptTemplate, new RegExp(`\\n\\n${section.replace(/[()]/g, '\\$&')}\\n\\n`));
+    }
+    for (let i = 1; i < requiredSections.length; i += 1) {
+      assert.ok(promptTemplate.indexOf(requiredSections[i]) > promptTemplate.indexOf(requiredSections[i - 1]));
+    }
     assert.ok(executeIndex !== -1);
+    assert.match(
+      promptTemplate,
+      /^\/goal [^\n]*First action: YOU MUST invoke Skill\(spectre-execute\)[^\n]*--orchestrated[^\n]*follow its loaded contract through DONE/i,
+    );
+    assert.match(promptTemplate, /Do not implement directly or substitute another workflow\./);
     assert.doesNotMatch(goal, /Skill\(spectre-prove\)/);
     assert.match(goal, /aggregate proof `PASS`/);
-    assert.match(goal, /execute DONE explicitly includes aggregate proof `PASS`/);
+    assert.match(promptTemplate, /through DONE, including aggregate proof PASS/);
     assert.match(goal, /transcript/i);
-    assert.match(goal, /Structured prompt/);
-    assert.match(goal, /Compact prompt/);
-    assert.match(goal, /turn cap is a durable checkpoint/);
+    assert.doesNotMatch(goal, /Portable strict|Structured prompt|Compact prompt/);
+    assert.match(goal, /cap or visible 40-turn default is a durable checkpoint/);
     assert.match(goal, /resume when the platform permits/);
     assert.doesNotMatch(goal, /stop at the explicit cap/);
     assert.doesNotMatch(goal, /execute-only/i);
@@ -863,8 +885,8 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(createPlan, /Approved `Execution Mode: direct` plan.*spectre-execute/);
     assert.match(createPlan, /Approved LIGHT structured plan.*spectre-create_tasks/);
     assert.match(createPlan, /Approved STANDARD\/COMPREHENSIVE plan.*spectre-plan_review/);
-    assert.match(createTasks, /no adequate UX\/prototype acceptance source/);
-    assert.match(createTasks, /--orchestrated.*without user-facing Next Steps/);
+    assert.match(createTasks, /load-bearing user-facing behavior.*without adequate UX\/prototype acceptance evidence/);
+    assert.match(createTasks, /--orchestrated.*(?:without|omits) user-facing Next Steps/);
 
     assert.match(execute, /After review dispositions are recorded/);
     assert.match(execute, /Skill\(spectre-prove\)/);
@@ -1086,9 +1108,9 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
       createTasks,
       /Default pair:[^\n]*\{FEATURE_ROOT\}\/specs\/execute\.md[^\n]*\{FEATURE_ROOT\}\/specs\/tasks\.json/,
     );
-    assert.match(createTasks, /write a scoped pair with the same basename/);
+    assert.match(createTasks, /same-basename feature-scoped pairs/);
     assert.match(codeReview, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
-    assert.match(codeReview, /tuple before dispatch and after report creation/);
+    assert.match(codeReview, /candidate tuple[\s\S]*before dispatch and after report creation/i);
     assert.match(validate, /BASE_SHA.*HEAD_SHA.*DIFF_SHA256/);
     assert.match(validate, /tuple in the report/);
     assert.match(createPr, /EXPECTED_BASE_SHA.*EXPECTED_HEAD_SHA.*EXPECTED_DIFF_SHA256/);
@@ -1174,49 +1196,56 @@ test('review gates pin route-specific opposing models and retain native fallback
       const skill = fs.readFileSync(skillPath, 'utf8');
 
       const { claudeModel, effort } = routes[skillName];
-      assert.match(skill, new RegExp(`claude -p --model ${claudeModel} --effort ${effort}`));
-      assert.match(
-        skill,
-        new RegExp(
-          `codex exec -C "\\$PWD" -m gpt-5\\.6-sol -c 'model_reasoning_effort="${effort}"'`,
-        ),
-      );
-      assert.match(skill, /unavailable opposing runtimes never block completion/i);
-      assert.match(skill, /Native fallback/);
-      assert.match(skill, /Reviewer Model:/);
-      assert.match(skill, /Reviewer Effort:/);
-      assert.match(skill, /Invocation Route:/);
-      assert.match(skill, new RegExp(`Reviewer Model: ${claudeModel}`));
-      assert.match(skill, new RegExp(`Reviewer Effort: ${effort}`));
-      assert.match(skill, /Invocation Route: Codex -> Claude Code/);
-      assert.match(skill, /Reviewer Model: gpt-5\.6-sol/);
-      assert.match(skill, /Invocation Route: Claude Code -> Codex/);
-
       if (skillName === 'spectre-plan_review') {
-        assert.match(skill, /Allow up to 20 minutes for completion/);
-        assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
+        assert.match(skill, /high effort \(20-minute limit\)/);
+        assert.match(skill, /Codex -> Claude Code `opus`/);
+        assert.match(skill, /Claude Code -> Codex `gpt-5\.6-sol`/);
+        assert.match(skill, /Record stage\/runtime\/model\/effort\/route/);
+        assert.match(skill, /native `@spectre(?::|_)reviewer`/);
         assert.doesNotMatch(skill, /at least 20 minutes/);
       } else if (skillName === 'spectre-task_review') {
-        assert.match(skill, /task-review-safety\.mjs` `preflight/);
-        assert.match(skill, /task-review-safety\.mjs` `validate-report/);
-        assert.match(skill, /primary directly normalizes report-only contract defects/);
+        assert.match(skill, /pinned medium effort/);
+        assert.match(skill, /Codex (?:→|->) Claude(?: Code)? `opus`/);
+        assert.match(skill, /Claude(?: Code)? (?:→|->) Codex `gpt-5\.6-sol`/);
+        assert.match(skill, /one clean-context `@(?:spectre(?::|_)?)?reviewer`/);
+        assert.match(skill, /runtime\/model\/effort\/route/);
+      } else {
+        assert.match(skill, new RegExp(`claude -p --model ${claudeModel} --effort ${effort}`));
+        assert.match(
+          skill,
+          new RegExp(
+            `codex exec -C "\\$PWD" -m gpt-5\\.6-sol -c 'model_reasoning_effort="${effort}"'`,
+          ),
+        );
+        assert.match(skill, /Missing\/non-zero opposing CLI[\s\S]*permits one clean-context `@spectre(?::|_)reviewer`/i);
+        assert.match(skill, /Fallback once/);
+        assert.match(skill, new RegExp(`Claude Code\\|${claudeModel}\\|${effort}\\|Codex -> Claude Code`));
+        assert.match(skill, new RegExp(`Codex\\|gpt-5\\.6-sol\\|${effort}\\|Claude Code -> Codex`));
+        assert.match(skill, /native-subagent\|runtime-native\|inherited\|native-fallback/);
+      }
+
+      if (skillName === 'spectre-task_review') {
+        assert.match(skill, /scripts\/task-review-safety\.mjs/);
+        assert.match(skill, /helper's `preflight`/);
+        assert.match(skill, /helper `validate-report`/);
+        assert.match(skill, /primary may repair mechanical report\/schema metadata/);
         assert.doesNotMatch(skill, /same-route report-only repair/);
-        assert.match(skill, /post-write `preflight`/);
-        assert.match(skill, /final `validate-pair`/);
-        assert.match(skill, /Completed-review hard stop/);
+        assert.match(skill, /runs `validate-pair`/);
+        assert.match(skill, /one semantic review per authorized round/);
         assert.match(skill, /--review-again/);
         assert.match(skill, /task_review_attempt\.json/);
-        assert.match(skill, /MUST NOT run its `impact` operation/);
-        assert.match(skill, /Adversarial mode:.*does not delegate/);
-        assert.match(skill, /Allow up to 20 minutes for completion/);
-        assert.match(skill, /Do not pass launcher timeout or duration guidance to the reviewer/);
+        assert.match(skill, /retired `impact` operation/);
+        assert.match(skill, /Adversarial mode reviews the whole graph in one pass/);
+        assert.match(skill, /Allow up to 20 minutes; quiet output alone is not failure/);
+        assert.match(skill, /guidance, not an exhaustive taxonomy or a limit/);
+        assert.match(skill, /without avoidable rework/);
         assert.doesNotMatch(skill, /at least 20 minutes|do not stop early/i);
       }
     }
   }
 });
 
-test('plan review restores simplification and the Test Opportunity speed budget', () => {
+test('plan review establishes correctness before simplification with shared evidence', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -1225,28 +1254,51 @@ test('plan review restores simplification and the Test Opportunity speed budget'
       'utf8',
     );
 
-    assert.match(skill, /Plan-only simplification gate/);
-    assert.match(skill, /simplest path that delivers every agreed requirement/);
-    assert.match(
-      skill,
-      /A Test Opportunity is the smallest behavior unit: a function, route, bug fix, or acceptance criterion/,
-    );
-    assert.match(
-      skill,
-      /exactly one representative happy-path test and one representative primary-failure test — then stop/,
-    );
-    assert.match(skill, /Do not manufacture extra opportunities solely from files, layers, tasks/);
-    assert.match(skill, /Anti-expansion guardrail/);
-    assert.match(skill, /this review is simplification-only/);
-    assert.match(skill, /High.*scope-safe over-engineering/);
-    assert.match(skill, /No scope-safe deletion found.*valid only with requirement\/necessity traceability/);
-    assert.match(skill, /plan\.md` carries the accepted Test Opportunity inventory/);
-    assert.doesNotMatch(skill, /dispatch one independent subagent per review lens/i);
+    assert.match(skill, /smallest correct plan/);
+    assert.ok(skill.indexOf('2. **Correctness review.**') < skill.indexOf('4. **Simplification review.**'));
+    assert.match(skill, /plan_correctness\.md/);
+    assert.match(skill, /evidence ledger/i);
+    assert.match(skill, /retained constraints/i);
+    assert.match(skill, /at most one each: `@spectre(?::|_)finder`.*`@spectre(?::|_)analyst`.*`@spectre(?::|_)patterns`/);
+    assert.match(skill, /no second wave/i);
+    assert.match(skill, /Correctness review/);
+    assert.match(skill, /Simplification review/);
+    assert.match(skill, /No broad research\/delegation/);
+    assert.match(skill, /Stop on unresolved correctness Blocker\/High/);
+    assert.match(skill, /Each meaningful behavior\/contract starts with a representative happy and primary-failure test/);
+    assert.match(skill, /distinct requirements, public boundaries, credible regressions, or materially different risks/);
+    assert.match(skill, /Exclude duplicate, implementation-detail, and combinatorial coverage/);
+    assert.match(skill, /No deletion requires traceability for retained elements/);
+    assert.match(skill, /plan\.md` carries accepted tests and executable direct-mode Verification/);
+    assert.match(skill, /Run each stage fresh at high effort/);
+    assert.match(skill, /Write `plan_correctness\.md` first, then edit `plan\.md`/);
+    assert.match(skill, /Write `plan_review\.md` first, then edit `plan\.md`/);
+    assert.doesNotMatch(skill, /this review is simplification-only/i);
     assert.doesNotMatch(skill, /Completed-review hard stop/i);
     assert.doesNotMatch(skill, /--review-again/);
     assert.doesNotMatch(skill, /plan_review_attempt\.json/);
     assert.doesNotMatch(skill, /round_status/);
     assert.doesNotMatch(skill, /--mode adversarial|--mode full/);
+  }
+});
+
+test('TDD uses a risk-proportionate behavioral floor without weakening RED-before-GREEN', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const skill = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-tdd', 'SKILL.md'),
+      'utf8',
+    );
+
+    assert.match(skill, /smallest externally meaningful behavior or contract/);
+    assert.match(skill, /representative happy-path and one primary-failure test/);
+    assert.match(skill, /distinct requirement, public\/contract boundary, credible regression, or materially different risk/);
+    assert.match(skill, /every new test was observed failing for the expected reason before satisfying implementation/);
+    assert.match(skill, /every new observable behavior or nontrivial exported contract is tested/);
+    assert.match(skill, /Private helpers are normally covered through observable behavior/);
+    assert.doesNotMatch(skill, /exactly one happy-path and one primary-failure test/);
+    assert.doesNotMatch(skill, /every new function has a test/);
   }
 });
 
@@ -1275,29 +1327,30 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
     assert.match(createPlan, /Research agents return evidence only/i);
     assert.match(createPlan, /at every depth, reuse an existing substantive `## Technical Research` section/i);
     assert.match(createPlan, /orchestrated `spectre-plan` call never launches replacement research agents/i);
-    assert.match(createTasks, /primary directly writes the mode-selected artifact/i);
-    assert.match(createTasks, /Research agents return evidence only/i);
+    assert.match(createTasks, /primary directly writes only the selected canonical artifacts/i);
+    assert.match(createTasks, /research agents (?:return|supply) evidence only/i);
 
-    assert.match(planReview, /reviewer may write only `REVIEW_REPORT` and `plan\.md`/i);
-    assert.match(planReview, /writes the complete findings before editing `plan\.md`/i);
-    assert.match(planReview, /Resulting Plan Edit/i);
+    assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
+    assert.match(planReview, /Write `plan_correctness\.md` first, then edit `plan\.md`/i);
+    assert.match(planReview, /Write `plan_review\.md` first, then edit `plan\.md`/i);
+    assert.match(planReview, /addressed edit named/i);
     assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
-    assert.match(planReview, /primary directly normalizes report-only contract defects/i);
-    assert.match(planReview, /invalid or forbidden enum values such as `Low`/i);
-    assert.match(planReview, /never triggers another reviewer or fallback/i);
+    assert.match(planReview, /primary may normalize mechanics, never semantics/i);
+    assert.match(planReview, /failed schema\/hash\/scope checks/i);
+    assert.match(planReview, /normalization never launches fallback/i);
     assert.doesNotMatch(planReview, /allowedTools "[^"]*Task/);
 
-    assert.match(taskReview, /reviewer may write only `TASKS_JSON` and `REVIEW_REPORT`/i);
-    assert.match(taskReview, /writes the complete Findings section before editing `TASKS_JSON`/i);
+    assert.match(taskReview, /reviewer owns `TASKS_JSON` and `REVIEW_REPORT`/i);
+    assert.match(taskReview, /Write all findings before edits/i);
     assert.match(taskReview, /Resulting Task Edit/i);
-    assert.match(taskReview, /primary does not recreate or semantically reconfirm/i);
-    assert.match(taskReview, /primary directly normalizes report-only contract defects/i);
+    assert.match(taskReview, /primary may repair mechanical report\/schema metadata/i);
+    assert.match(taskReview, /may not invent findings, reinterpret them, or perform semantic task edits/i);
     assert.doesNotMatch(taskReview, /same-route report-only repair/i);
     assert.doesNotMatch(taskReview, /primary directly edits `TASKS_JSON`/i);
 
-    assert.match(codeReview, /primary directly normalizes report-only contract defects/i);
+    assert.match(codeReview, /primary may mechanically normalize report-only/i);
     assert.doesNotMatch(codeReview, /same-route report-only repair/i);
-    assert.match(codeReview, /Primary-agent semantic self-review is prohibited/i);
+    assert.match(codeReview, /Primary semantic self-review is prohibited/i);
   }
 });
 
@@ -1314,11 +1367,11 @@ test('code review is adversarial and self-finalizing execute delegates the final
       'SKILL.md',
     );
     const codeReview = fs.readFileSync(codeReviewPath, 'utf8');
-    assert.match(codeReview, /Adversarial review of what was just built/);
-    assert.match(codeReview, /Correctness/);
-    assert.match(codeReview, /Security/);
-    assert.match(codeReview, /Performance \/ reliability/);
-    assert.match(codeReview, /Overengineering/);
+    assert.match(codeReview, /Try to prove the work wrong/);
+    assert.match(codeReview, /Falsify; do not confirm/);
+    assert.match(codeReview, /Actively seek counterexamples, broken invariants, failure paths/);
+    assert.match(codeReview, /correctness; regression\/integration; security; performance\/reliability/i);
+    assert.match(codeReview, /materially avoidable overengineering/);
     assert.match(codeReview, /Evidence \/ Reproduction/);
     assert.doesNotMatch(codeReview, /Scores \(0(?:-|\u2013)10\)/);
 

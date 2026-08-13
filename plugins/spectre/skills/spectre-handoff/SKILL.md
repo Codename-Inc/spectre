@@ -1,198 +1,94 @@
 ---
 name: spectre-handoff
-description: Save a branch-keyed state snapshot for session resume
+description: Save a quiet, branch-keyed session snapshot with continuity, active work, and optional task/todo state for automatic resume. Use when ending or pausing a coding session; do not use for project documentation or workflow routing.
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # handoff
 
-## Input Handling
+## Purpose
 
-Treat the current command arguments as this workflow's input. When invoked from a slash command, use the forwarded `$ARGUMENTS` value.
+Persist the smallest complete state needed to resume the current branch. Finish in 2–3 tool calls and emit only the final confirmation.
 
+## Inputs
 
-# handoff: Fast Session State Snapshot
+- `$ARGUMENTS`: task name; default to the raw current branch.
+- Current conversation/session memory: goal, completed and active work, decisions, constraints, blockers, risks, open questions, next steps, active files/IDs, recent verification commands, outer workflow routing, and any nonempty agent-native todo list.
+- Late-bound repository state: raw branch, HEAD, worktree status, canonical/legacy handoff history, and optional healthy `bd` tasks labeled with the branch.
 
-Generate progress update, gather context, output structured JSON for session resume. Output: `{timestamp}_handoff.json` in `.spectre/handoffs/{branch}/`.
+## Working Set
 
-**Performance Target**: 2-3 tool calls depending on session history
+- `CANONICAL_DIR=.spectre/handoffs/{raw-branch}`; slash-containing branches intentionally create nested directories.
+- `LEGACY_DIR=docs/tasks/{raw-branch}/session_logs` is read-only fallback history.
+- Canonical `*_handoff.json` history wins. Use matching legacy history only when canonical history is empty; count that selected history so the first canonical handoff continues its numbering.
+- New handoffs and todo snapshots write only under `CANONICAL_DIR`. Resolve timestamp, selected history directory, and output path once and pass them literally; never reconstruct branch identity from paths.
 
-**CRITICAL**: Do not narrate or explain what you're doing. No "Session count is 0, so..." or "Let me gather context...". Just execute the steps silently and output ONLY the final confirmation message. Every token matters at end of session.
+## Outputs + DONE
 
-## ARGUMENTS
+Write `{timestamp}_handoff.json` as valid JSON with this exact v1.1 shape:
 
-<ARGUMENTS>
-$ARGUMENTS
-</ARGUMENTS>
-
-## Step 1: Gather Context (Single Bash Call)
-
-- **Action** — GatherContext: Run ONE bash command:
-
-```bash
-branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-canonical_dir=".spectre/handoffs/${branch}"
-legacy_dir="docs/tasks/${branch}/session_logs"
-mkdir -p "$canonical_dir"
-
-# Canonical history wins. Matching legacy history is read only when canonical
-# history is absent, allowing the first canonical handoff to continue numbering.
-canonical_count=$(find "$canonical_dir" -maxdepth 1 -type f -name '*_handoff.json' 2>/dev/null | wc -l | xargs)
-if [ "$canonical_count" -gt 0 ]; then
-  history_dir="$canonical_dir"
-  session_count="$canonical_count"
-else
-  history_dir="$legacy_dir"
-  session_count=$(find "$legacy_dir" -maxdepth 1 -type f -name '*_handoff.json' 2>/dev/null | wc -l | xargs)
-fi
-session_number=$((session_count + 1))
-ts="$(date +%Y-%m-%d-%H%M%S)"
-output_path="${canonical_dir}/${ts}_handoff.json"
-
-beads_available=false
-beads_tasks='[]'
-beads_count=0
-
-if command -v bd &>/dev/null && bd doctor &>/dev/null; then
-  beads_available=true
-  open=$(bd list --label "$branch" --status open --json 2>/dev/null || echo '[]')
-  in_prog=$(bd list --label "$branch" --status in_progress --json 2>/dev/null || echo '[]')
-  blocked=$(bd list --label "$branch" --status blocked --json 2>/dev/null || echo '[]')
-  beads_tasks=$(echo "$open $in_prog $blocked" | jq -s 'add // []')
-  beads_count=$(echo "$beads_tasks" | jq 'length' 2>/dev/null || echo 0)
-fi
-
-cat << EOF
-{
-  "branch": "$branch",
-  "commit": "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)",
-  "wip_count": $(git status --porcelain 2>/dev/null | wc -l | xargs),
-  "ts": "$ts",
-  "session_count": $session_count,
-  "session_number": $session_number,
-  "history_path": "$history_dir",
-  "output_path": "$output_path",
-  "beads_available": $beads_available,
-  "beads_count": $beads_count,
-  "beads": $beads_tasks
-}
-EOF
-```
-
-**Output**: JSON with branch, commit, wip_count, ts, session_count, session_number, literal history/output paths, beads_available, beads_count, beads[]
-
-## Step 2: Compose Handoff Data
-
-- **Action** — ComposeProgressUpdate: From session memory, compose using "WE" voice:
-
-  | Field | Required | Description |
-  |-------|----------|-------------|
-  | summary | ✓ | Slack-style paragraph a human would read |
-  | goal | ✓ | What we're building + success criteria |
-  | accomplished | ✓ | What we completed (2-5 bullets) |
-  | now | ✓ | **What you were actively working on when session ended** (critical!) |
-  | next_steps | ✓ | Upcoming work (2-4 bullets); first item preserves the outer workflow's already-selected next skill + reason |
-  | confidence | ✓ | high / medium / low |
-  | constraints | | Known constraints or assumptions |
-  | decisions | | Key decisions made (0-3 bullets) |
-  | blockers | | Things blocking progress |
-  | open_questions | | Questions needing answers |
-  | risks | | Identified risks |
-
-  **Tone**: "We finished the auth refactor and got tests passing. Hit a snag with OAuth callback - next we'll tackle session management."
-
-- **Action** — BuildWorkingSet: Capture active context:
-  - `key_files`: Files actively edited
-  - `active_ids`: Beads task IDs in progress
-  - `recent_commands`: Recent terminal commands (test, build, etc.)
-
-Do not independently re-route the workflow. When the current outer skill already emitted `Next (recommended)`, preserve that exact skill and its observed reason as the first `next_steps` item; include canonical artifact paths in `key_files`.
-
-- **Action** — BuildBeadsTree (if available): From beads array, build hierarchy (epic → tasks → subtasks). Include task IDs for resume.
-
-- **Action** — BuildTodoSnapshot (when available): If the current runtime exposes a nonempty agent-native todo list in the current conversation/tool state, serialize that current list with its statuses. After the handoff write, save the exact snapshot to `${canonical_dir}/${ts}_todos.json` and update `${canonical_dir}/todos_history.json`, retaining the five newest snapshots. These are canonical-only writes: never write or update todo files in `legacy_dir`. If no nonempty agent-native todo state is available, do not invent a snapshot and do not create either file.
-
-## Step 3: Conditional Write
-
-Check `session_count` from Step 1:
-
-### If session_count = 0 (First Session)
-
-**Do not narrate. Just write the file and output the confirmation.**
-
-Write directly to the literal `output_path` from Step 1: `.spectre/handoffs/{branch}/{ts}_handoff.json`.
-
-**JSON Schema**:
 ```json
 {
   "version": "1.1",
-  "timestamp": "{ts}",
-  "branch_name": "{branch}",
-  "task_name": "{ARGUMENTS or branch}",
-  "session_number": {session_number},
+  "timestamp": "YYYY-MM-DD-HHMMSS",
+  "branch_name": "raw branch",
+  "task_name": "argument or raw branch",
+  "session_number": 1,
   "progress_update": {
     "summary": "string",
     "goal": "string",
-    "accomplished": ["string"],
-    "now": "string (critical for resume)",
-    "next_steps": ["string"],
+    "accomplished": [],
+    "now": "string",
+    "next_steps": [],
     "confidence": "high|medium|low",
-    "constraints": ["string"],
-    "decisions": ["string"],
-    "blockers": ["string"],
-    "open_questions": ["string"],
-    "risks": ["string"]
+    "constraints": [],
+    "decisions": [],
+    "blockers": [],
+    "open_questions": [],
+    "risks": []
   },
   "working_set": {
-    "key_files": ["path"],
-    "active_ids": ["bd-xxxxx"],
-    "recent_commands": ["command"]
+    "key_files": [],
+    "active_ids": [],
+    "recent_commands": []
   },
-  "beads": {  // OMIT ENTIRE SECTION if beads_available=false OR beads_count=0
+  "beads": {
     "available": true,
-    "workspace_label": "{branch}",
-    "task_count": "number",
-    "epic_id": "bd-xxxxx|null",
-    "epic_title": "string|null",
-    "tasks": [{"id", "title", "status", "type", "parent", "children", "labels"}]
+    "workspace_label": "raw branch",
+    "task_count": 1,
+    "epic_id": null,
+    "epic_title": null,
+    "tasks": [{"id":"", "title":"", "status":"", "type":"", "parent":null, "children":[], "labels":[]}]
   },
   "context": {
     "wip_state": "uncommitted|clean",
-    "last_commit": "abc1234"
+    "last_commit": "short SHA"
   }
 }
 ```
 
-Then respond: "✓ Handoff saved: {path}. First session recorded. Next session auto-resumes from this context."
+Use “we” voice and empty arrays when optional content is absent. `now` identifies the exact interrupted work. Omit `beads` unless `bd doctor` succeeds and matching `open|in_progress|blocked` tasks exist. On continuations, `@spectre:sync` may add `continuity` while preserving current-session priority and schema.
 
-### If session_count >= 1 (Continuation)
+When a nonempty agent-native todo list exists, also write its exact statuses to `{timestamp}_todos.json` and update `todos_history.json` to retain the five newest snapshots. Otherwise create neither file.
 
-**Do not narrate. Just spawn the subagent and output the confirmation when done.**
+DONE when paths/numbering follow the selected-history rule; current `summary`, `now`, `accomplished`, `next_steps`, confidence, working set, and session number are preserved; optional `beads` is omitted when unavailable/empty; JSON reparses; and only the applicable canonical files changed.
 
-Spawn `@spectre:sync` subagent with the composed data and the literal paths returned by Step 1:
+## Method / guardrails
 
-```
-<current_session>
-{full JSON object you composed above}
-</current_session>
+1. Gather repository/history/task state in one shell call: resolve raw branch (fallback `unknown`), short HEAD, worktree count, canonical and legacy counts, selected history, next session number, timestamp/output path, and healthy branch-labeled `bd` tasks. Create only `CANONICAL_DIR`.
+2. Compose the current snapshot from session memory. Preserve the outer workflow’s already-selected `Next (recommended)` skill and observed reason verbatim as the first next step; include its canonical artifacts in `key_files`. Do not independently reroute or invent todo state.
+3. If selected `session_count = 0`, write the handoff directly. Otherwise dispatch exactly one `@spectre:sync` with the full current JSON inside `<current_session>`, plus the literal selected history directory and canonical output file inside `<session_history_path>` and `<handoff_output_path>`. It reads at most the three newest prior handoffs and writes the final file.
+4. Treat canonical artifacts as shared state; write no intermediate documents. Verify the final JSON and any todo-history retention before claiming success.
 
-<session_history_path>{history_path}</session_history_path>
-<handoff_output_path>{output_path}</handoff_output_path>
-```
+## Handoff
 
-The sync agent will:
-1. Read up to 3 previous `*_handoff.json` files from the literal history path
-2. Synthesize current context with historical arc
-3. Write the final `{ts}_handoff.json` to the literal canonical output path
-4. Return the file path
+- First session: `✓ Handoff saved: {path}. First session recorded. Next session auto-resumes from this context.`
+- Continuation: `✓ Handoff saved: {path}. Session {n} recorded with continuity from {x} previous sessions. Next session auto-resumes from this context.`
+- Output only the applicable line; do not narrate execution.
 
-Then respond: "✓ Handoff saved: {path}. Session {n} recorded with continuity from {x} previous sessions. Next session auto-resumes from this context."
+## Escalate-If
 
-## Path and Numbering Contract
+- The canonical file, continuation synthesis, JSON validation, or required todo writes fail: surface the concrete failure and do not claim the handoff was saved.
 
-- New handoffs write only to `.spectre/handoffs/{branch}/`; the raw branch name is used directly, so slash-containing branches intentionally create nested directories.
-- Canonical history wins. Matching legacy `docs/tasks/{branch}/session_logs/` handoffs are fallback read input only when there is no canonical history, and at most the three newest matching legacy handoffs are read.
-- `session_count` and `session_number` use canonical history, or matching legacy history only when there is no canonical history. The first canonical handoff therefore continues legacy numbering.
-- Pass the resolved history directory and canonical output file as literal paths to `@spectre:sync`. Neither skill nor agent reconstructs branch identity from those paths.
-- New todo snapshots and todo history, when agent-native todo state is available, write only to `${canonical_dir}/${ts}_todos.json` and `${canonical_dir}/todos_history.json`; matching legacy todo files are compatibility inputs for forget only.
+Next step: resume from the saved canonical handoff.

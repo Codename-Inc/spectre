@@ -14,32 +14,13 @@ const canonicalSkillDir = join(
 );
 const taskReview = readFileSync(join(canonicalSkillDir, "SKILL.md"), "utf8");
 
-test("production task review owns the tasks-first direct-write orchestration sequence", () => {
-  assert.match(
-    taskReview,
-    /claude -p --model opus --effort medium .*"\$REVIEW_PROMPT"/,
-  );
-  assert.match(
-    taskReview,
-    /codex exec -C "\$PWD" -m gpt-5\.6-sol -c 'model_reasoning_effort="medium"' .*"\$REVIEW_PROMPT"/,
-  );
-  assert.match(
-    taskReview,
-    /Reviewer Model: opus`, `Reviewer Effort: medium`/,
-  );
-  assert.match(
-    taskReview,
-    /Reviewer Model: gpt-5\.6-sol`, `Reviewer Effort: medium`/,
-  );
-
+test("production task review owns safety, semantic review, and deterministic closure", () => {
   const orderedContract = [
-    "task-review-safety.mjs` `preflight",
-    "launch it as a long-running process",
-    "poll",
-    "writes the complete Findings section before editing `TASKS_JSON`",
-    "task-review-safety.mjs` `validate-report",
-    "post-write `preflight`",
-    "On pass atomically set `round_status: complete`",
+    "helper's `preflight`",
+    "available opposite runtime",
+    "Write all findings before edits",
+    "helper `validate-report`",
+    "runs `validate-pair`",
   ];
   let previousIndex = -1;
   for (const phrase of orderedContract) {
@@ -48,87 +29,41 @@ test("production task review owns the tasks-first direct-write orchestration seq
     previousIndex = index;
   }
 
-  assert.match(taskReview, /Exit `2` stops reviewer launch/);
-  assert.match(taskReview, /advisories never block reviewer launch/i);
-  assert.match(taskReview, /closed consumer-safety report gate requires/);
+  assert.match(taskReview, /Hard failures stop; advisories inform the semantic reviewer/);
   assert.doesNotMatch(taskReview, /Index Alignment Summary/);
-  assert.match(taskReview, /final `validate-pair`/);
-  assert.match(taskReview, /Allow up to 20 minutes for completion/);
-  assert.match(taskReview, /primary does not recreate or semantically reconfirm/i);
-  assert.match(taskReview, /initialize it atomically immediately before the first launch/);
-  assert.match(taskReview, /On pass atomically set `round_status: complete`/);
-  assert.match(
-    taskReview,
-    /Do not pass launcher timeout or duration guidance to the reviewer/,
-  );
+  assert.match(taskReview, /Allow up to 20 minutes; quiet output alone is not failure/);
+  assert.match(taskReview, /primary may repair mechanical report\/schema metadata/i);
+  assert.match(taskReview, /attempt is `complete`/);
 });
 
-test("task review hard-stops after one completed report while recovering incomplete routes", () => {
-  assert.match(taskReview, /Completed-review hard stop/i);
+test("task review runs one authorized review while recovering incomplete routes", () => {
+  assert.match(taskReview, /one semantic review per authorized round/i);
   assert.match(taskReview, /--review-again/);
   assert.match(taskReview, /task_review_attempt\.json/);
-  assert.match(
-    taskReview,
-    /One completed semantic review means one semantically usable reviewer output, finalized as a valid report through primary-owned normalization when needed/i,
-  );
-  assert.match(
-    taskReview,
-    /missing or semantically unusable report[^\n]*MUST be recovered without `--review-again`/i,
-  );
-  assert.match(
-    taskReview,
-    /immediately dispatch the native fallback under the same round and report path/i,
-  );
-  assert.match(
-    taskReview,
-    /MUST NOT run its `impact` operation or use helper output to select, authorize, slice, or restart a semantic review/,
-  );
-  assert.match(
-    taskReview,
-    /small later deltas are handled by deterministic checks and direct edits, not sliced or full re-reviews/,
-  );
-  assert.match(taskReview, /failed post-check.*never triggers another semantic review/i);
-  assert.match(taskReview, /unresolved`, `applied`, `skipped`, or `scope-change/);
-  assert.match(taskReview, /pre_review_tasks_sha256/);
-  assert.match(taskReview, /post_review_tasks_sha256/);
+  assert.match(taskReview, /A completed report ends the round/);
+  assert.match(taskReview, /fallback under the same ledger\/report/);
+  assert.match(taskReview, /Resume incomplete or `report_ready` state instead of starting another review/);
+  assert.match(taskReview, /do not use its retired `impact` operation/);
+  assert.match(taskReview, /unresolved\|applied\|skipped\|scope-change/);
+  assert.match(taskReview, /pre\/post task hashes/);
   assert.doesNotMatch(taskReview, /task_review_state\.json|task-review-state\/v1/);
   assert.doesNotMatch(taskReview, /IMPACT_JSON|Rerun Parents:|Reused Findings:/);
 });
 
-test("production task review keeps semantic judgment with a non-delegating reviewer", () => {
-  assert.match(taskReview, /Deterministic \/ mixed \/ semantic ownership/);
-  assert.match(taskReview, /Requirement and Out-of-Bounds fidelity/);
-  assert.match(taskReview, /Acceptance-criterion adequacy and falsifiability/);
-  assert.match(taskReview, /Genuine RED behavior/);
-  assert.match(taskReview, /Real producer\/consumer meaning/);
-  assert.match(taskReview, /Reference relevance/);
-  assert.match(taskReview, /Severity and scope-safe classification/);
-  assert.match(
-    taskReview,
-    /Adversarial mode:.*does not delegate/is,
-  );
-  assert.match(taskReview, /edits only `TASKS_JSON` and `REVIEW_REPORT`/);
-
-  const reviewerPrompt = taskReview.match(
-    /`REVIEW_PROMPT` includes:([^\n]+)/,
-  )?.[1];
-  assert.ok(reviewerPrompt, "reviewer prompt contract must be present");
-  assert.doesNotMatch(
-    reviewerPrompt,
-    /at least 20 minutes|do not stop early|launcher timeout|duration guidance/i,
-  );
-  assert.match(reviewerPrompt, /write permission limited to `TASKS_JSON` and `REVIEW_REPORT`/i);
-  assert.doesNotMatch(reviewerPrompt, /EXECUTE_INDEX|Index Alignment/i);
-  const claudeRecipe = taskReview.match(
-    /claude -p --model opus --effort medium[^\n]+/,
-  )?.[0];
-  assert.ok(claudeRecipe, "Claude reviewer recipe must be present");
-  assert.doesNotMatch(
-    claudeRecipe,
-    /(?:^|[,\s"])Task(?:[,\s"]|$)/,
-    "the non-sharded Claude reviewer must not have delegation tools",
-  );
-  assert.doesNotMatch(taskReview, /--model fable|model_reasoning_effort="high"/);
+test("production task review gives broad guidance without limiting reviewer judgment", () => {
+  assert.match(taskReview, /goal is not checklist completion/i);
+  assert.match(taskReview, /correctly and completely translates the reviewed plan/i);
+  assert.match(taskReview, /guidance, not an exhaustive taxonomy or a limit/i);
+  assert.match(taskReview, /Coverage:/);
+  assert.match(taskReview, /Executability:/);
+  assert.match(taskReview, /Integration graph:/);
+  assert.match(taskReview, /Reference quality:/);
+  assert.match(taskReview, /any evidence-backed translation risk/i);
+  assert.match(taskReview, /without avoidable rework/i);
+  assert.match(taskReview, /Canonical scope and `plan\.md` remain immutable/);
+  assert.match(taskReview, /reviewer owns `TASKS_JSON` and `REVIEW_REPORT`/i);
+  assert.match(taskReview, /may not invent findings, reinterpret them, or perform semantic task edits/i);
+  assert.doesNotMatch(taskReview, /claude -p|codex exec|REVIEW_PROMPT/);
   assert.deepEqual(
     readdirSync(join(canonicalSkillDir, "scripts")).sort(),
     ["task-review-safety.mjs"],
@@ -170,12 +105,10 @@ test("review gates retain their route-specific models and efforts", () => {
     "utf8",
   );
 
-  assert.match(planReview, /claude -p --model opus --effort high/);
-  assert.match(planReview, /allowedTools "[^"]*Write,Edit[^"]*"/);
-  assert.match(
-    planReview,
-    /-m gpt-5\.6-sol -c 'model_reasoning_effort="high"'/,
-  );
+  assert.match(planReview, /high effort \(20-minute limit\)/);
+  assert.match(planReview, /Codex -> Claude Code `opus`/);
+  assert.match(planReview, /Claude Code -> Codex `gpt-5\.6-sol`/);
+  assert.match(planReview, /Reviewers write only their report and `plan\.md`/);
   assert.match(codeReview, /claude -p --model opus --effort high/);
   assert.match(
     codeReview,
@@ -185,14 +118,17 @@ test("review gates retain their route-specific models and efforts", () => {
     knowledge,
     /`spectre-task_review`[^\n]*`--model opus --effort medium`[^\n]*model_reasoning_effort="medium"/,
   );
-  assert.match(taskReview, /allowedTools "[^"]*Write,Edit[^"]*"/);
+  assert.match(taskReview, /pinned medium effort/);
+  assert.match(taskReview, /Codex → Claude `opus`/);
+  assert.match(taskReview, /Claude → Codex `gpt-5\.6-sol`/);
+  assert.match(taskReview, /no other canonical artifact may change/i);
   assert.match(
     knowledge,
     /`spectre-code_review`[^\n]*`--model opus --effort high`[^\n]*model_reasoning_effort="high"/,
   );
 });
 
-test("plan review authors its report and applies only scope-safe plan edits", () => {
+test("plan review runs correctness before simplification and applies only scope-safe plan edits", () => {
   const plan = readFileSync(
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
     "utf8",
@@ -209,9 +145,10 @@ test("plan review authors its report and applies only scope-safe plan edits", ()
     "utf8",
   );
 
-  assert.match(plan, /Single automatic plan review/);
+  assert.match(plan, /Single automatic plan-review pipeline/);
   assert.match(plan, /invokes `spectre-plan_review` at most once, before task generation \(structured\) or goal generation \(direct\)/);
-  assert.match(plan, /Later artifact edits or scope-preserving feedback never trigger another plan review/);
+  assert.match(plan, /exactly one correctness stage followed by one simplification stage/);
+  assert.match(plan, /Later artifact edits or scope-preserving feedback never trigger another pipeline/);
   assert.match(plan, /do not re-run `plan_review` or `task_review`/);
   assert.match(plan, /Explicit review request/);
   assert.match(plan, /invoke `spectre-plan_review` normally/);
@@ -220,18 +157,19 @@ test("plan review authors its report and applies only scope-safe plan edits", ()
     /apply the smallest `plan\.md` edit, re-run `plan_review/,
   );
 
-  assert.match(planReview, /if it exists, write `plan_review_\{timestamp\}\.md`/);
-  assert.match(planReview, /writes the complete findings before editing `plan\.md`/i);
-  assert.match(planReview, /reviewer may write only `REVIEW_REPORT` and `plan\.md`/i);
+  assert.match(planReview, /reviews\/plan_correctness\.md/);
+  assert.match(planReview, /reviews\/plan_review\.md/);
+  assert.match(planReview, /post-edit hash matches `plan\.md`/i);
+  assert.match(planReview, /Write `plan_correctness\.md` first, then edit `plan\.md`/i);
+  assert.match(planReview, /Write `plan_review\.md` first, then edit `plan\.md`/i);
+  assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
   assert.match(planReview, /addressed.*skipped.*unresolved.*scope-change/is);
-  assert.match(planReview, /resulting plan edit/i);
-  assert.match(planReview, /writeback-only continuation/i);
-  assert.match(planReview, /does not repeat semantic review/i);
-  assert.match(planReview, /primary validates/i);
-  assert.match(planReview, /does not recreate or semantically reconfirm/i);
-  assert.match(planReview, /Once a route returns a semantically usable review, the semantic review is complete/i);
-  assert.match(planReview, /invalid or forbidden enum values such as `Low`/i);
-  assert.match(planReview, /never triggers another reviewer or fallback/i);
+  assert.match(planReview, /addressed edit named/i);
+  assert.match(planReview, /continue on the same route/i);
+  assert.match(planReview, /failed schema\/hash\/scope checks/i);
+  assert.match(planReview, /primary may normalize mechanics, never semantics/i);
+  assert.match(planReview, /Usable review is terminal/i);
+  assert.match(planReview, /normalization never launches fallback/i);
   assert.doesNotMatch(planReview, /same-route report-only repair/i);
   assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
   assert.doesNotMatch(planReview, /Completed-review hard stop/i);
@@ -249,9 +187,21 @@ test("usable review reports are normalized by the primary without reviewer repai
 
   for (const name of ["spectre-plan_review", "spectre-task_review", "spectre-code_review"]) {
     const review = skill(name);
-    assert.match(review, /Once a route returns a semantically usable review, the semantic review is complete/i);
-    assert.match(review, /primary directly normalizes report-only contract defects/i);
-    assert.match(review, /invalid (?:or forbidden )?enum values/i);
+    if (name === "spectre-plan_review") {
+      assert.match(review, /Usable review is terminal/i);
+      assert.match(review, /primary may normalize mechanics, never semantics/i);
+      assert.doesNotMatch(review, /same-route report-only repair/i);
+      continue;
+    } else if (name === "spectre-task_review") {
+      assert.match(review, /primary may repair mechanical report\/schema metadata/i);
+      assert.match(review, /may not invent findings, reinterpret them, or perform semantic task edits/i);
+      assert.doesNotMatch(review, /same-route report-only repair/i);
+      continue;
+    } else {
+      assert.match(review, /A usable review ends semantic review/i);
+    }
+    assert.match(review, /primary may mechanically normalize report-only/i);
+    assert.match(review, /severity enums/i);
     assert.doesNotMatch(review, /same-route report-only repair/i);
   }
 });
@@ -287,11 +237,14 @@ test("comprehensive planning reviews tasks before finalizing execute.md", () => 
 
   assert.match(createTasks, /--tasks-only/);
   assert.match(createTasks, /--finalize-index/);
-  assert.match(createTasks, /compact structural projection/i);
-  assert.match(createTasks, /finalization.*must not revise task semantics/is);
+  assert.match(
+    createTasks,
+    /project only `meta`.*phase ids\/titles.*parent ids\/titles.*subtask ids.*`predecessor`.*`unblocks`.*`risk`/is,
+  );
+  assert.match(createTasks, /leave JSON byte-for-byte unchanged/i);
   assert.match(createTasks, /Phase 0.*real external dependency or capability precondition/is);
   assert.doesNotMatch(createTasks, /always include for COMPREHENSIVE/);
   assert.doesNotMatch(createTasks, /COMPREHENSIVE = full graph with Phase 0/);
-  assert.match(taskReview, /writeback-only continuation/i);
-  assert.match(taskReview, /does not repeat semantic review/i);
+  assert.match(taskReview, /continue the same reviewer route for writeback only/i);
+  assert.match(taskReview, /one semantic review per authorized round/i);
 });

@@ -1,86 +1,68 @@
 ---
 name: "spectre-prototype"
-description: "Generate a single self-contained, clickable HTML prototype to make a feature visible before planning — resolving ambiguity pre-scope, validating flows pre-plan, or rendering an approved UX spec for stakeholder review. Triggers on \"prototype this\", \"mock up the UI\", \"make a clickable preview\", or a mid-flow `ux` Stage 1→2 transition. Do NOT trigger to write production app code, build a multi-file frontend, or plan/scope the work itself — this produces one throwaway HTML file only."
+description: "Create one self-contained HTML prototype to resolve ambiguity, validate flows, or render UX before planning. Use for prototype/mockup/preview requests and UX Stage 1→2; not for production code, multi-file apps, scope, or planning."
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # prototype
 
-Produce one portable, self-contained HTML file that makes a feature visible before it is planned. Output saved to `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`.
+## Purpose
+
+Produce one HTML prototype at `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`. The primary owns it; agents provide evidence only.
 
 ## Inputs
-- `$ARGUMENTS` (explicit feature name/root or descendant artifact, feature description, optional `--explore` flag).
-- Env markers: `FROM_UX=true`, `FROM_KICKOFF=true`.
-- On-disk context beneath the resolved `FEATURE_ROOT` (read FULLY, no offset/limit): `concepts/scope.md`, `specs/prd.md`, `ux.md`, then legacy/fallback `specs/ux.md`.
 
-## Mode + fidelity (detect most-context-first; this drives intake and faithfulness)
-| Mode | Signal | Fidelity | Job |
+- `$ARGUMENTS`: feature root/name or descendant, description, optional `--explore`; markers `FROM_UX=true`, `FROM_KICKOFF=true`.
+- Read existing `concepts/scope.md`, `specs/prd.md`, `ux.md`, then legacy `specs/ux.md` fully before questions.
+- Silently read repo-root `product.md` when present, plus `design.md` or fallback `design/design.md`; apply them; do not mention missing files.
+
+| Mode | Signal | Fidelity | Contract |
 |---|---|---|---|
-| post-ux | complete `ux.md` (has Screens, Layouts, Components, Interactions, States, Content) | high-fi | **render the spec faithfully** — do not invent screens or contradict documented states/copy |
-| flows-only ux | `FROM_UX=true`, or ux.md with flows but missing Stage-2 sections | mid-fi | flows are approved input; you make the UI calls |
-| explore | `--explore` flag | low-fi (grayscale, layout-only) | concept unvalidated |
-| post-scope | scope.md exists, no ux.md | mid-fi | validate scope |
-| standalone | none | mid-fi | ask what we're prototyping |
+| `post-ux` | complete `ux.md`: Screens, Layouts, Components, Interactions, States, Content | high | render faithfully; exact documented copy; no invented screens |
+| `flows-only ux` | `FROM_UX=true` or flows without complete Stage 2 | mid | preserve approved flows; choose UI details |
+| `explore` | `--explore` | low, grayscale/layout-only | visualize an unvalidated concept |
+| `post-scope` | scope, no UX | mid | validate scope |
+| `standalone` | no artifact | mid | establish what to prototype |
 
-## Working set
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
-- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
-- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before producing the prototype.
-- Pass the exact feature root unchanged to every routed child and read-only research prompt; a child never rederives it.
-- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Require a confirmed `.spectre/features/<feature-name>/` root for the prototype and cite the legacy source.
-- Stage 1 intake is tight (2–4 questions, never a form), followed by a gated parallel research-and-generate pass and single-threaded HTML writing.
+## Working Set
+
+- Resolve an explicit root/name, descendant, or unambiguous thread artifact; else allocate first free `.spectre/features/<kebab-name>[-N]/` and state it. Never select existing features by branch, recency, lifecycle, or directory scan; an explicitly unmanaged root blocks writes.
+- For a new root, create neutral `feature.json` (`schema_version`, `created_at`, `feature`, `feature_root`). If needed, create `.spectre/.gitignore` containing only `manifest.json`, `bin/`, `handoffs/`, `!features/`; never edit root `.gitignore`; warn if ignored.
+- The physical directory is authoritative. Repair stale metadata and pass the root unchanged. Legacy `docs/tasks/**` is readable but never moved/bulk-rewritten; output requires a confirmed canonical root.
+
+## Outputs + DONE
+
+The single HTML file contains:
+
+- `<!DOCTYPE html>`, viewport metadata, inline CSS, and inline end-of-body JavaScript.
+- A top-of-head comment beginning `Feature:` and `Feature Root:`, followed by Fidelity, Generated, Flow covered, Screens/states, Visual anchor, Source spec, Key assumptions, post-UX Filled assumptions, NOT included, and Next step.
+- A design-token comment for Primary, Accent, Surface, Text, Font, Border-radius, Spacing, mirrored as `:root` custom properties.
+- If multi-screen, vanilla-JS `display:block/none` navigation; one ordered `<section>` per screen, each with happy path plus an empty, error, or loading state.
+
+DONE when mode/fidelity/anchor are explicit; available context and research preceded generation; the primary authored and validated the file; documented UX is faithful; content is realistic; components reuse named classes; interactions have no console errors; and states, reuse, and portability pass. Surface failures as caveats.
 
 ## Method / guardrails
 
-primary-agent-only HTML implementation and validation is a hard ownership boundary.
+1. Reply before tools, except `FROM_UX=true` may begin by reading `ux.md`; if no arguments or context, ask what to prototype.
+2. Ask 2–4 focused questions. Confirm fidelity and a visual anchor (colors, fonts, URL, or named aesthetic); if skipped, declare one. **Gate: wait unless `FROM_UX=true`.**
+3. After the gate, dispatch in parallel; each returns ≤2,000 tokens in-thread and writes no files:
+   - `@spectre:web-research`: 2–3 current references, interaction convention, and concrete palette/type/layout values; <400 words with citations.
+   - `@spectre:analyst`: post-UX extracts required sections and copy verbatim, marking spec-silent details as filled assumptions; otherwise synthesizes flow, screen states, realistic content, and components.
+   - `@spectre:patterns`: only for an existing app; return actual tokens and interaction conventions.
+4. After all findings return, the primary alone creates, edits, and validates the HTML; not even `@spectre:dev` modifies it.
 
-1. **Immediate reply, then detect.** Respond before any tool call (except reading `ux.md` when `FROM_UX=true`). If ARGUMENTS empty → ask what we're prototyping.
-2. **Read context before asking.** Read whichever of scope.md/prd.md/ux.md exist, fully; classify ux.md as complete / flows-only / absent → sets mode.
-3. **Confirm fidelity + visual anchor.** Recommend fidelity per the table; request a visual anchor (brand colors, font stack, reference URL, or named aesthetic e.g. "Linear-style"). If user skips, commit to a deliberate named aesthetic and call it out at the top of the file. **Gate: wait for confirmation** (auto-proceed only when `FROM_UX=true`).
-4. **Dispatch parallel read-only subagents** (roster fixed — do not add or rename):
-   - `@spectre:web-research` — 2–3 living UI references + the established convention for this interaction type + concrete palette/type/layout decisions for the anchor (hex, font families). Anti-slop forcing function: without it the model defaults to Inter + purple gradients. <400 words, cite sources.
-   - `@spectre:analyst` — **extract** mode (post-ux): pull Screens/Layouts/Components/Interactions/States/Content verbatim from ux.md; use documented copy EXACTLY; flag spec-silent details as "filled assumptions"; never invent screens. **synthesize** mode (else): primary flow, per-screen state list, realistic domain content (no Lorem ipsum), component inventory.
-   - `@spectre:patterns` — only if an existing app to anchor to: real design tokens, component conventions, interaction patterns (return actual hex/class values, not paths). Skip otherwise.
-   Return findings in-thread (compressed); write no intermediate docs or prototype files.
-5. **Implement directly (primary agent only).** After ALL subagent findings return, the primary agent must personally create, edit, iterate on, and validate the prototype HTML. Do not delegate any prototype implementation or file modification to `@spectre:dev` or another subagent. Subagents may provide findings only; they must not write or edit the prototype.
-
-### Required HTML structure (load-bearing — these prevent the known failure modes)
-1. `<!DOCTYPE html>` + minimal `<head>` (`<meta viewport>`, inline `<style>`).
-2. **Metadata comment** at top of `<head>` begins with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then records Fidelity · Generated (date) · Flow covered · Screens/states · Visual anchor · Source spec (feature-root-relative ux.md path or "synthesized from …") · Key assumptions · Filled assumptions (post-ux only) · NOT included · Next step.
-3. **Design-tokens comment** (Primary/Accent/Surface/Text/Font/Border-radius/Spacing) AND the same encoded as CSS custom properties on `:root`.
-4. **Nav bar** only if multi-screen — vanilla-JS `display:block/none` toggling. No router, no framework.
-5. **One `<section>` per screen**, in user-encounter order. Every screen shows the happy path AND ≥1 of: empty / error / loading state.
-6. Inline `<script>` at end of body for interactions. Vanilla JS only.
-
-### Hard constraints (positive form unless destructive)
-- Single self-contained file, **under 300KB**. Tailwind-via-CDN OK for mid/high-fi; skip for low-fi.
-- Portable assets only: inline SVG / data-URI / CSS shapes. **No `<img src="http…">`, no local relative paths (`./`, `../`), no custom WOFF.** Fonts: one Google-Fonts family (≤2 weights) or system.
-- **No generic AI aesthetic** (no default Inter/Roboto, no purple-on-white gradients). **No Lorem ipsum / placeholder filler.** **No happy-path-only screens.** **No broken interactivity** (no `href="#"` jumps, no console errors). **No inconsistent components** — each recurring element = one named CSS class, reused, never re-styled inline.
-
-## Outputs + DONE
-HTML prototype file at `{FEATURE_ROOT}/prototypes/{slug}_{MMDDYY}.html`; `mkdir -p` the prototypes subdir. DONE when:
-- [ ] Mode + fidelity detected; context docs read fully before any question; visual anchor captured (never left generic).
-- [ ] Subagents dispatched in parallel and all completed before generation.
-- [ ] The primary agent directly authored and validated the HTML; no subagent created or modified the prototype.
-- [ ] HTML is one self-contained file <300KB; Feature/Feature Root metadata + design-token blocks present; tokens on `:root`.
-- [ ] Every screen: happy path + ≥1 non-happy state; realistic content; inline SVG only; recurring components share one class; all interactions respond, no console errors.
-- [ ] Portability self-check run (size, external images, relative paths, component reuse, state coverage); any violation surfaced as a caveat, not silently shipped.
+Use inline SVG/data URIs/CSS shapes only: no remote images, relative assets, custom WOFF, filler, Inter/Roboto defaults, purple-on-white gradients, broken `href="#"`, happy-path-only screens, or inline restyling of recurring components. Use one Google family (≤2 weights) or system fonts. Tailwind CDN is mid/high-fi only.
 
 ## Handoff
-Present: path, size, screen count, fidelity, visual anchor, key assumptions, NOT-included list; tell user to `open` it in a browser and that it is fully shareable. Iterate on feedback (small tweaks → edit HTML; structural → re-run subagents + regen; re-run the portability check after any edit). **post-ux only:** surface filled assumptions and offer to promote selected ones into `ux.md` (edit the matching section, re-present with a one-line diff).
 
-Choose the first applicable route from the detected mode and observed assumptions:
+Report path, screens, fidelity, anchor, assumptions, filled assumptions, and NOT included; note it opens directly and is shareable. Revalidate every edit; structural feedback reruns research. Promote user-selected post-UX assumptions to the matching `ux.md` section and report a one-line diff.
 
-1. `explore` → `/spectre:scope`.
-2. `flows-only ux` → resume `/spectre:ux` Stage 2.
-3. `post-ux` with contradictions or material filled assumptions → resume `/spectre:ux`; otherwise → `/spectre:plan`.
-4. `post-scope` with unresolved flows/states/copy/segment behavior → `/spectre:ux`; with a validated, explicitly S/known-pattern scope → `/spectre:create_tasks`; otherwise → `/spectre:plan`.
-5. `standalone` without canonical scope → `/spectre:scope`; if scope exists, reclassify as `post-scope` and use rule 4.
+Route once by observed state: `explore` → `/spectre:scope`; `flows-only ux` → `/spectre:ux` Stage 2; `post-ux` contradictions/material assumptions → `/spectre:ux`, otherwise `/spectre:plan`; `post-scope` unresolved UX → `/spectre:ux`, validated S/known-pattern scope → `/spectre:create_tasks`, otherwise `/spectre:plan`; `standalone` without scope → `/spectre:scope`, otherwise reclassify as `post-scope`. Render exactly `Next (recommended): ... — because {mode + signal}.`, at most one conditional alternative, and optionally `Pause: /spectre:handoff {feature}` with the path and next step.
 
-Render exactly one `Next (recommended): ... — because {mode + observed signal}.` Add at most one conditional alternative. If stopping after the completed artifact, offer `Pause: /spectre:handoff {feature}` with the prototype path and selected next step.
+## Escalate-If
 
-## Escalate if
-- Spec contradicts the prototype (post-ux): ask which is authoritative per contradiction, then update `ux.md` and the HTML together and re-run the portability check.
-- No usable visual anchor and no inferable aesthetic, or required context docs are missing/unreadable when a mode expects them.
+- A post-UX contradiction exists: ask which is authoritative, update `ux.md` and HTML together, then revalidate.
+- A required mode artifact is missing/unreadable, or neither the user nor context supplies a usable visual anchor/aesthetic.
+
+Next step: follow the mode-specific handoff above.

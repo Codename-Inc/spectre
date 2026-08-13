@@ -1,121 +1,65 @@
 ---
 name: "spectre-code_review"
-description: "Run the one comprehensive adversarial review of completed work using a pinned high-effort opposing runtime, with a same-contract native fallback. Finds correctness/security failures, regressions, performance landmines, overengineering, missing behavioral tests, unreachable requirements, scope creep, dead computations, and stale active paths. Trigger at the final review boundary; do not use for partial-phase checkpoints or implementation. Review only; never edits code."
+description: "Run final adversarial review through a pinned high-effort opposing runtime with one native fallback. Use at the final boundary to falsify correctness, safety, production readiness, and requirement delivery. Do not use for partial checkpoints or implementation; review only."
 user-invocable: true
 ---
 
 # code_review
 
-Adversarial review of what was just built. A clean-context reviewer tries to falsify correctness, production readiness, and requirement delivery, then returns only evidence-backed, severity-ranked findings plus explicit reachability coverage. Review only; never edit code.
+## Purpose
+
+Try to prove the work wrong, unsafe, unreachable, or unable to meet requirements. Accept correctness only if evidence survives adversarial scrutiny; never defend the implementation.
 
 ## Inputs
 
-- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, focus guidance, explicit diff/base range, an explicit source-plan path, an optional immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` candidate tuple, and optional `--orchestrated` when another workflow will consume the report.
-- Review scope = completed work plus modified/created/deleted files, their direct dependencies/importers, and relevant tests. Pull requirements and acceptance criteria from the matching `tasks.json` parent slices when present, else an explicitly passed source-plan path ahead of literal `plan.md`, else the user's request and actual diff. Use `execute.md` only to locate `tasks.json`.
-- If the work scope is genuinely ambiguous after inspecting artifacts and git state, ask what to review before dispatching.
+- `$ARGUMENTS`: feature/root or descendant artifact, focus, diff/base range, source-plan path, immutable `BASE_SHA`/`HEAD_SHA`/`DIFF_SHA256` tuple, and `--orchestrated`.
+- Scope: completed changes, changed files, direct dependencies/importers, tests, and requirements/ACs. Source requirements from matching `tasks.json` parents, else an explicit source-plan path before `plan.md`, then request+diff. `execute.md` only locates tasks.
 
 ## Working Set
 
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
-- Never use branch name, recency, lifecycle state, or directory scanning to select an existing feature. For an inferred name, use the first free `.spectre/features/<name>[-N]/`; an explicitly selected unmanaged directory remains a safety blocker.
-- Before the first artifact in a new root, create lifecycle-neutral `feature.json` with `schema_version`, `created_at`, `feature`, and `feature_root`. Create `.spectre/.gitignore` with `manifest.json`, `bin/`, `handoffs/`, `!features/` only when absent and the parent does not ignore `.spectre/`; never edit root `.gitignore`; warn if ignored.
-- The physical feature directory is authoritative. If touched workflow artifacts contain stale Feature/Feature Root metadata after a rename, repair their feature name/root metadata before continuing.
-- Pass the exact feature root unchanged to every routed child and external reviewer prompt; a child or reviewer never rederives it. Passing any produced artifact identifies the feature name and root without branch inference.
-- An explicit legacy `docs/tasks/**` artifact remains a readable input, but do not move or bulk-rewrite it. Every new review document requires a confirmed canonical `.spectre/features/<feature-name>/` root and records the legacy source in its scope manifest.
-- `REVIEW_REPORT = {FEATURE_ROOT}/reviews/comprehensive_code_review.md`; if it exists, append `_{YYYY-MM-DD_HHMMSS}` and never overwrite prior evidence.
-- Build a late-bound review manifest: diff/base range, optional candidate tuple, changed-file summary, all applicable in-scope requirement/AC paths, relevant `tasks.json` parent ids, direct dependencies/importers, relevant tests, and explicit exclusions. Do not inline an entire large diff or task graph; the reviewer reads them directly.
-
-## Method / guardrails
-
-**External-first selection**
-1. If current runtime is Codex and `command -v claude` succeeds, run Claude Code.
-2. If current runtime is Claude Code and `command -v codex` succeeds, run Codex.
-3. If the opposite CLI is missing, exits non-zero, cannot write `REVIEW_REPORT`, or produces no semantically usable review after primary-owned report normalization, record the reason and fall back to one native `@spectre:reviewer`; unavailable opposing runtimes never block completion.
-4. Primary-agent semantic self-review is prohibited. Deterministic validation, verified mechanical report correction, and persisting an explicit native fallback return are primary-owned orchestration, not self-review.
-5. Do not probe for startup commands. Use exactly the applicable recipe below from repo root.
-
-**Opposite-runtime initiation recipe**
-
-From Codex primary:
-```bash
-claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Bash(git diff *),Bash(git show *),Bash(git status *),Bash(git rev-parse *),Write" --output-format text "$REVIEW_PROMPT"
-```
-
-From Claude Code primary:
-```bash
-codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"
-```
-
-External report metadata is fixed by route: Codex -> Claude Code records `Reviewer Runtime: Claude Code`, `Reviewer Model: opus`, `Reviewer Effort: high`, `Invocation Route: Codex -> Claude Code`; Claude Code -> Codex records `Reviewer Runtime: Codex`, `Reviewer Model: gpt-5.6-sol`, `Reviewer Effort: high`, `Invocation Route: Claude Code -> Codex`.
-
-The external reviewer may write only `REVIEW_REPORT`; it may not edit code, tests, plans, tasks, scope docs, or other artifacts. Launcher supervision only: Allow up to 20 minutes for completion and poll while the process remains alive; quiet output below that maximum is not failure. Do not pass launcher timeout or duration guidance to the reviewer. The reviewer finishes whenever the contract is satisfied, with no minimum duration.
-
-`REVIEW_PROMPT` includes the exact feature name/root and says to use that root unchanged without branch or repository-activity rederivation. It also includes: "Act as an adversarial code reviewer. Try to prove the completed work is wrong, unsafe, unnecessarily complex, unreachable from its consumers, or unable to meet its stated requirements. Do not defend the implementation and do not invent out-of-scope requirements." It includes the review manifest, report path, scope boundary, lenses, severity/evidence rules, required sections, write restriction, and required metadata (`Reviewer Runtime`, `Reviewer Model`, `Reviewer Effort`, `Invocation Route`).
-
-**Adversarial lenses**
-
-| Lens | Attack surface |
-|---|---|
-| Correctness | wrong outputs, broken invariants, edge cases, state/ordering/concurrency failures, error-path behavior |
-| Regression / integration | broken callers, unreachable wiring, stale active paths, contract mismatches, incomplete migrations |
-| Security | trust boundaries, auth/permissions, injection, secret/data exposure, unsafe input or destructive behavior |
-| Performance / reliability | hot-path complexity, N+1 work, blocking I/O, leaks, unbounded memory/work, retry or failure amplification |
-| Overengineering | speculative abstractions, duplicate paths, needless indirection, generality not required by scope; flag only when a materially simpler in-scope shape is evident |
-| Test adequacy | changed behavior with no executable regression signal, untested failure/security paths, assertions that cannot catch the defect |
-| Requirement delivery / reachability | for every applicable requirement/AC, trace definition -> consumer/usage -> reachable user/system outcome; definition-only work is Partial or Dead, never Delivered |
-| Scope / dead paths | out-of-scope behavior, dead computations, orphaned outputs, old active paths after replacement, duplicate data sources, and new values that never reach a consumer |
-
-**Severity and evidence**
-
-- **CRITICAL** - exploitable security failure, data loss/corruption, privilege bypass, or core execution failure.
-- **HIGH** - concrete user-facing correctness/regression, serious security weakness, or demonstrated hot-path/reliability failure.
-- **MEDIUM** - localized defect, meaningful maintainability/overengineering cost, non-critical performance issue, or material test gap with a concrete failure risk.
-- **LOW** - small but actionable issue. Do not report style, naming, formatting, praise, or speculative future concerns.
-- Every finding needs `file:line`, the violated behavior/requirement, concrete evidence, impact, and the smallest scope-safe fix.
-- Every finding also records `finding_fingerprint = sha256(requirement anchor + primary symbol/boundary + normalized observable failure)` and `invariant_family = sha256(requirement anchor + normalized violated invariant + lifecycle/data-flow boundary)`.
-- Every CRITICAL/HIGH also needs the normalized violated invariant plus a reproducible failure, exploit, or performance path with observable behavior. No evidence chain means downgrade or omit; "could potentially" is not evidence.
-- Stay within the completed work and its direct blast radius. Missing features from another scope and subjective architecture preferences are not findings.
-
-**Delivery coverage**
-
-- For each applicable requirement/AC in the review manifest, assign exactly one status: `Delivered` (defined, connected, and reachable), `Partial` (present but a required connection/outcome is missing), `Dead` (defined with no active usage/consumer), or `Missing`.
-- Every `Delivered` row cites both definition and usage/consumer `file:line` evidence plus the reachable outcome. Never infer delivery from file existence, task status, dev reports, or implementation rationale.
-- Every `Partial`, `Dead`, or `Missing` row has a corresponding severity-ranked finding and prioritized action; coverage gaps never live only in the table.
-- Trace UI outcomes backward from render/user action and service/data outcomes through caller -> boundary -> side effect/persistence -> reload/reconciliation where applicable.
-- Audit and report scope creep, dead computations, old active paths, orphaned outputs, and duplicate data sources even when they do not create a CRITICAL/HIGH verdict.
-
-**Native fallback**
-
-- Dispatch one clean-context `@spectre:reviewer` with the same manifest, adversarial role, lenses, severity rules, evidence requirements, exclusions, and report schema from `REVIEW_PROMPT`.
-- Replace only the persistence instruction: return the complete report in-thread so the primary can save it unchanged to `REVIEW_REPORT`.
-- Record `Reviewer Runtime: native-subagent`, `Reviewer Model: runtime-native`, `Reviewer Effort: inherited`, `Invocation Route: native-fallback`, and `Fallback Reason: ...`.
-
-When a candidate tuple is supplied, require all three fields, recompute the canonical hash using `git diff --binary --full-index --no-ext-diff --no-color --no-renames`, and verify the tuple before dispatch and after report creation. Record it in Scope Boundary; a mismatch makes the report stale. After either route, verify the report exists, contains every required section, names the reviewed scope, covers every applicable requirement/AC in its delivery table, and includes all runtime/model metadata. Once a route returns a semantically usable review, the semantic review is complete: the primary directly normalizes report-only contract defects—verified counts, paths, citations, route metadata, sections/tables, and invalid enum values—from the reviewer's existing finding, evidence, consequence, and schema definitions, then validates again. Severity-enum normalization is mechanical only when the finding's meaning, evidence, recommendation, and prioritized action remain unchanged. It never triggers another reviewer or fallback, and the primary must not originate or materially reinterpret findings. If an external route produces no semantically usable review, use the native fallback; a semantically unusable native-fallback report is surfaced as incomplete.
+- Resolve one feature root from explicit/current artifacts, never branch, recency, lifecycle, or scanning. Inferred names use the first free `.spectre/features/<name>[-N]/`; an explicit unmanaged root blocks writes. Pass it unchanged to reviewers.
+- New roots receive `feature.json` with `schema_version`, `created_at`, `feature`, `feature_root`. If absent and its parent does not ignore `.spectre/`, create `.spectre/.gitignore` containing `manifest.json`, `bin/`, `handoffs/`, `!features/`; never edit root `.gitignore`. Warn when ignored. Repair stale feature/root metadata in touched artifacts.
+- Keep legacy `docs/tasks/**` inputs in place; new evidence requires a canonical root and records its source.
+- `REVIEW_REPORT={FEATURE_ROOT}/reviews/comprehensive_code_review.md`; if occupied, use a timestamped sibling, never overwrite.
+- Late-bind diff/base and tuple, changed files, requirement/AC paths and task ids, dependencies/importers, tests, and exclusions. Reviewers read diffs/task graphs.
 
 ## Outputs + DONE
 
-Required report sections:
+`REVIEW_REPORT` contains:
 
-`REVIEW_REPORT` begins with its title followed immediately by the Feature/Feature Root metadata below.
+0. title, `Feature:`, `Feature Root:`;
+1. **Scope Boundary** — completed work, diff/base, tuple, requirements, files/dependencies/tests, exclusions, legacy source;
+2. **Verdict** — `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, else `CLEAN`;
+3. **Findings** — `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Finding Fingerprint | Invariant Family | Smallest Fix`, severity-ordered or `No findings`;
+4. **Coverage Record** — inspected/unverified areas and reasons;
+5. **Requirement Delivery Coverage** — `Requirement/AC | Status | Definition | Usage/Consumer | Reachable Outcome | Evidence/Gap` for every applicable item;
+6. **Scope and Dead-Path Audit** — separate tables for scope creep, dead computations/orphaned outputs, old active paths, and duplicate data sources; empty categories say `None found`;
+7. **Prioritized Actions** — ordered remediation or `None`;
+8. **Review Metadata** — ISO8601 timestamp, `Review Mode: final`, runtime/model/effort/route, and fallback reason.
 
-0. **Self-location metadata** - immediately below the title: `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`.
-1. **Scope Boundary** - completed work, diff/base, supplied candidate tuple, requirements, in-scope files/dependencies/tests, explicit exclusions, and any legacy source path.
-2. **Verdict** - `BLOCKED` for CRITICAL/HIGH, `PASS WITH FINDINGS` for MEDIUM/LOW only, or `CLEAN`.
-3. **Findings** - table `# | Severity | Lens | Location | Evidence / Reproduction | Impact | Finding Fingerprint | Invariant Family | Smallest Fix`, ordered CRITICAL to LOW. Say `No findings` when clean; do not pad.
-4. **Coverage Record** - files/paths and tests inspected, plus material areas not verified and why.
-5. **Requirement Delivery Coverage** - exhaustive table `Requirement/AC | Status | Definition | Usage/Consumer | Reachable Outcome | Evidence/Gap` for every applicable requirement/AC in the review manifest.
-6. **Scope and Dead-Path Audit** - separate evidence tables for scope creep, dead computations/orphaned outputs, old active paths, and duplicate data sources; write `None found` for an empty category.
-7. **Prioritized Actions** - minimal ordered remediation list, or `None` when clean.
-8. **Review Metadata** - ISO8601 timestamp, `Review Mode: final`, `Reviewer Runtime:`, `Reviewer Model:`, `Reviewer Effort:`, `Invocation Route:`, and `Fallback Reason:` when applicable.
+DONE when schema validation passes; scope/tuple are unchanged; every requirement/AC has one evidence-backed status; audit and route metadata exist; findings satisfy identity/evidence rules; and only the report changed.
 
-DONE when the self-locating report exists with all nine numbered sections plus metadata; scope and any candidate tuple are explicit and unchanged; every applicable requirement/AC has one evidence-backed delivery status; scope/dead-path categories are present; runtime/model/effort/route metadata is present; any native fallback reason is recorded; findings include both identities and satisfy evidence rules; no code or non-report artifact was modified.
+## Method / guardrails
+
+1. **Use one external-first review route from repo root; do not probe alternatives.** Codex primary runs:
+   `claude -p --model opus --effort high --permission-mode dontAsk --allowedTools "Read,Grep,Glob,LS,Bash(mkdir -p *),Bash(git diff *),Bash(git show *),Bash(git status *),Bash(git rev-parse *),Write" --output-format text "$REVIEW_PROMPT"`
+   Claude primary runs:
+   `codex exec -C "$PWD" -m gpt-5.6-sol -c 'model_reasoning_effort="high"' -s workspace-write "$REVIEW_PROMPT"`
+   Record route metadata as `Claude Code|opus|high|Codex -> Claude Code` or `Codex|gpt-5.6-sol|high|Claude Code -> Codex`. Keep a 20-minute launcher-side poll limit; do not pass duration guidance to the reviewer. Quiet output is not failure. The reviewer writes only `REVIEW_REPORT`. Primary semantic self-review is prohibited.
+2. **Fallback once.** Missing/non-zero opposing CLI, report-write failure, or unusable review permits one clean-context `@spectre:reviewer` under the same manifest, contract, and schema. It returns the report in-thread for unchanged persistence. Record `native-subagent|runtime-native|inherited|native-fallback` plus reason. A usable review ends semantic review.
+3. **Falsify; do not confirm.** Actively seek counterexamples, broken invariants, failure paths, false-positive tests, unreachable outcomes, and evidence contradicting claimed delivery. Cover correctness; regression/integration; security; performance/reliability; materially avoidable overengineering; test adequacy; requirement reachability; scope/dead paths. Stay within completed work and direct blast radius; omit style, praise, speculation, subjective preferences, and requirements from another scope.
+4. **Require evidence.** Severity is `CRITICAL|HIGH|MEDIUM|LOW`: CRITICAL means exploit/data loss/corruption/privilege bypass/core failure; HIGH a concrete user-facing defect, serious security weakness, or demonstrated hot-path/reliability failure; MEDIUM a localized defect or material maintainability/performance/test risk; LOW a small actionable issue. Each finding cites `file:line`, violated behavior, evidence, impact, smallest scope-safe fix, `finding_fingerprint=sha256(requirement anchor + primary symbol/boundary + normalized observable failure)`, and `invariant_family=sha256(requirement anchor + normalized violated invariant + lifecycle/data-flow boundary)`. CRITICAL/HIGH also requires the normalized invariant and reproducible failure/exploit/performance path; otherwise downgrade or omit.
+5. **Prove delivery.** Assign each requirement/AC one of `Delivered|Partial|Dead|Missing`. Delivered requires definition, usage/consumer `file:line` evidence, and a reachable outcome; other statuses require a matching finding and action. Trace UI outcomes backward from render/action, and service/data outcomes through caller, boundary, side effect/persistence, and reload/reconciliation.
+6. **Verify deterministically.** A candidate tuple requires all fields and canonical hash recomputation with `git diff --binary --full-index --no-ext-diff --no-color --no-renames` before dispatch and after report creation; mismatch makes the report stale. Validate required sections, scope, exhaustive delivery coverage, and metadata. The primary may mechanically normalize report-only counts, paths, citations, metadata, sections/tables, and severity enums from existing reviewer semantics, but may not originate or materially reinterpret findings. An unusable native report remains incomplete.
 
 ## Handoff
 
-- Standalone: return only CRITICAL/HIGH findings numbered for selection, the verdict, reviewer runtime/model, fallback reason if any, and `Review report saved: {path}`. Blockers → `/spectre:fix`; otherwise choose `/spectre:prove` for completed user-observable work, `/spectre:test` for a concrete coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary recommendation tied to the verdict, not an equal-weight menu.
-- `--orchestrated`: return the verdict, requirement-delivery status counts, CRITICAL/HIGH findings with their evidence chains and both identities, reviewer metadata, and report path to the calling workflow without pausing or suggesting a separate command.
+- Standalone: return verdict, reviewer runtime/model, fallback reason, report path, and only numbered CRITICAL/HIGH findings. Blockers recommend `/spectre:fix`; otherwise recommend one of `/spectre:prove`, `/spectre:test` for a concrete gap, or `/spectre:clean` only when proof is explicitly deferred.
+- `--orchestrated`: return verdict, delivery counts, CRITICAL/HIGH evidence chains and identities, reviewer metadata, and report path; do not pause or suggest another command.
 
 ## Escalate-If
 
-- Diff/work scope remains ambiguous after reading available task/plan artifacts and git state -> ask what to review before dispatching.
-- A proposed finding changes requirements rather than identifying a defect -> label it `Scope Change Required`; do not include it in the blocking verdict.
+- Scope remains ambiguous after artifacts and git state are inspected: ask what to review before dispatch.
+- A proposed finding changes requirements: label `Scope Change Required` and exclude it from the blocking verdict.
+
+Next step: follow the verdict-specific handoff.

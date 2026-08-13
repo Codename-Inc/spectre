@@ -29,16 +29,20 @@ for (const [runtime, skillPath] of [
   test(`${runtime} prototype skill keeps implementation with the primary agent`, () => {
     const skill = fs.readFileSync(skillPath, 'utf8');
 
-    assert.match(skill, /primary-agent-only HTML implementation and validation/);
-    assert.match(skill, /\*\*Implement directly \(primary agent only\)\.\*\*/);
-    assert.match(
-      skill,
-      /Subagents may provide findings only; they must not write or edit the prototype\./,
-    );
-    assert.match(
-      skill,
-      /The primary agent directly authored and validated the HTML; no subagent created or modified the prototype\./,
-    );
+    assert.match(skill, /The primary owns it; agents provide evidence only\./);
+    assert.match(skill, /each returns ≤2,000 tokens in-thread and writes no files/);
+    assert.match(skill, /the primary alone creates, edits, and validates the HTML/);
+    assert.match(skill, /not even `@spectre(?::|_)dev` modifies it/);
+    assert.match(skill, /the primary authored and validated the file/);
     assert.doesNotMatch(skill, /Use `@(?:spectre:)?dev` \(or inline if trivial\)/);
+  });
+
+  test(`${runtime} prototype skill uses optional product and design context without a size ceiling`, () => {
+    const skill = fs.readFileSync(skillPath, 'utf8');
+
+    assert.match(skill, /repo-root `product\.md` when present/);
+    assert.match(skill, /`design\.md` or fallback `design\/design\.md`/);
+    assert.match(skill, /do not mention missing files/);
+    assert.doesNotMatch(skill, /(?:under |<)300KB/);
   });
 }

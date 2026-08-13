@@ -159,7 +159,7 @@ In SPECTRE, the **structured workflows** generate some combination of the follow
 - `goal-prompts.md` - goal prompts to use to guide agent execution
 - `specs/tasks.json` - specific parent & sub-tasks to execute
 - `execution_state.md` - execution progress tracker when using `/spectre:execute` with a plan SPECTRE did not generate
-- `reviews/plan_review.md`, `reviews/task_review.md`, and `reviews/comprehensive_code_review.md` - prioritized review feedback
+- `reviews/plan_correctness.md`, `reviews/plan_review.md`, `reviews/task_review.md`, and `reviews/comprehensive_code_review.md` - correctness evidence plus prioritized review feedback
 - `validation/validation_gaps.md` - task list of gaps identified from validation
 - `proof/proof.json` and `proof/proof.html` - acceptance status and reviewed evidence
 
