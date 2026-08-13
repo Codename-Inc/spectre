@@ -835,6 +835,35 @@ test('plan surfaces time-only planning and implementation estimates', () => {
   ));
 });
 
+test('Scope makes Plan the canonical repository-change handoff', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const scope = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-scope', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    assert.match(scope, /confirmed repository-changing work[^\n]*spectre-plan/i);
+    assert.doesNotMatch(scope, /well-understood non-UI work[^\n]*spectre-create_tasks/i);
+  }
+});
+
+test('Fix persists an approval-gated managed repair plan before mutation', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const fix = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-fix', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const repairPlanIndex = fix.search(/self-locating compact (?:managed )?repair plan/i);
+    const fixApprovalIndex = fix.indexOf('HoldForApproval');
+    const fixRepairIndex = fix.indexOf('PHASE=repair');
+    assert.ok(repairPlanIndex !== -1);
+    assert.ok(repairPlanIndex < fixApprovalIndex);
+    assert.ok(fixApprovalIndex < fixRepairIndex);
+    assert.match(fix, /repair plan[^\n]*before (?:code )?mutation/i);
+  }
+});
+
 test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const readSkill = (rootName, skillName) => fs.readFileSync(
@@ -857,12 +886,10 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
 
     const scopeUx = scope.indexOf('journeys, segments, states, copy, or accessibility');
     const scopePrototype = scope.indexOf('interaction/layout/visual validation materially matters');
-    const scopeTasks = scope.indexOf('well-understood non-UI work');
-    const scopePlan = scope.indexOf('5. Otherwise');
+    const scopePlan = scope.indexOf('confirmed repository-changing work');
     assert.ok(scopeUx !== -1);
     assert.ok(scopePrototype > scopeUx);
-    assert.ok(scopeTasks > scopePrototype);
-    assert.ok(scopePlan > scopeTasks);
+    assert.ok(scopePlan > scopePrototype);
     assert.match(scope, /Next \(recommended\)/);
     assert.match(scope, /Pause: .*spectre-handoff/);
 
