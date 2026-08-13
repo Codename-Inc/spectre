@@ -11,6 +11,10 @@ import {
   purgeProjectWorkflow,
 } from './workflow/retention.mjs';
 import {
+  recordPlanTelemetry,
+  startPlanTelemetry,
+} from './workflow/plan-telemetry.mjs';
+import {
   codedError,
   recordWorkflowEvents,
   startWorkflowRun,
@@ -46,6 +50,8 @@ function usage() {
     '  spectre-workflow task assign|start|submit|complete|block|skip --run-id <id> --task-id <id> --actor-id <id> --json',
     '  spectre-workflow gate record --run-id <id> --actor-id <id> --kind verification|review|proof --status pass|fail --json',
     '  spectre-workflow human-input require|resolve --run-id <id> --actor-id <id> --json',
+    '  spectre-workflow plan start --feature-root <path> --scope-hash <sha256>|--scope <text> --classification <tier> --json',
+    '  spectre-workflow plan record --plan-run-id <id> --event-type <type> --feature-root <path> --scope-hash <sha256>|--scope <text> --json',
     '  spectre-workflow cleanup [--project-dir <path>] [--dry-run] --json',
     '  spectre-workflow purge [--project-dir <path>] --yes --json',
     '',
@@ -88,6 +94,9 @@ function commonOptions(flags) {
 function confirmation(resource, action, result) {
   if (!result || result.ok === false) return result;
   if (resource === 'cleanup' || resource === 'purge') return result;
+  if (resource === 'plan') {
+    return { ok: true, planRunId: result.planRunId, eventId: result.eventId };
+  }
   if (resource === 'run' && action === 'start') {
     return {
       ok: true,
@@ -335,6 +344,39 @@ async function humanInputCommand(action, flags) {
   }], `human-input:${action}:${required(flags, '--run-id')}`);
 }
 
+async function planCommand(action, flags) {
+  const options = {
+    ...commonOptions(flags),
+    featureRoot: required(flags, '--feature-root'),
+    scope: flags.get('--scope') || null,
+    scopeHash: flags.get('--scope-hash') || null,
+    classification: flags.get('--classification') || null,
+    previousClassification: flags.get('--previous-classification') || null,
+    reasonCode: flags.get('--reason-code') || null,
+    reviewKind: flags.get('--review-kind') || null,
+    reviewStatus: flags.get('--review-status') || null,
+    gateKind: flags.get('--gate-kind') || null,
+    gateStatus: flags.get('--gate-status') || null,
+    completionStatus: flags.get('--completion-status') || null,
+    outcomeStatus: flags.get('--outcome-status') || null,
+    failureKind: flags.get('--failure-kind') || null,
+    planId: flags.get('--plan-id') || null,
+    planHash: flags.get('--plan-hash') || null,
+    executionId: flags.get('--execution-id') || null,
+    executionHash: flags.get('--execution-hash') || null,
+    payloadJson: flags.get('--payload-json') || null,
+  };
+  if (action === 'start') return startPlanTelemetry(options);
+  if (action === 'record') {
+    return recordPlanTelemetry({
+      ...options,
+      planRunId: required(flags, '--plan-run-id'),
+      eventType: required(flags, '--event-type'),
+    });
+  }
+  throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown plan command ${action}`);
+}
+
 export async function main(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
   const { positional, flags } = parseArgs(argv);
@@ -352,6 +394,7 @@ export async function main(argv, io = {}) {
   else if (resource === 'task') result = await taskCommand(action, flags);
   else if (resource === 'gate') result = await gateCommand(action, flags);
   else if (resource === 'human-input') result = await humanInputCommand(action, flags);
+  else if (resource === 'plan') result = await planCommand(action, flags);
   else if (resource === 'cleanup') {
     result = await cleanupProjectWorkflow({
       ...commonOptions(flags),
@@ -365,6 +408,7 @@ export async function main(argv, io = {}) {
   } else {
     throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown workflow command ${resource}`);
   }
+  if (resource === 'plan') flags.set('--json', true);
   outputResult(result, confirmation(resource, action, result), flags, stdout);
   return result;
 }

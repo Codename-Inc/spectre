@@ -156,3 +156,172 @@ test('workflow CLI reports stable coded JSON errors', (t) => {
   });
   assert.equal(missing.stderr, '');
 });
+
+test('workflow CLI records a local plan telemetry lifecycle', (t) => {
+  const value = makeFixture(t);
+  const featureRoot = path.join(value.projectDir, '.spectre', 'features', 'cli');
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const started = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'start',
+    '--feature-root',
+    featureRoot,
+    '--scope',
+    'PRIVATE_SCOPE_BOUNDARY_MUST_BE_HASHED',
+    '--classification',
+    'MICRO',
+    '--plan-id',
+    'plan-2.1',
+    '--plan-hash',
+    'a'.repeat(64),
+    ...common,
+  ], value);
+  assert.equal(started.status, 0, started.stderr);
+  const start = JSON.parse(started.stdout);
+  assert.deepEqual(Object.keys(start).sort(), ['eventId', 'ok', 'planRunId']);
+  assert.match(start.planRunId, /^plan_run_/);
+  assert.match(start.eventId, /^evt_/);
+
+  const reclassified = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'record',
+    '--plan-run-id',
+    start.planRunId,
+    '--event-type',
+    'plan.reclassified',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'b'.repeat(64),
+    '--classification',
+    'STANDARD-DIRECT',
+    '--previous-classification',
+    'LIGHT',
+    '--reason-code',
+    'routing-change',
+    ...common,
+  ], value);
+  assert.equal(reclassified.status, 0, reclassified.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(reclassified.stdout)).sort(), ['eventId', 'ok', 'planRunId']);
+
+  const review = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'record',
+    '--plan-run-id',
+    start.planRunId,
+    '--event-type',
+    'plan.review_completed',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'c'.repeat(64),
+    '--review-status',
+    'pass',
+    '--review-kind',
+    'plan',
+    ...common,
+  ], value);
+  assert.equal(review.status, 0, review.stderr);
+
+  const gate = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'record',
+    '--plan-run-id',
+    start.planRunId,
+    '--event-type',
+    'plan.gate_completed',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'd'.repeat(64),
+    '--gate-kind',
+    'planning',
+    '--gate-status',
+    'pass',
+    ...common,
+  ], value);
+  assert.equal(gate.status, 0, gate.stderr);
+
+  const completed = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'record',
+    '--plan-run-id',
+    start.planRunId,
+    '--event-type',
+    'plan.completed',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'e'.repeat(64),
+    '--completion-status',
+    'ready',
+    ...common,
+  ], value);
+  assert.equal(completed.status, 0, completed.stderr);
+
+  const outcome = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'record',
+    '--plan-run-id',
+    start.planRunId,
+    '--event-type',
+    'plan.execution_outcome',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'f'.repeat(64),
+    '--execution-id',
+    'exec-2.1',
+    '--execution-hash',
+    '1'.repeat(64),
+    '--outcome-status',
+    'failed',
+    '--failure-kind',
+    'test',
+    ...common,
+  ], value);
+  assert.equal(outcome.status, 0, outcome.stderr);
+
+  const telemetryPath = path.join(value.projectDir, '.spectre', 'telemetry', 'plan-classification.jsonl');
+  const serialized = fs.readFileSync(telemetryPath, 'utf8');
+  assert.doesNotMatch(serialized, /PRIVATE_SCOPE_BOUNDARY_MUST_BE_HASHED/);
+  const events = serialized.trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(events.map((event) => event.event_type), [
+    'plan.started',
+    'plan.reclassified',
+    'plan.review_completed',
+    'plan.gate_completed',
+    'plan.completed',
+    'plan.execution_outcome',
+  ]);
+  assert.equal(events[0].payload.classification, 'XS');
+  assert.equal(events[1].payload.classification, 'M');
+  assert.equal(events[1].payload.previous_classification, 'S');
+  assert.equal(events[5].payload.authoritative, false);
+});
+
+test('workflow CLI rejects plan telemetry payload keys outside the allow-list', (t) => {
+  const value = makeFixture(t);
+  const invalid = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'start',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--scope-hash',
+    'a'.repeat(64),
+    '--classification',
+    'MICRO',
+    '--payload-json',
+    JSON.stringify({ classification: 'MICRO', private_prose: 'do not persist' }),
+    '--project-dir',
+    value.projectDir,
+    '--json',
+  ], value);
+  assert.notEqual(invalid.status, 0);
+  assert.deepEqual(JSON.parse(invalid.stdout), {
+    ok: false,
+    code: 'INVALID_PLAN_PAYLOAD',
+    message: 'plan.started payload contains unsupported key private_prose',
+  });
+  assert.equal(invalid.stderr, '');
+});
