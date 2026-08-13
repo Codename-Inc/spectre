@@ -16,6 +16,8 @@ When routing is known, append `--provider "<provider>" --model "<primary-model>"
 
 Telemetry is local supporting state, never an authority gate. On an operational/lock/write failure, set `TELEMETRY_STATUS=degraded`, continue from `tasks.json`, and report the exact coded failure. Never include prompts, code, commands, or raw tool output as event data/evidence.
 
+For the optional Plan join, hash the full source artifact and read `.spectre/telemetry/plan-classification.jsonl` directly. Select exactly one matching `plan.completed` event by feature root plus an artifact/source hash; retain its `plan_run_id` and `scope_hash`. Zero or multiple matches degrade only the join—never use recency, branch, lifecycle state, or a derived summary to guess.
+
 ## Dispatch and worker ownership
 
 Before dispatch, set the selected parent and child task statuses to `in_progress`, then run:
@@ -51,5 +53,7 @@ Record intermediate/final review and proof results as `gate record --kind review
 - Parent-owned: finish the run as `implementation_ready` only after every task is completed/skipped and wave gates are current.
 - Self-owned: finish as `passed` only after every task is completed/skipped and a passing proof gate exists.
 - Use `failed`, `blocked`, or `interrupted` honestly for terminal/error state; never manufacture a pass because telemetry is degraded.
+
+Only after authoritative execution status is known, record one joined `plan.execution_outcome` for the matched Plan run, passing its artifact/source hash and this `RUN_ID`. For structured mode record actual parent workstreams, accepted parent+child task count, and completed wave count; for plan-direct record actual coarse-map workstreams, zero synthetic tasks, and executed wave count. Record the authoritative outcome status, proof and review result (`SKIPPED` when owner/routing omits one), and closed planning-surprise codes (`NONE` when empty). Verification, review, proof, and completion authority remain unchanged. A telemetry failure is degraded and never blocks delivery or changes the terminal status.
 
 Include `RUN_ID`, event status (`complete|degraded`), and any reconciliation/degradation in the Execute handoff.

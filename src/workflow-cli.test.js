@@ -326,6 +326,8 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
     'a'.repeat(64),
     '--execution-run-id',
     'run_11111111-1111-4111-8111-111111111111',
+    '--plan-hash',
+    'c'.repeat(64),
     '--outcome-status',
     'passed',
     '--workstream-count',
@@ -376,6 +378,7 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   assert.equal(events[1].payload.observed_size, 'M');
   assert.equal(events[1].payload.initial_size, 'S');
   assert.equal(events[1].payload.regret_direction, 'LARGER');
+  assert.equal(events[1].plan_hash, 'b'.repeat(64));
   assert.equal(events[2].payload.finding_count, 2);
   assert.equal(events[2].payload.structure_after, 4);
   assert.equal(events[3].payload.gate_kind, 'final');
@@ -383,6 +386,7 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   assert.deepEqual(events[4].payload.artifact_hashes, ['c'.repeat(64), 'd'.repeat(64)]);
   assert.equal(events[4].payload.planning_elapsed_ms, 1234);
   assert.equal(events[5].execution_run_id, 'run_11111111-1111-4111-8111-111111111111');
+  assert.equal(events[5].plan_hash, 'c'.repeat(64));
   assert.equal(events[5].payload.task_count, 9);
   assert.equal(events[5].payload.proof_result, 'PASS');
   assert.deepEqual(events[5].payload.surprise_codes, ['UNPLANNED_DEPENDENCY']);

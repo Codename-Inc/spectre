@@ -763,6 +763,53 @@ test('goal prompts preserve execute-owned proof closure', () => {
   }
 });
 
+test('Plan and Execute emit one non-authoritative calibration lifecycle', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const normalize = (value) => value
+    .replaceAll('/spectre:', 'spectre-')
+    .replace(/node "\$\{PLUGIN_ROOT\}\/hooks\/scripts\/workflow-cli\.mjs"/g, 'spectre-workflow');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const plan = normalize(fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan', 'SKILL.md'),
+      'utf8',
+    ));
+    const execute = normalize(readExecuteContract(repoRoot, rootName));
+    const executeTelemetry = normalize(fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-execute', 'references', 'telemetry.md'),
+      'utf8',
+    ));
+
+    const initialRoute = plan.indexOf('Skill(spectre-plan-route)` in `initial` mode');
+    const planStart = plan.indexOf('spectre-workflow plan start');
+    const observedRoute = plan.indexOf('Skill(spectre-plan-route)` in `observed` mode');
+    const reclassified = plan.indexOf('plan.reclassified');
+    assert.ok(initialRoute !== -1 && planStart > initialRoute);
+    assert.ok(observedRoute > planStart && reclassified > observedRoute);
+    for (const eventType of [
+      'plan.started',
+      'plan.reclassified',
+      'plan.review_completed',
+      'plan.gate_completed',
+      'plan.completed',
+    ]) assert.match(plan, new RegExp(eventType.replace('.', '\\.')));
+    assert.match(plan, /probe flags|probe_used/);
+    assert.match(plan, /review yield/i);
+    assert.match(plan, /artifact hashes|artifact_hashes/);
+    assert.match(plan, /planning elapsed|planning_elapsed_ms/);
+    assert.match(plan, /telemetry failure[^\n]*(?:continue|never blocks|degraded)/i);
+
+    assert.match(execute, /plan\.execution_outcome/);
+    assert.match(executeTelemetry, /matching `plan\.completed` event[^\n]*feature root[^\n]*(?:artifact|source) hash/i);
+    assert.match(executeTelemetry, /only after authoritative execution status/i);
+    assert.match(executeTelemetry, /workstream[^\n]*task[^\n]*wave count/i);
+    assert.match(executeTelemetry, /proof[^\n]*review result/i);
+    assert.match(executeTelemetry, /planning-surprise codes/i);
+    assert.match(executeTelemetry, /verification, review, proof, and completion authority remain unchanged/i);
+    assert.match(executeTelemetry, /telemetry failure[^\n]*degraded[^\n]*never blocks/i);
+  }
+});
+
 test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration authority', () => {
   const repoRoot = path.resolve(__dirname, '..');
 

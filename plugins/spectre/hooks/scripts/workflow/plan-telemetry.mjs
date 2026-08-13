@@ -70,8 +70,8 @@ const ENUMS = {
   outcome: new Set(['approved', 'feedback', 'declined']),
   change_category: new Set(['none', 'scope_preserving', 'scope_change']),
   continuation: new Set(['execute', 'goal', 'pause', 'cancelled']),
-  outcome_status: new Set(['passed', 'failed', 'blocked', 'interrupted']),
-  proof_result: new Set(['PASS', 'FAIL', 'PARTIAL']),
+  outcome_status: new Set(['implementation_ready', 'passed', 'failed', 'blocked', 'interrupted']),
+  proof_result: new Set(['PASS', 'FAIL', 'PARTIAL', 'SKIPPED']),
   review_result: new Set(['CLEAN', 'FINDINGS', 'SKIPPED']),
 };
 const INPUT_KEYS = {
@@ -391,6 +391,20 @@ async function appendPlanEvent(options, eventType, planRunId, starting = false) 
       if (!started) throw codedError('INVALID_PLAN_RUN', `Unknown plan run id ${JSON.stringify(planRunId)}`);
       if (started.feature_root !== featureRoot || started.scope_hash !== scopeHash) {
         throw codedError('INVALID_PLAN_RUN', 'Plan run feature_root and scope_hash must match plan.started');
+      }
+      if (eventType === 'plan.reclassified' && !event.plan_hash) {
+        invalidPayload('plan.reclassified requires plan_hash');
+      }
+      if (eventType === 'plan.execution_outcome') {
+        if (!event.plan_hash) invalidPayload('plan.execution_outcome requires plan_hash');
+        const completed = events.find((candidate) => (
+          candidate.plan_run_id === planRunId
+          && candidate.event_type === 'plan.completed'
+          && candidate.payload?.artifact_hashes?.includes(event.plan_hash)
+        ));
+        if (!completed) {
+          invalidPayload('plan.execution_outcome plan_hash must match a plan.completed artifact hash');
+        }
       }
     }
     appendEvents(paths.eventsPath, [event]);
