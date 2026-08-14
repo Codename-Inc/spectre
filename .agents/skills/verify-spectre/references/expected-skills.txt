@@ -1,7 +1,7 @@
 # Skills expected in plugins/spectre/skills/.
 # Gate 1 fails if any is missing, or if an unlisted one appears.
 # Skills are added and removed deliberately — update this file in the same commit.
-# Current tree (31 skills):
+# Current tree (32 skills):
 # +create_pr, +delegate, +feature-root, +fix-core, +goal, +prove, +prune, +ship,
 # +task_review,
 # -guide, -evaluate, -architecture_review, -quick_dev, -release.
@@ -26,6 +26,7 @@ spectre-handoff
 spectre-kickoff
 spectre-learn
 spectre-plan
+spectre-plan-route
 spectre-plan_review
 spectre-prototype
 spectre-prove
