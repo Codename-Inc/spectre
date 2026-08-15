@@ -8,25 +8,24 @@ user-invocable: false
 
 ## Purpose
 
-Return one deterministic `plan-routing/v1` decision to `spectre-plan`. This skill alone derives planning size; it never owns planning workflow authority.
+Return a deterministic `plan-routing/v1` decision to `spectre-plan`. Classify only; Plan owns workflow authority.
 
 ## Inputs
 
-- Immutable canonical Scope plus late-bound repository observations.
-- Mode `initial`, or `observed` with the prior decision and the plan's `Routing Observations`.
-- Observations describe semantic work, never a proposed size.
-- Historical artifact or telemetry size is accepted only on resume, validated against the exact legacy enum, then normalized once.
+- Immutable canonical Scope + bounded repository observations; observations describe work, never size.
+- Mode `initial`, or `observed` with the prior decision + plan `Routing Observations`.
+- Resume-only legacy size is validated and normalized once.
 
 ## Working Set
 
-- One bounded local scan supplied by Plan: work shape, uncertainty, evidence, changed protected boundaries, task-graph risk, and material user-owned decisions.
-- If evidence is the only reason to cross a materially costlier route, use exactly one bounded classification probe with `@spectre:finder` or `@spectre:patterns` to answer one repository question.
+- Plan supplies one bounded scan: implementation topology, approach-changing uncertainty, evidence, protected boundaries, graph risk, and user-owned decisions.
+- If missing evidence alone would cross a costlier route, use exactly one bounded probe with `@spectre:finder` or `@spectre:patterns` for one repository question.
 
 ## Outputs + DONE
 
-Return one record with `schema: plan-routing/v1`; `shape: ATOMIC | DIRECT | STRUCTURED`; `uncertainty: LOW | MODERATE | HIGH`; `evidence: SUFFICIENT | PROBE_REQUIRED | PROBED`; `protected_boundaries[]: { type, threatened_invariant, failure_mode }`; `task_graph_risk: LOW | HIGH`; `design_authority_required` plus the material decision when true; `size`; `route`; one-sentence `rationale`; and, in observed mode, `regret_direction`, closed reason codes, and `recommendation: KEEP | RERUN_SMALLER | RERUN_LARGER`.
+Return `schema: plan-routing/v1`; `shape: ATOMIC|DIRECT|STRUCTURED`; `uncertainty: LOW|MODERATE|HIGH`; `evidence: SUFFICIENT|PROBE_REQUIRED|PROBED`; `protected_boundaries[]: { type, threatened_invariant, failure_mode }`; `task_graph_risk: LOW|HIGH`; design flag/decision; `size`; `route`; and one-sentence rationale. Observed mode also returns regret, closed reason codes, and `KEEP|RERUN_SMALLER|RERUN_LARGER`.
 
-DONE when fields validate, any probe is consumed before deciding, and the table below alone determines size/route.
+DONE when fields validate; any probe is consumed; STRUCTURED names independent workstreams; HIGH graph risk names a credible implementation-graph failure; and only the table derives size/route.
 
 ## Method / guardrails
 
@@ -38,18 +37,20 @@ DONE when fields validate, any probe is consumed before deciding, and the table 
 | STRUCTURED + LOW/MODERATE + ordinary graph risk | L · `L_STRUCTURED` |
 | STRUCTURED + HIGH uncertainty or HIGH task-graph risk | XL · `XL_REVIEWED_STRUCTURED` |
 
-- A protected boundary exists only with both a concrete `threatened_invariant` and credible `failure_mode`. It makes work at least S and raises assurance, but never directly selects L or XL or manufactures a task graph.
-- Missing evidence alone is not complexity. Use at most the one probe; if uncertainty remains, report it honestly.
-- Design authority is true only for an unresolved material product, compatibility, destructive, migration/rollback, or long-term architecture decision; size never creates it.
-- Initial and observed modes use the same table. Observed mode compares decisions and recommends KEEP, RERUN_SMALLER, or RERUN_LARGER; it never repeats work or removes artifacts.
-- Legacy compatibility reads normalize `MICRO→XS`, `LIGHT→S`, `STANDARD-DIRECT→M`, `STANDARD→L`, `COMPREHENSIVE→XL` once; legacy labels never enter the decision table.
-- Never use physical change volume or sensitive-domain keywords as size authority. Never invoke planning children, write artifacts, emit telemetry, or present gates.
+- STRUCTURED requires multiple independently implementable workstreams; dependencies, supporting artifacts, workflow/acceptance steps, and pilots are not workstreams.
+- HIGH graph risk requires a credible implementation ordering/coordination/rollback failure; workflow gates/state transitions do not qualify.
+- A protected boundary requires a concrete invariant + credible failure mode; it floors size at S but never creates structure or HIGH graph risk.
+- Honor confirmed Scope assumptions. Missing paths/evidence permit at most the one probe; only unresolved, approach-changing uncertainty affects size.
+- Design authority requires an unresolved material product, compatibility, destructive, migration/rollback, or long-term architecture choice outside implementation discretion; size and routine placement never create it.
+- Initial and observed use the same table. Observed reports regret and `KEEP|RERUN_SMALLER|RERUN_LARGER`; it never repeats work or removes artifacts.
+- Normalize legacy reads once: `MICRO→XS`, `LIGHT→S`, `STANDARD-DIRECT→M`, `STANDARD→L`, `COMPREHENSIVE→XL`; legacy labels never decide.
+- Never use file volume, dependency count, or sensitive-domain keywords as size authority. Never plan, write artifacts, emit telemetry, or present gates.
 
 ## Handoff
 
-Return only the validated record plus probe evidence when used. Plan owns persistence, explanation, orchestration, recommendations, gates, and telemetry.
+Return the validated record plus probe evidence. Plan owns persistence, explanation, orchestration, gates, and telemetry.
 
 ## Escalate-If
 
-- Canonical Scope is absent/conflicting, an enum is invalid, or a protected boundary lacks either required predicate.
-- A material decision cannot be represented without user authority; return it as `design_authority_required`, never decide it.
+- Canonical Scope is absent/conflicting, an enum is invalid, or a protected boundary lacks either predicate.
+- A material decision needs user authority; report it through `design_authority_required`, never decide it.

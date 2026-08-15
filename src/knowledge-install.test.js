@@ -416,8 +416,8 @@ test('active documentation describes metadata registry, neutral search, and exac
   assert.doesNotMatch(guidance, /UserPromptSubmit|capability-only SessionStart|spectre-recall/);
 
   const readme = fs.readFileSync(path.resolve('README.md'), 'utf8');
-  assert.match(readme, /\/plugin marketplace add joenandez\/spectre/);
-  assert.match(readme, /\/plugin install spectre@spectre/);
+  assert.match(readme, /claude plugin marketplace add joenandez\/spectre/);
+  assert.match(readme, /claude plugin install spectre@spectre/);
   assert.match(readme, /codex plugin marketplace add joenandez\/spectre/);
   assert.match(readme, /codex plugin add spectre@spectre/);
   assert.match(readme, /SessionStart/);

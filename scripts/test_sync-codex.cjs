@@ -810,6 +810,64 @@ test('Plan and Execute emit one non-authoritative calibration lifecycle', () => 
   }
 });
 
+test('Plan router keeps one-owner skill orchestration direct after a locator probe', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const fixtureRoot = path.join(
+    repoRoot,
+    'test',
+    'fixtures',
+    'plan-router',
+    'owner-skill-orchestration',
+  );
+  const scope = fs.readFileSync(path.join(fixtureRoot, 'scope.md'), 'utf8');
+  const observations = fs.readFileSync(path.join(fixtureRoot, 'observations.md'), 'utf8');
+  const oracle = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'oracle.json'), 'utf8'));
+  const modelVisibleFixture = `${scope}\n${observations}`;
+
+  assert.doesNotMatch(
+    modelVisibleFixture,
+    /\b(?:XS_DIRECT|S_DIRECT|M_REVIEWED_DIRECT|L_STRUCTURED|XL_REVIEWED_STRUCTURED)\b/,
+  );
+  assert.deepEqual(
+    {
+      shape: oracle.shape,
+      uncertainty: oracle.uncertainty,
+      evidence: oracle.evidence,
+      task_graph_risk: oracle.task_graph_risk,
+      design_authority_required: oracle.design_authority_required,
+      size: oracle.size,
+      route: oracle.route,
+      probe_count: oracle.probe_count,
+    },
+    {
+      shape: 'DIRECT',
+      uncertainty: 'LOW',
+      evidence: 'PROBED',
+      task_graph_risk: 'LOW',
+      design_authority_required: false,
+      size: 'S',
+      route: 'S_DIRECT',
+      probe_count: 1,
+    },
+  );
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const route = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan-route', 'SKILL.md'),
+      'utf8',
+    );
+    assert.match(route, /STRUCTURED requires multiple independently implementable workstreams/i);
+    assert.match(route, /dependencies.*workflow\/acceptance steps.*pilots are not workstreams/i);
+    assert.match(route, /HIGH graph risk requires a credible implementation ordering\/coordination\/rollback failure/i);
+    assert.match(route, /workflow gates\/state transitions do not qualify/i);
+    assert.match(route, /Honor confirmed Scope assumptions/i);
+    assert.match(route, /Missing paths\/evidence permit at most the one probe/i);
+    assert.match(route, /only unresolved, approach-changing uncertainty affects size/i);
+    assert.match(route, /size and routine placement never create it/i);
+    assert.match(route, /Never use.*dependency count.*size authority/i);
+  }
+});
+
 test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration authority', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
@@ -835,12 +893,12 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
     assert.match(route, /STRUCTURED[^\n]*(?:HIGH uncertainty|HIGH task-graph risk)[^\n]*XL/);
     assert.match(route, /threatened_invariant/);
     assert.match(route, /failure_mode/);
-    assert.match(route, /at least S/);
-    assert.match(route, /never directly selects L or XL/);
-    assert.match(route, /exactly one bounded classification probe/);
-    assert.match(route, /missing evidence alone is not complexity/i);
-    assert.match(route, /KEEP \| RERUN_SMALLER \| RERUN_LARGER/);
-    assert.match(route, /never invoke planning children, write artifacts, emit telemetry, or present gates/i);
+    assert.match(route, /floors size at S/);
+    assert.match(route, /never creates structure or HIGH graph risk/);
+    assert.match(route, /exactly one bounded probe/);
+    assert.match(route, /Honor confirmed Scope assumptions/i);
+    assert.match(route, /KEEP\|RERUN_SMALLER\|RERUN_LARGER/);
+    assert.match(route, /Never plan, write artifacts, emit telemetry, or present gates/i);
 
     assert.equal(routeCalls.length, 2);
     assert.doesNotMatch(plan, /ATOMIC[^\n]*LOW[^\n]*XS/);
@@ -876,11 +934,11 @@ test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route'
     ['COMPREHENSIVE', 'XL'],
   ];
 
-  assert.match(readme, /repository-changing[^\n]*Scope[^\n]*Plan/i);
+  assert.match(readme, /All feature work enters through Scope[^\n]*adaptive Plan/i);
   assert.match(readme, /bugs?[^\n]*spectre:fix/i);
   assert.match(readme, /XS[^\n]*S[^\n]*M[^\n]*L[^\n]*XL/);
   assert.match(readme, /durable[^\n]*artifact/i);
-  assert.match(readme, /every size[^\n]*explicit[^\n]*approval[^\n]*before[^\n]*code/i);
+  assert.match(readme, /Wait for your explicit approval before any code changes/i);
   assert.doesNotMatch(readme, /unless the feature is a one line ask/i);
   assert.doesNotMatch(readme, /Tiny or Small[^\n]*prefer[^\n]*(?:Claude Code|Codex)[^\n]*plan mode/i);
   assert.doesNotMatch(readme, /for small, unambiguous features[^\n]*spectre:delegate/i);
@@ -900,7 +958,7 @@ test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route'
       'utf8',
     );
 
-    assert.match(route, /historical (?:artifact|telemetry)[^\n]*resume/i);
+    assert.match(route, /Resume-only legacy size/i);
     for (const [legacy, canonical] of legacyPairs) {
       assert.match(route, new RegExp(legacy.replace('-', '\\-') + '→' + canonical));
       assert.match(
@@ -1132,7 +1190,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
 test('workflow documentation matches proof-independent shipping', () => {
   const readme = fs.readFileSync(path.resolve(__dirname, '..', 'README.md'), 'utf8');
   const shipSection = readme.match(
-    /  - `\/spectre:ship`[\s\S]*?(?=\n\n## )/,
+    /\*\*\/spectre:ship\*\*[\s\S]*?(?=\n\n## )/,
   )?.[0];
 
   assert.match(readme, /every final agent response[^\n]*guides you to what is next/i);

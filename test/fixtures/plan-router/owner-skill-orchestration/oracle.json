@@ -1,0 +1,24 @@
+{
+  "schema": "plan-routing/v1",
+  "shape": "DIRECT",
+  "uncertainty": "LOW",
+  "evidence": "PROBED",
+  "protected_boundaries": [
+    {
+      "type": "approval_attribution",
+      "threatened_invariant": "only an attributable approval authorizes its proposal",
+      "failure_mode": "a reply could authorize a different proposal"
+    },
+    {
+      "type": "lifecycle_state",
+      "threatened_invariant": "daily runs preserve the current workflow gate",
+      "failure_mode": "a later run could forget or bypass the gate"
+    }
+  ],
+  "task_graph_risk": "LOW",
+  "design_authority_required": false,
+  "material_decision": null,
+  "size": "S",
+  "route": "S_DIRECT",
+  "probe_count": 1
+}
