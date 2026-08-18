@@ -11,4 +11,5 @@ Load on the first completed phase; reuse thereafter.
 ## Routing
 
 - Record every completed phase as `intermediate:<trigger>` or `final-only`; bundle triggered phases completed by the same wave into one reviewer call with a verdict per phase.
+- Intermediate reviewers return findings in-thread. Persist only compact local route, fingerprints, and dispositions; never create a phase/wave review file.
 - A trigger at final completion belongs to `Skill(spectre-code_review)`; never run both reviews over the final surface.

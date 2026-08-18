@@ -9,12 +9,12 @@ user-invocable: true
 Produce a reviewer-ready draft pull request grounded in the actual change. Every claim traces to a diff hunk, a commit message, or a linked issue — never invented. Scale the description to the size of the change. Then open the PR as a draft with `gh`.
 
 ## Inputs
-- `$ARGUMENTS` (optional): `TARGET_BRANCH` (default `origin/main`), feedback-focus hint, a compact `VERIFICATION_SUMMARY`, optional `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256` plus explicit `EVIDENCE_DIRS`, or `--orchestrated` when a parent workflow owns the final summary. Read the live repo state at runtime — never assume a prior phase ran.
+- `$ARGUMENTS` (optional): `TARGET_BRANCH` (default `origin/main`), feedback-focus hint, a compact `VERIFICATION_SUMMARY`, optional `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256`, or `--orchestrated` when a parent workflow owns the final summary. Read the live repo state at runtime — never assume a prior phase ran.
 - Resolve just-in-time:
   - `BRANCH = git rev-parse --abbrev-ref HEAD`. If on `main`/`master` → stop and ask (nothing to PR).
   - `TARGET_BRANCH` (default `origin/main`); `PR_BASE = TARGET_BRANCH` with a leading remote name such as `origin/` removed. `git fetch`, then resolve `BASE_SHA` and `HEAD_SHA`.
   - `DIFF = git diff {BASE_SHA}...{HEAD_SHA}`; `DIFF_SHA256` uses `git-diff-v1`: SHA-256 over raw stdout from `git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}`; `COMMITS = git log {BASE_SHA}..{HEAD_SHA}`; branch name; any issue ref found in branch name or commits (`#123`, `PROJ-123`).
-  - If any expected candidate field is supplied, require all three and compare them with the fetched base, current head, canonical diff hash, and candidate worktree before push or PR creation. Only evidence files inside explicit `EVIDENCE_DIRS` may be dirty; any other tracked or untracked change returns `PR_CANDIDATE_STALE` with expected/observed state and performs neither action.
+  - If any expected candidate field is supplied, require all three and compare them with the fetched base, current head, canonical diff hash, and a clean candidate worktree before push or PR creation. Canonical review/proof artifacts must already be committed; ignored lifecycle state is excluded. Any tracked or non-ignored untracked change returns `PR_CANDIDATE_STALE` with expected/observed state and performs neither action.
   - `gh` availability + unpushed commits. If `gh` is absent → output the title + body for manual creation and say so.
 
 ## Working Set

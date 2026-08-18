@@ -52,7 +52,7 @@
       "requirements_with_task_coverage": 2,
       "phases": 2,
       "parent_tasks": 2,
-      "subtasks": 3
+      "subtasks": 2
     }
   },
   "phases": [
@@ -60,48 +60,18 @@
       "id": "1",
       "title": "Define Contract",
       "summary": "Create the producer-side task detail contract.",
-      "status": "pending",
       "parents": [
         {
           "id": "1.1",
           "title": "Example detail artifact",
           "description": "Author the JSON task detail that downstream consumers slice by selected parent task ids.",
-          "status": "pending",
           "predecessor": "none",
           "unblocks": "2.1",
           "subtasks": [
             {
               "id": "1.1.1",
-              "title": "Write failing fixture parse check",
-              "type": "RED",
-              "status": "pending",
-              "produces": "A failing parse check that proves the fixture is absent or invalid",
-              "consumed_by": "1.1.2",
-              "replaces": "N/A",
-              "context": [
-                {
-                  "path": "plugins/spectre/skills/spectre-create_tasks/SKILL.md",
-                  "anchor": "Artifact Contract",
-                  "note": "The producer skill owns the authoritative schema."
-                }
-              ],
-              "predecessor": "none",
-              "acceptance_criteria": [
-                {
-                  "type": "state",
-                  "text": "File `plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json` does not parse before implementation."
-                },
-                {
-                  "type": "test",
-                  "text": "Parse command fails for the documented reason before the fixture is authored."
-                }
-              ]
-            },
-            {
-              "id": "1.1.2",
-              "title": "Author parseable detail fixture",
+              "title": "Author parseable detail fixture with RED-first contract check",
               "type": "Build",
-              "status": "pending",
               "produces": "`plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json` with `meta` and `phases[]` detail",
               "consumed_by": "create_tasks, execute, task_review, code_review, validate",
               "replaces": "The implicit Markdown-only task body contract",
@@ -109,11 +79,15 @@
                 {
                   "path": "plugins/spectre/skills/spectre-create_tasks/SKILL.md",
                   "anchor": "tasks.json",
-                  "note": "Current fields must have a JSON home."
+                  "note": "The producer skill owns the immutable authoritative schema."
                 }
               ],
-              "predecessor": "1.1.1",
+              "predecessor": "none",
               "acceptance_criteria": [
+                {
+                  "type": "test",
+                  "text": "A schema check fails for the documented missing contract before implementation and passes afterward."
+                },
                 {
                   "type": "state",
                   "text": "File `plugins/spectre/skills/spectre-create_tasks/references/tasks.example.json` exists and parses as JSON."
@@ -124,7 +98,7 @@
                 },
                 {
                   "type": "state",
-                  "text": "No stored `index`, `indexes`, `wave_plan`, or `waves` key appears in the JSON fixture."
+                  "text": "No lifecycle `status`, `index`, `wave_plan`, or `waves` key appears in the JSON fixture."
                 }
               ]
             }
@@ -136,22 +110,19 @@
       "id": "2",
       "title": "Consumer Slice",
       "summary": "Show a consumer-owned parent-task slice with preserved task fields.",
-      "status": "pending",
       "parents": [
         {
           "id": "2.1",
           "title": "Inline selected parent tasks into dispatch",
           "description": "Extract the assigned parent tasks and pass only those task bodies to the owner.",
-          "status": "pending",
           "predecessor": "1.1",
           "unblocks": "terminal",
-          "risk": "shared-contract",
+          "risk": "shared-contract: dispatch slice must preserve the consumer-visible task contract",
           "subtasks": [
             {
               "id": "2.1.1",
               "title": "Dispatch a selected parent-task slice",
               "type": "Integration",
-              "status": "pending",
               "produces": "An XML `<task_assignment>` envelope containing exactly parent task 2.1",
               "consumed_by": "@spectre_dev owner for parent task 2.1",
               "replaces": "Whole legacy Markdown task-list reads by execution owners",

@@ -116,7 +116,6 @@ function flattenTasks(tasksDocument) {
         level: 'parent',
         phaseId: String(phase.id),
         parentId: null,
-        sourceStatus: parent.status || 'pending',
       });
       for (const subtask of parent.subtasks || []) {
         validateTaskId(subtask.id);
@@ -125,7 +124,6 @@ function flattenTasks(tasksDocument) {
           level: 'subtask',
           phaseId: String(phase.id),
           parentId: parent.id,
-          sourceStatus: subtask.status || 'pending',
         });
       }
     }
@@ -242,6 +240,14 @@ function validateEventSpec(spec) {
     const value = spec.payload?.[field];
     if (value && (typeof value !== 'string' || !ROUTING_VALUE_PATTERN.test(value))) {
       throw codedError('INVALID_EVENT_VALUE', `${field} must be a machine-readable routing value`);
+    }
+  }
+  if (spec.payload?.checkIds !== undefined && !Array.isArray(spec.payload.checkIds)) {
+    throw codedError('INVALID_EVENT_VALUE', 'check ids must be a list');
+  }
+  for (const checkId of spec.payload?.checkIds || []) {
+    if (typeof checkId !== 'string' || !ROUTING_VALUE_PATTERN.test(checkId)) {
+      throw codedError('INVALID_EVENT_VALUE', 'check id must be a short machine-readable value');
     }
   }
   if (spec.payload?.commit && !/^[0-9a-f]{7,64}$/i.test(spec.payload.commit)) {
@@ -440,9 +446,6 @@ function applyEvent(state, event) {
       requirePrimary(state, event.actorId);
       const task = sourceTask(state, event);
       assertTaskState(task, ['submitted'], event.type);
-      if (!state.planDirect && event.payload.sourceStatus !== 'done') {
-        throw codedError('TASK_SOURCE_NOT_DONE', `${task.id} is not done in tasks.json`);
-      }
       const gate = state.gates[event.payload.gateEventId];
       if (!gate || gate.status !== 'pass' || gate.kind !== 'verification') {
         throw codedError('PASSING_GATE_REQUIRED', `${task.id} requires a passing verification gate`);
@@ -451,7 +454,6 @@ function applyEvent(state, event) {
         throw codedError('GATE_TASK_MISMATCH', `${gate.kind} gate does not cover ${task.id}`);
       }
       task.state = 'completed';
-      task.sourceStatus = event.payload.sourceStatus;
       task.completedAt = event.timestamp;
       task.gateEventId = event.payload.gateEventId;
       break;
@@ -460,9 +462,6 @@ function applyEvent(state, event) {
       requirePrimary(state, event.actorId);
       const task = sourceTask(state, event);
       assertTaskState(task, ['pending', 'assigned', 'blocked'], event.type);
-      if (!state.planDirect && event.payload.sourceStatus !== 'skipped') {
-        throw codedError('TASK_SOURCE_NOT_SKIPPED', `${task.id} is not skipped in tasks.json`);
-      }
       task.state = 'skipped';
       task.skipReason = event.payload.reasonCode || 'unspecified';
       break;
@@ -475,6 +474,7 @@ function applyEvent(state, event) {
         phaseId: event.phaseId || null,
         waveId: event.waveId || null,
         taskIds: event.payload.taskIds || [],
+        checkIds: event.payload.checkIds || [],
       };
       break;
     case 'stage.started':
@@ -797,12 +797,11 @@ export async function recordWorkflowEvents(options) {
         if (definition) return definition;
         if (source.planDirect) {
           validateTaskId(id);
-          return { id, level: 'workstream', sourceStatus: null };
+          return { id, level: 'workstream' };
         }
         throw codedError('UNKNOWN_TASK', `${id} is absent from ${state.sourcePath}`);
       };
       const taskDefinition = spec.taskId ? resolveDefinition(spec.taskId) : null;
-      const sourceStatus = taskDefinition?.sourceStatus;
       let payload = spec.payload || {};
       if (spec.type === 'agent.dispatched') {
         const taskDefinitions = (payload.taskDefinitions || []).map(({ id }) => resolveDefinition(id));
@@ -831,7 +830,7 @@ export async function recordWorkflowEvents(options) {
         evidence: normalizeEvidence(projectDir, spec.evidence || []),
         payload: {
           ...payload,
-          ...(taskDefinition ? { taskDefinition, sourceStatus } : {}),
+          ...(taskDefinition ? { taskDefinition } : {}),
           sourceRawHash: source.rawHash,
           sourceDefinitionHash: source.definitionHash,
         },

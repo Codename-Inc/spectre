@@ -16,14 +16,13 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 ## Working Set
 
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- Set `OUT_DIR = FEATURE_ROOT`.
 - Resolve the same full working set used by prune/test/sweep from committed changes, staged, unstaged, and untracked files. If a provided ref/scope is invalid or ambiguous, stop and ask.
-- Write/update `{OUT_DIR}/working_set.json` with `"feature":"<feature-name>"` and `"feature_root":".spectre/features/<feature-name>"`, plus scope, files, and the primary's P0-P3 risk tiers before dispatching test work.
+- Keep the resolved file set and primary's compact P0-P3 risk plan in-thread; write no working-set/lifecycle artifact.
 
 ## Outputs + DONE
 
 - `spectre-prune` cleanup completed by a subagent; manual-review items preserved.
-- Primary-authored P0-P3 risk assessment and test plan recorded in `working_set.json`.
+- Primary-authored P0-P3 risk assessment and test plan passed in-thread to test owners.
 - `spectre-test` work completed by `@spectre_tester` test-lead subagents using the primary's risk plan.
 - `spectre-sweep` completed by a subagent, including final hygiene, verification, and conventional commits.
 - Final report: prune/manual review · risk tiers · tests/affected checks · routed findings · sweep commits · `NEEDS_AUTHORITY`, if any.
@@ -31,14 +30,14 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 
 ## Method / guardrails
 
-1. **Resolve scope once.** Establish files, task dir, and OUT_DIR. Keep dynamic details out of the prompt body; read them live.
-2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(spectre-prune)` with `{FEATURE_ROOT} --orchestrated` for the resolved scope. It returns cleanup edits, summary path, validation status, and manual-review items.
+1. **Resolve scope once.** Establish files and feature root. Keep dynamic details out of the prompt body; read them live.
+2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(spectre-prune)` with `{FEATURE_ROOT} --orchestrated` for the resolved scope. It returns cleanup edits, compact summary, validation status, and manual-review items.
 3. **Primary risk assessment.** After prune returns, the primary classifies every changed file P0-P3:
    - **P0 Critical:** auth/payment/security/crypto/session/token, PII, permissions, user-data mutation, external API handlers, DB migrations, `@critical`.
    - **P1 Core:** feature components, API handlers, state/business logic, fetch/cache, user-visible error paths.
    - **P2 Supporting:** exported utilities, validators, transformers, adapters, hooks with real logic.
    - **P3 Skip:** docs, styles, config, types, constants/enums, re-export barrels, pass-through wrappers, generated files.
-   Write a compact plan: `- [P{tier}] {file}: {behavior or SKIP reason}`.
+   Keep a compact plan in-thread: `- [P{tier}] {file}: {behavior or SKIP reason}`.
 4. **Test phase.** Dispatch `@spectre_tester` test-lead subagents in parallel. Each subagent loads `Skill(spectre-test)` with `{FEATURE_ROOT} --orchestrated`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
 5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(spectre-sweep)` with `--orchestrated` on the resulting diff. Sweep owns final hygiene, verification, and commits.
 6. **Synthesize.** Route repairable findings to their owner; report final state, routed findings, and genuine authority/safety impasses.

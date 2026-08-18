@@ -48,7 +48,7 @@ function usage() {
     '  spectre-workflow stage|phase|wave start|finish --run-id <id> --actor-id <id> --id <value> --json',
     '  spectre-workflow agent dispatch|start|finish --run-id <id> --actor-id <id> --json',
     '  spectre-workflow task assign|start|submit|complete|block|skip --run-id <id> --task-id <id> --actor-id <id> --json',
-    '  spectre-workflow gate record --run-id <id> --actor-id <id> --kind verification|review|proof --status pass|fail --json',
+    '  spectre-workflow gate record --run-id <id> --actor-id <id> --kind verification|review|proof --status pass|fail [--tasks <ids>] [--checks <ids>] [--evidence <paths>] --json',
     '  spectre-workflow human-input require|resolve --run-id <id> --actor-id <id> --json',
     '  spectre-workflow plan start --feature-root <path> --scope-hash <sha256>|--scope <relative-path> --classification <XS|S|M|L|XL> --shape <ATOMIC|DIRECT|STRUCTURED> --uncertainty <LOW|MODERATE|HIGH> --evidence <SUFFICIENT|PROBE_REQUIRED|PROBED> --task-graph-risk <LOW|HIGH> --route <route> --design-authority-required <true|false> --probe-used <true|false> --probe-sufficient <true|false> --reason-codes <codes> [--protected-boundaries-json <json>] [--plan-hash <sha256>] [--project-dir <path>] [--json]',
     '  spectre-workflow plan record --plan-run-id <id> --event-type <type> --feature-root <path> --scope-hash <sha256> [--project-dir <path>] [--json]',
@@ -325,16 +325,17 @@ async function gateCommand(action, flags) {
     throw codedError('INVALID_GATE_STATUS', `Invalid gate status ${status}`);
   }
   const taskIds = listFlag(flags, '--tasks');
+  const checkIds = listFlag(flags, '--checks');
   return record(flags, [{
     type: 'gate.recorded',
     actorId: required(flags, '--actor-id'),
     phaseId: flags.get('--phase-id') || undefined,
     waveId: flags.get('--wave-id') || undefined,
     evidence: listFlag(flags, '--evidence'),
-    payload: { kind, status, taskIds },
+    payload: { kind, status, taskIds, checkIds },
   }], idempotencyKey(
     flags,
-    `gate:${kind}:${status}:${required(flags, '--run-id')}:${flags.get('--wave-id') || flags.get('--phase-id') || taskIds.join(',')}`,
+    `gate:${kind}:${status}:${required(flags, '--run-id')}:${flags.get('--wave-id') || flags.get('--phase-id') || taskIds.join(',')}:${checkIds.join(',')}`,
   ));
 }
 

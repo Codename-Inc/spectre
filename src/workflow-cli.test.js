@@ -20,11 +20,9 @@ function makeFixture(t) {
     meta: { schema_version: 1, feature_root: '.spectre/features/cli' },
     phases: [{
       id: '1',
-      status: 'pending',
       parents: [{
         id: '1.1',
-        status: 'pending',
-        subtasks: [{ id: '1.1.1', status: 'pending' }],
+        subtasks: [{ id: '1.1.1' }],
       }],
     }],
   }));
@@ -79,6 +77,7 @@ test('top-level and bundled workflow CLIs share stable JSON commands', (t) => {
 
 test('workflow CLI returns minimal confirmations across the task lifecycle', (t) => {
   const value = makeFixture(t);
+  const immutableSource = fs.readFileSync(value.sourcePath, 'utf8');
   const common = ['--project-dir', value.projectDir, '--json'];
   const run = JSON.parse(invoke(BUNDLED_CLI_PATH, [
     'run', 'start', '--source', value.sourcePath, ...common,
@@ -114,15 +113,10 @@ test('workflow CLI returns minimal confirmations across the task lifecycle', (t)
     }
   }
 
-  const source = JSON.parse(fs.readFileSync(value.sourcePath, 'utf8'));
-  source.phases[0].status = 'done';
-  source.phases[0].parents[0].status = 'done';
-  source.phases[0].parents[0].subtasks[0].status = 'done';
-  fs.writeFileSync(value.sourcePath, JSON.stringify(source));
-
   const gate = JSON.parse(invoke(BUNDLED_CLI_PATH, [
     'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
-    '--tasks', '1.1,1.1.1', '--wave-id', '1', ...common,
+    '--tasks', '1.1,1.1.1', '--checks', 'lint:affected,test:focused',
+    '--wave-id', '1', ...common,
   ], value).stdout);
   assert.deepEqual(Object.keys(gate).sort(), ['eventId', 'ok']);
 
@@ -137,9 +131,18 @@ test('workflow CLI returns minimal confirmations across the task lifecycle', (t)
 
   const replay = JSON.parse(invoke(BUNDLED_CLI_PATH, [
     'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
-    '--tasks', '1.1,1.1.1', '--wave-id', '1', ...common,
+    '--tasks', '1.1,1.1.1', '--checks', 'lint:affected,test:focused',
+    '--wave-id', '1', ...common,
   ], value).stdout);
   assert.deepEqual(replay, { ok: true, idempotent: true, eventId: gate.eventId });
+
+  const expandedGate = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
+    '--tasks', '1.1,1.1.1', '--checks', 'lint:affected,test:focused,typecheck:affected',
+    '--wave-id', '1', ...common,
+  ], value).stdout);
+  assert.notEqual(expandedGate.eventId, gate.eventId);
+  assert.equal(fs.readFileSync(value.sourcePath, 'utf8'), immutableSource);
 });
 
 test('workflow CLI reports stable coded JSON errors', (t) => {

@@ -16,12 +16,12 @@ Do not read this file whole:
 - Feature Root: `.spectre/features/example-feature`
 - Tasks JSON: `specs/tasks.json`
 
-Use targeted parsing only: status projections, selected parent-task slices, reviewer criteria/context slices, and status updates.
+Use targeted parsing only: selected parent-task slices and reviewer criteria/context slices. Task definitions are immutable; progress lives in the local workflow store.
 
 ## Execution Summary
 - Phases: 2
 - Parent tasks: 2
-- Subtasks: 3
+- Subtasks: 2
 - Waves: 2
 
 ## Wave Plan
@@ -30,11 +30,11 @@ Use targeted parsing only: status projections, selected parent-task slices, revi
 
 ## Parent Task Index
 - Phase 1 — Define Contract
-  - `{ id: "1.1", title: "Example detail artifact", subtasks: ["1.1.1", "1.1.2"], predecessor: "none", unblocks: "2.1" }`
+  - `{ id: "1.1", title: "Example detail artifact", subtasks: ["1.1.1"], predecessor: "none", unblocks: "2.1" }`
 - Phase 2 — Consumer Slice
-  - `{ id: "2.1", title: "Inline selected parent tasks into dispatch", subtasks: ["2.1.1"], predecessor: "1.1", unblocks: "terminal", risk: "shared-contract" }`
+  - `{ id: "2.1", title: "Inline selected parent tasks into dispatch", subtasks: ["2.1.1"], predecessor: "1.1", unblocks: "terminal", risk: "shared-contract: dispatch slice must preserve the consumer-visible task contract" }`
 
 ## Slicing Rules
 Read this index to plan waves. For each owner, choose selected parent task ids from the Wave Plan and batching rules, then query only those parent tasks from `tasks.json` using `jq`, `node -e`, or direct targeted mechanics. Inline the selected parent-task slice under `<task_assignment>`.
 
-Do not load the full task detail JSON into orchestration context. Do not require dispatch boundaries to match phase boundaries. Update mutable `status` fields in `tasks.json`, re-parse after every write, and update this index only if parent ids, parent titles, dependencies, or wave guidance change.
+Do not load the full task detail JSON into orchestration context. Do not require dispatch boundaries to match phase boundaries. Never write lifecycle status or validation data into `tasks.json`; update this index only when the immutable task graph changes before execution.

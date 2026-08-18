@@ -151,8 +151,9 @@ test("plan review runs correctness before simplification and applies only scope-
   );
   assert.match(
     plan,
-    /M → [^\n]*spectre-plan_review[^\n]*spectre-goal/,
+    /M → [^\n]*spectre-create_plan[^\n]*spectre-plan_review/,
   );
+  assert.doesNotMatch(plan, /spectre-goal/);
   assert.match(
     plan,
     /L → [^\n]*spectre-plan_review[^\n]*spectre-create_tasks/,
@@ -239,12 +240,11 @@ test("XL planning reviews tasks before finalizing execute.md", () => {
   const taskReviewIndex = xl.indexOf("spectre-task_review");
   const finalizeIndex = xl.indexOf("--finalize-index");
   const pairValidation = xl.indexOf("validate-pair");
-  const goal = xl.indexOf("spectre-goal");
   assert.ok(tasksOnly >= 0);
   assert.ok(taskReviewIndex > tasksOnly);
   assert.ok(finalizeIndex > taskReviewIndex);
   assert.ok(pairValidation > finalizeIndex);
-  assert.ok(goal > pairValidation);
+  assert.equal(xl.indexOf("spectre-goal"), -1);
 
   assert.match(createTasks, /--tasks-only/);
   assert.match(createTasks, /--finalize-index/);

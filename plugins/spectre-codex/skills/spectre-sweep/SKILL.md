@@ -21,10 +21,11 @@ One or more conventional commits covering the changes. DONE when:
 - Commented-out code, session-introduced TODO/FIXME/HACK, and hardcoded test values resolved or documented.
 - Lint passes with **zero violations fixed by suppression** — refactor structural issues, never `eslint-disable` or equivalent. `.gitignore` covers temp/build/IDE artifacts.
 - Related/affected verification has no branch-caused failure; unrelated findings are recorded/routed.
+- Staging includes canonical specs/research/decisions/final reviews and required `proof/proof.json` + `proof/proof.html`, but excludes Execute evidence, verification reports, checkpoints, runs, markers, working-set/cleanup summaries, and local lifecycle state. Product/CI-consumed qualification artifacts belong at product-owned paths and may be staged.
 - Work committed as `type(scope): description` conventional commits, split by concern.
 
 ## Method / guardrails
-1. **Diff sanity** — scan full diff for accidental edits, stray staged files, and secrets.
+1. **Diff sanity and artifact tenancy** — scan the full diff for accidental edits, stray staged files, secrets, and local lifecycle residue. Ensure local artifact patterns are ignored; never stage or commit them.
 2. **Log + code hygiene** — strip debug logging, commented-out code, leftover TODO/FIXME from this work, hardcoded test values; keep intentional logs.
 3. **Opportunistic dead code (changed files only)** — orphaned imports, unused vars/functions, debugger statements. No deep investigation.
 4. **Strict lint** — fix all violations by correcting code; YOU MUST NOT suppress or `--no-verify`. Refactor for size/complexity thresholds.

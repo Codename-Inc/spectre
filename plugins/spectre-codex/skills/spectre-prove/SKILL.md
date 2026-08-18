@@ -6,31 +6,30 @@ user-invocable: true
 
 # prove
 
-Independently prove the completed experience against its approved contract. Treat implementation reports, tests, DOM/state assertions, and developer claims as leads, not proof. Observable behavior and reviewed evidence decide the result.
+Prove the completed experience against its approved contract. Reports, tests, assertions, and developer claims are leads; observable behavior and reviewed evidence decide.
 
 ## Inputs
 
-- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, explicitly passed source-plan path, scope/UX/prototype/test-guide paths, journey hints, a prior proof run to extend, an authorized scope hash, explicit `EVIDENCE_DIRS`, and `--orchestrated` when a parent owns the next action.
+- `$ARGUMENTS` - optional explicit feature name/root or descendant artifact, explicitly passed source-plan path, scope/UX/prototype/test-guide paths, journey hints, fresh inspected evidence to reuse, an authorized scope hash, and `--orchestrated` when a parent owns the next action.
 - Optional `--profile focused`, valid only with `--orchestrated`: use existing proof tools/scenarios only, run no tooling research or dependency-selection gate, and record unavailable proof capability as `PARTIAL` with limitation `PROOF_TOOLING_UNAVAILABLE`.
-- Resolve an explicit feature name/root, a descendant artifact, or one unambiguous current-thread artifact. Otherwise derive a concise lowercase kebab-case name from the requested work and proceed. Never ask for a feature name/root; mention the choice in an existing user gate or normal response without waiting.
+- Resolve an explicit feature/root, descendant, or unambiguous thread artifact; otherwise derive a concise kebab name and proceed without a naming gate.
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- Repair stale feature/root metadata in artifacts this workflow touches.
 - Resolve acceptance truth in this order: current explicit user instruction; an explicitly passed source plan as an acceptance source; approved scope and UX/prototype; task acceptance criteria; test guide. Derivative execution evidence such as `execution_state.md` may focus proof but is not acceptance truth. Surface contradictions before proving against an invented interpretation.
 
 This skill must work in a fresh session. Read canonical artifacts and live repository state instead of relying on prior conversation.
 
-Each invocation is exactly one proof pass. Record the observed repository/runtime state at start and finish, excluding generated evidence. If product state changes during the pass, mark affected rows `PARTIAL` with limitation `PROOF_STATE_CHANGED`; never bind proof to a future PR candidate.
+Each invocation is exactly one proof pass. Derive a candidate key from relevant product inputs, scope hash, and scenario/config definitions; record observed start/finish state excluding generated proof. If product state changes, mark affected rows `PARTIAL` with `PROOF_STATE_CHANGED`; never bind proof to a future candidate.
 
 ## Proof Surface
 
-- Inventory available skills, repository scripts, automation, runnable applications, public interfaces, and existing scenarios before choosing tools. Prefer the project's established proof stack and reusable scenarios.
+- Inventory existing tools, scripts, runnable interfaces, and scenarios; prefer the established proof stack.
 - Match the mechanism to the actual surface: visible app, browser, desktop/mobile runtime, CLI/TUI, API/service, library, or background workflow. Exercise the same public controls and interfaces a user would use.
 - When no adequate proof tool exists: focused profile records affected rows `PARTIAL` with `PROOF_TOOLING_UNAVAILABLE` and continues without research or a user gate. Otherwise read `references/proof-tools.md`, use `@spectre_web_research` when available to verify current options against primary sources, then offer the user 2-4 suitable choices with a recommendation, trade-offs, installation impact, and evidence capabilities; hold for selection before adding a dependency or committing to a materially weaker proof method.
 - Identify missing proof infrastructure separately from product findings; this skill reports the required capability but never installs, writes, or repairs it.
 
 ## Proof Contract
 
-Build a proof matrix before running anything. Each row contains:
+Build a proof matrix first. Each row contains:
 
 - requirement and source;
 - realistic start state, user action, and observable result;
@@ -40,18 +39,18 @@ Build a proof matrix before running anything. Each row contains:
 
 Use `PASS`, `PARTIAL`, `DIAGNOSTIC_ONLY`, or `FAIL` per row:
 
-- `PASS` - the public workflow and promised result were exercised end to end; required evidence was inspected and matched the contract.
+- `PASS` - the public workflow/result ran end to end and inspected evidence matched.
 - `PARTIAL` - some journey was skipped, fixture-backed, programmatic, or otherwise not proven as the user experiences it.
 - `DIAGNOSTIC_ONLY` - code paths, state, logs, or tests were proven without proving the public workflow.
 - `FAIL` - observed behavior, pixels, output, persistence, or errors contradict the contract.
 
-For visible work, proof requires screenshots of the meaningful start, action, and result states. Capture video when timing, motion, transition, or the path taken matters. Open the actual screenshots and representative video frames with image-reading tools, describe what is visibly present, and compare it with the approved UX/prototype. Captured-but-unreviewed media does not count. When assertions and pixels disagree, pixels win.
+For visible work, capture meaningful start/action/result screenshots and video only when timing, motion, transition, or path matters. Inspect actual screenshots/representative frames and compare with approved UX/prototype. Captured-but-unreviewed media does not count. When assertions and pixels disagree, pixels win.
 
-For non-visual work, use the real public interface and preserve observable output, state/persistence evidence, and relevant logs. Do not manufacture visual evidence where it adds no information. Tests, stores, internal APIs, fixtures, filesystem markers, and logs may support proof but cannot replace the user-facing outcome they are meant to corroborate.
+For non-visual work, use the public interface and preserve observable output, persistence, and relevant logs. Do not manufacture visuals. Internal tests/state/logs may support but never replace the promised outcome.
 
 ## Proof Pass
 
-1. Run the smallest complete set of journeys that covers every in-scope matrix row. Preserve commands, environment, timestamps, evidence paths, and limitations.
+1. Reuse fresh inspected primary evidence only when its candidate key and matrix rows match exactly. Run the smallest set of uncovered journeys that completes the matrix. Expensive harness/performance/full qualification allows at most one run per candidate key; rerun only after relevant inputs change or a diagnosed infrastructure failure invalidates it.
 2. Inspect primary evidence before reading diagnostic summaries. Then review logs/errors and durable state for silent failures.
 3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment/authority constraint. Record the failed claim, expected/observed result, reproduction, evidence paths, fingerprint, and limitation.
 4. Write the artifacts and return. Never modify product/proof infrastructure, dispatch an implementer, invoke TDD, or repeat a journey after a repair inside this invocation.
@@ -60,16 +59,16 @@ For non-visual work, use the real public interface and preserve observable outpu
 
 Write:
 
-- `{FEATURE_ROOT}/proof/proof.json` - machine-readable proof state with `feature`, `feature_root`, acceptance sources, scope hash, observed start/finish state, tool/scenario, matrix/run history, evidence, findings, limitations, and aggregate status. Retain legacy history without binding the current pass to it.
-- `{FEATURE_ROOT}/proof/proof.html` - self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then the matrix, findings, selected reviewed media, redacted diagnostics, prior repair history when present, limitations, and final status. Do not publish or share unless asked.
+- `{FEATURE_ROOT}/proof/proof.json` - compact current-candidate snapshot with `feature`, `feature_root`, acceptance sources, scope hash, candidate key, observed start/finish state, scenarios, matrix, evidence references/hashes, findings, limitations, and aggregate status. Replace prior snapshots; git history preserves them. Never embed raw harness output or accumulating run history.
+- `{FEATURE_ROOT}/proof/proof.html` - **required**, self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then the matrix, findings, selected reviewed media, redacted diagnostics, current relevant repair dispositions, limitations, and final status. Replace the prior current-candidate report; do not publish or share unless asked.
 
-Keep secrets, credentials, private customer data, and unnecessary local paths out of both artifacts. Preserve full raw evidence in its owning tool's report bundle and reference it without copying sensitive content.
+Keep secrets, credentials, private customer data, and unnecessary local paths out of both artifacts. Raw evidence stays in its owning local tool bundle or product-consumed artifact path and is referenced by URI/path plus hash, never copied into proof.
 
 **DONE when:** both proof artifacts are self-locating; every in-scope row has a status backed by inspected primary evidence; aggregate `PASS` is used only when every row passes; the authorized scope hash still matches; observed start/finish state and unresolved findings are recorded; and the HTML accurately presents the evidence and limitations. DONE means the pass completed, regardless of aggregate status.
 
 ## Handoff
 
-Return `PROOF_RESULT`: profile · aggregate status · run id · failed/partial row ids · finding fingerprints/classifications · evidence paths · limitations · `needs_authority`, plus the proven journeys and artifact paths. Keep full evidence in the artifacts.
+Return `PROOF_RESULT`: profile · aggregate status · candidate key · failed/partial row ids · finding fingerprints/classifications · evidence references · limitations · `needs_authority`, plus proven journeys and both required artifact paths.
 
 - `--orchestrated` → return the proof result to the parent without user-facing Next Steps.
 - Standalone `PASS` → `Next (recommended): spectre-ship — every in-scope proof row passed with reviewed evidence.`

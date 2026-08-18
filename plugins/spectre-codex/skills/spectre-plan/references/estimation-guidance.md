@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Render one concise time estimate at an applicable design-authority gate and at every final pre-code approval gate when a valid analog exists. Estimates are planning aids, never commitments or reasons to hold a gate.
+Render one concise time estimate at an applicable high-level design gate and at every final pre-code approval gate when a valid analog exists. Estimates are planning aids, never commitments or reasons to hold a gate.
 
 ## Source precedence
 
@@ -20,7 +20,7 @@ Historical analysis may retain richer telemetry for offline evaluation, but the 
 
 ## Gate 1 — Remaining planning time
 
-Select the size-compatible Plan estimate. Its duration excludes time waiting for the user's response. Round endpoints to the nearest 10 minutes and place exactly this sentence immediately before the design-authority approval sentence:
+Select the size-compatible Plan estimate. Its duration excludes time waiting for the user's response. Round endpoints to the nearest 10 minutes and place exactly this sentence immediately before the high-level design approval sentence:
 
 ```text
 **Estimated remaining planning time: about {rounded duration or range}, based on completed plans of similar scope.**

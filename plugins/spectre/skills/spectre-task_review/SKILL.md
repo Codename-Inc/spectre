@@ -41,9 +41,11 @@ DONE when the attempt is `complete`; findings preceded edits; every finding has 
 2. **Run one semantic review per authorized round.** A completed report ends the round; only an explicit user `--review-again` authorizes another. Otherwise use the available opposite runtime at pinned medium effort (Codex → Claude `opus`; Claude → Codex `gpt-5.6-sol`). Allow up to 20 minutes; quiet output alone is not failure. Adversarial mode reviews the whole graph in one pass; Full mode may use its permitted lens workers within that same review. If the opposing route fails to produce a usable report, dispatch one clean-context `@spectre:reviewer` as the fallback under the same ledger/report. Resume incomplete or `report_ready` state instead of starting another review.
 3. **Judge the translation as a whole.** The goal is not checklist completion: determine whether `tasks.json` correctly and completely translates the reviewed plan into an executable graph that can be implemented once, the right way, without avoidable rework. Use these lenses as guidance, not an exhaustive taxonomy or a limit on evidence-backed reviewer judgment:
    - **Coverage:** every plan verification and Out-of-Bounds obligation is represented.
-   - **Executability:** acceptance criteria are falsifiable, RED tests are genuine, tasks are sized for execution, and no task defers scope judgment.
+   - **Executability:** acceptance criteria are falsifiable, behavior-changing builds own RED-before-GREEN, separate RED work is independently dispatchable, and splits reflect outcomes/dependencies rather than file/LOC counts alone.
    - **Integration graph:** real producer/consumer wiring, dependencies, and ordering are correct.
    - **Reference quality:** context points to relevant implementation evidence.
+
+   Reject terminal verification/E2E tasks owned by Execute or Prove unless they produce an explicit prerequisite or product-consumed artifact at a product-owned path.
 
    The reviewer may raise any evidence-backed translation risk that threatens correctness, completeness, integration, executability, or creates likely rework. Severity is `Blocker|High|Medium|Low|Scope Change Required`. Canonical scope and `plan.md` remain immutable; findings that require changing either are Scope Change Required.
 4. **Apply only authorized findings.** Write all findings before edits. With `--auto-apply scope-safe`, apply scope-safe Blocker/High and unambiguous translation-only Medium/Low findings. Otherwise obtain the user's selection and continue the same reviewer route for writeback only. Preserve task IDs when possible. The primary may repair mechanical report/schema metadata from existing reviewer evidence, but may not invent findings, reinterpret them, or perform semantic task edits.
@@ -51,7 +53,7 @@ DONE when the attempt is `complete`; findings preceded edits; every finding has 
 
 ## Handoff
 
-Return runtime/fallback, findings and dispositions, report/task paths, parse/validation status, and any unapplied scope-change recommendation. Under `--orchestrated`, omit user-facing next steps. Standalone unresolved Blocker/High stays in remediation; resolved review recommends `/spectre:execute`, with `/spectre:goal` as the autonomous alternative.
+Return runtime/fallback, findings and dispositions, report/task paths, parse/validation status, and any unapplied scope-change recommendation. Under `--orchestrated`, omit user-facing next steps. Standalone unresolved Blocker/High stays in remediation; resolved review recommends `/spectre:execute`.
 
 ## Escalate-If
 

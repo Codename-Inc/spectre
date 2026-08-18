@@ -14,7 +14,7 @@ Turn confirmed Scope into the smallest sufficient approved implementation handof
 ## Inputs
 
 - `$ARGUMENTS`: confirmed managed Scope/root or descendant artifact. Ordinary repository-changing work without confirmed Scope returns to `spectre-scope`; reported bugs normally use `spectre-fix`. Read-only diagnosis/review, release, and execution of approved artifacts remain direct.
-- Existing `concepts/scope.md`, `specs/prd.md`, `ux.md` (preferred) or legacy `specs/ux.md`, `task_context.md`, plans, reviews, tasks/index, and goal prompts.
+- Existing `concepts/scope.md`, `specs/prd.md`, `ux.md` (preferred) or legacy `specs/ux.md`, `task_context.md`, plans, reviews, and tasks/index.
 
 ## Working Set
 
@@ -26,33 +26,33 @@ Turn confirmed Scope into the smallest sufficient approved implementation handof
 
 | Size | Required durable result |
 |---|---|
-| XS | Compact direct `specs/plan.md`; no review/tasks/goal artifact. |
-| S | Direct plan + `goal-prompts.md`. |
-| M | Direct plan + one paired plan-review pipeline + goal. |
-| L | Reviewed plan + `tasks.json` + `execute.md` + goal. |
+| XS | Compact direct `specs/plan.md`; no review or tasks artifact. |
+| S | Direct plan. |
+| M | Direct plan + one paired plan-review pipeline. |
+| L | Reviewed plan + `tasks.json` + `execute.md`. |
 | XL | L outputs + one task-review report before one-time index finalization and pair validation. |
 
-DONE when both routing decisions are recorded; required children ran in order; declared artifacts and protected inputs validate; reviewer writes stayed stage-owned; any reroute recommendation was resolved; goal ran after the last applicable artifact change; every size passed final pre-code approval before an implementation prompt; telemetry is `complete|degraded`; and canonical Scope is unchanged or a scope-change gate stopped work.
+DONE when both routing decisions are recorded; every required high-level design gate was explicitly approved and recorded; required children ran in order; declared artifacts and protected inputs validate; reviewer writes stayed stage-owned; any reroute recommendation was resolved; the returned launch command names the routed execution source; every size passed final pre-code approval before an implementation prompt; telemetry is `complete|degraded`; and canonical Scope is unchanged or a scope-change gate stopped work.
 
 ## Method / guardrails
 
 1. Check product readiness: unresolved journeys/states/copy/accessibility route to `spectre-ux`; load-bearing interaction/layout validation routes to `spectre-prototype`.
 2. Make one cheap local scan, then invoke `Skill(spectre-plan-route)` in `initial` mode. Run `spectre-workflow plan start` with the root/scope hash plus the returned semantic record, size/route, reason codes, design flag, probe flags, and protected boundaries; retain `PLAN_RUN_ID` for the resulting `plan.started`. Show size/rationale without asking approval of the label.
 3. Gather proportional evidence: XS/S stay local except the route's bounded probe; M uses at most two relevant `@spectre:finder`, `@spectre:analyst`, or `@spectre:patterns`; L/XL cover necessary dimensions. `@spectre:web-research` is only for an external dependency/API/framework decision. Persist accepted evidence in `task_context.md`.
-4. If and only if the decision reports a material user-owned decision, present one proposed resolution, verification spine, sourced assumptions, and open questions at a **design-authority gate**. Show **Estimated remaining planning time** when valid; wait for explicit approval, record `## Selected Design`, then emit `plan.gate_completed` without response prose.
+4. For M–XL, and for XS/S when the decision reports a material user-owned decision, read `references/high-level-design-gate.md` and follow it through DONE before invoking any child. A current-run explicitly approved `## Selected Design` is the only fast path. Show **Estimated remaining planning time** when valid; after approval emit `plan.gate_completed` without response prose.
 5. Run exactly the chosen route; one plan-review pipeline means one `spectre-plan_review` invocation with correctness then simplification:
    - XS → `Skill(spectre-create_plan) --depth xs --no-review --execution direct`.
-   - S → `Skill(spectre-create_plan) --depth light --no-review --execution direct` → `Skill(spectre-goal) --orchestrated`.
-   - M → `Skill(spectre-create_plan) --depth standard --no-review --execution direct` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated` → `Skill(spectre-goal) --orchestrated`.
-   - L → `Skill(spectre-create_plan) --depth standard --no-review` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth standard --orchestrated` → `Skill(spectre-goal) --orchestrated`.
-   - XL → `Skill(spectre-create_plan) --depth comprehensive --no-review` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth comprehensive --tasks-only --orchestrated` → `Skill(spectre-task_review) --mode adversarial --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth comprehensive --finalize-index --orchestrated` → `validate-pair` → `Skill(spectre-goal) --orchestrated`.
+   - S → `Skill(spectre-create_plan) --depth light --no-review --execution direct`.
+   - M → `Skill(spectre-create_plan) --depth standard --no-review --execution direct` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated`.
+   - L → `Skill(spectre-create_plan) --depth standard --no-review` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth standard --orchestrated`.
+   - XL → `Skill(spectre-create_plan) --depth comprehensive --no-review` → `Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth comprehensive --tasks-only --orchestrated` → `Skill(spectre-task_review) --mode adversarial --auto-apply scope-safe --orchestrated` → `Skill(spectre-create_tasks) --depth comprehensive --finalize-index --orchestrated` → `validate-pair`.
 6. Require valid paired reports/no unresolved correctness Blocker/High for M–XL; for XL require one completed task-review round before finalization and passing `validate-pair`. Never substitute reviewer findings or semantic writeback.
 7. After the route's final planning artifact step (and after any review), emit `plan.review_completed` with review yield and structural before/after counts when a review ran. Invoke `Skill(spectre-plan-route)` in `observed` mode with `Routing Observations`, then emit `plan.reclassified` with plan hash, initial/observed records, and regret. Surface KEEP/RERUN_SMALLER/RERUN_LARGER and wait when changed; never silently rerun paid work or delete heavier artifacts.
-8. Present artifacts, verification, review/task results, reclassification, and **Estimated implementation time** when valid at the **final pre-code approval** gate for every size. Wait, then emit `plan.gate_completed`. Scope-preserving feedback gets the smallest stage-owned update, deterministic validation, refreshed goal, and no repeated review absent an explicit request; scope-changing feedback returns to Scope. All events use `spectre-workflow plan record`; any telemetry failure is reported internally as degraded and planning, approval, goal generation, and execution handoff continue.
+8. Present artifacts, verification, review/task results, reclassification, and **Estimated implementation time** when valid at the **final pre-code approval** gate for every size. Wait, then emit `plan.gate_completed`. Scope-preserving feedback gets the smallest stage-owned update, deterministic validation, a refreshed launch command, and no repeated review absent an explicit request; scope-changing feedback returns to Scope. All events use `spectre-workflow plan record`; any telemetry failure is reported internally as degraded and planning, approval, and execution handoff continue.
 
 ## Handoff
 
-Only after approval: emit `plan.completed` with artifact hashes (SHA-256 of raw artifact file bytes), counts, planning elapsed time excluding waits, and continuation. XS returns a self-contained `spectre-tdd` prompt anchored to the compact plan. S–XL return the generated structured goal prompt as a copy-ready fenced block as the primary next step, then `Alternative: /spectre:execute — run the reviewed artifacts interactively in this session instead of goal mode.` Include `goal-prompts.md` where produced.
+Only after approval: emit `plan.completed` with artifact hashes (SHA-256 of raw artifact file bytes), counts, planning elapsed time excluding waits, and continuation. XS returns a self-contained `spectre-tdd` prompt anchored to the compact plan. S–XL return one copy-ready fenced launch command as the primary next step: the host's explicit `spectre-execute` invocation (Claude Code `/spectre:` prefix, Codex `$` prefix) plus the repo-relative execution source — `specs/execute.md` for L/XL, the direct `specs/plan.md` for S/M. Never pass `--orchestrated`; a user-launched run stays self-owned through final review and proof. Append at most one short runtime-only instruction that cannot live in a durable artifact; durable guidance belongs in the plan, tasks, or `task_context.md`. Never generate a goal prompt; autonomous goal mode is an explicit opt-in utility outside this route.
 
 ## Escalate-If
 

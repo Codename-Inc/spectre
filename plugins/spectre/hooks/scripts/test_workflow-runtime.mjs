@@ -36,27 +36,18 @@ function fixture(t) {
     phases: [{
       id: '1',
       title: 'Build',
-      status: 'pending',
       parents: [{
         id: '1.1',
         title: 'Parent',
-        status: 'pending',
-        subtasks: [{ id: '1.1.1', title: 'Child', type: 'Build', status: 'pending' }],
+        subtasks: [{ id: '1.1.1', title: 'Child', type: 'Build' }],
       }],
     }],
   }, null, 2));
   return { root, projectDir, spectreHome, sourcePath };
 }
 
-function updateTaskStatuses(sourcePath, status) {
-  const document = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-  document.phases[0].status = status;
-  document.phases[0].parents[0].status = status;
-  document.phases[0].parents[0].subtasks[0].status = status;
-  fs.writeFileSync(sourcePath, `${JSON.stringify(document, null, 2)}\n`);
-}
-
 async function completeFixtureRun(value, options = {}) {
+  const immutableSource = fs.readFileSync(value.sourcePath, 'utf8');
   const started = await startWorkflowRun({
     projectDir: value.projectDir,
     spectreHome: value.spectreHome,
@@ -113,7 +104,6 @@ async function completeFixtureRun(value, options = {}) {
       events: [{ type: 'task.submitted', actorId: workerActorId, taskId, attempt: 1, payload: {} }],
     });
   }
-  updateTaskStatuses(value.sourcePath, 'done');
   const verification = await recordWorkflowEvents({
     projectDir: value.projectDir,
     spectreHome: value.spectreHome,
@@ -123,7 +113,12 @@ async function completeFixtureRun(value, options = {}) {
       type: 'gate.recorded',
       actorId: started.primaryActorId,
       waveId: '1',
-      payload: { kind: 'verification', status: 'pass', taskIds: ['1.1', '1.1.1'] },
+      payload: {
+        kind: 'verification',
+        status: 'pass',
+        taskIds: ['1.1', '1.1.1'],
+        checkIds: ['lint:affected', 'test:runtime-focused'],
+      },
     }],
   });
   const gateEventId = verification.events[0].eventId;
@@ -141,6 +136,7 @@ async function completeFixtureRun(value, options = {}) {
       }],
     });
   }
+  assert.equal(fs.readFileSync(value.sourcePath, 'utf8'), immutableSource);
   return { ...started, workerActorId };
 }
 
@@ -148,7 +144,7 @@ describe('workflow event runtime', () => {
   it('rejects duplicate task identities before creating a run', async (t) => {
     const value = fixture(t);
     const document = JSON.parse(fs.readFileSync(value.sourcePath, 'utf8'));
-    document.phases[0].parents[0].subtasks.push({ id: '1.1', status: 'pending' });
+    document.phases[0].parents[0].subtasks.push({ id: '1.1' });
     fs.writeFileSync(value.sourcePath, JSON.stringify(document));
     await assert.rejects(
       startWorkflowRun({
@@ -170,8 +166,11 @@ describe('workflow event runtime', () => {
     });
     assert.equal(loaded.state.tasks['1.1'].state, 'completed');
     assert.equal(loaded.state.tasks['1.1.1'].state, 'completed');
-    assert.equal(loaded.state.tasks['1.1'].sourceStatus, 'done');
-    assert.equal(loaded.state.tasks['1.1.1'].sourceStatus, 'done');
+    assert.equal(Object.hasOwn(loaded.state.tasks['1.1'], 'sourceStatus'), false);
+    assert.equal(Object.hasOwn(loaded.state.tasks['1.1.1'], 'sourceStatus'), false);
+    const verificationGate = Object.values(loaded.state.gates)
+      .find((gate) => gate.kind === 'verification');
+    assert.deepEqual(verificationGate.checkIds, ['lint:affected', 'test:runtime-focused']);
     assert.deepEqual(
       loaded.events.filter((event) => event.type === 'task.started').map((event) => event.taskId),
       ['1.1', '1.1.1'],
@@ -295,7 +294,6 @@ describe('workflow event runtime', () => {
       runId: started.runId,
       events: [{ type: 'task.submitted', actorId: started.primaryActorId, taskId: '1.1.1', payload: {} }],
     });
-    updateTaskStatuses(value.sourcePath, 'done');
     const gate = await recordWorkflowEvents({
       projectDir: value.projectDir,
       spectreHome: value.spectreHome,

@@ -96,11 +96,11 @@ It will:
 - Add research, plan review, task decomposition, and task review only when the selected size requires them.
 - Give XL task plans a final adversarial correctness review.
 - Wait for your explicit approval before any code changes.
-- Generate execution artifacts and a `goal-prompts.md` handoff when needed.
+- Generate execution artifacts and print the exact `/spectre:execute` command to start implementation.
 
 **/spectre:execute** — Implement, verify, and prove the feature</summary>
 
-`/spectre:execute` guides the primary agent through the full implementation. If you use one of the provided `/goal` prompts, the agent invokes this workflow for you.
+`/spectre:execute` guides the primary agent through the full implementation. Run the command that `/spectre:plan` prints when it finishes.
 
 It will:
 
@@ -189,7 +189,6 @@ In SPECTRE, the **structured workflows** generate some combination of the follow
 - `ux.md` - the core user flows and components/layouts/interactions
 - `specs/plan.md` - high level technical design and phasing
 - `specs/execute.md` - compact execution index
-- `goal-prompts.md` - goal prompts to use to guide agent execution
 - `specs/tasks.json` - specific parent & sub-tasks to execute
 - `execution_state.md` - execution progress tracker when using `/spectre:execute` with a plan SPECTRE did not generate
 - `reviews/plan_correctness.md`, `reviews/plan_review.md`, `reviews/task_review.md`, and `reviews/comprehensive_code_review.md` - correctness evidence plus prioritized review feedback
@@ -364,6 +363,7 @@ These are situational commands.
 | `/spectre:create_plan` | Internal plan producer used by the adaptive `/spectre:plan` workflow |
 | `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits. Great if i've accumulated a lot of changes and want to check them in while addressing lint/test failures in the process. |
 | `/spectre:prototype` | If the UX for a given feature is ambiguous, i live by this Skill. It creates HTML prototypes with your existing design system to get clear on the desired ux and interaction. |
+| `/spectre:goal` | Opt-in autonomous goal prompt for a narrowly scoped objective. The core workflow hands off to `/spectre:execute` directly, so use this only when you want an unattended run. |
 
 ## 📁 Repository Structure
 

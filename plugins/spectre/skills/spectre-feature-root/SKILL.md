@@ -8,31 +8,31 @@ user-invocable: false
 
 ## Purpose
 
-Establish one canonical `.spectre/features/<feature>/` root without a naming gate.
+Establish one canonical feature root without a naming gate.
 
 ## Inputs
 
-Requested work or name hint; optional repo-relative candidate beneath `.spectre/features/`; caller confirmation that its write gate permits initialization.
+Work/name hint; optional repo-relative candidate; write authority.
 
 ## Working Set
 
-Read exact candidate paths and ignore state only. Never select existing work by branch, recency, lifecycle, or scan.
+Read exact candidates/ignore state only; never select existing work.
 
 ## Outputs + DONE
 
-Return `FEATURE`, repo-relative `FEATURE_ROOT`, and warnings. DONE: directory exists, neutral marker and tenancy are valid, and no phase artifact was written.
+Return `FEATURE`, repo-relative `FEATURE_ROOT`, warnings. DONE: valid root, neutral marker, tenancy; no phase artifact.
 
 ## Method / guardrails
 
-1. Use an explicit canonical candidate in place only when the caller selected it or a descendant. Reject absolute, traversal, symlink-escaping, or unmanaged paths.
-2. Otherwise derive a concise kebab name and choose the first free `.spectre/features/<name>[-N]/`; suffix checks handle collisions, never selection.
+1. Use only a caller-selected candidate/descendant. Reject absolute, traversal, symlink-escaping, or unmanaged paths.
+2. Otherwise derive a kebab name and choose the first free `.spectre/features/<name>[-N]/`; suffixes handle collisions, never selection.
 3. Create `feature.json` with only `schema_version`, `created_at`, `feature`, and repo-relative `feature_root`; add no lifecycle, alias, branch, or absolute-path state.
-4. If `.spectre/.gitignore` is absent and `.spectre/` is not ignored, create it with `manifest.json`, `bin/`, `handoffs/`, and `!features/`. Never edit root `.gitignore`; warn when records are local-only.
+4. Unless `.spectre/` is ignored, preserve `.spectre/.gitignore` and ensure these literal entries: `manifest.json`, `bin/`, `handoffs/`, `features/**/evidence/`, `features/**/checkpoints/`, `features/**/runs/`, `features/**/markers/`, `features/**/working_set.json`, `features/**/cleanup_summary.md`, `features/**/execution_state.md`, `features/**/reviews/task_review_attempt.json`, `features/**/reviews/task_review_safety.json`, `!features/`. Specs/research/decisions/reviews/proof stay trackable. Never edit root `.gitignore`; warn matches are local-only.
 5. Write only root initialization.
 
 ## Handoff
 
-Return values and warnings; the caller owns artifacts and routing.
+Return values/warnings; caller owns routing.
 
 ## Escalate-If
 

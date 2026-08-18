@@ -1,14 +1,15 @@
 ---
 name: "spectre-goal"
-description: "Turn reviewed Spectre plans or execution state into one safe, verifiable `/goal` completion contract for Codex, Claude Code, or both. Use after planning/review or to regenerate an autonomous handoff. Do NOT use to plan, implement, start goal mode, or handle quick work."
+description: "Opt-in utility that turns reviewed Spectre plans or execution state into one safe, verifiable `/goal` completion contract for Codex, Claude Code, or both. Use only when a user explicitly asks for an autonomous goal prompt. Do NOT use as the Plan handoff, or to plan, implement, start goal mode, or handle quick work."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # goal
 
 ## Purpose
 
-Write one autonomous completion contract whose success is provable by surfaced evidence. `spectre-execute` remains the sole implementation, repair, review, validation, and proof authority.
+Write one autonomous completion contract whose success is provable by surfaced evidence. This is an explicit utility outside the default Plan → Execute route: `spectre-plan` never invokes it, and `spectre-execute` remains the sole implementation, repair, review, validation, and proof authority.
 
 ## Inputs
 
@@ -29,7 +30,7 @@ Write one autonomous completion contract whose success is provable by surfaced e
 Use this exact readable shape, substituting real values and preserving a blank line before and after every Markdown heading:
 
 ```markdown
-/goal <one-sentence approved end state>. First action: YOU MUST invoke Skill(spectre-execute) with <exact execute index or source plan and feature root> --orchestrated and follow its loaded contract through DONE, including aggregate proof PASS. Do not implement directly or substitute another workflow.
+/goal <one-sentence approved end state>. Persistent execution authority: before implementation on initial entry and every continuation/resume, including after compaction, YOU MUST invoke/reload Skill(spectre-execute) with <exact execute index or source plan and feature root> --orchestrated and follow it through DONE, including aggregate proof PASS. Do not implement directly or substitute another workflow.
 
 ## Outcome
 
@@ -62,10 +63,10 @@ The completed prompt is ≤4,000 characters and satisfies all six fields:
 2. **Verification:** exact existing tests, commands, benchmarks, artifacts, and proof evidence that measure every material requested quality rather than a proxy. Codex may re-run evidence. Claude Code must run checks and print outputs/exit codes because its evaluator is transcript-only. For `both` or unknown, use the Claude-compatible standard.
 3. **Constraints:** preserve canonical scope/Out-of-Bounds, public behavior, tests, dependencies, schemas, and approval boundaries; do not ship, publish, or share unless approved.
 4. **Scope:** narrow enough to audit, broad enough for upstream root-cause repair.
-5. **Iteration:** resume structured mode from `tasks.json` or plan-direct mode from `execution_state.md`; record each change and verification result, then choose the next evidence-driven move. Never suppress failures.
+5. **Iteration:** every continuation/resume invokes/reloads `Skill(spectre-execute)` before implementation, then resumes structured mode from `tasks.json` or plan-direct mode from `execution_state.md`; record evidence and choose only Execute-authorized moves. Never suppress failures.
 6. **Stop:** success only when verification passes and execute reaches DONE with aggregate proof `PASS`. An explicit cap or visible 40-turn default is a durable checkpoint: persist evidence and the next action, then resume when the platform permits. `NEEDS_AUTHORITY` reports attempts, evidence, blocker, and exact input needed.
 
-The opening's **first action** is always to invoke and follow `Skill(spectre-execute)`: structured mode passes `EXECUTE_INDEX --orchestrated`; plan-direct mode passes the source-plan path, `FEATURE_ROOT`, and `--orchestrated`. Execute owns single-pass proof invocation plus repair/reinvoke closure. The goal forbids direct implementation, imitation, bypass, summarization-away, workflow substitution, and direct `spectre-prove` invocation.
+Execute authority persists beyond the first step. Structured mode passes `EXECUTE_INDEX --orchestrated`; plan-direct mode passes the source-plan path, `FEATURE_ROOT`, and `--orchestrated`. Execute owns single-pass proof invocation plus repair/reinvoke closure. The goal forbids direct implementation, imitation, bypass, summarization-away, workflow substitution, and direct `spectre-prove` invocation.
 
 Require a final transcript evidence capsule containing task counts, deterministic checks/exits, review/validation status, proof-matrix counts and aggregate status, artifacts, repairs, and limitations.
 

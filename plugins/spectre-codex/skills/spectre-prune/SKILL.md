@@ -6,7 +6,7 @@ user-invocable: true
 
 # prune
 
-Find and remove dead code/artifacts from recent work. Conservative by default: investigate and validate before deleting; uncertain items stay in place and are reported for manual review. Findings flow in-thread; only canonical summary artifacts persist.
+Find and remove dead code/artifacts from recent work. Conservative by default: investigate and validate before deleting; uncertain items stay in place and are reported in-thread.
 
 ## Inputs
 
@@ -16,7 +16,6 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 ## Working Set
 
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- Set `OUT_DIR = FEATURE_ROOT`.
 - Resolve scope late at runtime:
   - **commit_range**: union of committed files from `{commit_id}^..HEAD` (including the commit), staged, unstaged, and untracked. If `commit_id == HEAD`, use staged + unstaged + untracked.
   - **unstaged/staged**: union of staged + unstaged + untracked.
@@ -26,8 +25,8 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 ## Outputs + DONE
 
 - Confirmed-safe cleanup edits only.
-- `{OUT_DIR}/cleanup_summary.md` with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>` immediately below its title, then: Executive Summary, Safe Removals (`file:line`, what, why safe), Manual Review Required, Excluded Items, Estimated Impact, ESLint-debt notes.
-- **DONE when:** every removed item was validated `CONFIRMED_SAFE`; every `UNCERTAIN`/`UNSAFE` item remains untouched and appears in Manual Review; affected lint/tests pass or the failed cleanup edit is rolled back; no `--no-verify`, `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` was introduced; summary was written.
+- Compact in-thread summary: safe removals (`file:line`, what, why safe), manual review, exclusions, impact, ESLint-debt notes. Write no cleanup/evidence artifact.
+- **DONE when:** every removed item was validated `CONFIRMED_SAFE`; every `UNCERTAIN`/`UNSAFE` item remains untouched and appears in Manual Review; affected lint/tests pass or the failed cleanup edit is rolled back; no `--no-verify`, `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` was introduced; and the in-thread summary is complete.
 
 ## Method / guardrails
 
@@ -42,7 +41,7 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Handoff
 
-Report counts analyzed/removed/excluded, lint/test status, the manual-review list, and the summary path.
+Report counts analyzed/removed/excluded, lint/test status, and the manual-review list.
 
 - `--orchestrated` → return results to the caller without user-facing Next Steps.
 - Standalone + concrete coverage risk exposed by cleanup → `spectre-test`.
