@@ -16,9 +16,23 @@ import {
 } from './workflow/plan-telemetry.mjs';
 import {
   codedError,
+  readWorkflowRun,
   recordWorkflowEvents,
   startWorkflowRun,
 } from './workflow/store.mjs';
+
+// Resume reads one bit: is this task accepted, or must it be redone? `assigned`,
+// `in_progress`, and `submitted` collapse so a submission — which is never
+// acceptance without a passing gate — can never read as done.
+const REPORTED_TASK_STATUS = {
+  pending: 'pending',
+  assigned: 'in_progress',
+  in_progress: 'in_progress',
+  submitted: 'in_progress',
+  blocked: 'blocked',
+  completed: 'completed',
+  skipped: 'skipped',
+};
 
 function parseArgs(argv) {
   const positional = [];
@@ -44,6 +58,7 @@ function usage() {
   return [
     'Usage:',
     '  spectre-workflow run start --source <tasks.json> [--owner self|parent] [--provider <id> --model <id> --effort <id>] [--project-dir <path>] --json',
+    '  spectre-workflow run status --run-id <id> [--project-dir <path>] --json',
     '  spectre-workflow run finish --run-id <id> --actor-id <id> --status <status> --json',
     '  spectre-workflow stage|phase|wave start|finish --run-id <id> --actor-id <id> --id <value> --json',
     '  spectre-workflow agent dispatch|start|finish --run-id <id> --actor-id <id> --json',
@@ -102,6 +117,7 @@ function confirmation(resource, action, result) {
   if (resource === 'plan') {
     return { ok: true, planRunId: result.planRunId, eventId: result.eventId };
   }
+  if (resource === 'run' && action === 'status') return result;
   if (resource === 'run' && action === 'start') {
     return {
       ok: true,
@@ -167,6 +183,17 @@ async function runCommand(action, flags) {
       resume: flags.get('--no-resume') ? false : true,
     });
     return result;
+  }
+  if (action === 'status') {
+    const { state } = await readWorkflowRun({
+      ...commonOptions(flags),
+      runId: required(flags, '--run-id'),
+    });
+    const tasks = {};
+    for (const [taskId, task] of Object.entries(state.tasks)) {
+      tasks[taskId] = REPORTED_TASK_STATUS[task.state] || task.state;
+    }
+    return { ok: true, runId: state.runId, status: state.status, tasks };
   }
   if (action !== 'finish') throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown run command ${action}`);
   const status = required(flags, '--status');

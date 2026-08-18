@@ -18,9 +18,30 @@ Telemetry is local supporting state, not acceptance truth. On an operational/loc
 
 For the optional Plan join, hash the full source artifact and read `.spectre/telemetry/plan-classification.jsonl` directly. Select exactly one matching `plan.completed` event by feature root plus an artifact/source hash; retain its `plan_run_id` and `scope_hash`. Zero or multiple matches degrade only the join—never use recency, branch, lifecycle state, or a derived summary to guess.
 
+## Resume after compaction
+
+The store is the only progress record; source artifacts carry none. Recover it, never reconstruct it from memory or the working tree:
+
+```bash
+spectre-workflow run start --source "$TASKS_JSON" --project-dir "$PROJECT_ROOT" --json
+spectre-workflow run status --run-id "$RUN_ID" --project-dir "$PROJECT_ROOT" --json
+```
+
+A matching active or blocked run returns `resumed: true` with the same `runId` and `primaryActorId`. `run status` then reports one status per task id.
+
+| Reported | Trust rule |
+|---|---|
+| `completed` | Accepted against a passing verification gate. Do not redo. |
+| `skipped` | Terminally excluded with a recorded reason. Do not redo. |
+| `blocked` | A real blocker was recorded. Resolve or escalate; never treat as done. |
+| `in_progress` | Dispatched, started, or submitted—**not** accepted. Assume nothing landed; re-dispatch. |
+| `pending` | Never dispatched. Normal frontier work. |
+
+Everything outside `completed` and `skipped` is redo-or-verify. A worker submission collapses to `in_progress` because it is never acceptance without a passing gate. If a re-dispatch is rejected with `INVALID_TASK_TRANSITION`, the log is ahead of your read; re-read and continue, never force the event.
+
 ## Dispatch and worker ownership
 
-Before dispatch, set the selected parent and child task statuses to `in_progress`, then run:
+Emit the dispatch below; the store moves the selected parent and child tasks to `in_progress`. Never hand-write a status anywhere.
 
 ```bash
 spectre-workflow agent dispatch --run-id "$RUN_ID" --actor-id "$PRIMARY_ACTOR_ID" --tasks "<comma-separated parent+subtask ids>" --attempt <N> --idempotency-key "dispatch:$RUN_ID:<batch>:<N>" --project-dir "$PROJECT_ROOT" --json

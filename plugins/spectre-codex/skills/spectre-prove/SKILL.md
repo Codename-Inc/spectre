@@ -60,7 +60,7 @@ For non-visual work, use the public interface and preserve observable output, pe
 Write:
 
 - `{FEATURE_ROOT}/proof/proof.json` - compact current-candidate snapshot with `feature`, `feature_root`, acceptance sources, scope hash, candidate key, observed start/finish state, scenarios, matrix, evidence references/hashes, findings, limitations, and aggregate status. Replace prior snapshots; git history preserves them. Never embed raw harness output or accumulating run history.
-- `{FEATURE_ROOT}/proof/proof.html` - **required**, self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then the matrix, findings, selected reviewed media, redacted diagnostics, current relevant repair dispositions, limitations, and final status. Replace the prior current-candidate report; do not publish or share unless asked.
+- `{FEATURE_ROOT}/proof/proof.html` - **required**, self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: {FEATURE_ROOT}`, then the matrix, findings, selected reviewed media, redacted diagnostics, current relevant repair dispositions, limitations, and final status. Replace the prior current-candidate report; do not publish or share unless asked.
 
 Keep secrets, credentials, private customer data, and unnecessary local paths out of both artifacts. Raw evidence stays in its owning local tool bundle or product-consumed artifact path and is referenced by URI/path plus hash, never copied into proof.
 

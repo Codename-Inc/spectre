@@ -21,7 +21,7 @@ One or more conventional commits covering the changes. DONE when:
 - Commented-out code, session-introduced TODO/FIXME/HACK, and hardcoded test values resolved or documented.
 - Lint passes with **zero violations fixed by suppression** — refactor structural issues, never `eslint-disable` or equivalent. `.gitignore` covers temp/build/IDE artifacts.
 - Related/affected verification has no branch-caused failure; unrelated findings are recorded/routed.
-- Staging includes canonical specs/research/decisions/final reviews and required `proof/proof.json` + `proof/proof.html`, but excludes Execute evidence, verification reports, checkpoints, runs, markers, working-set/cleanup summaries, and local lifecycle state. Product/CI-consumed qualification artifacts belong at product-owned paths and may be staged.
+- Staging includes canonical specs/research/decisions/final reviews, `bug-report.md`, and required `proof/proof.json` + `proof/proof.html`, but excludes Execute evidence, verification reports, checkpoints, runs, markers, working-set/cleanup summaries, and local lifecycle state. Product/CI-consumed qualification artifacts belong at product-owned paths and may be staged.
 - Work committed as `type(scope): description` conventional commits, split by concern.
 
 ## Method / guardrails

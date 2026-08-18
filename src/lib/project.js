@@ -202,6 +202,7 @@ function buildSessionOverrideContent(handoff, options = {}) {
   sections.push(
     '\n### Spectre Notes\n' +
     '- Store feature artifacts under `.spectre/features/<feature-name>/`.\n' +
+    '- Store standalone bug reports under `.spectre/bugs/<bug-name>/`.\n' +
     '- Store branch handoffs under `.spectre/handoffs/{branch-name}/`.\n' +
     '- Treat `docs/tasks/**` as legacy compatibility only.\n' +
     '- Prefer existing project skills under `.agents/skills/` before rediscovering codebase context.\n' +

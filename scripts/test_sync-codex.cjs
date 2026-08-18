@@ -461,6 +461,9 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
     assert.match(contract, /Run only stale or uncovered checks/);
     assert.match(contract, /local workflow store is the sole lifecycle\/progress authority/i);
     assert.match(contract, /Never mutate source task\/plan artifacts for lifecycle state/i);
+    assert.match(contract, /run status --run-id/);
+    assert.match(contract, /redo-or-verify/i);
+    assert.match(contract, /INVALID_TASK_TRANSITION/);
     assert.match(contract, /Never run a repository baseline\/root suite, full app harness, benchmark, or broad qualification here/);
     assert.match(contract, /one run per hash/);
     assert.match(contract, /never create a phase\/wave review file/i);
@@ -1212,9 +1215,8 @@ test('workflow artifacts keep canonical decisions and proof while lifecycle resi
     const sweep = readSkill('spectre-sweep');
     const delegate = readSkill('spectre-delegate');
 
-    assert.match(featureRoot, /features\/\*\*\/working_set\.json/);
-    assert.match(featureRoot, /features\/\*\*\/cleanup_summary\.md/);
-    assert.match(featureRoot, /features\/\*\*\/execution_state\.md/);
+    assert.match(featureRoot, /`working_set\.json`, `cleanup_summary\.md`, `execution_state\.md`/);
+    assert.match(featureRoot, /under both `features\/\*\*\/` and `bugs\/\*\*\/`/);
     assert.match(featureRoot, /Specs\/research\/decisions\/reviews\/proof stay trackable/);
     assert.match(clean, /write no working-set\/lifecycle artifact/i);
     assert.doesNotMatch(clean, /Write\/update `\{OUT_DIR\}\/working_set\.json`/);
@@ -1244,6 +1246,23 @@ test('Fix persists an approval-gated managed repair plan before mutation', () =>
     assert.ok(fixApprovalIndex < fixRepairIndex);
     assert.match(fix, /repair plan[^\n]*before (?:code )?mutation/i);
     assert.match(fix, /scoped name if one already exists/i);
+    assert.match(fix, /\{BUG_ROOT\}\/bug-report\.md/);
+    assert.doesNotMatch(fix, /\{FEATURE_ROOT\}/);
+    assert.doesNotMatch(fix, /specs\/plan\.md/);
+    assert.match(fix, /`KIND=bug`/);
+    assert.match(fix, /Never adopt an ambient feature root/);
+    assert.match(fix, /`fixed\|partial\|blocked`/);
+    assert.match(fix, /including when blocked or escalating/);
+
+    const readSkill = (skillName) => fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md'),
+      'utf8',
+    );
+    const delegate = readSkill('spectre-delegate');
+    assert.match(delegate, /Type `fix` initializes `KIND=bug`/);
+    assert.match(delegate, /\{FEATURE_ROOT\}\/bug-report\.md/);
+    assert.match(readSkill('spectre-sweep'), /Staging includes[^\n]*`bug-report\.md`/);
+    assert.doesNotMatch(readSkill('spectre-prove'), /Feature Root: \.spectre\/features/);
   }
 });
 
@@ -1377,7 +1396,6 @@ test('feature-root establishment is centralized behind one concise internal skil
     'spectre-create_test_guide',
     'spectre-delegate',
     'spectre-execute',
-    'spectre-fix',
     'spectre-goal',
     'spectre-kickoff',
     'spectre-plan',
@@ -1411,14 +1429,13 @@ test('feature-root establishment is centralized behind one concise internal skil
     assert.match(helper, /name: "spectre-feature-root"/);
     assert.match(helper, /user-invocable: false/);
     assert.match(helper, /Do NOT invoke for existing roots, orchestrated calls missing a root, or direct user requests/);
-    assert.ok(helper.length <= 1900, `feature-root helper exceeds 500 estimated tokens: ${helper.length} chars`);
-    assert.match(helper, /first free `\.spectre\/features\/<name>\[-N\]\/`/);
+    assert.ok(helper.length <= 2000, `feature-root helper exceeds 500 estimated tokens: ${helper.length} chars`);
+    assert.match(helper, /`KIND=feature\|bug` \(default `feature`\)/);
+    assert.match(helper, /first free `\.spectre\/\{features\|bugs\}\/<name>\[-N\]\/` per `KIND`/);
     assert.match(helper, /`schema_version`, `created_at`, `feature`, and repo-relative `feature_root`/);
-    assert.match(helper, /`manifest\.json`, `bin\/`, `handoffs\/`/);
-    assert.match(helper, /features\/\*\*\/evidence\//);
-    assert.match(helper, /features\/\*\*\/checkpoints\//);
-    assert.match(helper, /features\/\*\*\/runs\//);
-    assert.match(helper, /features\/\*\*\/markers\//);
+    assert.match(helper, /`manifest\.json`, `bin\/`, `handoffs\/`, `!features\/`, `!bugs\/`/);
+    assert.match(helper, /`evidence\/`, `checkpoints\/`, `runs\/`, `markers\/`/);
+    assert.match(helper, /under both `features\/\*\*\/` and `bugs\/\*\*\/`/);
     assert.match(helper, /Specs\/research\/decisions\/reviews\/proof stay trackable/);
     assert.match(helper, /Never edit root `\.gitignore`/);
     assert.doesNotMatch(helper, /docs\/tasks/);
@@ -1426,6 +1443,15 @@ test('feature-root establishment is centralized behind one concise internal skil
       fs.existsSync(path.join(skillsRoot, 'spectre-create_tasks', 'references', 'legacy-continuation.example.json')),
       false,
       `${rootName} must not ship the retired legacy continuation fixture`,
+    );
+
+    const fixSkill = readSkill('spectre-fix');
+    assert.equal(fixSkill.split(resolver).length - 1, 0, 'fix owns a bug-namespace resolver');
+    assert.match(
+      fixSkill,
+      rootName === 'spectre'
+        ? /`@skill-spectre:spectre-feature-root` with `KIND=bug`/
+        : /`Skill\(spectre-feature-root\)` with `KIND=bug`/,
     );
 
     for (const name of callers) {

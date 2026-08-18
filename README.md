@@ -72,7 +72,7 @@ Read the "When not to use SPECTRE" below to learn when it isn't the right tool.
   - subsequent `/spectre:handoff` requests will use a subagent to combine to maintain continuity.
   - `/spectre:forget` when you are switching gears and want to clear the handoff context.
 
-- SPECTRE saves canonical feature docs under `.spectre/features/<feature-name>/`, and `/spectre:handoff` saves branch-keyed session state under `.spectre/handoffs/<branch-name>/`. Keep `.spectre/features/` checked into git so your Agent and teammates can reference durable feature records in the future; handoffs remain local session state.
+- SPECTRE saves canonical feature docs under `.spectre/features/<feature-name>/`, bug reports from `/spectre:fix` under `.spectre/bugs/<bug-name>/`, and `/spectre:handoff` saves branch-keyed session state under `.spectre/handoffs/<branch-name>/`. Keep `.spectre/features/` and `.spectre/bugs/` checked into git so your Agent and teammates can reference durable feature records in the future; handoffs remain local session state.
 
 #### Meta workflows
 
@@ -131,7 +131,7 @@ Scope → Plan scales from XS through XL. Use a specialist entry instead in thes
 - XXS changes - copy, layout iteration, styling, etc. These are the one case where the back/forth is by design.
 - Read-only diagnosis or review, release operations, and execution of an already-approved artifact do not need a new Scope → Plan cycle.
 - Use `/spectre:prototype` for throwaway interaction exploration; repository changes that result from it still return through Scope → Plan.
-- For bugs, use `/spectre:fix`; diagnosis remains load-bearing, and any code-changing repair leaves a durable repair plan and waits for approval.
+- For bugs, use `/spectre:fix`; diagnosis remains load-bearing, and any code-changing repair leaves a durable bug report under `.spectre/bugs/<bug-name>/bug-report.md` and waits for approval.
 - Massive multi-phase features. SPECTRE is designed for a relatively 'standard' sized feature. If you are building a huge product, and the work needs to be broken up into multiple-phases, typically what I'll do is run one `/spectre:scope` for the complete scope, then work with the agent to break it up into logical phases - saving that doc as `phases.md`. Then I'll run another `/spectre:scope` for the phase I'm building.
 
 ## Scenarios where SPECTRE is particularly useful
@@ -359,7 +359,7 @@ These are situational commands.
 
 | Command | Description |
 | --- | --- |
-| `/spectre:fix` | Diagnose bugs, persist a repair plan, and wait for approval before code mutation |
+| `/spectre:fix` | Diagnose bugs, persist a bug report under `.spectre/bugs/`, and wait for approval before code mutation |
 | `/spectre:create_plan` | Internal plan producer used by the adaptive `/spectre:plan` workflow |
 | `/spectre:sweep` | Light cleanup pass — lint, test, descriptive commits. Great if i've accumulated a lot of changes and want to check them in while addressing lint/test failures in the process. |
 | `/spectre:prototype` | If the UX for a given feature is ambiguous, i live by this Skill. It creates HTML prototypes with your existing design system to get clear on the desired ux and interaction. |

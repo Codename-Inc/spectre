@@ -514,3 +514,91 @@ test('workflow CLI rejects plan telemetry payload keys outside the allow-list', 
   });
   assert.equal(invalid.stderr, '');
 });
+
+test('run status reports the resume frontier without leaking run internals', (t) => {
+  const value = makeFixture(t);
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const run = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, ...common,
+  ], value).stdout);
+  const ids = ['--run-id', run.runId, '--actor-id', run.primaryActorId];
+
+  const pending = invoke(BUNDLED_CLI_PATH, ['run', 'status', '--run-id', run.runId, ...common], value);
+  assert.equal(pending.status, 0, pending.stderr);
+  const initial = JSON.parse(pending.stdout);
+  assert.deepEqual(Object.keys(initial).sort(), ['ok', 'runId', 'status', 'tasks']);
+  assert.equal(initial.ok, true);
+  assert.equal(initial.runId, run.runId);
+  assert.equal(initial.status, 'active');
+  assert.deepEqual(initial.tasks, { '1.1': 'pending', '1.1.1': 'pending' });
+
+  const dispatched = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'agent', 'dispatch', ...ids, '--tasks', '1.1,1.1.1', '--attempt', '1', ...common,
+  ], value).stdout);
+  for (const taskId of ['1.1', '1.1.1']) {
+    invoke(BUNDLED_CLI_PATH, [
+      'task', 'start', '--run-id', run.runId,
+      '--actor-id', dispatched.workerActorId, '--task-id', taskId, ...common,
+    ], value);
+  }
+  const started = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'status', '--run-id', run.runId, ...common,
+  ], value).stdout);
+  assert.deepEqual(started.tasks, { '1.1': 'in_progress', '1.1.1': 'in_progress' });
+
+  const gate = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'gate', 'record', ...ids, '--kind', 'verification', '--status', 'pass',
+    '--tasks', '1.1,1.1.1', '--checks', 'test:focused', '--wave-id', '1', ...common,
+  ], value).stdout);
+  for (const taskId of ['1.1.1', '1.1']) {
+    invoke(BUNDLED_CLI_PATH, [
+      'task', 'submit', '--run-id', run.runId,
+      '--actor-id', dispatched.workerActorId, '--task-id', taskId, ...common,
+    ], value);
+  }
+  invoke(BUNDLED_CLI_PATH, [
+    'task', 'complete', ...ids, '--task-id', '1.1.1', '--gate-event-id', gate.eventId, ...common,
+  ], value);
+
+  const mixed = invoke(BUNDLED_CLI_PATH, ['run', 'status', '--run-id', run.runId, ...common], value);
+  assert.equal(mixed.status, 0, mixed.stderr);
+  const frontier = JSON.parse(mixed.stdout);
+  assert.equal(frontier.tasks['1.1.1'], 'completed');
+  assert.equal(
+    frontier.tasks['1.1'],
+    'in_progress',
+    'a submitted task is not accepted and must never read as completed',
+  );
+  assert.doesNotMatch(
+    mixed.stdout,
+    /sourceRawHash|sourceDefinitionHash|taskDefinition|gateEventId|primaryActorId|contractHash|checkoutId/,
+  );
+});
+
+test('run status is read-only and fails cleanly for an unknown run', (t) => {
+  const value = makeFixture(t);
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const run = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, ...common,
+  ], value).stdout);
+
+  const watched = [
+    value.sourcePath,
+    path.join(value.spectreHome, 'projects'),
+  ];
+  const before = watched.map((target) => JSON.stringify(fs.statSync(target).mtimeMs));
+  const read = invoke(BUNDLED_CLI_PATH, ['run', 'status', '--run-id', run.runId, ...common], value);
+  assert.equal(read.status, 0, read.stderr);
+  assert.deepEqual(
+    watched.map((target) => JSON.stringify(fs.statSync(target).mtimeMs)),
+    before,
+    'run status must not write',
+  );
+
+  const missing = invoke(BUNDLED_CLI_PATH, [
+    'run', 'status', '--run-id', 'run_00000000-0000-4000-8000-000000000000', ...common,
+  ], value);
+  assert.notEqual(missing.status, 0);
+  assert.equal(JSON.parse(missing.stdout).code, 'RUN_NOT_FOUND');
+  assert.equal(missing.stderr, '');
+});
