@@ -14,6 +14,7 @@ grove-logs/
 .agents/skills/spectre-workflow-analysis/
 .agents/skills/spectre-workflow-analysis-workspace/
 .agents/skills/spectre-rewrite-skill/resources/spectre-light/
+.agents/skills/typefully/
 AGENTS.override.md
 
 # Node.js
