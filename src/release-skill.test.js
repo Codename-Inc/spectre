@@ -179,3 +179,54 @@ test('public release uses GitHub marketplaces without npm publication', () => {
   assert.match(gate, /run\('gh', \['auth', 'status'\]\)/);
   assert.doesNotMatch(gate, /npm.*(?:whoami|publish|login)/);
 });
+
+test('public release approves the changelog, then Substack, then the Spectre Typefully draft', () => {
+  const skill = fs.readFileSync(RELEASE_SKILL, 'utf8');
+  const publicMode = section(skill, '## Public Mode', '## Release Communications');
+  const communications = section(skill, '## Release Communications', '## Final Command Record');
+
+  assertInOrder(publicMode, [
+    'Ask the user to approve the changelog.',
+    'docs/changelog/vX.Y.Z.md',
+    'git push --tags',
+    'gh release create',
+    'Public release complete: vX.Y.Z',
+    'Continue into Release Communications',
+  ]);
+  assert.match(publicMode, /never authorizes Substack or Typefully publication/);
+  assert.match(publicMode, /`docs\/` is gitignored/);
+
+  assertInOrder(communications, [
+    'docs/changelog/vX.Y.Z-substack.md',
+    'docs/changelog/vX.Y.Z-substack.html',
+    'subspace --json html-share validate',
+    'https://spectreblog.substack.com/publish/post',
+    'Spectre Substack Editor',
+    'https://spectreblog.substack.com/p/...',
+    'social-sets:list',
+    'social-sets:get <social_set_id>',
+    'Spectre vX.Y.Z release',
+    'drafts:create',
+    'https://typefully.com/?a=<social_set_id>&d=<draft_id>',
+    'Spectre Typefully Draft',
+    'Ask explicitly whether to publish now.',
+    'drafts:publish',
+  ]);
+  assert.match(communications, /It never authorizes publication\./);
+  assert.match(communications, /is not publication approval/);
+  assert.match(communications, /Never operate Substack's publish controls\./);
+  assert.match(communications, /Do not publish that artifact with `html-share create`\./);
+  assert.match(communications, /Never create one draft per platform\./);
+  assert.match(communications, /Require an `https` scheme and the `spectreblog\.substack\.com` host/);
+  assert.match(communications, /never invalidates a verified release|Never invent, guess, or placeholder the article URL/);
+});
+
+test('release escalation covers the social track without reopening a verified release', () => {
+  const skill = fs.readFileSync(RELEASE_SKILL, 'utf8');
+  const escalate = skill.slice(skill.indexOf('## Escalate If'));
+
+  assert.match(escalate, /`typefully` skill is missing, unauthenticated, or its CLI fails/);
+  assert.match(escalate, /never reopen the verified software release over it|never reopen/i);
+  assert.match(escalate, /`Spectre` social set is missing or ambiguous/);
+  assert.match(escalate, /publish on Substack or Typefully without explicit approval/);
+});

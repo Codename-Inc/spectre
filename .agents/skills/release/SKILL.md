@@ -1,6 +1,6 @@
 ---
 name: release
-description: Switch persistent Spectre installs between this checkout and the public marketplace, deploy the checkout for local testing, or run the full public GitHub marketplace release workflow. Use when asked to activate local or public Spectre, deploy or refresh local installs, release Spectre, publish a version, or ship Spectre publicly.
+description: Switch persistent Spectre installs between this checkout and the public marketplace, deploy the checkout for local testing, or run the full public GitHub marketplace release workflow including changelog approval, the Substack release article, and the Spectre Typefully draft. Use when asked to activate local or public Spectre, deploy or refresh local installs, release Spectre, publish a version, ship Spectre publicly, or announce a Spectre release.
 user-invocable: true
 ---
 
@@ -190,7 +190,9 @@ Neither activation mode bumps versions, commits, pushes, tags, creates a GitHub 
 
 Public mode publishes a new version to GitHub for the Claude Code and Codex marketplaces. It requires `patch`, `minor`, `major`, or an exact `X.Y.Z`.
 
-A valid public invocation authorizes the resolved version bump, commits, local tag creation, pushes, and GitHub release publication. Do not ask for separate version, tag, push, or publication confirmation. The release-notes approval in Execution step 7 is the only user approval gate after invocation.
+A valid public invocation authorizes the resolved version bump, commits, local tag creation, pushes, and GitHub release publication. Do not ask for separate version, tag, push, or publication confirmation. The release-notes approval in Execution step 7 is the only user approval gate before the software release completes.
+
+A public invocation never authorizes Substack or Typefully publication. Release Communications carries its own gates.
 
 ### Version Contract
 
@@ -222,7 +224,7 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
 
 6. Complete Persistent Local Source Activation for both Codex and Claude Code from the release checkout.
 
-7. Build a concise user-facing changelog from commits since the previous tag. Write at a 12th-grade reading level: use plain, direct English and avoid internal workflow terms unless a public reader needs them. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog.
+7. Build a concise user-facing changelog from commits since the previous tag. Write at a 12th-grade reading level: use plain, direct English and avoid internal workflow terms unless a public reader needs them. Use only non-empty `New`, `Changed`, `Fixed`, and `Removed` sections. Ask the user to approve the changelog. Write the approved text to `docs/changelog/vX.Y.Z.md` and use it as the step 9 `--notes-file` source. `docs/` is gitignored, so release-notes and article artifacts never dirty the release tree; never commit them.
 8. After changelog approval, create `vX.Y.Z` and run:
 
    ```bash
@@ -244,6 +246,71 @@ Do not edit `plugins/spectre/.codex-plugin/plugin.json`; that stale Claude-root 
     ```
 
 11. Finish with `Public release complete: vX.Y.Z`. Include the commit, tag, GitHub release URL, marketplace versions, checks run, the exact local activation commands executed, and the public consumer commands below.
+12. Continue into Release Communications. Never withhold the step 11 completion line while a communications step is pending.
+
+## Release Communications
+
+Run only after Public Mode's software release and its remote tag/release verification pass. Activation and Local Mode never run it.
+
+Communications are a separate track from the software release. A blocked, deferred, or failed Substack or Typefully step never invalidates a verified release; report it separately instead of reopening the release.
+
+A public invocation authorizes writing the article artifacts and creating one private Typefully draft. It never authorizes publication. The user owns the Substack publish action. Typefully publication requires its own explicit approval; changelog approval, a supplied Substack URL, or "editing is done" is not publication approval.
+
+### Substack article
+
+Derive a public article from the approved changelog. Keep every factual claim, and widen the framing for readers who do not follow the repository:
+
+- Headline and a one-line deck.
+- Short opening on why this release matters.
+- Three to five scannable highlights drawn from the changelog sections.
+- Install-or-update call to action using the Public Consumer Commands.
+
+Write both artifacts under the gitignored `docs/changelog/` directory:
+
+- `docs/changelog/vX.Y.Z-substack.md` as the editable source.
+- `docs/changelog/vX.Y.Z-substack.html` as a self-contained rendered artifact.
+
+The HTML must use semantic headings, lists, and links, contain no local filesystem paths or secrets, and offer a Copy rich text control that writes both `text/html` and `text/plain` when the Clipboard API is available. It must stay usable through ordinary select-and-copy when clipboard access is unavailable. Validate it and keep it local:
+
+```bash
+subspace --json html-share validate docs/changelog/vX.Y.Z-substack.html
+```
+
+Do not publish that artifact with `html-share create`.
+
+Open the HTML artifact in a companion, then open:
+
+```text
+https://spectreblog.substack.com/publish/post
+```
+
+in a companion labeled `Spectre Substack Editor`. The user copies, edits, and publishes. Never operate Substack's publish controls. Do not claim publication until the user supplies the resulting public `https://spectreblog.substack.com/p/...` URL.
+
+### Spectre Typefully draft
+
+Before any Typefully action, load and follow the installed `typefully` skill at `.agents/skills/typefully/`. If it is missing, unauthenticated, or its CLI fails, stop the social track, report the exact failure, and leave the verified release complete.
+
+Wait for the published Substack URL. Require an `https` scheme and the `spectreblog.substack.com` host; stop and ask when either does not match. Never invent, guess, or placeholder the article URL.
+
+Resolve social sets live with `social-sets:list`; do not rely on the configured default, which points at a different identity. Select the set named `Spectre` and confirm its connected platforms with `social-sets:get <social_set_id>`. At last check that was social set `326705` (`joenandez_1`), connecting `x` as `@SpectreBuild`, `linkedin` as `spectrebuild`, and `substack` Notes. Verify those live rather than trusting them, and ask the user when the set is absent or ambiguous.
+
+Create exactly one private, unscheduled draft titled `Spectre vX.Y.Z release` covering every connected platform the fetch confirmed. Never create one draft per platform. Tailor the copy per platform inside that single draft: `drafts:create` for the first platform, then `drafts:update --platform` for each remaining one, which enables that platform without disabling the ones already set. Each variant is a short highlight blurb grounded in the changelog and ending in the published Substack URL. `substack` Notes take a single post and never a thread.
+
+Fetch the created draft and open its native editor URL — the `private_url` the API returns, or `https://typefully.com/?a=<social_set_id>&d=<draft_id>` when it is absent — in a companion labeled `Spectre Typefully Draft`. Do not build a separate HTML preview; the native Typefully editor is the review and editing surface. Report that the remote draft is private and unpublished.
+
+Then:
+
+1. Show the final text for each platform with the social set, connected handles, and platform mapping.
+2. Ask explicitly whether to publish now.
+3. Only after that approval, call `drafts:publish` once and verify the published result.
+
+### Communications Report
+
+Report separately from the release completion line:
+
+- Substack artifact paths, validation result, and the published article URL or the reason it is still pending.
+- Typefully draft URL, social set name and id, exact platforms, and whether the draft is unpublished or published.
+- Any social step that was skipped or blocked, with the exact failure.
 
 ## Final Command Record
 
@@ -404,3 +471,6 @@ Claude Code, update an existing public install:
 - Public mode has no version argument: ask for one.
 - Version surfaces disagree, release gates fail, GitHub authentication is missing, or the tag already exists: stop before tagging.
 - Push, GitHub release, remote tag/release verification, source activation, installed-byte comparison, managed-agent comparison, or doctor fails: fix if local and in scope; otherwise report the blocker precisely.
+- The `typefully` skill is missing, unauthenticated, or its CLI fails: stop the social track and report it; never reopen the verified software release over it.
+- The supplied article URL is not an `https://spectreblog.substack.com/` link, or the `Spectre` social set is missing or ambiguous: stop and ask.
+- Any step would publish on Substack or Typefully without explicit approval for that publication: stop.
