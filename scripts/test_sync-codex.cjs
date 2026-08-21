@@ -1238,7 +1238,7 @@ test('Fix persists an approval-gated managed repair plan before mutation', () =>
       path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-fix', 'SKILL.md'),
       'utf8',
     ).replaceAll('/spectre:', 'spectre-');
-    const repairPlanIndex = fix.search(/self-locating compact (?:managed )?repair plan/i);
+    const repairPlanIndex = fix.search(/self-locating (?:compact )?(?:managed )?repair plan/i);
     const fixApprovalIndex = fix.indexOf('HoldForApproval');
     const fixRepairIndex = fix.indexOf('PHASE=repair');
     assert.ok(repairPlanIndex !== -1);
@@ -1254,9 +1254,22 @@ test('Fix persists an approval-gated managed repair plan before mutation', () =>
     assert.match(fix, /`fixed\|partial\|blocked`/);
     assert.match(fix, /including when blocked or escalating/);
 
+    // The transcript is the decision surface; bug-report.md is the matching record.
+    assert.match(fix, /rendered in-thread/i);
+    assert.match(fix, /A file path is not a presentation/);
+    assert.match(fix, /Report the Outcome and `Status` in-thread/);
+    const presentIndex = fix.indexOf('Present the experience contract first');
+    const mirrorIndex = fix.indexOf('Mirror that render into');
+    assert.ok(presentIndex !== -1 && mirrorIndex !== -1);
+    assert.ok(presentIndex < mirrorIndex);
+    assert.ok(mirrorIndex < fixApprovalIndex);
     const readSkill = (skillName) => fs.readFileSync(
       path.join(repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md'),
       'utf8',
+    );
+    assert.match(
+      readSkill('spectre-fix-core'),
+      /`--orchestrated` — withhold user-facing routing, never content\./,
     );
     const delegate = readSkill('spectre-delegate');
     assert.match(delegate, /Type `fix` initializes `KIND=bug`/);

@@ -208,7 +208,7 @@ test('public release approves the changelog, then Substack, then the Spectre Typ
     'Spectre vX.Y.Z release',
     'drafts:create',
     'https://typefully.com/?a=<social_set_id>&d=<draft_id>',
-    'Spectre Typefully Draft',
+    "external default browser with `open \"<url>\"`",
     'Ask explicitly whether to publish now.',
     'drafts:publish',
   ]);
@@ -216,7 +216,9 @@ test('public release approves the changelog, then Substack, then the Spectre Typ
   assert.match(communications, /is not publication approval/);
   assert.match(communications, /Never operate Substack's publish controls\./);
   assert.match(communications, /Do not publish that artifact with `html-share create`\./);
-  assert.match(communications, /Never create one draft per platform\./);
+  assert.match(communications, /Never create one draft per platform, and never tailor copy per platform/);
+  assert.match(communications, /every platform carries identical content/);
+  assert.match(communications, /Never open the Typefully editor in a companion pane/);
   assert.match(communications, /Require an `https` scheme and the `spectreblog\.substack\.com` host/);
   assert.match(communications, /never invalidates a verified release|Never invent, guess, or placeholder the article URL/);
 });

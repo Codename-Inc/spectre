@@ -294,13 +294,13 @@ Wait for the published Substack URL. Require an `https` scheme and the `spectreb
 
 Resolve social sets live with `social-sets:list`; do not rely on the configured default, which points at a different identity. Select the set named `Spectre` and confirm its connected platforms with `social-sets:get <social_set_id>`. At last check that was social set `326705` (`joenandez_1`), connecting `x` as `@SpectreBuild`, `linkedin` as `spectrebuild`, and `substack` Notes. Verify those live rather than trusting them, and ask the user when the set is absent or ambiguous.
 
-Create exactly one private, unscheduled draft titled `Spectre vX.Y.Z release` covering every connected platform the fetch confirmed. Never create one draft per platform. Tailor the copy per platform inside that single draft: `drafts:create` for the first platform, then `drafts:update --platform` for each remaining one, which enables that platform without disabling the ones already set. Each variant is a short highlight blurb grounded in the changelog and ending in the published Substack URL. `substack` Notes take a single post and never a thread.
+Create exactly one private, unscheduled draft titled `Spectre vX.Y.Z release` covering every connected platform the fetch confirmed, using a single `drafts:create` that passes every confirmed platform to `--platform`. Never create one draft per platform, and never tailor copy per platform: every platform carries identical content, and the user edits per-platform variants in Typefully. Write one short highlight blurb grounded in the changelog and ending in the published Substack URL. Keep it a single post inside the tightest connected limit — `x` at 280 characters — because `substack` Notes never take a thread.
 
-Fetch the created draft and open its native editor URL — the `private_url` the API returns, or `https://typefully.com/?a=<social_set_id>&d=<draft_id>` when it is absent — in a companion labeled `Spectre Typefully Draft`. Do not build a separate HTML preview; the native Typefully editor is the review and editing surface. Report that the remote draft is private and unpublished.
+Fetch the created draft and open its native editor URL — the `private_url` the API returns, or `https://typefully.com/?a=<social_set_id>&d=<draft_id>` when it is absent — in the user's external default browser with `open "<url>"`. Never open the Typefully editor in a companion pane; Typefully sign-in fails in the embedded browser. Do not build a separate HTML preview; the native Typefully editor is the review and editing surface. Report that the remote draft is private and unpublished.
 
 Then:
 
-1. Show the final text for each platform with the social set, connected handles, and platform mapping.
+1. Show the final draft text once, with the social set, connected handles, and every platform it covers.
 2. Ask explicitly whether to publish now.
 3. Only after that approval, call `drafts:publish` once and verify the published result.
 
@@ -309,7 +309,7 @@ Then:
 Report separately from the release completion line:
 
 - Substack artifact paths, validation result, and the published article URL or the reason it is still pending.
-- Typefully draft URL, social set name and id, exact platforms, and whether the draft is unpublished or published.
+- Typefully draft URL, social set name and id, exact platforms carrying the shared content, and whether the draft is unpublished or published.
 - Any social step that was skipped or blocked, with the exact failure.
 
 ## Final Command Record

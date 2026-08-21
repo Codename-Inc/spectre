@@ -18,9 +18,9 @@ Standalone approval-gated bug workflow. Delegate diagnosis and repair mechanics 
 - Affected paths, history, analysts, tests, and diagnostics are owned by the core and read just-in-time.
 
 ## Outputs + DONE
-A self-locating compact managed repair plan at `{BUG_ROOT}/bug-report.md`, a user-approved observable experience contract, and a verified fix. The repair plan records `Bug`, `Bug Root`, `Status`, the reported problem in the user's own words, reproduction or why none exists, diagnosis/root cause, repair boundary, intended change, preserved invariants, collateral changes, and verification before code mutation. DONE when:
+The core's full diagnosis and experience contract rendered in-thread, mirrored in full into a self-locating managed repair plan at `{BUG_ROOT}/bug-report.md` before code mutation, recording `Bug`, `Bug Root`, `Status`, and the reported problem in the user's own words, plus a verified fix. DONE when:
 - Root cause and candidate repair boundary are grounded, not symptom-suppressed — name the cause and affected files.
-- The compact repair plan exists beneath the managed bug root and matches the diagnosis presented for approval.
+- The transcript carries every contract row with its evidence; the plan beneath the managed bug root matches it. A file path is not a presentation.
 - Before code, the user approves the current→expected product experience, preserved invariants, and disclosed collateral changes.
 - The intended regression is confirmed RED before GREEN; risk-proportional invariant checks protect adjacent behavior.
 - Fix includes `[🪳 TEMP {TOPIC}]`-prefixed debug logging to confirm the fix and gather data if it fails.
@@ -28,9 +28,9 @@ A self-locating compact managed repair plan at `{BUG_ROOT}/bug-report.md`, a use
 
 ## Method / guardrails
 1. Run `Skill(spectre-fix-core)` with the bug report, `PHASE=diagnose`, and `--orchestrated`; require `DIAGNOSIS_READY` and reject symptom-only explanations.
-2. Write the self-locating compact repair plan at `{BUG_ROOT}/bug-report.md`, using a scoped name if one already exists; never alter canonical Scope or overwrite a reviewed plan. Present the experience contract first in product language: what users do and observe now, what they will do and observe after repair, and which adjacent journeys change or remain unchanged. Then present the root cause, affected files, repair boundary, and verification plan; resolve every `unresolved` row. **YOU MUST hold for user approval here — do NOT write code (HoldForApproval).**
+2. Present the experience contract first in product language: what users do and observe now, what they will do and observe after repair, and which adjacent journeys change or remain unchanged. Then present the root cause, affected files, repair boundary, and verification plan; resolve every `unresolved` row. Mirror that render into `{BUG_ROOT}/bug-report.md`, using a scoped name if one already exists; never alter canonical Scope or overwrite a reviewed plan. **YOU MUST hold for user approval here — do NOT write code (HoldForApproval).**
 3. After approval, run the core with the exact diagnosis and approved experience contract, `PHASE=repair`, `USER_APPROVED_FIX_CONTRACT=true`, and `--orchestrated`; require `FIX_COMPLETE`.
-4. Update the report Outcome and `Status` before returning, including when blocked or escalating. Never set parent authorization on the user's behalf. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval.
+4. Report the Outcome and `Status` in-thread, then mirror both into the report, including when blocked or escalating. Never set parent authorization on the user's behalf. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval.
 
 ## Handoff
 Map actual behavior and evidence to every approved experience-contract row, then give concrete validation steps. The closeout route commits the report, not fix. Recommend `/spectre:prove` for repaired user-observable behavior, `/spectre:test` only for a concrete remaining coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary route tied to the observed repair state.

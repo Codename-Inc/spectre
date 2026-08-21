@@ -16,12 +16,12 @@ Own one reusable bug flow: reproduce the failure, ground the root cause and beha
 - `PHASE=diagnose | repair | full`.
 - `repair` requires the exact diagnosis and experience contract plus `USER_APPROVED_FIX_CONTRACT=true`.
 - `full` requires `PARENT=spectre-delegate`, `PARENT_AUTHORIZATION={scope.md}`, `AUTHORIZED_SCOPE_SHA256`, and `ALIGNMENT_MODE=inferred`.
-- `--orchestrated` — return to the parent without user-facing routing.
+- `--orchestrated` — withhold user-facing routing, never content.
 
 ## Working Set
 
 - Read affected paths and recent changes just-in-time.
-- Use `@spectre_analyst` for causal and impact traces; keep returns compact and in-thread, with no scratch reports.
+- Invoking this workflow IS the user's request for subagent investigation: dispatch `@spectre_analyst` for causal and impact traces. Keep returns compact and in-thread, with no scratch reports.
 - In parent-authorized `full`, read the scope artifact before any code write.
 
 ## Outputs + DONE
@@ -30,7 +30,7 @@ Experience-contract rows map technical evidence to product behavior: `journey/su
 - `diagnose` → `DIAGNOSIS_READY`: reproduction, root cause, affected files, candidate repair, evidence-backed experience contract, and regression/invariant opportunities; no code writes.
 - `repair | full` → `FIX_COMPLETE`: diagnosis, row-level contract evidence, confirmed RED, implementation, GREEN checks, `[🪳 TEMP {TOPIC}]` diagnostic logging, changed files, and limitations.
 
-**DONE when:** root cause is grounded; the product and technical direct blast radius was independently explored after the candidate repair boundary was known; authorization is valid with no `unresolved` row; the intended regression is RED→GREEN; affected checks have no attributable failure; unrelated findings are routed; and the parent receives the result.
+**DONE when:** root cause is grounded and its hypotheses were traced by dispatched analysts; the product and technical direct blast radius was independently explored after the candidate repair boundary was known; authorization is valid with no `unresolved` row; the intended regression is RED→GREEN; affected checks have no attributable failure; unrelated findings are routed; and the parent receives the result.
 
 ## Method / guardrails
 
@@ -47,7 +47,7 @@ Experience-contract rows map technical evidence to product behavior: `journey/su
 
 ## Handoff
 
-Return the phase status, diagnosis, experience contract with row-level evidence, authorization path/hash/mode, RED/GREEN evidence, changed files, checks, limitations, and exact validation steps. The parent owns all user-facing Next Steps.
+Return the phase status, the hypothesis set, diagnosis, experience contract with row-level evidence, authorization path/hash/mode, RED/GREEN evidence, changed files, checks, limitations, and exact validation steps. The parent owns all user-facing Next Steps.
 
 ## Escalate-If
 
