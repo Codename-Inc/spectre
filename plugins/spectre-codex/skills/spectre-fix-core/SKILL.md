@@ -34,7 +34,7 @@ Experience-contract rows map technical evidence to product behavior: `journey/su
 
 ## Method / guardrails
 
-1. **Diagnose.** Generate 5–7 plausible sources, reduce to the 1–2 strongest from data flow, recent changes, error evidence, and affected paths, then dispatch parallel `@spectre_analyst` traces. Reproduce the failure and synthesize one cause-level repair.
+1. **Diagnose.** Generate 5–7 hypotheses; reduce to 1–2 via evidence/data-flow/changes/paths; dispatch parallel `@spectre_analyst` traces; reproduce; synthesize one cause-level repair.
 2. **Explore product + technical impact.** Once root cause and candidate repair boundary are grounded, dispatch ≥1 independent read-only `@spectre_analyst`; parallelize separable product journeys or technical boundaries. Trace shared callers, state, and data paths through to user/operator-observable outcomes. Return compact experience-contract rows that explicitly identify experiences that change, remain invariant, or are unresolved; synthesize and deduplicate the results.
 3. **Honor phase.** `diagnose` returns `DIAGNOSIS_READY` before any code write.
 4. **Verify authorization before repair.**
@@ -42,7 +42,7 @@ Experience-contract rows map technical evidence to product behavior: `journey/su
    - `full` proceeds only when Delegate supplies a readable scope artifact whose recomputed SHA-256 equals `AUTHORIZED_SCOPE_SHA256`, whose alignment mode is `inferred`, and the diagnosis, repair, and every experience-contract row remain inside it. Parent authorization replaces only the post-diagnosis approval pause.
    - An `unresolved` row or unapproved/out-of-scope collateral change blocks repair.
 5. **Repair test-first.** Confirm the intended-change regression RED for the diagnosed reason; capture risk-proportional preserved-invariant checks; implement the smallest root-cause fix plus `[🪳 TEMP {TOPIC}]` logging; then prove the contract and affected deterministic checks GREEN.
-6. **Attribute and continue.** Classify extra failures `branch-caused|unrelated|indeterminate`; repair branch-caused families, route unrelated findings, and use a focused target-state check when unclear. A red repository-wide baseline never blocks.
+6. **Attribute and continue.** Classify extras `branch-caused|unrelated|indeterminate`; repair, route, or focus-check. If failed repair leaves third-party cause unclear, dispatch `@spectre_web_research` on pinned docs/code/issues, then analogs; revise hypotheses + RED before mutation. Broad baseline red never blocks.
 7. **Contain scope.** Do not broaden behavior, hide failures, weaken assertions, bypass checks, or treat an unrelated defect as authorized. A new or changed experience-contract row or repair boundary returns to authorization.
 
 ## Handoff

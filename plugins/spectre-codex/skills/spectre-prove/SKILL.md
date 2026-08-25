@@ -25,7 +25,7 @@ Each invocation is exactly one proof pass. Derive a candidate key from relevant 
 - Inventory existing tools, scripts, runnable interfaces, and scenarios; prefer the established proof stack.
 - Match the mechanism to the actual surface: visible app, browser, desktop/mobile runtime, CLI/TUI, API/service, library, or background workflow. Exercise the same public controls and interfaces a user would use.
 - When no adequate proof tool exists: focused profile records affected rows `PARTIAL` with `PROOF_TOOLING_UNAVAILABLE` and continues without research or a user gate. Otherwise read `references/proof-tools.md`, use `@spectre_web_research` when available to verify current options against primary sources, then offer the user 2-4 suitable choices with a recommendation, trade-offs, installation impact, and evidence capabilities; hold for selection before adding a dependency or committing to a materially weaker proof method.
-- Identify missing proof infrastructure separately from product findings; this skill reports the required capability but never installs, writes, or repairs it.
+- Own the proof path: fix broken or misconfigured proof tooling (helpers, drivers, fixtures, seeds, runner config) in place and rerun; completing established-stack setup is pre-authorized. Record every harness change as a proof-infrastructure finding. Only genuinely absent capability follows the selection gate above.
 
 ## Proof Contract
 
@@ -33,18 +33,18 @@ Build a proof matrix first. Each row contains:
 
 - requirement and source;
 - realistic start state, user action, and observable result;
-- proof mechanism and primary evidence;
+- surface (`visual|non-visual`; TUI is visual), mechanism, and evidence ids;
 - supporting diagnostics;
 - status and limitations.
 
 Use `PASS`, `PARTIAL`, `DIAGNOSTIC_ONLY`, or `FAIL` per row:
 
-- `PASS` - the public workflow/result ran end to end and inspected evidence matched.
+- `PASS` - evidence matched the end-to-end contract, including fail-closed outcomes.
 - `PARTIAL` - some journey was skipped, fixture-backed, programmatic, or otherwise not proven as the user experiences it.
 - `DIAGNOSTIC_ONLY` - code paths, state, logs, or tests were proven without proving the public workflow.
 - `FAIL` - observed behavior, pixels, output, persistence, or errors contradict the contract.
 
-For visible work, capture meaningful start/action/result screenshots and video only when timing, motion, transition, or path matters. Inspect actual screenshots/representative frames and compare with approved UX/prototype. Captured-but-unreviewed media does not count. When assertions and pixels disagree, pixels win.
+For visual work (including TUI), load `references/proof-html.md`: capture, inspect, and embed in `proof.html` actual screenshots and video of each realistic end-to-end journey; paths, links, hashes, manifests, and prose are provenance only. Pixels overrule assertions.
 
 For non-visual work, use the public interface and preserve observable output, persistence, and relevant logs. Do not manufacture visuals. Internal tests/state/logs may support but never replace the promised outcome.
 
@@ -53,18 +53,18 @@ For non-visual work, use the public interface and preserve observable output, pe
 1. Reuse fresh inspected primary evidence only when its candidate key and matrix rows match exactly. Run the smallest set of uncovered journeys that completes the matrix. Expensive harness/performance/full qualification allows at most one run per candidate key; rerun only after relevant inputs change or a diagnosed infrastructure failure invalidates it.
 2. Inspect primary evidence before reading diagnostic summaries. Then review logs/errors and durable state for silent failures.
 3. Classify each finding as product behavior, UX/cosmetic, proof infrastructure, specification ambiguity, or environment/authority constraint. Record the failed claim, expected/observed result, reproduction, evidence paths, fingerprint, and limitation.
-4. Write the artifacts and return. Never modify product/proof infrastructure, dispatch an implementer, invoke TDD, or repeat a journey after a repair inside this invocation.
+4. Repair the proof path, never the verdict: fix harness/tooling defects and rerun affected journeys until each row reflects observed product behavior. A harness defect is never terminal and never the sole basis for `PARTIAL`. Never modify product code to influence an outcome, dispatch an implementer, or invoke TDD. Then write the artifacts and return.
 
 ## Outputs + DONE
 
 Write:
 
-- `{FEATURE_ROOT}/proof/proof.json` - compact current-candidate snapshot with `feature`, `feature_root`, acceptance sources, scope hash, candidate key, observed start/finish state, scenarios, matrix, evidence references/hashes, findings, limitations, and aggregate status. Replace prior snapshots; git history preserves them. Never embed raw harness output or accumulating run history.
-- `{FEATURE_ROOT}/proof/proof.html` - **required**, self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: {FEATURE_ROOT}`, then the matrix, findings, selected reviewed media, redacted diagnostics, current relevant repair dispositions, limitations, and final status. Replace the prior current-candidate report; do not publish or share unless asked.
+- `{FEATURE_ROOT}/proof/proof.json` - compact current-candidate snapshot with `feature`, `feature_root`, acceptance sources, scope hash, candidate key, observed start/finish state, scenarios, matrix, evidence references/hashes, findings, harness changes, limitations, and aggregate status. Replace prior snapshots; git history preserves them. Never embed raw harness output or accumulating run history.
+- `{FEATURE_ROOT}/proof/proof.html` - **required**, self-contained review artifact beginning with `Feature: <feature-name>` and `Feature Root: {FEATURE_ROOT}`, then the matrix, findings, required displayed media, redacted diagnostics, current relevant repair dispositions, harness changes, limitations, and final status. Replace the prior current-candidate report; do not publish or share unless asked.
 
-Keep secrets, credentials, private customer data, and unnecessary local paths out of both artifacts. Raw evidence stays in its owning local tool bundle or product-consumed artifact path and is referenced by URI/path plus hash, never copied into proof.
+Exclude secrets, credentials, private customer data, and unnecessary local paths. Raw evidence stays tool-owned; proof embeds review renditions and cites original URI/path plus hash.
 
-**DONE when:** both proof artifacts are self-locating; every in-scope row has a status backed by inspected primary evidence; aggregate `PASS` is used only when every row passes; the authorized scope hash still matches; observed start/finish state and unresolved findings are recorded; and the HTML accurately presents the evidence and limitations. DONE means the pass completed, regardless of aggregate status.
+**DONE when:** both artifacts self-locate; every in-scope row has inspected primary evidence and truthful status; aggregate `PASS` means every row passes; the authorized scope hash matches; observed states and unresolved findings are recorded; every harness change made during the pass is disclosed in both artifacts; and HTML satisfies the proof-HTML contract and presents all limitations. DONE means the pass completed, regardless of status.
 
 ## Handoff
 

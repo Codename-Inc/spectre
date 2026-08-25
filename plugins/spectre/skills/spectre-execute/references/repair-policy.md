@@ -6,9 +6,9 @@ Load on the first verification failure, review finding, E2E gap, or proof failur
 
 - `branch-caused`: group by invariant/root cause, repair, then rerun the failing and affected checks.
 - `unrelated`: record or route follow-up work and continue; it cannot block the wave or execution.
-- `indeterminate`: run the smallest focused reproduction. Use the recorded base SHA only for that failing check when needed, then repair or route it.
+- `indeterminate`: reproduce. If a failed repair leaves third-party cause unclear, dispatch `@spectre:web-research` on pinned docs/code/issues, then analogs; revise hypothesis + RED before mutation. Use base SHA only for that check; repair or route.
 
-Expand affected checks only across demonstrated dependency/consumer/integration/lifecycle boundaries. Persist compact coverage only in the local workflow store, never evidence/checkpoint files; keep raw output outside child prompts, and run no reviewer while attributable deterministic failures remain.
+Expand only across evidenced dependency/consumer/integration/lifecycle boundaries; store coverage locally, exclude raw output from child prompts, and block review until attributable deterministic checks pass.
 
 ## Review findings
 
@@ -21,5 +21,5 @@ Expand affected checks only across demonstrated dependency/consumer/integration/
 
 - Structured mode appends/updates only required `tasks.json` work and affected index rows. Plan-direct adds only demonstrated plan-backed derivative work and affected map rows; never rewrite the plan or add nice-to-haves.
 - Final-review repair gets affected verification and dispositions; never rerun or replace the comprehensive review.
-- Proof failure gets one behavior-repair pass, affected verification, then one fresh proof over failed/impact-linked row ids. Never code-review proof repair; disclose persistent failure.
+- Classify each non-PASS as `repairable|needs-authority|unrelated`; continue independent work and repeat plan-backed repair → verification → fresh proof of failed/impact-linked rows. Stop only at aggregate `PASS` or when every remainder is `NEEDS_AUTHORITY`; never code-review proof repair.
 - `NEEDS_AUTHORITY` only for conflicting acceptance, unavailable authority/capability, required scope change, or unsafe/unauthorized action.

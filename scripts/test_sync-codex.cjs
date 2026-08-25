@@ -443,6 +443,11 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
     assert.doesNotMatch(contract, /primary may implement/i);
     assert.doesNotMatch(contract, /Primary-direct work/i);
     assert.match(contract, /`branch-caused`:[\s\S]*`unrelated`:[\s\S]*`indeterminate`:/);
+    assert.match(contract, /failed repair leaves third-party cause unclear/i);
+    assert.match(
+      contract,
+      /@spectre(?::|_)web(?:-|_)research[^\n]*pinned docs\/code\/issues[^\n]*analogs[^\n]*hypothesis \+ RED before mutation/,
+    );
     assert.match(contract, /Route intermediate review by compounding risk/);
     assert.match(contract, /phase may be reviewed only after all source-owned tasks\/workstreams[\s\S]*`done\|skipped`/);
     assert.match(contract, /completion alone is not a trigger/);
@@ -477,7 +482,18 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
     assert.match(contract, /Skill\(spectre-code_review\)`[^\n]*exactly once, high effort/);
     assert.match(contract, /never (?:rerun or replace|dispatch a reviewer to validate the repair or rerun) the comprehensive review/i);
     assert.match(contract, /Proof is always the last acceptance gate/);
-    assert.match(contract, /proof failure gets one behavior-repair pass/);
+    assert.match(contract, /Non-PASS follows the repair policy/);
+    assert.match(
+      contract,
+      /do not terminalize until aggregate `PASS` or every remainder is `NEEDS_AUTHORITY`/,
+    );
+    assert.match(contract, /Classify each non-PASS as `repairable\|needs-authority\|unrelated`/);
+    assert.match(contract, /continue independent work and repeat plan-backed repair/);
+    assert.match(
+      contract,
+      /Stop only at aggregate `PASS` or when every remainder is `NEEDS_AUTHORITY`/,
+    );
+    assert.doesNotMatch(contract, /one behavior-repair pass|persistent failure instead of looping/);
     assert.doesNotMatch(contract, /focused phase\/boundary review|reopened phases require fresh[\s\S]*phase review/);
     assert.doesNotMatch(contract, /one review per completed phase|send all newly completed phases/);
     assert.doesNotMatch(contract, /Skill\(spectre-create_test_guide\)|Skill\(spectre-validate\)/);
@@ -686,7 +702,7 @@ test('plan-direct goal composition lets execute own proof closure from durable s
   }
 });
 
-test('prove contract is one reviewed evidence pass without repair or candidate attestation', () => {
+test('prove contract is one reviewed evidence pass that owns its proof path', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -710,16 +726,23 @@ test('prove contract is one reviewed evidence pass without repair or candidate a
     assert.match(skill, /name: "spectre-prove"/);
     assert.match(skill, /# prove/);
     assert.match(skill, /PASS`, `PARTIAL`, `DIAGNOSTIC_ONLY`, or `FAIL/);
-    assert.match(skill, /Captured-but-unreviewed media does not count/);
-    assert.match(skill, /When assertions and pixels disagree, pixels win/);
+    assert.match(skill, /including fail-closed outcomes/);
+    assert.match(skill, /capture, inspect, and embed/);
+    assert.match(skill, /Pixels overrule assertions/);
     assert.match(skill, /Each invocation is exactly one proof pass/);
-    assert.match(skill, /Never modify product\/proof infrastructure/);
+    assert.match(skill, /Repair the proof path, never the verdict/);
+    assert.match(skill, /fix broken or misconfigured proof tooling/i);
+    assert.match(skill, /never terminal and never the sole basis for `PARTIAL`/);
+    assert.match(skill, /Never modify product code to influence an outcome/);
+    assert.match(skill, /harness changes/);
+    assert.doesNotMatch(skill, /never installs, writes, or repairs it/);
+    assert.doesNotMatch(skill, /Never modify product\/proof infrastructure/);
     assert.match(skill, /PROOF_RESULT/);
     assert.match(skill, /--profile focused/);
     assert.match(skill, /PROOF_TOOLING_UNAVAILABLE/);
     assert.match(skill, /focused profile records affected rows `PARTIAL`/);
     assert.match(skill, /without research or a user gate/);
-    assert.match(skill, /DONE means the pass completed, regardless of aggregate status/);
+    assert.match(skill, /DONE means the pass completed, regardless of status/);
     assert.match(skill, /proof status alone never gates `(?:\/)?spectre(?::|-)?ship`/);
     assert.doesNotMatch(skill, /Skill\(spectre-tdd\)/);
     assert.doesNotMatch(skill, /@spectre(?::|_)dev/);
@@ -728,9 +751,30 @@ test('prove contract is one reviewed evidence pass without repair or candidate a
     assert.match(skill, /proof\/proof\.json/);
     assert.match(skill, /proof\/proof\.html/);
     assert.match(skill, /proof\/proof\.html` - \*\*required\*\*/i);
+    assert.match(skill, /For visual work \(including TUI\), load `references\/proof-html\.md`/);
+    assert.match(skill, /embed in `proof\.html` actual screenshots and video/);
+    assert.match(skill, /paths, links, hashes, manifests, and prose are provenance only/);
+    assert.match(skill, /required displayed media/);
+    assert.match(skill, /proof embeds review renditions/);
+    assert.match(skill, /HTML satisfies the proof-HTML contract/);
     assert.match(skill, /one run per candidate key/);
     assert.match(skill, /Never embed raw harness output or accumulating run history/);
     assert.doesNotMatch(skill, /subspace-app-harness/i);
+
+    const proofHtml = fs.readFileSync(path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'spectre-prove',
+      'references',
+      'proof-html.md',
+    ), 'utf8');
+    assert.match(proofHtml, /<img>/);
+    assert.match(proofHtml, /<video controls>/);
+    assert.match(proofHtml, /textual paths, links, manifests, hashes, thumbnails, or unavailable sources do not qualify/i);
+    assert.match(proofHtml, /PROOF_MEDIA_NOT_PRESENTED/);
+    assert.match(proofHtml, /validate-proof-html\.mjs/);
   }
 });
 
@@ -942,6 +986,14 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
 
     assert.match(route, /user-invocable: false/);
     assert.match(route, /plan-routing\/v1/);
+    assert.match(route, /shipped precedent/);
+    assert.match(route, /Two shipped instances of a change-shape/i);
+    assert.match(route, /its layers are not workstreams/i);
+    assert.match(route, /when Scope mandates an abstraction.*whether it ships/i);
+    assert.match(route, /classify the real delta/i);
+    assert.match(route, /surface counts/);
+    assert.match(route, /render variants of one surface/i);
+    assert.match(route, /never let them create workstreams/i);
     for (const field of [
       'shape', 'uncertainty', 'evidence', 'protected_boundaries', 'task_graph_risk',
       'design_authority_required', 'size', 'route', 'rationale',
@@ -1619,7 +1671,12 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     );
     assert.match(fixCore, /new or changed experience-contract row or repair boundary returns to authorization/i);
     assert.match(fixCore, /RED-before-GREEN/);
-    assert.match(fixCore, /A red repository-wide baseline never blocks/);
+    assert.match(fixCore, /Broad baseline red never blocks/);
+    assert.match(fixCore, /failed repair leaves third-party cause unclear/i);
+    assert.match(
+      fixCore,
+      /@spectre(?::|_)web(?:-|_)research[^\n]*pinned docs\/code\/issues[^\n]*analogs[^\n]*hypotheses \+ RED before mutation/,
+    );
     assert.match(fixCore, /Never escalate for unrelated red checks/);
     assert.doesNotMatch(fixCore, /deterministic checks remain red/);
 
