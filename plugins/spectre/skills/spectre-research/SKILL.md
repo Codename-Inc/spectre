@@ -15,7 +15,7 @@ Codebase research: spawn parallel read-only agents, synthesize their findings in
 - Any files the user names (tickets, docs, JSON).
 
 ## Working set
-- `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved from the input or proposed below. Read branch/commit/repo metadata via tool at write time, never inline earlier.
+- `FEATURE_ROOT = .spectre/features/<feature-name>/`, resolved from the input or chosen autonomously below. Read branch/commit/repo metadata via tool at write time, never inline earlier.
 - Agents (read-only, run in parallel): `@spectre:finder` (where code lives), `@spectre:analyst` (how it works), `@spectre:patterns` (similar implementations), `@spectre:web-research` (3rd-party docs — instruct it to return LINKS). Context7 MCP only if the user explicitly asks for library docs.
 
 ## Feature root contract
@@ -23,7 +23,7 @@ Codebase research: spawn parallel read-only agents, synthesize their findings in
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Method / guardrails
-1. **Immediate reply first** — acknowledge the topic and proposed feature name/root (or ask for the topic) with NO tool calls in the opening turn.
+1. **Immediate reply first** — acknowledge the topic and state the feature name/root the workflow will use (or ask for the topic) with NO tool calls in the opening turn.
 2. **Read named files fully** in main context (no limit/offset) before decomposing.
 3. Decompose the question into areas; track with TodoWrite. Strategy: locate → analyze promising hits → fan out parallel reads. Tell each agent what to find, not how to search.
 4. Wait for ALL agents before synthesizing. Compress each return to a 1–2K summary; do not write per-agent scratch files.

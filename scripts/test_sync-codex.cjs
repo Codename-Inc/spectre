@@ -905,6 +905,8 @@ test('Plan and Execute emit one non-authoritative calibration lifecycle', () => 
     assert.match(plan, /telemetry failure[^\n]*(?:continue|never blocks|degraded)/i);
 
     assert.match(execute, /plan\.execution_outcome/);
+    assert.match(executeTelemetry, /spectre-workflow plan match/);
+    assert.doesNotMatch(executeTelemetry, /read `\.spectre\/telemetry\/plan-classification\.jsonl` directly/);
     assert.match(executeTelemetry, /matching `plan\.completed` event[^\n]*feature root[^\n]*(?:artifact|source) hash/i);
     assert.match(executeTelemetry, /only after authoritative execution status/i);
     assert.match(executeTelemetry, /workstream[^\n]*task[^\n]*wave count/i);
@@ -1221,11 +1223,11 @@ test('create_plan and create_tasks preserve XS/direct routing contracts', () => 
 
     assert.match(createPlan, /--depth \{xs\|light\|standard\|comprehensive\}/);
     assert.match(createTasks, /--depth xs\|light\|standard\|comprehensive/);
-    assert.match(createPlan, /`--depth xs`[\s\S]*Execution Mode: direct/i);
-    assert.match(createPlan, /`--depth xs`[\s\S]*one coherent change/i);
-    assert.match(createPlan, /`--depth xs`[\s\S]*known verification/i);
-    assert.match(createPlan, /`--depth xs`[\s\S]*explicit Out-of-Bounds/i);
-    assert.match(createPlan, /`--depth xs`[\s\S]*seven spine sections/i);
+    assert.match(createPlan, /Execution Mode: direct[^\n]*`--depth xs`/i);
+    assert.match(createPlan, /one cohesive vertical slice/i);
+    assert.match(createPlan, /direct-mode signals are executable/i);
+    assert.match(createPlan, /Out-of-Bounds[^\n]*canonical OUT\/ANTI-SCOPE/i);
+    assert.match(createPlan, /Every plan contains:/i);
     assert.match(createPlan, /## Routing Observations/);
     for (const field of [
       'workstream count',
@@ -1238,8 +1240,16 @@ test('create_plan and create_tasks preserve XS/direct routing contracts', () => 
       'observed uncertainty',
     ]) assert.match(createPlan, new RegExp(field, 'i'));
 
-    assert.match(createPlan, /observations are consumed only by `spectre-plan-route`/i);
-    assert.match(createPlan, /XS structured override[^\n]*spectre-create_tasks --depth xs/i);
+    assert.match(createPlan, /observations only, never route selection/i);
+    assert.match(createPlan, /Approved XS structured override[^\n]*spectre-create_tasks --depth xs/i);
+    assert.match(createPlan, /Behavioral scope is binding; implementation means are not/i);
+    assert.match(createPlan, /Addition \| Required now by \| Simpler local option \| Why it fails now \| Verification/);
+    assert.match(createPlan, /No valid row means delete or defer/i);
+    assert.match(createPlan, /Reversible decisions take the local default without research or alternatives/i);
+    assert.match(createPlan, /compare at most two realistic options/i);
+    assert.match(createPlan, /bounded spike[^\n]*not production architecture/i);
+    assert.match(createPlan, /For `comprehensive`, add sections only when triggered/i);
+    assert.match(createPlan, /Omit untriggered sections; do not emit `N\/A` ceremony/i);
     assert.doesNotMatch(createPlan, /Escalate-If[\s\S]*(?:>3 critical files|new abstraction|data migration|public-API change|tier-reassessment recommendation)/i);
     assert.doesNotMatch(createPlan, /(?:automatic|independently)\s+(?:escalates?|classif(?:y|ies)|selects?)[^\n]*(?:XS|S|M|L|XL|light|standard|comprehensive)/i);
 
@@ -1375,9 +1385,9 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(plan, /spectre-task_review.*--orchestrated/);
     assert.doesNotMatch(plan, /spectre-goal/);
 
-    assert.match(createPlan, /Approved `Execution Mode: direct` plan.*spectre-execute/);
-    assert.match(createPlan, /Approved LIGHT structured plan.*spectre-create_tasks/);
-    assert.match(createPlan, /Approved STANDARD\/COMPREHENSIVE plan.*spectre-plan_review/);
+    assert.match(createPlan, /Approved direct.*spectre-execute/i);
+    assert.match(createPlan, /Approved light structured.*spectre-create_tasks/i);
+    assert.match(createPlan, /Approved standard\/comprehensive.*spectre-plan_review/i);
     assert.match(createTasks, /load-bearing user-facing behavior.*without adequate UX\/prototype acceptance evidence/);
     assert.match(createTasks, /--orchestrated.*(?:without|omits) user-facing Next Steps/);
 
@@ -1497,6 +1507,8 @@ test('feature-root establishment is centralized behind one concise internal skil
     assert.ok(helper.length <= 2000, `feature-root helper exceeds 500 estimated tokens: ${helper.length} chars`);
     assert.match(helper, /`KIND=feature\|bug` \(default `feature`\)/);
     assert.match(helper, /first free `\.spectre\/\{features\|bugs\}\/<name>\[-N\]\/` per `KIND`/);
+    assert.match(helper, /Never inspect or offer existing roots, ask whether to reuse one, present naming options, or wait for approval/);
+    assert.match(helper, /Naming ambiguity or collision never escalates/);
     assert.match(helper, /`schema_version`, `created_at`, `feature`, and repo-relative `feature_root`/);
     assert.match(helper, /`manifest\.json`, `bin\/`, `handoffs\/`, `!features\/`, `!bugs\/`/);
     assert.match(helper, /`evidence\/`, `checkpoints\/`, `runs\/`, `markers\/`/);
@@ -1525,7 +1537,13 @@ test('feature-root establishment is centralized behind one concise internal skil
       assert.doesNotMatch(skill, /docs\/tasks\/\*\*/);
       assert.doesNotMatch(skill, /Before the first artifact in a new root/);
       assert.doesNotMatch(skill, /Never use branch name, recency, lifecycle state, or directory scanning/);
+      assert.doesNotMatch(skill, /Root selection is workflow-owned/);
+      assert.doesNotMatch(skill, /ask the user to name, choose, approve, reuse, or disambiguate a root/);
     }
+
+    const research = readSkill('spectre-research');
+    assert.match(research, /state the feature name\/root the workflow will use/);
+    assert.doesNotMatch(research, /proposed feature name\/root/);
   }
 });
 
@@ -1772,8 +1790,8 @@ test('review gates pin route-specific opposing models and retain native fallback
       const { claudeModel, effort } = routes[skillName];
       if (skillName === 'spectre-plan_review') {
         assert.match(skill, /high effort \(20-minute limit\)/);
-        assert.match(skill, /Codex -> Claude Code `opus`/);
-        assert.match(skill, /Claude Code -> Codex `gpt-5\.6-sol`/);
+        assert.match(skill, /Codex (?:→|->) Claude Code `opus`/);
+        assert.match(skill, /Claude Code (?:→|->) Codex `gpt-5\.6-sol`/);
         assert.match(skill, /Record stage\/runtime\/model\/effort\/route/);
         assert.match(skill, /native `@spectre(?::|_)reviewer`/);
         assert.doesNotMatch(skill, /at least 20 minutes/);
@@ -1819,40 +1837,78 @@ test('review gates pin route-specific opposing models and retain native fallback
   }
 });
 
-test('plan review establishes correctness before simplification with shared evidence', () => {
+test('plan review bounds correctness and enforces subtraction-only simplification', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
-    const skill = fs.readFileSync(
-      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan_review', 'SKILL.md'),
+    const skillDir = path.join(
+      repoRoot,
+      'plugins',
+      rootName,
+      'skills',
+      'spectre-plan_review',
+    );
+    const skill = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+    const correctness = fs.readFileSync(
+      path.join(skillDir, 'references', 'correctness-review.md'),
+      'utf8',
+    );
+    const simplification = fs.readFileSync(
+      path.join(skillDir, 'references', 'simplification-review.md'),
       'utf8',
     );
 
     assert.match(skill, /smallest correct plan/);
-    assert.ok(skill.indexOf('2. **Correctness review.**') < skill.indexOf('4. **Simplification review.**'));
+    assert.ok(skill.indexOf('2. **Correctness.**') < skill.indexOf('3. **Simplification.**'));
     assert.match(skill, /plan_correctness\.md/);
-    assert.match(skill, /evidence ledger/i);
+    assert.match(skill, /evidence\/unknowns/i);
     assert.match(skill, /retained constraints/i);
-    assert.match(skill, /at most one each: `@spectre(?::|_)finder`.*`@spectre(?::|_)analyst`.*`@spectre(?::|_)patterns`/);
-    assert.match(skill, /no second wave/i);
-    assert.match(skill, /Correctness review/);
-    assert.match(skill, /Simplification review/);
-    assert.match(skill, /No broad research\/delegation/);
+    assert.match(skill, /at most one each `@spectre(?::|_)finder`.*`@spectre(?::|_)analyst`.*`@spectre(?::|_)patterns`/);
+    assert.match(skill, /references\/correctness-review\.md/);
+    assert.match(skill, /references\/simplification-review\.md/);
+    assert.match(skill, /send it verbatim to a fresh reviewer/i);
+    assert.match(skill, /plan, Scope, task-context, and report paths\/hashes/i);
+    assert.match(skill, /corrected plan, Scope, correctness-report, and output-report paths\/hashes/i);
+    assert.doesNotMatch(skill, /REVIEW MANIFEST|ADDITIONAL FOCUS|paraphrase|reorder|weaken|augment/i);
     assert.match(skill, /Stop on unresolved correctness Blocker\/High/);
-    assert.match(skill, /Each meaningful behavior\/contract starts with a representative happy and primary-failure test/);
-    assert.match(skill, /distinct requirements, public boundaries, credible regressions, or materially different risks/);
-    assert.match(skill, /Exclude duplicate, implementation-detail, and combinatorial coverage/);
-    assert.match(skill, /No deletion requires traceability for retained elements/);
-    assert.match(skill, /plan\.md` carries accepted tests and executable direct-mode Verification/);
+    assert.match(correctness, /one representative happy path and primary failure per distinct required behavior/i);
+    assert.match(correctness, /another requirement, public boundary, credible regression, or materially different present risk/);
+    assert.match(correctness, /concrete risks created by the changed boundaries/i);
+    assert.match(correctness, /required now by \| simpler local option \| why it fails now \| verification/i);
+    assert.match(correctness, /Write the report before authorized plan edits/i);
+    assert.match(simplification, /delete, collapse, reuse, or defer/i);
+    assert.match(simplification, /High` for untraceable complexity or an invalid exception/i);
+    assert.match(simplification, /minimum replacement detail needed by a larger net reduction/i);
+    assert.match(simplification, /required now by \| simpler local option \| why it fails now \| removal failure/i);
+    assert.match(simplification, /Write the report before authorized plan edits/i);
+    assert.match(skill, /plan is smaller in mechanisms, surfaces, process, or tests/i);
+    assert.match(skill, /Reports are deltas; never restate the plan/i);
+    assert.match(skill, /direct-mode Verification is executable/i);
     assert.match(skill, /Run each stage fresh at high effort/);
-    assert.match(skill, /Write `plan_correctness\.md` first, then edit `plan\.md`/);
-    assert.match(skill, /Write `plan_review\.md` first, then edit `plan\.md`/);
-    assert.doesNotMatch(skill, /this review is simplification-only/i);
+    assert.match(skill, /report written before plan edits/i);
+    assert.doesNotMatch(skill, /Shrinkage is optional/i);
     assert.doesNotMatch(skill, /Completed-review hard stop/i);
     assert.doesNotMatch(skill, /--review-again/);
     assert.doesNotMatch(skill, /plan_review_attempt\.json/);
     assert.doesNotMatch(skill, /round_status/);
     assert.doesNotMatch(skill, /--mode adversarial|--mode full/);
+  }
+
+  assert.ok(
+    repositoryTokenCount(
+      repoRoot,
+      'plugins/spectre/skills/spectre-plan_review/SKILL.md',
+    ) <= 1300,
+    'plan-review orchestration should remain compact',
+  );
+  for (const reference of ['correctness-review.md', 'simplification-review.md']) {
+    assert.ok(
+      repositoryTokenCount(
+        repoRoot,
+        `plugins/spectre/skills/spectre-plan_review/references/${reference}`,
+      ) <= 350,
+      `${reference} should remain a compact stage prompt`,
+    );
   }
 });
 
@@ -1885,10 +1941,25 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
         path.join(repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md'),
         'utf8',
       );
+    const readPlanReviewReference = (fileName) =>
+      fs.readFileSync(
+        path.join(
+          repoRoot,
+          'plugins',
+          rootName,
+          'skills',
+          'spectre-plan_review',
+          'references',
+          fileName,
+        ),
+        'utf8',
+      );
     const plan = readSkill('spectre-plan');
     const createPlan = readSkill('spectre-create_plan');
     const createTasks = readSkill('spectre-create_tasks');
     const planReview = readSkill('spectre-plan_review');
+    const planCorrectnessTemplate = readPlanReviewReference('correctness-review.md');
+    const planSimplificationTemplate = readPlanReviewReference('simplification-review.md');
     const taskReview = readSkill('spectre-task_review');
     const codeReview = readSkill('spectre-code_review');
 
@@ -1897,21 +1968,22 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
     assert.match(plan, /Research agents return evidence only and never write planning artifacts/i);
     assert.doesNotMatch(plan, /never write `plan\.md`, `execute\.md`, or `tasks\.json` content yourself/i);
 
-    assert.match(createPlan, /primary directly writes `plan\.md`/i);
+    assert.match(createPlan, /primary owns synthesis and `plan\.md`/i);
     assert.match(createPlan, /Research agents return evidence only/i);
-    assert.match(createPlan, /at every depth, reuse an existing substantive `## Technical Research` section/i);
-    assert.match(createPlan, /orchestrated `spectre-plan` call never launches replacement research agents/i);
+    assert.match(createPlan, /Existing scope\/PRD\/UX and substantive `task_context\.md` research/i);
+    assert.match(createPlan, /Orchestrated calls reuse router research; never redispatch it/i);
     assert.match(createTasks, /primary directly writes only the selected canonical artifacts/i);
     assert.match(createTasks, /research agents (?:return|supply) evidence only/i);
 
     assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
-    assert.match(planReview, /Write `plan_correctness\.md` first, then edit `plan\.md`/i);
-    assert.match(planReview, /Write `plan_review\.md` first, then edit `plan\.md`/i);
-    assert.match(planReview, /addressed edit named/i);
+    assert.match(planReview, /report written before plan edits/i);
+    assert.match(planCorrectnessTemplate, /Write the report before authorized plan edits/i);
+    assert.match(planSimplificationTemplate, /Write the report before authorized plan edits/i);
+    assert.match(planCorrectnessTemplate, /dispositions\/resulting edits/i);
     assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
     assert.match(planReview, /primary may normalize mechanics, never semantics/i);
-    assert.match(planReview, /failed schema\/hash\/scope checks/i);
-    assert.match(planReview, /normalization never launches fallback/i);
+    assert.match(planReview, /failed schema\/hash\/scope\/Out-of-Bounds checks/i);
+    assert.match(planReview, /A usable review is terminal/i);
     assert.doesNotMatch(planReview, /allowedTools "[^"]*Task/);
 
     assert.match(taskReview, /reviewer owns `TASKS_JSON` and `REVIEW_REPORT`/i);

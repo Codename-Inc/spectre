@@ -106,8 +106,8 @@ test("review gates retain their route-specific models and efforts", () => {
   );
 
   assert.match(planReview, /high effort \(20-minute limit\)/);
-  assert.match(planReview, /Codex -> Claude Code `opus`/);
-  assert.match(planReview, /Claude Code -> Codex `gpt-5\.6-sol`/);
+  assert.match(planReview, /Codex (?:→|->) Claude Code `opus`/);
+  assert.match(planReview, /Claude Code (?:→|->) Codex `gpt-5\.6-sol`/);
   assert.match(planReview, /Reviewers write only their report and `plan\.md`/);
   assert.match(codeReview, /claude -p --model opus --effort high/);
   assert.match(
@@ -133,15 +133,23 @@ test("plan review runs correctness before simplification and applies only scope-
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
     "utf8",
   );
+  const planReviewDir = join(
+    repositoryRoot,
+    "plugins",
+    "spectre",
+    "skills",
+    "spectre-plan_review",
+  );
   const planReview = readFileSync(
-    join(
-      repositoryRoot,
-      "plugins",
-      "spectre",
-      "skills",
-      "spectre-plan_review",
-      "SKILL.md",
-    ),
+    join(planReviewDir, "SKILL.md"),
+    "utf8",
+  );
+  const correctness = readFileSync(
+    join(planReviewDir, "references", "correctness-review.md"),
+    "utf8",
+  );
+  const simplification = readFileSync(
+    join(planReviewDir, "references", "simplification-review.md"),
     "utf8",
   );
 
@@ -172,16 +180,26 @@ test("plan review runs correctness before simplification and applies only scope-
   assert.match(planReview, /reviews\/plan_correctness\.md/);
   assert.match(planReview, /reviews\/plan_review\.md/);
   assert.match(planReview, /post-edit hash matches `plan\.md`/i);
-  assert.match(planReview, /Write `plan_correctness\.md` first, then edit `plan\.md`/i);
-  assert.match(planReview, /Write `plan_review\.md` first, then edit `plan\.md`/i);
+  assert.match(planReview, /references\/correctness-review\.md/);
+  assert.match(planReview, /references\/simplification-review\.md/);
+  assert.match(planReview, /send it verbatim to a fresh reviewer/i);
+  assert.match(planReview, /report written before plan edits/i);
+  assert.match(correctness, /Write the report before authorized plan edits/i);
+  assert.match(simplification, /Write the report before authorized plan edits/i);
   assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
   assert.match(planReview, /addressed.*skipped.*unresolved.*scope-change/is);
-  assert.match(planReview, /addressed edit named/i);
+  assert.match(correctness, /dispositions\/resulting edits/i);
   assert.match(planReview, /continue on the same route/i);
-  assert.match(planReview, /failed schema\/hash\/scope checks/i);
+  assert.match(planReview, /failed schema\/hash\/scope\/Out-of-Bounds checks/i);
   assert.match(planReview, /primary may normalize mechanics, never semantics/i);
-  assert.match(planReview, /Usable review is terminal/i);
-  assert.match(planReview, /normalization never launches fallback/i);
+  assert.match(planReview, /A usable review is terminal/i);
+  assert.match(planReview, /Reports are deltas; never restate the plan/i);
+  assert.match(correctness, /concrete risks created by the changed boundaries/i);
+  assert.match(correctness, /required now by \| simpler local option \| why it fails now \| verification/i);
+  assert.match(simplification, /delete, collapse, reuse, or defer/i);
+  assert.match(simplification, /High` for untraceable complexity or an invalid exception/i);
+  assert.match(planReview, /plan is smaller in mechanisms, surfaces, process, or tests/i);
+  assert.doesNotMatch(planReview, /Shrinkage is optional/i);
   assert.doesNotMatch(planReview, /same-route report-only repair/i);
   assert.doesNotMatch(planReview, /primary directly edits `plan\.md`/i);
   assert.doesNotMatch(planReview, /Completed-review hard stop/i);
@@ -200,7 +218,7 @@ test("usable review reports are normalized by the primary without reviewer repai
   for (const name of ["spectre-plan_review", "spectre-task_review", "spectre-code_review"]) {
     const review = skill(name);
     if (name === "spectre-plan_review") {
-      assert.match(review, /Usable review is terminal/i);
+      assert.match(review, /A usable review is terminal/i);
       assert.match(review, /primary may normalize mechanics, never semantics/i);
       assert.doesNotMatch(review, /same-route report-only repair/i);
       continue;
