@@ -1048,7 +1048,7 @@ test('Plan high-level design gate stays concise and requires explicit approval',
     assert.ok(fs.existsSync(gatePath), `${rootName} must contain the high-level design gate`);
     const gate = fs.readFileSync(gatePath, 'utf8');
 
-    assert.match(plan, /For M–XL[^\n]*XS\/S[^\n]*material user-owned decision/i);
+    assert.match(plan, /For L\/XL[^\n]*XS–M[^\n]*material user-owned decision/i);
     assert.match(plan, /high-level-design-gate\.md[^\n]*through DONE before invoking any child/i);
     assert.match(plan, /current-run explicitly approved `## Selected Design` is the only fast path/i);
     assert.match(plan, /every required high-level design gate was explicitly approved and recorded/i);
