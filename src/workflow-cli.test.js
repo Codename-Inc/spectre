@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
+
 const CLI_PATH = path.resolve('bin/spectre.js');
 const BUNDLED_CLI_PATH = path.resolve('plugins/spectre/hooks/scripts/workflow-cli.mjs');
 
@@ -161,7 +163,7 @@ test('workflow CLI reports stable coded JSON errors', (t) => {
   assert.equal(missing.stderr, '');
 });
 
-test('workflow CLI records a local plan telemetry lifecycle', (t) => {
+test('workflow CLI records a local plan telemetry lifecycle outside the working tree', async (t) => {
   const value = makeFixture(t);
   const featureRoot = path.join(value.projectDir, '.spectre', 'features', 'cli');
   const scopePath = path.join(featureRoot, 'concepts', 'scope.md');
@@ -324,6 +326,23 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   ], value);
   assert.equal(completed.status, 0, completed.stderr);
 
+  const matched = invoke(BUNDLED_CLI_PATH, [
+    'plan',
+    'match',
+    '--feature-root',
+    '.spectre/features/cli',
+    '--artifact-hash',
+    planHash,
+    ...common,
+  ], value);
+  assert.equal(matched.status, 0, matched.stderr);
+  assert.deepEqual(JSON.parse(matched.stdout), {
+    ok: true,
+    planRunId: start.planRunId,
+    scopeHash,
+    artifactHash: planHash,
+  });
+
   const outcome = invoke(BUNDLED_CLI_PATH, [
     'plan',
     'record',
@@ -357,7 +376,15 @@ test('workflow CLI records a local plan telemetry lifecycle', (t) => {
   ], value);
   assert.equal(outcome.status, 0, outcome.stderr);
 
-  const telemetryPath = path.join(value.projectDir, '.spectre', 'telemetry', 'plan-classification.jsonl');
+  const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+  const telemetryPath = path.join(resolved.storePath, 'workflow', 'plan-classification.jsonl');
+  const workingTreeTelemetryPath = path.join(
+    value.projectDir,
+    '.spectre',
+    'telemetry',
+    'plan-classification.jsonl',
+  );
+  assert.equal(fs.existsSync(workingTreeTelemetryPath), false);
   const serialized = fs.readFileSync(telemetryPath, 'utf8');
   assert.doesNotMatch(serialized, /PRIVATE_SCOPE_BOUNDARY_MUST_BE_HASHED/);
   assert.doesNotMatch(serialized, /PRIVATE_INVARIANT_MUST_BE_HASHED/);
@@ -421,6 +448,7 @@ test('plan telemetry is discoverable, start is unique, and errors stay coded JSO
   assert.match(help.stdout, /--proof-result <PASS\|FAIL\|PARTIAL\|SKIPPED>/);
   assert.match(help.stdout, /--execution-review-result <CLEAN\|FINDINGS\|SKIPPED>/);
   assert.match(help.stdout, /--surprise-codes <codes>/);
+  assert.match(help.stdout, /plan match --feature-root <path> --artifact-hash <sha256>/);
 
   const started = invoke(BUNDLED_CLI_PATH, [
     'plan', 'start',
@@ -487,6 +515,57 @@ test('plan telemetry is discoverable, start is unique, and errors stay coded JSO
   assert.notEqual(topLevelInvalid.status, 0);
   assert.equal(JSON.parse(topLevelInvalid.stdout).code, 'INVALID_PLAN_ENUM');
   assert.equal(topLevelInvalid.stderr, '');
+});
+
+test('plan telemetry imports a legacy working-tree log without modifying it', async (t) => {
+  const value = makeFixture(t);
+  const artifactHash = 'b'.repeat(64);
+  const scopeHash = 'a'.repeat(64);
+  const planRunId = 'plan_run_11111111-1111-4111-8111-111111111111';
+  const legacyPath = path.join(
+    value.projectDir,
+    '.spectre',
+    'telemetry',
+    'plan-classification.jsonl',
+  );
+  const legacyEvent = {
+    schema_version: 1,
+    event_id: 'plan_evt_22222222-2222-4222-8222-222222222222',
+    plan_run_id: planRunId,
+    timestamp: '2026-08-26T00:00:00.000Z',
+    event_type: 'plan.completed',
+    feature_root: '.spectre/features/cli',
+    scope_hash: scopeHash,
+    payload: { artifact_hashes: [artifactHash] },
+  };
+  const legacyBytes = `${JSON.stringify(legacyEvent)}\n`;
+  fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+  fs.writeFileSync(legacyPath, legacyBytes);
+
+  const matched = invoke(BUNDLED_CLI_PATH, [
+    'plan', 'match',
+    '--feature-root', '.spectre/features/cli',
+    '--artifact-hash', artifactHash,
+    '--project-dir', value.projectDir,
+  ], value);
+  assert.equal(matched.status, 0, matched.stderr);
+  assert.deepEqual(JSON.parse(matched.stdout), {
+    ok: true,
+    planRunId,
+    scopeHash,
+    artifactHash,
+  });
+  assert.equal(fs.readFileSync(legacyPath, 'utf8'), legacyBytes);
+
+  const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+  const externalPath = path.join(resolved.storePath, 'workflow', 'plan-classification.jsonl');
+  assert.equal(fs.readFileSync(externalPath, 'utf8'), legacyBytes);
+  const migration = JSON.parse(fs.readFileSync(
+    path.join(resolved.storePath, 'migrations', 'plan-telemetry-worktree-v1.json'),
+    'utf8',
+  ));
+  assert.equal(migration.importedEventCount, 1);
+  assert.equal(migration.result, 'imported');
 });
 
 test('workflow CLI rejects plan telemetry payload keys outside the allow-list', (t) => {

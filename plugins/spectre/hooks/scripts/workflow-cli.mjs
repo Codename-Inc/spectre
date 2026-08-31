@@ -11,6 +11,7 @@ import {
   purgeProjectWorkflow,
 } from './workflow/retention.mjs';
 import {
+  matchPlanTelemetry,
   recordPlanTelemetry,
   startPlanTelemetry,
 } from './workflow/plan-telemetry.mjs';
@@ -67,6 +68,7 @@ function usage() {
     '  spectre-workflow human-input require|resolve --run-id <id> --actor-id <id> --json',
     '  spectre-workflow plan start --feature-root <path> --scope-hash <sha256>|--scope <relative-path> --classification <XS|S|M|L|XL> --shape <ATOMIC|DIRECT|STRUCTURED> --uncertainty <LOW|MODERATE|HIGH> --evidence <SUFFICIENT|PROBE_REQUIRED|PROBED> --task-graph-risk <LOW|HIGH> --route <route> --design-authority-required <true|false> --probe-used <true|false> --probe-sufficient <true|false> --reason-codes <codes> [--protected-boundaries-json <json>] [--plan-hash <sha256>] [--project-dir <path>] [--json]',
     '  spectre-workflow plan record --plan-run-id <id> --event-type <type> --feature-root <path> --scope-hash <sha256> [--project-dir <path>] [--json]',
+    '  spectre-workflow plan match --feature-root <path> --artifact-hash <sha256> [--project-dir <path>] [--json]',
     '    plan.reclassified: --previous-classification <size> --classification <size> --shape <ATOMIC|DIRECT|STRUCTURED> --uncertainty <LOW|MODERATE|HIGH> --evidence <SUFFICIENT|PROBE_REQUIRED|PROBED> --task-graph-risk <LOW|HIGH> --route <route> --design-authority-required <true|false> --regret-direction <NONE|SMALLER|LARGER> --reason-codes <codes> [--protected-boundaries-json <json>] --plan-hash <sha256>',
     '    plan.review_completed: --review-kind <correctness|simplification|task> --finding-count <n> --applied-count <n> --structure-before <n> --structure-after <n>',
     '    plan.gate_completed: --gate-kind <design|final> --gate-outcome <approved|feedback|declined> --change-category <none|scope_preserving|scope_change>',
@@ -114,6 +116,7 @@ function commonOptions(flags) {
 function confirmation(resource, action, result) {
   if (!result || result.ok === false) return result;
   if (resource === 'cleanup' || resource === 'purge') return result;
+  if (resource === 'plan' && action === 'match') return result;
   if (resource === 'plan') {
     return { ok: true, planRunId: result.planRunId, eventId: result.eventId };
   }
@@ -417,6 +420,7 @@ async function planCommand(action, flags) {
     surpriseCodes: flags.get('--surprise-codes') || null,
     planHash: flags.get('--plan-hash') || null,
     executionRunId: flags.get('--execution-run-id') || null,
+    artifactHash: flags.get('--artifact-hash') || null,
     payloadJson: flags.get('--payload-json') || null,
   };
   if (action === 'start') return startPlanTelemetry(options);
@@ -425,6 +429,12 @@ async function planCommand(action, flags) {
       ...options,
       planRunId: required(flags, '--plan-run-id'),
       eventType: required(flags, '--event-type'),
+    });
+  }
+  if (action === 'match') {
+    return matchPlanTelemetry({
+      ...options,
+      artifactHash: required(flags, '--artifact-hash'),
     });
   }
   throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown plan command ${action}`);

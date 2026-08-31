@@ -301,6 +301,7 @@ ${SPECTRE_HOME:-~/.spectre}/projects/<readable-project-identity>/
 ├── knowledge-index.json
 ├── knowledge-activity.json
 └── workflow/
+    ├── plan-classification.jsonl # Observational Plan calibration events
     ├── runs/
     │   └── run_<uuid>/
     │       ├── events.jsonl      # Append-only authority
@@ -309,7 +310,7 @@ ${SPECTRE_HOME:-~/.spectre}/projects/<readable-project-identity>/
     └── ...retention metadata
 ```
 
-Project identity prefers Git's common directory, so linked worktrees can resolve to the same project knowledge while run metadata still records checkout identity, branch, and HEAD. Outside Git, canonical project paths provide the fallback identity.
+Project identity prefers Git's common directory, so linked worktrees resolve to the same project store while run metadata still records checkout identity, branch, and HEAD. Outside Git, canonical project paths provide the fallback identity. Plan telemetry is stored here rather than in the working tree so agent-generated append-only state never participates in Git merges; exact feature roots and artifact hashes preserve feature-level joins inside the project-wide calibration log.
 
 Events include run, stage, phase, wave, agent, task, gate, and human-input transitions. The store validates identifiers, actors, ownership, task transitions, paths, and event payloads before appending.
 
@@ -702,4 +703,3 @@ For a fast architecture review before an interview, read in this order:
 8. `scripts/sync-codex.cjs` and `scripts/translators/` — cross-host build architecture.
 9. `src/main.js` and `src/lib/doctor.js` — npm CLI and installation diagnostics.
 10. `scripts/test_sync-codex.cjs`, `src/workflow-cli.test.js`, and `src/pack.test.js` — executable architecture contracts.
-

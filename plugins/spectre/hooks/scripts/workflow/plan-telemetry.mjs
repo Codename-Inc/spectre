@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { resolveProjectStore } from '../knowledge/store.mjs';
+import { atomicWriteJson, resolveProjectStore } from '../knowledge/store.mjs';
 import {
   appendEvents,
   canonicalPath,
@@ -99,7 +99,18 @@ const INPUT_KEYS = {
   ]),
 };
 
-function planTelemetryPaths(projectDir) {
+function planTelemetryPaths(storePath) {
+  const root = path.join(storePath, 'workflow');
+  return {
+    root,
+    recoveryDir: path.join(root, 'recovery', 'plan-telemetry'),
+    runDir: path.join(root, 'plan-classification'),
+    eventsPath: path.join(root, 'plan-classification.jsonl'),
+    legacyMigrationPath: path.join(storePath, 'migrations', 'plan-telemetry-worktree-v1.json'),
+  };
+}
+
+function legacyPlanTelemetryPaths(projectDir) {
   const root = path.join(projectDir, '.spectre', 'telemetry');
   return {
     root,
@@ -107,6 +118,31 @@ function planTelemetryPaths(projectDir) {
     runDir: root,
     eventsPath: path.join(root, 'plan-classification.jsonl'),
   };
+}
+
+function importLegacyPlanTelemetry(projectDir, paths) {
+  if (fs.existsSync(paths.legacyMigrationPath)) return false;
+  if (fs.existsSync(paths.eventsPath)) {
+    atomicWriteJson(paths.legacyMigrationPath, {
+      schemaVersion: 1,
+      migratedAt: timestamp(),
+      importedEventCount: 0,
+      result: 'external-log-already-present',
+    });
+    return false;
+  }
+  const legacyPaths = legacyPlanTelemetryPaths(projectDir);
+  const events = fs.existsSync(legacyPaths.eventsPath)
+    ? readEventLog(legacyPaths, { repairTail: false }).events
+    : [];
+  if (events.length > 0) appendEvents(paths.eventsPath, events);
+  atomicWriteJson(paths.legacyMigrationPath, {
+    schemaVersion: 1,
+    migratedAt: timestamp(),
+    importedEventCount: events.length,
+    result: events.length > 0 ? 'imported' : 'no-legacy-log',
+  });
+  return events.length > 0;
 }
 
 function invalidPayload(message) {
@@ -390,8 +426,9 @@ async function appendPlanEvent(options, eventType, planRunId, starting = false) 
   }
 
   const resolved = await resolveProjectStore(projectDir, { spectreHome: options.spectreHome });
-  const paths = planTelemetryPaths(projectDir);
+  const paths = planTelemetryPaths(resolved.storePath);
   return withStoreLock(resolved.storePath, 'plan-telemetry-record', async () => {
+    importLegacyPlanTelemetry(projectDir, paths);
     const { events } = readEventLog(paths, { repairTail: true });
     if (!starting) {
       const started = events.find((candidate) => (
@@ -434,7 +471,55 @@ export async function recordPlanTelemetry(options = {}) {
   return appendPlanEvent(options, options.eventType, options.planRunId, false);
 }
 
+export async function matchPlanTelemetry(options = {}) {
+  const projectDir = canonicalPath(options.projectDir || process.cwd());
+  const featureRoot = normalizeFeatureRoot(projectDir, options.featureRoot);
+  const artifactHash = validateHash(options.artifactHash, 'artifact_hash');
+  let resolved = await resolveProjectStore(projectDir, {
+    spectreHome: options.spectreHome,
+    readOnly: true,
+  });
+  if (!resolved.storePath) {
+    const legacyPaths = legacyPlanTelemetryPaths(projectDir);
+    if (!fs.existsSync(legacyPaths.eventsPath)) {
+      throw codedError('PLAN_TELEMETRY_NOT_FOUND', 'No Plan telemetry exists for this project');
+    }
+    resolved = await resolveProjectStore(projectDir, { spectreHome: options.spectreHome });
+  }
+
+  const paths = planTelemetryPaths(resolved.storePath);
+  return withStoreLock(resolved.storePath, 'plan-telemetry-match', async () => {
+    importLegacyPlanTelemetry(projectDir, paths);
+    const { events } = readEventLog(paths, { repairTail: false });
+    const matches = events.filter((event) => (
+      event.event_type === 'plan.completed'
+      && event.feature_root === featureRoot
+      && Array.isArray(event.payload?.artifact_hashes)
+      && event.payload.artifact_hashes.includes(artifactHash)
+    ));
+    if (matches.length === 0) {
+      throw codedError(
+        'PLAN_TELEMETRY_NOT_FOUND',
+        `No completed Plan telemetry matches ${featureRoot} and artifact hash ${artifactHash}`,
+      );
+    }
+    if (matches.length > 1) {
+      throw codedError(
+        'PLAN_TELEMETRY_AMBIGUOUS',
+        `Multiple completed Plan telemetry events match ${featureRoot} and artifact hash ${artifactHash}`,
+      );
+    }
+    return {
+      ok: true,
+      planRunId: matches[0].plan_run_id,
+      scopeHash: matches[0].scope_hash,
+      artifactHash,
+    };
+  });
+}
+
 export {
+  legacyPlanTelemetryPaths,
   PLAN_RUN_ID_PATTERN,
   PLAN_TELEMETRY_SCHEMA_VERSION,
   planTelemetryPaths,

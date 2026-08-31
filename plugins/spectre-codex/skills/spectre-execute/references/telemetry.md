@@ -16,7 +16,13 @@ When routing is known, append `--provider "<provider>" --model "<primary-model>"
 
 Telemetry is local supporting state, not acceptance truth. On an operational/lock/write failure, set `TELEMETRY_STATUS=degraded`, continue from the source definition plus current verified orchestration context, and report the exact coded failure. Never mutate the source to replace telemetry or include prompts, code, commands, or raw tool output in events.
 
-For the optional Plan join, hash the full source artifact and read `.spectre/telemetry/plan-classification.jsonl` directly. Select exactly one matching `plan.completed` event by feature root plus an artifact/source hash; retain its `plan_run_id` and `scope_hash`. Zero or multiple matches degrade only the join—never use recency, branch, lifecycle state, or a derived summary to guess.
+For the optional Plan join, hash the full source artifact and run:
+
+```bash
+node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" plan match --feature-root "$FEATURE_ROOT" --artifact-hash "$PLAN_SOURCE_HASH" --project-dir "$PROJECT_ROOT" --json
+```
+
+The command reads the project-local Spectre store and returns exactly one matching `plan.completed` event by feature root plus artifact/source hash; retain its `planRunId` and `scopeHash`. Zero or multiple matches degrade only the join—never use recency, branch, lifecycle state, or a derived summary to guess.
 
 ## Resume after compaction
 
