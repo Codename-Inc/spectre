@@ -1,10 +1,19 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+  atomicWriteJson,
+  resolveProjectStore,
+  withStoreLock,
+} from '../knowledge/store.mjs';
+
 const STAGES = ['Prune', 'Test', 'Sweep', 'Rebase', 'Full suite', 'Create PR'];
 const LABELS = new Set(['Ship', ...STAGES]);
 const PARALLEL_STAGES = new Set(['Prune', 'Test', 'Full suite', 'Create PR']);
+const HISTORY_SCHEMA_VERSION = 1;
+const HISTORY_MAX_MEASUREMENTS = 500;
 
 function measurementError(code, message) {
   const error = new Error(message);
@@ -220,12 +229,14 @@ export function startMeasurement({ label, now = Date.now, env = process.env, hos
     throw measurementError('INVALID_MEASUREMENT_LABEL', `Unsupported measurement label ${label}`);
   }
   const detected = detectHostSession(env, hosts);
-  return {
+  const snapshot = {
     label,
     epochMs: now(),
     session: detected?.session || null,
     counters: detected?.counters || null,
   };
+  if (label === 'Ship') snapshot.measurementId = crypto.randomUUID();
+  return snapshot;
 }
 
 export function finishMeasurement({ snapshot, childAgentId = null, now = Date.now, hosts = {} }) {
@@ -339,4 +350,116 @@ export function summarizeMeasurement({ rows, outerSnapshot, now = Date.now }) {
     totalElapsedMs: Math.max(0, now() - outerSnapshot.epochMs),
     table,
   };
+}
+
+function persistenceError(code, message) {
+  return measurementError(code, message);
+}
+
+function safeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function relativeFeatureRoot(featureRoot) {
+  return typeof featureRoot === 'string'
+    && featureRoot.length > 0
+    && !path.isAbsolute(featureRoot)
+    && !featureRoot.split(/[\\/]/).includes('..');
+}
+
+function validSha(value, length) {
+  return typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`, 'i').test(value);
+}
+
+function validSummaryRows(rows) {
+  return Array.isArray(rows)
+    && rows.length === STAGES.length
+    && rows.every((row, index) => row
+      && row.stage === STAGES[index]
+      && safeInteger(row.runs)
+      && safeInteger(row.elapsedMs)
+      && (safeInteger(row.tokens) || row.tokens === 'unavailable')
+      && ['stage', 'parallel-group', 'unavailable'].includes(row.tokenScope)
+      && ['complete', 'unavailable'].includes(row.status));
+}
+
+function validatedPersistenceInput({ summary, outerSnapshot, featureRoot, candidate }) {
+  if (!summary || !safeInteger(summary.totalElapsedMs) || !validSummaryRows(summary.rows)) {
+    throw persistenceError('INVALID_SHIP_MEASUREMENT_SUMMARY', 'A completed Ship summary is required');
+  }
+  if (outerSnapshot?.label !== 'Ship' || !validSha(outerSnapshot.measurementId?.replaceAll('-', ''), 32)) {
+    throw persistenceError('INVALID_SHIP_MEASUREMENT_ID', 'A Ship measurement ID is required');
+  }
+  if (!relativeFeatureRoot(featureRoot)) {
+    throw persistenceError('INVALID_SHIP_FEATURE_ROOT', 'A repository-relative feature root is required');
+  }
+  if (!candidate || !validSha(candidate.baseSha, 40) || !validSha(candidate.headSha, 40) || !validSha(candidate.diffSha256, 64)) {
+    throw persistenceError('INVALID_SHIP_CANDIDATE', 'A complete final candidate tuple is required');
+  }
+}
+
+function readHistory(historyPath) {
+  if (!fs.existsSync(historyPath)) return [];
+  let history;
+  try {
+    history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+  } catch {
+    throw persistenceError('INVALID_SHIP_MEASUREMENT_HISTORY', 'Ship measurement history is invalid');
+  }
+  if (history?.schema_version !== HISTORY_SCHEMA_VERSION || !Array.isArray(history.measurements)) {
+    throw persistenceError('INVALID_SHIP_MEASUREMENT_HISTORY', 'Ship measurement history is invalid');
+  }
+  return history.measurements;
+}
+
+function persistedRows(rows) {
+  return rows.map((row) => ({
+    stage: row.stage,
+    runs: row.runs,
+    elapsed_ms: row.elapsedMs,
+    tokens: row.tokens,
+    token_scope: row.tokenScope,
+    status: row.status,
+  }));
+}
+
+export async function persistShipMeasurement({
+  summary,
+  outerSnapshot,
+  projectDir,
+  spectreHome,
+  featureRoot,
+  candidate,
+  now = Date.now,
+  maxMeasurements = HISTORY_MAX_MEASUREMENTS,
+}) {
+  validatedPersistenceInput({ summary, outerSnapshot, featureRoot, candidate });
+  if (!projectDir || !Number.isSafeInteger(maxMeasurements) || maxMeasurements < 1) {
+    throw persistenceError('INVALID_SHIP_MEASUREMENT_PERSISTENCE', 'A project directory and positive history limit are required');
+  }
+  const store = await resolveProjectStore(projectDir, { spectreHome });
+  const historyPath = path.join(store.storePath, 'workflow', 'ship-measurements.json');
+  return withStoreLock(store.storePath, 'persist-ship-measurement', async () => {
+    const measurements = readHistory(historyPath);
+    if (measurements.some((measurement) => measurement?.measurement_id === outerSnapshot.measurementId)) {
+      return { status: 'duplicate', historyPath };
+    }
+    const measurement = {
+      measurement_id: outerSnapshot.measurementId,
+      recorded_at: new Date(now()).toISOString(),
+      feature_root: featureRoot,
+      host: ['codex', 'claude'].includes(outerSnapshot.session?.host) ? outerSnapshot.session.host : 'unavailable',
+      base_sha: candidate.baseSha,
+      head_sha: candidate.headSha,
+      diff_sha256: candidate.diffSha256,
+      total_elapsed_ms: summary.totalElapsedMs,
+      rows: persistedRows(summary.rows),
+    };
+    atomicWriteJson(historyPath, {
+      schema_version: HISTORY_SCHEMA_VERSION,
+      updated_at: new Date(now()).toISOString(),
+      measurements: [...measurements, measurement].slice(-maxMeasurements),
+    });
+    return { status: 'stored', historyPath };
+  });
 }

@@ -17,6 +17,7 @@ import {
 } from './workflow/plan-telemetry.mjs';
 import {
   finishMeasurement,
+  persistShipMeasurement,
   startMeasurement,
   summarizeMeasurement,
 } from './workflow/measurement.mjs';
@@ -83,7 +84,7 @@ function usage() {
     '  spectre-workflow purge [--project-dir <path>] --yes --json',
     '  spectre-workflow measure start --label <Ship|Prune|Test|Sweep|Rebase|"Full suite"|"Create PR"> --json',
     '  spectre-workflow measure finish --snapshot <json> [--child-agent-id <host:id|id>] --json',
-    '  spectre-workflow measure summary --rows <json> --outer-snapshot <json> --json',
+    '  spectre-workflow measure summary --rows <json> --outer-snapshot <json> [--persist --project-dir <path> --feature-root <relative-path> --base-sha <sha> --head-sha <sha> --diff-sha256 <sha>] --json',
     '',
   ].join('\n');
 }
@@ -468,10 +469,34 @@ async function measureCommand(action, flags) {
     });
   }
   if (action === 'summary') {
-    return summarizeMeasurement({
+    const summary = summarizeMeasurement({
       rows: jsonFlag(flags, '--rows'),
       outerSnapshot: jsonFlag(flags, '--outer-snapshot'),
     });
+    if (flags.get('--persist') !== true) return summary;
+    try {
+      const options = commonOptions(flags);
+      summary.persistence = await persistShipMeasurement({
+        summary,
+        outerSnapshot: jsonFlag(flags, '--outer-snapshot'),
+        projectDir: options.projectDir,
+        spectreHome: options.spectreHome,
+        featureRoot: required(flags, '--feature-root'),
+        candidate: {
+          baseSha: required(flags, '--base-sha'),
+          headSha: required(flags, '--head-sha'),
+          diffSha256: required(flags, '--diff-sha256'),
+        },
+      });
+    } catch (error) {
+      summary.persistence = {
+        status: 'degraded',
+        errorCode: error?.code?.startsWith('INVALID_SHIP_')
+          ? error.code
+          : 'SHIP_MEASUREMENT_PERSISTENCE_FAILED',
+      };
+    }
+    return summary;
   }
   throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown measure command ${action}`);
 }

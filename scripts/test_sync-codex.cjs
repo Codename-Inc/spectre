@@ -1528,6 +1528,10 @@ test('Ship uses the fixed measurement surface without primary bookkeeping', () =
     assert.match(ship, /Sweep[\s\S]*measure finish[\s\S]*Sweep snapshot/i);
     assert.match(ship, /Rebase[\s\S]*measure finish[\s\S]*Rebase snapshot/i);
     assert.match(ship, /Full suite[\s\S]*measure finish[\s\S]*Create PR[\s\S]*measure finish[\s\S]*measure summary --rows[\s\S]*--outer-snapshot/i);
+    assert.match(ship, /measure summary --rows[\s\S]*--outer-snapshot[\s\S]*--persist[\s\S]*--project-dir[\s\S]*--feature-root[\s\S]*--base-sha[\s\S]*--head-sha[\s\S]*--diff-sha256/i);
+    assert.match(ship, /table[\s\S]*persistence status[\s\S]*history path/i);
+    assert.match(ship, /persistence degradation[\s\S]*never blocks PR completion/i);
+    assert.doesNotMatch(ship, /measure (?:history|query|compare|export)\b/i);
     assert.match(ship, /never inspect transcripts, track clocks, or calculate/i);
     assert.match(ship, /one exact parallel-group total[\s\S]*unavailable measurement never blocks Ship/i);
   }

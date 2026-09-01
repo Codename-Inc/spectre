@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +22,7 @@ import {
 } from './workflow/store.mjs';
 import {
   finishMeasurement,
+  persistShipMeasurement,
   startMeasurement,
   summarizeMeasurement,
 } from './workflow/measurement.mjs';
@@ -655,6 +657,136 @@ describe('workflow measurement runtime', () => {
       assert.equal(result.status, 0, `${label}: ${result.stderr}`);
       assert.equal(JSON.parse(result.stdout).label, label);
     }
+  });
+
+  it('persists a bounded, private Ship summary and makes a retry idempotent', async (t) => {
+    const value = measurementFixture(t);
+    const cli = path.resolve('plugins/spectre/hooks/scripts/workflow-cli.mjs');
+    const start = spawnSync(process.execPath, [cli, 'measure', 'start', '--label', 'Ship', '--json'], {
+      encoding: 'utf8',
+    });
+    assert.equal(start.status, 0, start.stderr);
+    const outerSnapshot = JSON.parse(start.stdout);
+    assert.match(outerSnapshot.measurementId, /^[0-9a-f-]{36}$/i);
+    outerSnapshot.session = null;
+    outerSnapshot.counters = null;
+
+    const rows = ['Prune', 'Test', 'Sweep', 'Rebase', 'Full suite', 'Create PR'].map((stage) => ({
+      stage,
+      runs: 1,
+      elapsedMs: 10,
+      tokens: 20,
+      tokenScope: 'stage',
+      status: 'complete',
+    }));
+    const args = [cli, 'measure', 'summary', '--rows', JSON.stringify(rows), '--outer-snapshot', JSON.stringify(outerSnapshot),
+      '--persist', '--project-dir', value.projectDir, '--spectre-home', value.spectreHome,
+      '--feature-root', '.spectre/features/runtime-test', '--base-sha', 'a'.repeat(40),
+      '--head-sha', 'b'.repeat(40), '--diff-sha256', 'c'.repeat(64), '--json'];
+    const first = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    assert.equal(first.status, 0, first.stderr);
+    const result = JSON.parse(first.stdout);
+    assert.equal(result.persistence.status, 'stored');
+    const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+    const historyPath = path.join(store.storePath, 'workflow', 'ship-measurements.json');
+    assert.equal(result.persistence.historyPath, historyPath);
+    const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+    assert.equal(history.schema_version, 1);
+    assert.equal(history.measurements.length, 1);
+    assert.deepEqual(history.measurements[0], {
+      measurement_id: outerSnapshot.measurementId,
+      recorded_at: history.measurements[0].recorded_at,
+      feature_root: '.spectre/features/runtime-test',
+      host: 'unavailable',
+      base_sha: 'a'.repeat(40),
+      head_sha: 'b'.repeat(40),
+      diff_sha256: 'c'.repeat(64),
+      total_elapsed_ms: history.measurements[0].total_elapsed_ms,
+      rows: rows.map((row) => ({
+        stage: row.stage,
+        runs: row.runs,
+        elapsed_ms: row.elapsedMs,
+        tokens: row.tokens,
+        token_scope: row.tokenScope,
+        status: row.status,
+      })),
+    });
+    assert.doesNotMatch(JSON.stringify(history), /session|counter|transcript|hostCounters/i);
+
+    const retry = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    assert.equal(retry.status, 0, retry.stderr);
+    assert.equal(JSON.parse(retry.stdout).persistence.status, 'duplicate');
+    assert.equal(JSON.parse(fs.readFileSync(historyPath, 'utf8')).measurements.length, 1);
+  });
+
+  it('keeps the latest persisted Ship summaries in oldest-first bounded order', async (t) => {
+    const value = measurementFixture(t);
+    const summary = summarizeMeasurement({
+      rows: [],
+      outerSnapshot: { label: 'Ship', epochMs: 1_000 },
+      now: () => 1_020,
+    });
+    const candidate = { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), diffSha256: 'c'.repeat(64) };
+    const measurementIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    for (const measurementId of measurementIds) {
+      await persistShipMeasurement({
+        summary,
+        outerSnapshot: { label: 'Ship', measurementId, session: null },
+        projectDir: value.projectDir,
+        spectreHome: value.spectreHome,
+        featureRoot: '.spectre/features/runtime-test',
+        candidate,
+        maxMeasurements: 2,
+      });
+    }
+    const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+    const history = JSON.parse(fs.readFileSync(path.join(
+      store.storePath, 'workflow', 'ship-measurements.json',
+    ), 'utf8'));
+    assert.equal(history.measurements.length, 2);
+    assert.deepEqual(history.measurements.map((measurement) => measurement.measurement_id), measurementIds.slice(1));
+  });
+
+  it('serializes concurrent Ship summaries without losing records', async (t) => {
+    const value = measurementFixture(t);
+    const summary = summarizeMeasurement({
+      rows: [], outerSnapshot: { label: 'Ship', epochMs: 1_000 }, now: () => 1_020,
+    });
+    const candidate = { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), diffSha256: 'c'.repeat(64) };
+    const measurementIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    await Promise.all(measurementIds.map((measurementId) => persistShipMeasurement({
+      summary,
+      outerSnapshot: { label: 'Ship', measurementId, session: null },
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      featureRoot: '.spectre/features/runtime-test',
+      candidate,
+    })));
+    const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+    const history = JSON.parse(fs.readFileSync(path.join(
+      store.storePath, 'workflow', 'ship-measurements.json',
+    ), 'utf8'));
+    assert.deepEqual(
+      new Set(history.measurements.map((measurement) => measurement.measurement_id)),
+      new Set(measurementIds),
+    );
+  });
+
+  it('returns a live summary with a stable degraded result when persistence validation fails', () => {
+    const cli = path.resolve('plugins/spectre/hooks/scripts/workflow-cli.mjs');
+    const rows = [];
+    const outerSnapshot = { label: 'Ship', epochMs: Date.now(), measurementId: crypto.randomUUID() };
+    const result = spawnSync(process.execPath, [cli, 'measure', 'summary', '--rows', JSON.stringify(rows),
+      '--outer-snapshot', JSON.stringify(outerSnapshot), '--persist', '--project-dir', process.cwd(),
+      '--feature-root', '../outside', '--base-sha', 'a'.repeat(40), '--head-sha', 'b'.repeat(40),
+      '--diff-sha256', 'c'.repeat(64), '--json'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const summary = JSON.parse(result.stdout);
+    assert.match(summary.table, /Stage \| Runs/);
+    assert.deepEqual(summary.persistence, {
+      status: 'degraded',
+      errorCode: 'INVALID_SHIP_FEATURE_ROOT',
+    });
   });
 });
 
