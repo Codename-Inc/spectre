@@ -81,7 +81,7 @@ function usage() {
     '    plan.execution_outcome: --execution-run-id <id> --plan-hash <sha256> --outcome-status <status> --workstream-count <n> --task-count <n> --wave-count <n> --proof-result <PASS|FAIL|PARTIAL|SKIPPED> --execution-review-result <CLEAN|FINDINGS|SKIPPED> --surprise-codes <codes>',
     '  spectre-workflow cleanup [--project-dir <path>] [--dry-run] --json',
     '  spectre-workflow purge [--project-dir <path>] --yes --json',
-    '  spectre-workflow measure start --label <Ship|Prune|Test|Sweep|Rebase|Full suite|Create PR> --json',
+    '  spectre-workflow measure start --label <Ship|Prune|Test|Sweep|Rebase|"Full suite"|"Create PR"> --json',
     '  spectre-workflow measure finish --snapshot <json> [--child-agent-id <host:id|id>] --json',
     '  spectre-workflow measure summary --rows <json> --outer-snapshot <json> --json',
     '',

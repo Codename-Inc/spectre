@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 
 import { resolveProjectStore } from './knowledge/store.mjs';
@@ -381,6 +382,9 @@ function measurementFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-measurement-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return {
+    root,
+    projectDir: path.join(root, 'project'),
+    spectreHome: path.join(root, 'home'),
     codexSessionsDir: path.join(root, 'codex', 'sessions'),
     claudeProjectsDir: path.join(root, 'claude', 'projects'),
   };
@@ -443,7 +447,6 @@ describe('workflow measurement runtime', () => {
       tokens: 65,
       tokenScope: 'stage',
       status: 'complete',
-      hostSession: { host: 'codex', id: sessionId },
       hostCounters: {
         start: { inputTokens: 110, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0, totalTokens: 120 },
         end: { inputTokens: 175, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0, totalTokens: 185 },
@@ -467,7 +470,7 @@ describe('workflow measurement runtime', () => {
     const row = finishMeasurement({ snapshot, childAgentId: childId, now: () => 2_600, hosts });
     assert.equal(row.tokens, 100);
     assert.equal(row.tokenScope, 'stage');
-    assert.deepEqual(row.hostSession, { host: 'claude', id: childId });
+    assert.equal(Object.hasOwn(row, 'hostSession'), false);
     assert.deepEqual(row.hostCounters.start, {
       inputTokens: 0,
       cachedInputTokens: 0,
@@ -529,12 +532,97 @@ describe('workflow measurement runtime', () => {
     assert.equal(result.totalElapsedMs, 700);
   });
 
+  it('keeps malformed trailing JSONL data from discarding complete Codex counters', (t) => {
+    const hosts = measurementFixture(t);
+    const sessionId = '66666666-6666-4666-8666-666666666666';
+    const sessionPath = path.join(hosts.codexSessionsDir, `rollout-2026-${sessionId}.jsonl`);
+    writeJsonl(sessionPath, [codexUsage(100)]);
+    const snapshot = startMeasurement({
+      label: 'Sweep', now: () => 1_000, env: { CODEX_SESSION_ID: sessionId }, hosts,
+    });
+    fs.appendFileSync(sessionPath, `${JSON.stringify(codexUsage(145))}\n{\"incomplete\":`);
+
+    const row = finishMeasurement({ snapshot, now: () => 1_100, hosts });
+    assert.equal(row.tokens, 45);
+    assert.equal(row.status, 'complete');
+  });
+
+  it('rejects malformed interior JSONL data rather than silently skipping it', (t) => {
+    const hosts = measurementFixture(t);
+    const sessionId = '67676767-6767-4676-8676-676767676767';
+    const sessionPath = path.join(hosts.codexSessionsDir, `rollout-2026-${sessionId}.jsonl`);
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(sessionPath, `${JSON.stringify(codexUsage(100))}\n{\"bad\":\n${JSON.stringify(codexUsage(145))}\n`);
+    const snapshot = startMeasurement({
+      label: 'Sweep', now: () => 1_000, env: { CODEX_SESSION_ID: sessionId }, hosts,
+    });
+
+    const row = finishMeasurement({ snapshot, now: () => 1_100, hosts });
+    assert.equal(row.tokens, 'unavailable');
+    assert.equal(row.status, 'unavailable');
+  });
+
+  it('aggregates repeated finished stage rows and refuses mixed token scopes', () => {
+    const outerSnapshot = { label: 'Ship', epochMs: 1_000 };
+    const result = summarizeMeasurement({
+      outerSnapshot,
+      now: () => 1_900,
+      rows: [
+        { stage: 'Sweep', runs: 1, elapsedMs: 100, tokens: 10, tokenScope: 'stage', status: 'complete' },
+        { stage: 'Sweep', runs: 1, elapsedMs: 200, tokens: 20, tokenScope: 'stage', status: 'complete' },
+        { stage: 'Rebase', runs: 1, elapsedMs: 100, tokens: 10, tokenScope: 'stage', status: 'complete' },
+        { stage: 'Rebase', runs: 1, elapsedMs: 200, tokens: 'unavailable', tokenScope: 'unavailable', status: 'unavailable' },
+      ],
+    });
+    const sweep = result.rows.find((row) => row.stage === 'Sweep');
+    const rebase = result.rows.find((row) => row.stage === 'Rebase');
+    assert.deepEqual(sweep, {
+      stage: 'Sweep', runs: 2, elapsedMs: 300, tokens: 30, tokenScope: 'stage', status: 'complete',
+    });
+    assert.deepEqual(rebase, {
+      stage: 'Rebase', runs: 2, elapsedMs: 300, tokens: 'unavailable', tokenScope: 'unavailable', status: 'unavailable',
+    });
+  });
+
+  it('downgrades an unpaired parallel fallback to unavailable', () => {
+    const result = summarizeMeasurement({
+      outerSnapshot: { label: 'Ship', epochMs: 1_000 },
+      now: () => 1_500,
+      rows: [{
+        stage: 'Prune', runs: 1, elapsedMs: 100, tokens: 30, tokenScope: 'parallel-group', status: 'complete',
+        hostCounters: { start: { totalTokens: 10 }, end: { totalTokens: 40 } },
+      }],
+    });
+    const prune = result.rows.find((row) => row.stage === 'Prune');
+    assert.equal(prune.tokens, 'unavailable');
+    assert.equal(prune.tokenScope, 'unavailable');
+  });
+
+  it('does not double-count cached Codex input when total_tokens is unavailable', (t) => {
+    const hosts = measurementFixture(t);
+    const sessionId = '68686868-6868-4686-8686-686868686868';
+    const sessionPath = path.join(hosts.codexSessionsDir, `rollout-2026-${sessionId}.jsonl`);
+    const usage = (input, cached, output) => ({
+      type: 'event_msg',
+      payload: { type: 'token_count', info: { total_token_usage: {
+        input_tokens: input, cached_input_tokens: cached, output_tokens: output,
+      } } },
+    });
+    writeJsonl(sessionPath, [usage(100, 40, 10)]);
+    const snapshot = startMeasurement({
+      label: 'Sweep', now: () => 1_000, env: { CODEX_SESSION_ID: sessionId }, hosts,
+    });
+    writeJsonl(sessionPath, [usage(100, 40, 10), usage(150, 60, 20)]);
+    assert.equal(finishMeasurement({ snapshot, now: () => 1_100, hosts }).tokens, 60);
+  });
+
   it('degrades unsupported or ambiguous discovery without writing project workflow data', (t) => {
     const hosts = measurementFixture(t);
     const sessionId = '55555555-5555-4555-8555-555555555555';
     writeJsonl(path.join(hosts.codexSessionsDir, `one-${sessionId}.jsonl`), [codexUsage(10)]);
     writeJsonl(path.join(hosts.codexSessionsDir, `two-${sessionId}.jsonl`), [codexUsage(10)]);
-    const before = fs.readdirSync(path.dirname(hosts.codexSessionsDir), { recursive: true }).sort();
+    fs.mkdirSync(hosts.projectDir, { recursive: true });
+    const before = fs.readdirSync(hosts.projectDir, { recursive: true }).sort();
     const snapshot = startMeasurement({
       label: 'Rebase',
       now: () => 3_000,
@@ -547,7 +635,8 @@ describe('workflow measurement runtime', () => {
     assert.equal(row.tokens, 'unavailable');
     assert.equal(row.tokenScope, 'unavailable');
     assert.equal(row.status, 'unavailable');
-    assert.deepEqual(fs.readdirSync(path.dirname(hosts.codexSessionsDir), { recursive: true }).sort(), before);
+    assert.deepEqual(fs.readdirSync(hosts.projectDir, { recursive: true }).sort(), before);
+    assert.equal(fs.existsSync(path.join(hosts.projectDir, '.spectre')), false);
   });
 
   it('rejects labels outside the fixed Ship measurement surface', () => {
@@ -555,6 +644,17 @@ describe('workflow measurement runtime', () => {
       () => startMeasurement({ label: 'Benchmark', now: () => 0, env: {}, hosts: {} }),
       (error) => error?.code === 'INVALID_MEASUREMENT_LABEL',
     );
+  });
+
+  it('accepts every documented fixed label through the CLI', () => {
+    const cli = path.resolve('plugins/spectre/hooks/scripts/workflow-cli.mjs');
+    for (const label of ['Ship', 'Prune', 'Test', 'Sweep', 'Rebase', 'Full suite', 'Create PR']) {
+      const result = spawnSync(process.execPath, [cli, 'measure', 'start', '--label', label, '--json'], {
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, `${label}: ${result.stderr}`);
+      assert.equal(JSON.parse(result.stdout).label, label);
+    }
   });
 });
 

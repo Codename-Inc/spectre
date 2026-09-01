@@ -39,7 +39,9 @@ function counters(value = {}, { claude = false } = {}) {
     reasoningOutputTokens: number(value.reasoning_output_tokens),
     totalTokens: !claude && Number.isSafeInteger(value.total_tokens) && value.total_tokens >= 0
       ? value.total_tokens
-      : inputTokens + cachedInputTokens + outputTokens,
+      : claude
+        ? inputTokens + cachedInputTokens + outputTokens
+        : inputTokens + outputTokens,
   };
 }
 
@@ -74,22 +76,65 @@ function codexFile(root, sessionId) {
 }
 
 function claudeFile(root, sessionId) {
-  return findMatchingFile(root, sessionId, (name, id) => name === `${id}.jsonl`);
+  if (!root || !sessionId || !fs.existsSync(root)) return null;
+  const matches = [];
+  let projects;
+  try {
+    projects = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const project of projects) {
+    const directory = project.isDirectory() ? path.join(root, project.name) : root;
+    let entries;
+    try {
+      entries = project.isDirectory() ? fs.readdirSync(directory, { withFileTypes: true }) : [project];
+    } catch {
+      return null;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name !== `${sessionId}.jsonl`) continue;
+      matches.push(path.join(directory, entry.name));
+      if (matches.length > 1) return null;
+    }
+  }
+  return matches[0] || null;
 }
 
 function readJsonLines(filePath, visit) {
-  let lines;
+  let descriptor;
   try {
-    lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    descriptor = fs.openSync(filePath, 'r');
   } catch {
     return null;
   }
   try {
-    for (const line of lines) {
-      if (line) visit(JSON.parse(line));
+    const chunk = Buffer.allocUnsafe(64 * 1024);
+    let remainder = '';
+    let pending = null;
+    const visitInterior = (line) => {
+      if (pending !== null) visit(JSON.parse(pending));
+      pending = line;
+    };
+    for (let bytes = fs.readSync(descriptor, chunk, 0, chunk.length, null); bytes > 0; bytes = fs.readSync(descriptor, chunk, 0, chunk.length, null)) {
+      const lines = `${remainder}${chunk.toString('utf8', 0, bytes)}`.split('\n');
+      remainder = lines.pop();
+      for (const line of lines) {
+        if (line) visitInterior(line);
+      }
+    }
+    if (remainder) visitInterior(remainder);
+    if (pending !== null) {
+      try {
+        visit(JSON.parse(pending));
+      } catch {
+        // A torn final JSONL record is expected while a host is still writing it.
+      }
     }
   } catch {
     return null;
+  } finally {
+    fs.closeSync(descriptor);
   }
   return true;
 }
@@ -167,8 +212,6 @@ function unavailableRow(snapshot, elapsedMs) {
     tokens: 'unavailable',
     tokenScope: 'unavailable',
     status: 'unavailable',
-    hostSession: null,
-    hostCounters: null,
   };
 }
 
@@ -203,19 +246,67 @@ export function finishMeasurement({ snapshot, childAgentId = null, now = Date.no
     tokens: delta,
     tokenScope: parallelScope(snapshot.label, childAgentId),
     status: 'complete',
-    hostSession: current.session,
     hostCounters: { start, end: current.counters },
   };
 }
 
-function groupRows(rows, firstStage, secondStage) {
-  const first = rows.find((row) => row.stage === firstStage && row.tokenScope === 'parallel-group');
-  const second = rows.find((row) => row.stage === secondStage && row.tokenScope === 'parallel-group');
-  if (!first || !second || first.hostSession?.host !== second.hostSession?.host || first.hostSession?.id !== second.hostSession?.id) return;
-  const starts = [first.hostCounters?.start?.totalTokens, second.hostCounters?.start?.totalTokens];
-  const ends = [first.hostCounters?.end?.totalTokens, second.hostCounters?.end?.totalTokens];
-  if (![...starts, ...ends].every((value) => Number.isSafeInteger(value))) return;
-  first.tokens = Math.max(...ends) - Math.min(...starts);
+function unavailableTokens(row) {
+  row.tokens = 'unavailable';
+  row.tokenScope = 'unavailable';
+  row.status = 'unavailable';
+}
+
+function summarizeStage(stage, rows) {
+  const runs = rows.reduce((total, row) => total + (Number.isSafeInteger(row.runs) ? row.runs : 1), 0);
+  const elapsedMs = rows.reduce((total, row) => total + (Number.isSafeInteger(row.elapsedMs) ? row.elapsedMs : 0), 0);
+  const complete = rows.every((row) => row.status === 'complete');
+  const scope = new Set(rows.map((row) => row.tokenScope));
+  const numericTokens = rows.every((row) => Number.isSafeInteger(row.tokens) && row.tokens >= 0);
+  const tokenScope = scope.size === 1 ? rows[0].tokenScope : 'unavailable';
+  const row = {
+    stage,
+    runs,
+    elapsedMs,
+    tokens: numericTokens && tokenScope !== 'unavailable'
+      ? rows.reduce((total, entry) => total + entry.tokens, 0)
+      : 'unavailable',
+    tokenScope: numericTokens ? tokenScope : 'unavailable',
+    status: complete ? 'complete' : 'unavailable',
+  };
+  if (row.tokenScope === 'unavailable') row.tokens = 'unavailable';
+  return row;
+}
+
+function groupRows(summaryRows, sourceRows, firstStage, secondStage) {
+  const first = summaryRows.find((row) => row.stage === firstStage);
+  const second = summaryRows.find((row) => row.stage === secondStage);
+  const firstRuns = sourceRows.filter((row) => row.stage === firstStage);
+  const secondRuns = sourceRows.filter((row) => row.stage === secondStage);
+  const grouped = (row) => row.tokenScope === 'parallel-group'
+    && Number.isSafeInteger(row.tokens) && row.tokens >= 0;
+  if (!first || !second || !firstRuns.length || !secondRuns.length) {
+    if (first?.tokenScope === 'parallel-group') unavailableTokens(first);
+    if (second?.tokenScope === 'parallel-group') unavailableTokens(second);
+    return;
+  }
+  if (!firstRuns.every(grouped) || !secondRuns.every(grouped) || firstRuns.length !== secondRuns.length) {
+    if (first.tokenScope === 'parallel-group') unavailableTokens(first);
+    if (second.tokenScope === 'parallel-group') unavailableTokens(second);
+    return;
+  }
+  let tokens = 0;
+  for (let index = 0; index < firstRuns.length; index += 1) {
+    const pair = [firstRuns[index], secondRuns[index]];
+    const starts = pair.map((row) => row.hostCounters?.start?.totalTokens);
+    const ends = pair.map((row) => row.hostCounters?.end?.totalTokens);
+    if (![...starts, ...ends].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      unavailableTokens(first);
+      unavailableTokens(second);
+      return;
+    }
+    tokens += Math.max(...ends) - Math.min(...starts);
+  }
+  first.tokens = tokens;
   first.tokenScope = 'parallel-group';
   second.tokens = 'unavailable';
   second.tokenScope = 'parallel-group';
@@ -226,20 +317,18 @@ export function summarizeMeasurement({ rows, outerSnapshot, now = Date.now }) {
     throw measurementError('INVALID_MEASUREMENT_SUMMARY', 'Finished rows and an outer snapshot are required');
   }
   const summaryRows = STAGES.map((stage) => {
-    const row = rows.find((entry) => entry.stage === stage);
-    return row ? { ...row } : {
+    const stageRows = rows.filter((row) => row?.stage === stage);
+    return stageRows.length ? summarizeStage(stage, stageRows) : {
       stage,
       runs: 0,
       elapsedMs: 0,
       tokens: 'unavailable',
       tokenScope: 'unavailable',
       status: 'unavailable',
-      hostSession: null,
-      hostCounters: null,
     };
   });
-  groupRows(summaryRows, 'Prune', 'Test');
-  groupRows(summaryRows, 'Full suite', 'Create PR');
+  groupRows(summaryRows, rows, 'Prune', 'Test');
+  groupRows(summaryRows, rows, 'Full suite', 'Create PR');
   const table = [
     'Stage | Runs | Elapsed | Tokens | Token scope | Status',
     '--- | ---: | ---: | ---: | --- | ---',
@@ -251,5 +340,3 @@ export function summarizeMeasurement({ rows, outerSnapshot, now = Date.now }) {
     table,
   };
 }
-
-export { STAGES };

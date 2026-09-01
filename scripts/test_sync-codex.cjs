@@ -1461,8 +1461,8 @@ test('Ship/Clean pin one parallel cleanup boundary and a single post-rebase suit
     assert.match(sweep, /sole pre-rebase commit owner/i);
     assert.match(sweep, /stale\/uncovered/i);
     assert.match(ship, /--verification-owner parent[\s\S]*No checks/i);
-    assert.equal((ship.match(/measure start --label Full suite/g) ?? []).length, 1);
-    assert.match(ship, /one full suite after rebase[\s\S]*In parallel[\s\S]*Skill\(spectre-create_pr\)[\s\S]*pending/i);
+    assert.equal((ship.match(/measure start --label "Full suite"/g) ?? []).length, 1);
+    assert.match(ship, /one full suite after rebase[\s\S]*In parallel[\s\S]*Skill\(spectre-create_pr\)[\s\S]*--orchestrated[\s\S]*--pr-phase pending/i);
     assert.match(ship, /rerun only failing\/affected checks[\s\S]*never the full suite/i);
     assert.match(execute, /else `(?:\/spectre:ship|spectre-ship)`/);
   }
@@ -1484,7 +1484,9 @@ test('orchestrated create-pr preserves pending/final candidate gates', () => {
     assert.match(createPr, /clean candidate worktree[\s\S]*PR_CANDIDATE_STALE/i);
     assert.match(createPr, /factual claim is grounded[\s\S]*secret\/credential\/PII/i);
     assert.match(createPr, /repairs changed the tuple[\s\S]*refresh candidate-sensitive claims[\s\S]*freshness[\s\S]*grounding[\s\S]*secret/i);
-    assert.match(ship, /after the suite[\s\S]*final-update[\s\S]*Testing only/i);
+    assert.match(ship, /EXPECTED_BASE_SHA[\s\S]*EXPECTED_HEAD_SHA[\s\S]*EXPECTED_DIFF_SHA256/i);
+    assert.match(ship, /after the suite[\s\S]*--orchestrated[\s\S]*--pr-phase final-update[\s\S]*FINAL_VERIFICATION_SUMMARY[\s\S]*Testing only/i);
+    assert.match(ship, /PR_CANDIDATE_STALE[\s\S]*refresh and retry/i);
   }
 });
 
@@ -1519,10 +1521,13 @@ test('Ship uses the fixed measurement surface without primary bookkeeping', () =
     ), 'utf8');
     assert.match(ship, /(?:spectre-workflow|workflow-cli\.mjs") measure start --label Ship/);
     for (const label of stageLabels.filter((label) => label !== 'Prune' && label !== 'Test')) {
-      assert.match(ship, new RegExp(`measure start --label ${label}`));
+      assert.match(ship, new RegExp(`measure start --label "${label}"`));
     }
     assert.match(ship, /measure start` for Prune\/Test/);
-    assert.match(ship, /measure finish[\s\S]*six snapshots[\s\S]*measure summary --rows[\s\S]*--outer-snapshot/i);
+    assert.match(ship, /Prune\/Test[\s\S]*measure finish[\s\S]*returned child identity/i);
+    assert.match(ship, /Sweep[\s\S]*measure finish[\s\S]*Sweep snapshot/i);
+    assert.match(ship, /Rebase[\s\S]*measure finish[\s\S]*Rebase snapshot/i);
+    assert.match(ship, /Full suite[\s\S]*measure finish[\s\S]*Create PR[\s\S]*measure finish[\s\S]*measure summary --rows[\s\S]*--outer-snapshot/i);
     assert.match(ship, /never inspect transcripts, track clocks, or calculate/i);
     assert.match(ship, /one exact parallel-group total[\s\S]*unavailable measurement never blocks Ship/i);
   }
