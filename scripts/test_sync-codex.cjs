@@ -1399,10 +1399,10 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(proof, /Standalone `PASS`.*spectre-ship/);
     assert.match(proof, /proof status alone never gates .*spectre.*ship/);
 
-    assert.match(clean, /spectre-prune.*--orchestrated/);
-    assert.match(clean, /spectre-test.*--orchestrated/);
-    assert.match(clean, /spectre-sweep.*--orchestrated/);
-    assert.match(ship, /spectre-clean.*--orchestrated/);
+    assert.match(clean, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep/i);
+    assert.match(clean, /CLEANED_THROUGH_SHA/);
+    assert.match(ship, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep/i);
+    assert.doesNotMatch(ship, /Skill\(spectre-clean\)/);
     assert.match(ship, /spectre-rebase.*--orchestrated/);
     assert.match(ship, /spectre-create_pr.*--orchestrated/);
     assert.match(ship, /Next \(recommended\): review the PR/);
@@ -1422,6 +1422,32 @@ test('workflow documentation matches proof-independent shipping', () => {
   assert.doesNotMatch(shipSection, /proof-status reporting/);
   assert.doesNotMatch(shipSection, /optional proof status/);
   assert.doesNotMatch(shipSection, /--require-proof/);
+});
+
+test('ship owns one parallel cleanup boundary without nested verification or commits', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const readSkill = (name) => fs.readFileSync(
+    path.join(repoRoot, 'plugins', 'spectre', 'skills', name, 'SKILL.md'),
+    'utf8',
+  );
+  const ship = readSkill('spectre-ship');
+  const clean = readSkill('spectre-clean');
+  const prune = readSkill('spectre-prune');
+  const testSkill = readSkill('spectre-test');
+  const sweep = readSkill('spectre-sweep');
+  const execute = readSkill('spectre-execute');
+
+  assert.match(ship, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep[\s\S]*spectre-rebase/i);
+  assert.doesNotMatch(ship, /Skill\(spectre-clean\)/);
+  assert.match(clean, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep/i);
+  assert.match(clean, /CLEANED_THROUGH_SHA/);
+  assert.match(prune, /orchestrated[\s\S]*do not edit tests[\s\S]*run no affected suite/i);
+  assert.match(testSkill, /orchestrated[\s\S]*tests\/fixtures[\s\S]*never production[\s\S]*do not stage or commit/i);
+  assert.match(sweep, /sole pre-rebase commit owner/i);
+  assert.match(sweep, /stale\/uncovered/i);
+  assert.match(ship, /one full suite after rebase[\s\S]*repository-authoritative/i);
+  assert.match(ship, /rerun only failing\/affected checks[\s\S]*never the full suite/i);
+  assert.match(execute, /else `\/spectre:ship`/);
 });
 
 test('ship composes focused skills without a proof prerequisite', () => {
@@ -1444,14 +1470,18 @@ test('ship composes focused skills without a proof prerequisite', () => {
       'SKILL.md',
     );
     const skill = fs.readFileSync(skillPath, 'utf8');
-    const cleanIndex = skill.indexOf('Skill(spectre-clean)');
+    const pruneIndex = skill.indexOf('Skill(spectre-prune)');
+    const testIndex = skill.indexOf('Skill(spectre-test)');
+    const sweepIndex = skill.indexOf('Skill(spectre-sweep)');
     const rebaseIndex = skill.indexOf('Skill(spectre-rebase)');
     const createPrIndex = skill.indexOf('Skill(spectre-create_pr)');
 
     assert.match(skill, /name: "spectre-ship"/);
     assert.match(skill, /# ship/);
-    assert.ok(cleanIndex !== -1);
-    assert.ok(rebaseIndex > cleanIndex);
+    assert.ok(pruneIndex !== -1);
+    assert.ok(testIndex > pruneIndex);
+    assert.ok(sweepIndex > testIndex);
+    assert.ok(rebaseIndex > sweepIndex);
     assert.ok(createPrIndex > rebaseIndex);
     assert.match(skill, /Proof is optional and independent/);
     assert.match(skill, /do not inspect, infer, invoke, or gate on it/);
