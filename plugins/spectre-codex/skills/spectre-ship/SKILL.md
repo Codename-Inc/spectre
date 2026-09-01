@@ -12,7 +12,7 @@ Own cleanup, rebase, one advisory suite, and draft PR. Load focused skills; do n
 ## Inputs
 
 - `$ARGUMENTS` - optional feature name/root or descendant artifact, target branch (default `origin/main`), feedback-focus hint, or `--draft`.
-- Live branch, working tree, remotes, and PR state, resolved just-in-time.
+- Live branch, working tree, remotes, and PR state.
 
 ## Feature root
 
