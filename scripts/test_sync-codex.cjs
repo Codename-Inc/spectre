@@ -1450,6 +1450,30 @@ test('ship owns one parallel cleanup boundary without nested verification or com
   assert.match(execute, /else `\/spectre:ship`/);
 });
 
+test('orchestrated create-pr supports a pending draft and Testing-only final update', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const createPr = fs.readFileSync(path.join(
+    repoRoot,
+    'plugins', 'spectre', 'skills', 'spectre-create_pr', 'SKILL.md',
+  ), 'utf8');
+
+  assert.match(createPr, /--orchestrated[\s\S]*--pr-phase pending\|final-update/i);
+  assert.match(createPr, /pending[\s\S]*complete candidate tuple[\s\S]*local verification `RUNNING`[\s\S]*URL.*body/i);
+  assert.match(createPr, /final-update[\s\S]*FINAL_VERIFICATION_SUMMARY[\s\S]*existing draft[\s\S]*Testing[\s\S]*only/i);
+  assert.match(createPr, /repairs changed the tuple[\s\S]*refresh candidate-sensitive claims[\s\S]*freshness[\s\S]*grounding[\s\S]*secret/i);
+});
+
+test('ship opens the pending draft beside the full-suite lane then updates Testing only', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const ship = fs.readFileSync(path.join(
+    repoRoot,
+    'plugins', 'spectre', 'skills', 'spectre-ship', 'SKILL.md',
+  ), 'utf8');
+
+  assert.match(ship, /parallel[\s\S]*full suite[\s\S]*spectre-create_pr[\s\S]*pending/i);
+  assert.match(ship, /after the suite[\s\S]*final-update[\s\S]*Testing only/i);
+});
+
 test('ship composes focused skills without a proof prerequisite', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
