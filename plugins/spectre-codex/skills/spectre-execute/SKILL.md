@@ -56,7 +56,7 @@ Compute coverage from the local ledger. Run only stale or uncovered checks; neve
 
 ## Handoff
 
-Return counts, coverage, review route/status, dispositions, owner/proof status, findings/artifacts, and `RUN_ID` + telemetry status. Parent-owned runs return `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` plus applicable `FINAL_REVIEW_PENDING`, without user-facing next steps. Otherwise recommend `spectre-fix` for high findings, `spectre-test` for concrete coverage risk, else `spectre-clean`.
+Return counts, coverage, review route/status, dispositions, owner/proof status, findings/artifacts, and `RUN_ID` + telemetry status. Parent-owned runs return `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` plus applicable `FINAL_REVIEW_PENDING`, without user-facing next steps. Otherwise recommend `spectre-fix` for high findings, `spectre-test` for a concrete coverage gap, else `spectre-ship`.
 
 ## Escalate-If
 

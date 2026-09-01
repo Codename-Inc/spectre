@@ -1403,8 +1403,8 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(clean, /CLEANED_THROUGH_SHA/);
     assert.match(ship, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep/i);
     assert.doesNotMatch(ship, /Skill\(spectre-clean\)/);
-    assert.match(ship, /spectre-rebase.*--orchestrated/);
-    assert.match(ship, /spectre-create_pr.*--orchestrated/);
+    assert.match(ship, /Skill\(spectre-rebase\)/);
+    assert.match(ship, /Skill\(spectre-create_pr\)/);
     assert.match(ship, /Next \(recommended\): review the PR/);
   }
 });
@@ -1424,54 +1424,68 @@ test('workflow documentation matches proof-independent shipping', () => {
   assert.doesNotMatch(shipSection, /--require-proof/);
 });
 
-test('ship owns one parallel cleanup boundary without nested verification or commits', () => {
+test('Ship/Clean pin one parallel cleanup boundary and a single post-rebase suite', () => {
   const repoRoot = path.resolve(__dirname, '..');
-  const readSkill = (name) => fs.readFileSync(
-    path.join(repoRoot, 'plugins', 'spectre', 'skills', name, 'SKILL.md'),
+  const readSkill = (rootName, name) => fs.readFileSync(
+    path.join(repoRoot, 'plugins', rootName, 'skills', name, 'SKILL.md'),
     'utf8',
   );
-  const ship = readSkill('spectre-ship');
-  const clean = readSkill('spectre-clean');
-  const prune = readSkill('spectre-prune');
-  const testSkill = readSkill('spectre-test');
-  const sweep = readSkill('spectre-sweep');
-  const execute = readSkill('spectre-execute');
 
-  assert.match(ship, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep[\s\S]*spectre-rebase/i);
-  assert.doesNotMatch(ship, /Skill\(spectre-clean\)/);
-  assert.match(clean, /parallel[\s\S]*spectre-prune[\s\S]*spectre-test[\s\S]*spectre-sweep/i);
-  assert.match(clean, /CLEANED_THROUGH_SHA/);
-  assert.match(prune, /orchestrated[\s\S]*do not edit tests[\s\S]*run no affected suite/i);
-  assert.match(testSkill, /orchestrated[\s\S]*tests\/fixtures[\s\S]*never production[\s\S]*do not stage or commit/i);
-  assert.match(sweep, /sole pre-rebase commit owner/i);
-  assert.match(sweep, /stale\/uncovered/i);
-  assert.match(ship, /one full suite after rebase[\s\S]*repository-authoritative/i);
-  assert.match(ship, /rerun only failing\/affected checks[\s\S]*never the full suite/i);
-  assert.match(execute, /else `\/spectre:ship`/);
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const ship = readSkill(rootName, 'spectre-ship');
+    const clean = readSkill(rootName, 'spectre-clean');
+    const prune = readSkill(rootName, 'spectre-prune');
+    const testSkill = readSkill(rootName, 'spectre-test');
+    const sweep = readSkill(rootName, 'spectre-sweep');
+    const execute = readSkill(rootName, 'spectre-execute');
+
+    const pruneIndex = ship.indexOf('Skill(spectre-prune)');
+    const testIndex = ship.indexOf('Skill(spectre-test)');
+    const sweepIndex = ship.indexOf('Skill(spectre-sweep)');
+    const rebaseIndex = ship.indexOf('Skill(spectre-rebase)');
+    assert.equal((ship.match(/one parallel dispatch/g) ?? []).length, 1);
+    assert.equal((ship.match(/Skill\(spectre-prune\)/g) ?? []).length, 1);
+    assert.equal((ship.match(/Skill\(spectre-test\)/g) ?? []).length, 1);
+    assert.ok(pruneIndex !== -1);
+    assert.ok(testIndex > pruneIndex);
+    assert.ok(sweepIndex > testIndex);
+    assert.ok(rebaseIndex > sweepIndex);
+    assert.doesNotMatch(ship, /spectre-clean/);
+    assert.match(ship, /one test lead[\s\S]*owns batching/i);
+    assert.match(ship, /It alone integrates stale\/uncovered checks[\s\S]*commits/i);
+    assert.match(clean, /user-invocable: true/);
+    assert.match(clean, /CLEANED_THROUGH_SHA/);
+    assert.match(clean, /one prune lead[\s\S]*one test lead[\s\S]*Skill\(spectre-sweep\)/i);
+    assert.match(prune, /orchestrated[\s\S]*do not edit tests[\s\S]*run no affected suite/i);
+    assert.match(testSkill, /orchestrated[\s\S]*tests\/fixtures[\s\S]*never production[\s\S]*do not stage or commit/i);
+    assert.match(sweep, /sole pre-rebase commit owner/i);
+    assert.match(sweep, /stale\/uncovered/i);
+    assert.match(ship, /--verification-owner parent[\s\S]*No checks/i);
+    assert.equal((ship.match(/measure start --label Full suite/g) ?? []).length, 1);
+    assert.match(ship, /one full suite after rebase[\s\S]*In parallel[\s\S]*Skill\(spectre-create_pr\)[\s\S]*pending/i);
+    assert.match(ship, /rerun only failing\/affected checks[\s\S]*never the full suite/i);
+    assert.match(execute, /else `(?:\/spectre:ship|spectre-ship)`/);
+  }
 });
 
-test('orchestrated create-pr supports a pending draft and Testing-only final update', () => {
+test('orchestrated create-pr preserves pending/final candidate gates', () => {
   const repoRoot = path.resolve(__dirname, '..');
-  const createPr = fs.readFileSync(path.join(
-    repoRoot,
-    'plugins', 'spectre', 'skills', 'spectre-create_pr', 'SKILL.md',
-  ), 'utf8');
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const createPr = fs.readFileSync(path.join(
+      repoRoot, 'plugins', rootName, 'skills', 'spectre-create_pr', 'SKILL.md',
+    ), 'utf8');
+    const ship = fs.readFileSync(path.join(
+      repoRoot, 'plugins', rootName, 'skills', 'spectre-ship', 'SKILL.md',
+    ), 'utf8');
 
-  assert.match(createPr, /--orchestrated[\s\S]*--pr-phase pending\|final-update/i);
-  assert.match(createPr, /pending[\s\S]*complete candidate tuple[\s\S]*local verification `RUNNING`[\s\S]*URL.*body/i);
-  assert.match(createPr, /final-update[\s\S]*FINAL_VERIFICATION_SUMMARY[\s\S]*existing draft[\s\S]*Testing[\s\S]*only/i);
-  assert.match(createPr, /repairs changed the tuple[\s\S]*refresh candidate-sensitive claims[\s\S]*freshness[\s\S]*grounding[\s\S]*secret/i);
-});
-
-test('ship opens the pending draft beside the full-suite lane then updates Testing only', () => {
-  const repoRoot = path.resolve(__dirname, '..');
-  const ship = fs.readFileSync(path.join(
-    repoRoot,
-    'plugins', 'spectre', 'skills', 'spectre-ship', 'SKILL.md',
-  ), 'utf8');
-
-  assert.match(ship, /parallel[\s\S]*full suite[\s\S]*spectre-create_pr[\s\S]*pending/i);
-  assert.match(ship, /after the suite[\s\S]*final-update[\s\S]*Testing only/i);
+    assert.match(createPr, /--orchestrated[\s\S]*--pr-phase pending\|final-update/i);
+    assert.match(createPr, /pending[\s\S]*complete candidate tuple[\s\S]*local verification `RUNNING`[\s\S]*URL.*body/i);
+    assert.match(createPr, /final-update[\s\S]*FINAL_VERIFICATION_SUMMARY[\s\S]*existing draft[\s\S]*Testing[\s\S]*only/i);
+    assert.match(createPr, /clean candidate worktree[\s\S]*PR_CANDIDATE_STALE/i);
+    assert.match(createPr, /factual claim is grounded[\s\S]*secret\/credential\/PII/i);
+    assert.match(createPr, /repairs changed the tuple[\s\S]*refresh candidate-sensitive claims[\s\S]*freshness[\s\S]*grounding[\s\S]*secret/i);
+    assert.match(ship, /after the suite[\s\S]*final-update[\s\S]*Testing only/i);
+  }
 });
 
 test('create-pr final update pushes and rechecks a repaired candidate before Testing-only edit', () => {
@@ -1483,6 +1497,46 @@ test('create-pr final update pushes and rechecks a repaired candidate before Tes
   assert.match(
     createPr,
     /Final-update[\s\S]*clean repaired HEAD[\s\S]*pushes[\s\S]*re-resolves\/rechecks live tuple[\s\S]*only Testing/i,
+  );
+});
+
+test('Ship uses the fixed measurement surface without primary bookkeeping', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const skillNames = [
+    'spectre-ship',
+    'spectre-clean',
+    'spectre-prune',
+    'spectre-test',
+    'spectre-sweep',
+    'spectre-create_pr',
+    'spectre-execute',
+  ];
+  const stageLabels = ['Prune', 'Test', 'Sweep', 'Rebase', 'Full suite', 'Create PR'];
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const ship = fs.readFileSync(path.join(
+      repoRoot, 'plugins', rootName, 'skills', 'spectre-ship', 'SKILL.md',
+    ), 'utf8');
+    assert.match(ship, /(?:spectre-workflow|workflow-cli\.mjs") measure start --label Ship/);
+    for (const label of stageLabels.filter((label) => label !== 'Prune' && label !== 'Test')) {
+      assert.match(ship, new RegExp(`measure start --label ${label}`));
+    }
+    assert.match(ship, /measure start` for Prune\/Test/);
+    assert.match(ship, /measure finish[\s\S]*six snapshots[\s\S]*measure summary --rows[\s\S]*--outer-snapshot/i);
+    assert.match(ship, /never inspect transcripts, track clocks, or calculate/i);
+    assert.match(ship, /one exact parallel-group total[\s\S]*unavailable measurement never blocks Ship/i);
+  }
+
+  const canonicalTokens = skillNames.reduce(
+    (total, name) => total + repositoryTokenCount(
+      repoRoot,
+      `plugins/spectre/skills/${name}/SKILL.md`,
+    ),
+    0,
+  );
+  assert.ok(
+    canonicalTokens <= 10_780,
+    `canonical Ship/Clean/Prune/Test/Sweep/Create PR/Execute token budget exceeded: ${canonicalTokens} > 10,780`,
   );
 });
 
@@ -1519,7 +1573,7 @@ test('ship composes focused skills without a proof prerequisite', () => {
     assert.ok(sweepIndex > testIndex);
     assert.ok(rebaseIndex > sweepIndex);
     assert.ok(createPrIndex > rebaseIndex);
-    assert.match(skill, /Proof is optional and independent/);
+    assert.match(skill, /Proof is optional:/);
     assert.match(skill, /do not inspect, infer, invoke, or gate on it/);
     assert.doesNotMatch(skill, /--require-proof/);
     assert.doesNotMatch(skill, /Skill\(spectre-prove\)/);
@@ -1775,33 +1829,22 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.match(validate, /tuple in the report/);
     assert.match(createPr, /EXPECTED_BASE_SHA.*EXPECTED_HEAD_SHA.*EXPECTED_DIFF_SHA256/);
     assert.match(createPr, /VERIFICATION_SUMMARY/);
-    assert.match(createPr, /Never turn non-green advisory verification into a claimed pass/);
+    assert.match(createPr, /Testing honestly reflects[\s\S]*never turns advisory non-green into pass/i);
     assert.match(createPr, /PR_CANDIDATE_STALE/);
-    assert.match(createPr, /performs neither action/);
-    assert.match(createPr, /Canonical review\/proof artifacts must already be committed/);
-    assert.match(createPr, /Any tracked or non-ignored untracked change returns `PR_CANDIDATE_STALE`/);
+    assert.match(createPr, /clean candidate worktree[\s\S]*before push, create, or edit/i);
+    assert.match(createPr, /fetched tuple is verified[\s\S]*only a draft is opened or updated/i);
+    assert.match(createPr, /pending[\s\S]*pushes[\s\S]*creates the draft/i);
+    assert.match(createPr, /Final-update[\s\S]*rechecks its tuple\/clean candidate[\s\S]*Testing/i);
 
-    const pinOpenIndex = createPr.indexOf('**Pin the candidate, then open as draft.**');
-    const fetchBeforePinIndex = createPr.indexOf('After the required fetch', pinOpenIndex);
-    const verifyBeforePushIndex = createPr.indexOf('verify any expected tuple', fetchBeforePinIndex);
-    const pushIndex = createPr.indexOf('git push -u origin', verifyBeforePushIndex);
-    const ghCreateIndex = createPr.indexOf('gh pr create --base {PR_BASE}', pushIndex);
-    assert.ok(pinOpenIndex !== -1);
-    assert.ok(fetchBeforePinIndex > pinOpenIndex);
-    assert.ok(verifyBeforePushIndex > fetchBeforePinIndex);
-    assert.ok(pushIndex > verifyBeforePushIndex);
-    assert.ok(ghCreateIndex > pushIndex);
-
-    assert.match(createPr, /gh pr create --base \{PR_BASE\}[^\n]*--draft/);
-    assert.match(createPr, /This skill never opens a ready-for-review PR/);
+    assert.match(createPr, /gh pr create --draft/);
+    assert.match(createPr, /only a draft is opened or updated/i);
     assert.doesNotMatch(createPr, /--draft` when requested|--draft` if requested/);
-    assert.match(ship, /Observe the full suite once/);
-    assert.match(ship, /do not duplicate package suites or run a baseline suite/);
-    assert.match(ship, /Do not rerun the full suite after repairs/);
-    assert.match(ship, /Verification status is evidence, never a stop condition/);
+    assert.match(ship, /Observe one full suite after rebase/);
+    assert.match(ship, /No duplicate suites/);
+    assert.match(ship, /rerun only failing\/affected checks, never the full suite/i);
+    assert.match(ship, /Verification is evidence, never a stop condition/);
     assert.match(ship, /PR_OPENED/);
     assert.match(ship, /CI: pending/);
-    assert.match(ship, /PR_CANDIDATE_STALE/);
     assert.match(ship, /Never escalate solely for test\/lint\/type\/build failures/);
     assert.match(testSkill, /Never run a repository-wide baseline or full suite from this skill/);
     assert.match(testSkill, /Branch-caused → repair\/reverify/);

@@ -16,6 +16,11 @@ import {
   startPlanTelemetry,
 } from './workflow/plan-telemetry.mjs';
 import {
+  finishMeasurement,
+  startMeasurement,
+  summarizeMeasurement,
+} from './workflow/measurement.mjs';
+import {
   codedError,
   readWorkflowRun,
   recordWorkflowEvents,
@@ -76,6 +81,9 @@ function usage() {
     '    plan.execution_outcome: --execution-run-id <id> --plan-hash <sha256> --outcome-status <status> --workstream-count <n> --task-count <n> --wave-count <n> --proof-result <PASS|FAIL|PARTIAL|SKIPPED> --execution-review-result <CLEAN|FINDINGS|SKIPPED> --surprise-codes <codes>',
     '  spectre-workflow cleanup [--project-dir <path>] [--dry-run] --json',
     '  spectre-workflow purge [--project-dir <path>] --yes --json',
+    '  spectre-workflow measure start --label <Ship|Prune|Test|Sweep|Rebase|Full suite|Create PR> --json',
+    '  spectre-workflow measure finish --snapshot <json> [--child-agent-id <host:id|id>] --json',
+    '  spectre-workflow measure summary --rows <json> --outer-snapshot <json> --json',
     '',
   ].join('\n');
 }
@@ -115,6 +123,7 @@ function commonOptions(flags) {
 // returns only the confirmation fields downstream commands actually need.
 function confirmation(resource, action, result) {
   if (!result || result.ok === false) return result;
+  if (resource === 'measure') return result;
   if (resource === 'cleanup' || resource === 'purge') return result;
   if (resource === 'plan' && action === 'match') return result;
   if (resource === 'plan') {
@@ -440,6 +449,33 @@ async function planCommand(action, flags) {
   throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown plan command ${action}`);
 }
 
+function jsonFlag(flags, flag) {
+  try {
+    return JSON.parse(required(flags, flag));
+  } catch {
+    throw codedError('INVALID_JSON_ARGUMENT', `${flag} must be valid JSON`);
+  }
+}
+
+async function measureCommand(action, flags) {
+  if (action === 'start') {
+    return startMeasurement({ label: required(flags, '--label') });
+  }
+  if (action === 'finish') {
+    return finishMeasurement({
+      snapshot: jsonFlag(flags, '--snapshot'),
+      childAgentId: flags.get('--child-agent-id') || null,
+    });
+  }
+  if (action === 'summary') {
+    return summarizeMeasurement({
+      rows: jsonFlag(flags, '--rows'),
+      outerSnapshot: jsonFlag(flags, '--outer-snapshot'),
+    });
+  }
+  throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown measure command ${action}`);
+}
+
 export async function main(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
   const { positional, flags } = parseArgs(argv);
@@ -458,6 +494,7 @@ export async function main(argv, io = {}) {
   else if (resource === 'gate') result = await gateCommand(action, flags);
   else if (resource === 'human-input') result = await humanInputCommand(action, flags);
   else if (resource === 'plan') result = await planCommand(action, flags);
+  else if (resource === 'measure') result = await measureCommand(action, flags);
   else if (resource === 'cleanup') {
     result = await cleanupProjectWorkflow({
       ...commonOptions(flags),

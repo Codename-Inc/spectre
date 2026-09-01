@@ -1,12 +1,12 @@
 ---
 name: "spectre-clean"
-description: "Meta cleanup workflow: orchestrate prune, risk-based automated tests, and sweep/commit through focused subagents. Use after execute/validate or when asked to clean up a finished branch end-to-end. Do NOT trigger for dead-code-only cleanup (spectre-prune), test-only work (spectre-test), commit-only hygiene (spectre-sweep), bug fixes (spectre-fix), or scoping/planning."
+description: "Meta cleanup utility: orchestrate parallel prune and risk-based tests, then one sweep/commit boundary. Use mid-work or before rebase/create-pr. Do NOT use as Ship's dependency, or for dead-code-only cleanup (spectre-prune), test-only work (spectre-test), commit-only hygiene (spectre-sweep), bug fixes (spectre-fix), or scoping/planning."
 user-invocable: true
 ---
 
 # clean
 
-End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test risk assessment, and final synthesis. Phase work runs in subagents using the existing focused skills: `spectre-prune`, `spectre-test`, and `spectre-sweep`.
+End-to-end cleanup utility. The primary owns scope, risk assessment, sequencing, and synthesis. It is not a Ship dependency; phase work uses `spectre-prune`, `spectre-test`, and `spectre-sweep`.
 
 ## Inputs
 
@@ -21,30 +21,27 @@ End-to-end cleanup orchestrator. The primary agent owns scope, sequencing, test 
 
 ## Outputs + DONE
 
-- `spectre-prune` cleanup completed by a subagent; manual-review items preserved.
-- Primary-authored P0-P3 risk assessment and test plan passed in-thread to test owners.
-- `spectre-test` work completed by `@spectre_tester` test-lead subagents using the primary's risk plan.
-- `spectre-sweep` completed by a subagent, including final hygiene, verification, and conventional commits.
-- Final report: prune/manual review · risk tiers · tests/affected checks · routed findings · sweep commits · `NEEDS_AUTHORITY`, if any.
+- Parallel prune and one test-lead result; manual-review/cross-boundary items preserved.
+- Primary P0-P3 risk plan, compact check results, one Sweep verification/commit boundary, and `CLEANED_THROUGH_SHA`.
+- Final report: prune/manual review · risk tiers · tests/affected checks · routed findings · sweep commits · `CLEANED_THROUGH_SHA` · `NEEDS_AUTHORITY`, if any.
 - **DONE when:** every phase ran in its owning subagent, the primary supplied risk tiers, repairable findings were repaired/routed by their owner, manual-review items surfaced, and sweep committed or returned genuine `NEEDS_AUTHORITY`.
 
 ## Method / guardrails
 
 1. **Resolve scope once.** Establish files and feature root. Keep dynamic details out of the prompt body; read them live.
-2. **Prune phase.** Dispatch a prune-lead subagent instructed to load and execute `Skill(spectre-prune)` with `{FEATURE_ROOT} --orchestrated` for the resolved scope. It returns cleanup edits, compact summary, validation status, and manual-review items.
-3. **Primary risk assessment.** After prune returns, the primary classifies every changed file P0-P3:
-   - **P0 Critical:** auth/payment/security/crypto/session/token, PII, permissions, user-data mutation, external API handlers, DB migrations, `@critical`.
-   - **P1 Core:** feature components, API handlers, state/business logic, fetch/cache, user-visible error paths.
-   - **P2 Supporting:** exported utilities, validators, transformers, adapters, hooks with real logic.
-   - **P3 Skip:** docs, styles, config, types, constants/enums, re-export barrels, pass-through wrappers, generated files.
+2. **Primary risk assessment.** Classify every resolved file P0-P3:
+   - **P0:** auth/payment/security/crypto/session/token, PII/permissions/user-data mutation, external handlers, DB migrations, `@critical`.
+   - **P1:** feature components, API/state/business logic, fetch/cache, user-visible errors.
+   - **P2:** exported real-logic utilities, validators, transformers, adapters, hooks.
+   - **P3:** docs/styles/config/types/constants/barrels/pass-throughs/generated files.
    Keep a compact plan in-thread: `- [P{tier}] {file}: {behavior or SKIP reason}`.
-4. **Test phase.** Dispatch `@spectre_tester` test-lead subagents in parallel. Each subagent loads `Skill(spectre-test)` with `{FEATURE_ROOT} --orchestrated`, consumes the primary risk plan for its batch, and does the test/verification work. P0 gets dedicated focus; P1/P2 may be grouped; P3 is skipped with reason.
-5. **Sweep phase.** Dispatch a sweep-lead subagent instructed to load and execute `Skill(spectre-sweep)` with `--orchestrated` on the resulting diff. Sweep owns final hygiene, verification, and commits.
-6. **Synthesize.** Route repairable findings to their owner; report final state, routed findings, and genuine authority/safety impasses.
+3. **Parallel phases.** In one dispatch, start one prune lead for `Skill(spectre-prune)` and one test lead for `Skill(spectre-test)` with the unchanged resolved set, `{FEATURE_ROOT}`, and the risk plan. Each uses `--orchestrated`; the test lead owns any internal tester batching. They return compact changed-path/check results, manual-review items, and cross-boundary needs; neither stages nor commits.
+4. **Sweep phase.** Dispatch a sweep lead with the unchanged set and compact phase results. `Skill(spectre-sweep)` runs only stale/uncovered integrated checks, repairs attributable failures, and is the sole pre-rebase commit owner.
+5. **Synthesize.** Route repairable/cross-boundary findings to their owner; report final state, the Sweep commit `CLEANED_THROUGH_SHA`, routed findings, and genuine authority/safety impasses.
 
 Guardrails:
 - Do not inline the bodies of prune/test/sweep; call the skills.
-- Do not let the primary perform prune edits, test authoring, or sweep commits; repairable findings remain with the owning child, which continues without a user gate.
+- Do not let the primary perform prune edits, test authoring, or Sweep commits; repairable findings remain with the owning child, which continues without a user gate.
 - `CONFIRMED_SAFE` cleanup may be applied; `UNCERTAIN`/`UNSAFE` cleanup stays untouched and appears in final manual review.
 - `--no-verify`, lint/type suppressions, and forced green are forbidden unless the user explicitly permits them.
 
@@ -52,7 +49,7 @@ Guardrails:
 
 `NEEDS_AUTHORITY` reports its phase/impasse and manual-review list. Ordinary test/lint/build failures never produce it; repair or route them. Otherwise report commits.
 
-- `--orchestrated` → return the result to the caller without user-facing Next Steps.
+- `--orchestrated` → return the result and `CLEANED_THROUGH_SHA` to the caller without user-facing Next Steps.
 - Standalone → `Next (recommended): spectre-rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `spectre-prove` only as a conditional alternative when acceptance evidence is still desired before shipping.
 
 ## Escalate-If

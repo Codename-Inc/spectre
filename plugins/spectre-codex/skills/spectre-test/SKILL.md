@@ -1,12 +1,12 @@
 ---
 name: "spectre-test"
-description: "Triage a working set into risk tiers (P0–P3) and add risk-appropriate behavioral tests — thorough coverage where bugs hurt users (auth/payment/security/PII), light or none on low-risk code — fixing lint and committing per passing batch. Trigger after a feature is built or when asked to add/strengthen tests for recent changes; when invoked by spectre-clean, consume the primary's risk plan and execute the assigned test batch. Do NOT trigger for brute-force 100%-line-coverage demands, dead-code cleanup (spectre-prune), bug fixes (spectre-fix), final commit hygiene (spectre-sweep), or scoping/planning."
+description: "Triage a working set into risk tiers (P0–P3) and add risk-appropriate behavioral tests. Trigger after a feature is built or when asked to add/strengthen tests; when orchestrated by spectre-clean/ship, consume the parent risk plan and assigned test/fixture batch. Do NOT trigger for brute-force coverage, cleanup (spectre-prune), bug fixes (spectre-fix), final commit hygiene (spectre-sweep), or scoping/planning."
 user-invocable: true
 ---
 
 # test
 
-Add risk-weighted test coverage to a working set and commit per passing batch — **clear on WHAT, silent on HOW.** Test behaviors at boundaries, not implementation; concentrate effort where breakage hurts users; skip code that can't break. Risk assessment is inline reasoning, not a separate phase. Lightweight flow — no intermediate report files.
+Add risk-weighted behavioral tests and commit standalone batches. Test boundaries, prioritize where breakage hurts, skip code that cannot break; risk assessment is inline and no intermediate report files exist.
 
 ## Inputs
 
@@ -18,27 +18,27 @@ Add risk-weighted test coverage to a working set and commit per passing batch �
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Repair stale feature/root metadata in artifacts this workflow touches.
 - **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Keep the projection local/in-thread; write no working-set artifact.
-- Baseline-lint all files in the set; map import/dependency edges. All paths absolute from repo root.
+- Standalone: baseline-lint the set and map import/dependency edges. All paths absolute from repo root.
 
 ## Method / guardrails
 
-- **Orchestrated mode:** if `spectre-clean` supplied a risk plan, do not redo broad risk analysis. Sanity-check only for missing assigned files or obvious P0 underclassification; correct the tier/assignment with the primary and continue. Then execute the assigned batch using the supplied tiers and return results in-thread.
+- **Orchestrated Ship/Clean mode:** consume the supplied unchanged set/risk plan; do not redo broad analysis. Edit tests/fixtures only—never production/source; do not stage or commit. The test lead may batch testers internally, runs only new/changed focused tests, and returns compact changed-path/check results plus cross-boundary needs to the parent.
 - **Triage every changed file into a risk tier (inline):**
-  - **P0 Critical** (thorough) — path contains `auth`/`payment`/`security`/`crypto`/`session`/`token`; handles user-data mutations, financial transactions, PII, permissions; external-facing API handlers; DB migrations; `@critical` annotation. Requires 100% **behavioral** coverage (every user-facing outcome), all error paths with specific assertions, security-input edge cases (null/empty/malformed/overflow), public-API contract/schema tests, mutation-resistant assertions.
-  - **P1 Core** (key behaviors) — feature components, internal API handlers, state management (stores/reducers/contexts), core business logic, data fetch/cache. Cover happy path of public functions + user-visible error paths + contract tests at exported boundaries. Skip internal helpers and exhaustive branches.
-  - **P2 Supporting** (public surface only) — utils, helpers, formatters, validators, transformers, composed hooks, adapters/wrappers. Test exported functions' happy path only if they carry real logic; skip private and trivial functions.
-  - **P3 Skip** (NO tests) — `.d.ts` types, configs (JSON/YAML), styles, docs, logic-free constants/enums, re-export barrels, pass-through wrappers, build/tooling config. Types + lint suffice; mark **SKIP — {reason}**.
+  - **P0 Critical** — `auth`/`payment`/`security`/`crypto`/`session`/`token`, PII/permissions/user-data mutation, external handlers, DB migrations, or `@critical`. Cover every user-facing outcome/error path, null/empty/malformed/overflow security inputs, public API/schema, and mutation-resistant assertions.
+  - **P1 Core** — feature components, API/state/business logic, fetch/cache. Cover public happy/error paths and exported-boundary contracts; skip internal helpers/exhaustive branches.
+  - **P2 Supporting** — real-logic utils/validators/transformers/hooks/adapters. Cover exported happy paths; skip private/trivial functions.
+  - **P3 Skip** — types, config, styles/docs, logic-free constants/enums/barrels/pass-throughs, generated/build tooling. Types + lint suffice; mark **SKIP — {reason}**.
 - **Write or consume the in-thread test plan** (3–7 bullets, `- [P{tier}] {file}: {behavior}`): P0 → multiple bullets (behaviors + error paths); P1 → 1–2; P2 → 1; P3 → SKIP line.
-- **Dispatch `@spectre_tester` subagents in parallel** (single message, multiple Task calls; 3–5 for medium scope, up to 8 for large). Partition the plan into independent batches: P0 = 1 agent/file (focus); P1 = 2–3 files/agent; P2 = 3–5 files/agent. Each agent gets its batch items, paths, tier context, and the instruction: **write behavioral tests, assert outcomes not calls, mutation-resistant.** Wait for all before verifying.
-- **Test quality bar (all tiers):** one behavior per test; descriptive names (`when_[cond]_then_[outcome]`); assert outcomes not calls (call-count assertions only when verifying side-effect prevention); refactor-resilient; mutation-resistant ("would a real bug fail this?"). Do NOT mock internal implementation details, duplicate type coverage, or test framework behavior. Add contract/schema tests at team/module boundaries (API response + error shape; emitted-event schema).
-- **Verify before commit:** run affected lint, new/changed plus related tests across demonstrated dependencies, then spot-check quality. Branch-caused → repair/reverify; unrelated → route/continue; indeterminate → reproduce only the failing check at base. Never run a repository-wide baseline or full suite from this skill.
+- **Dispatch `@spectre_tester` in parallel:** one message/multiple tasks; P0 = one agent/file, P1 = 2–3 files/agent, P2 = 3–5, up to 8 agents. Give batch paths/tier and require behavioral, outcome-not-call, mutation-resistant tests; wait before verifying.
+- **Quality:** one behavior/test; descriptive `when_[cond]_then_[outcome]` names; outcome assertions (calls only for prevented side effects), refactor/mutation resilience. Do not mock internals, duplicate type/framework coverage; test API/event schemas at boundaries.
+- **Verify before commit:** standalone runs affected lint plus new/changed and related tests across demonstrated dependencies, then spot-checks quality. Branch-caused → repair/reverify; unrelated → route/continue; indeterminate → reproduce only the failing check at base. Never run a repository-wide baseline or full suite from this skill.
 - **Commit guard:** `--no-verify`, `eslint-disable`, and committing code carrying `eslint-disable` are **expressly forbidden without the user's explicit permission.**
 
 ## Outputs + DONE
 
-- Risk-appropriate tests added; affected lint/related tests have no branch-caused failure; other findings are routed.
-- No working-set, evidence, or test-plan artifact. Commits contain reusable tests/fixtures and required product changes only, grouped logically (`type(scope): description`; tests bundled with feature or separate, your judgment).
-- **DONE when:** every changed file is P0–P3; the plan records P3 skips; tester batches finish; tier coverage holds; affected lint/related tests have no attributable failure; other findings are routed without stopping; quality is spot-checked; changes are committed without bypass/suppression.
+- Risk-appropriate tests added; focused tests have no branch-caused failure; other findings are routed.
+- No working-set, evidence, or test-plan artifact. Standalone commits contain reusable tests/fixtures and required product changes only, grouped logically (`type(scope): description`; tests bundled with feature or separate, your judgment).
+- **DONE when:** every changed file is P0–P3; the plan records P3 skips; tester batches finish; tier coverage holds; focused tests have no attributable failure; other findings are routed without stopping; quality is spot-checked; and standalone changes are committed without bypass/suppression.
 
 ## Handoff
 

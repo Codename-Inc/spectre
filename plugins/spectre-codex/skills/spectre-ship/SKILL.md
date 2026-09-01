@@ -1,13 +1,13 @@
 ---
 name: "spectre-ship"
-description: "Turn completed branch work into a reviewer-ready PR: clean, rebase, observe one advisory full suite, repair/route failures, and open via spectre-create_pr. Use when asked to ship finished work. Proof is optional. Do NOT use for implementation, main/master pushes, releases, or autonomous request-to-PR delivery."
+description: "Turn completed branch work into a reviewer-ready PR: directly coordinate cleanup, rebase, one advisory full suite, repair/route failures, and spectre-create_pr. Use when asked to ship finished work. Proof is optional. Do NOT use for implementation, main/master pushes, releases, or autonomous request-to-PR delivery."
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # ship
 
-Clean, rebase, observe the repository suite once without gating the PR, then open it. Load focused skills; do not duplicate them.
+Own cleanup, rebase, one advisory suite, and draft PR. Load focused skills; do not duplicate them.
 
 ## Inputs
 
@@ -20,24 +20,25 @@ Clean, rebase, observe the repository suite once without gating the PR, then ope
 
 ## Proof independence
 
-Proof is optional and independent: do not inspect, infer, invoke, or gate on it. Verification failures are repair/routing work; only an authority or publication-safety impasse may prevent PR creation.
+Proof is optional: do not inspect, infer, invoke, or gate on it. Only authority or publication-safety impasses prevent PR creation.
 
 ## Outputs + DONE
 
-- PR URL plus clean commits; rebase target/backup/conflicts; tested SHA; compact failures/attribution/repairs/routing; final focused checks; `CI: pending`; and `PR_OPENED` verification status `PASS|REPAIRED|PRE_EXISTING_FAILURES|INDETERMINATE|KNOWN_FAILURES_REMAIN`.
+- PR URL, clean commits, rebase summary, tested SHA, verification/repair routing, `CI: pending`, measurement, and `PR_OPENED` status `PASS|REPAIRED|PRE_EXISTING_FAILURES|INDETERMINATE|KNOWN_FAILURES_REMAIN`.
 
-**DONE when:** clean/rebase safety completed, the full suite ran once, failures were repaired or routed/disclosed, and the PR URL is returned. Non-green verification never prevents DONE by itself.
+**DONE when:** Prune/Test → Sweep, rebase, one full suite, repair/routing, measurement relay/degradation, and PR URL are complete. Non-green verification never prevents DONE.
 
 ## Method / guardrails
 
-1. **Resolve.** Confirm a feature branch, target branch, `FEATURE_ROOT`, and no unrelated or sensitive changes. Stop on `main`/`master`.
-2. **Clean.** Run `Skill(spectre-clean)` with `{FEATURE_ROOT} --orchestrated`; repair or route child findings and continue unless `NEEDS_AUTHORITY`.
-3. **Rebase.** Run `Skill(spectre-rebase)` with the target, `--orchestrated`, and `--verification-owner parent`; retain its backup/restore summary.
-4. **Observe the full suite once.** At rebased `FULL_SUITE_SHA`, run one repository-authoritative root suite; do not duplicate package suites or run a baseline suite. Keep raw output out of child prompts.
+1. **Resolve once.** Confirm a feature branch, target, `FEATURE_ROOT`, full set, and no unrelated/sensitive changes; stop on `main`/`master`. Reuse current-thread `CLEANED_THROUGH_SHA` only if unambiguous and ancestral; otherwise use the full set. Invoke `node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" measure start --label Ship` and relay its snapshot; below, `measure` means `node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" measure`.
+2. **Cleanup boundary.** Classify P0-P3; invoke `measure start` for Prune/Test, then one parallel dispatch: `Skill(spectre-prune)` through one prune lead and `Skill(spectre-test)` through one test lead with the same set, risk plan, `{FEATURE_ROOT}`, and `--orchestrated`. The test lead owns batching; neither stages/commits. Return compact paths/checks; repair/route cross-boundary needs unless `NEEDS_AUTHORITY`.
+3. **Sweep.** Invoke `measure start --label Sweep`; run `Skill(spectre-sweep)` with `--orchestrated`, unchanged set, and both results. It alone integrates stale/uncovered checks, repairs attributable failures, and commits.
+4. **Rebase.** Invoke `measure start --label Rebase`; run `Skill(spectre-rebase)` with target, `--orchestrated`, and `--verification-owner parent`; retain backup summary. No checks.
+5. **Observe one full suite after rebase.** At rebased `FULL_SUITE_SHA`, invoke `measure start --label Full suite` and `measure start --label Create PR`. In parallel start the one full suite lane and `Skill(spectre-create_pr)` pending pass; pending opens/returns a draft with local verification `RUNNING`. No duplicate suites or raw child output.
    - Attribute exact failures `branch-caused|unrelated|indeterminate`, preferring target-SHA CI and otherwise reproducing only the failing check at target.
-   - Repair branch-caused root-cause families; rerun failing/affected checks. Do not rerun the full suite after repairs. Route unrelated findings; disclose unresolved indeterminate findings; record repaired HEAD and `CI: pending`.
-   - Verification status is evidence, never a stop condition; red output, attempts, diff growth, and remaining failures cannot prevent PR creation.
-5. **Create PR.** Pass compact `VERIFICATION_SUMMARY` to `Skill(spectre-create_pr)` with target, `--orchestrated`, `--draft`, and feedback hints. Return its URL. On `PR_CANDIDATE_STALE`, refresh and retry.
+   - Repair branch-caused families; rerun only failing/affected checks, never the full suite. Route unrelated/indeterminate findings; record repaired HEAD and `CI: pending`.
+   - Verification is evidence, never a stop condition.
+6. **Create PR and measure.** After the suite, call `final-update` on the existing draft to change Testing only; refresh candidate-sensitive claims first if repairs changed the tuple. Invoke `measure finish` for six snapshots (returned child identities when available), then `measure summary --rows … --outer-snapshot …`; relay output only—never inspect transcripts, track clocks, or calculate. Unattributed Prune/Test and Full suite/Create PR use one exact parallel-group total; unavailable measurement never blocks Ship.
 
 Never use `--no-verify`, force-push over unrelated remote history, suppress failures, or publish evidence containing secrets/PII.
 
@@ -47,6 +48,6 @@ Return the PR URL plus compact `PR_OPENED`/verification status. End: `Next (reco
 
 ## Escalate-If
 
-- Clean, rebase, or create-PR reports `NEEDS_AUTHORITY` because no safe executable path exists without new user authority.
+- A cleanup phase, rebase, or create-PR reports `NEEDS_AUTHORITY` because no safe executable path exists without new user authority.
 - The branch/target is ambiguous, the remote diverged unexpectedly, or the diff contains secrets/PII.
 - Never escalate solely for test/lint/type/build failures, full-suite status, repair count, diff growth, or candidate drift that can be refreshed.

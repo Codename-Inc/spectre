@@ -1,52 +1,43 @@
 ---
 name: "spectre-create_pr"
-description: "Generate a high-quality draft pull request from the actual diff and open it via gh — derives What from the diff, Why from commits/linked issue/branch, Testing from real test changes, scales the template to PR size, self-verifies every claim against a diff hunk, then runs gh pr create --draft. Use when wrapping up a branch and asked to open a PR or write a PR description. Do NOT use to commit/clean the diff first (spectre-sweep), to rebase history (spectre-rebase), or for the full autonomous request→proof→PR flow (spectre-delegate)."
+description: "Generate a grounded draft pull request from the actual diff and open it via gh. Use when wrapping up a branch or writing a PR description; not to commit/clean (spectre-sweep), rebase (spectre-rebase), or autonomously deliver a request (spectre-delegate)."
 user-invocable: true
 ---
 
 # create_pr
 
-Produce a reviewer-ready draft pull request grounded in the actual change. Every claim traces to a diff hunk, a commit message, or a linked issue — never invented. Scale the description to the size of the change. Then open the PR as a draft with `gh`.
+Produce a reviewer-ready draft PR grounded in the actual change. Every claim traces to a diff hunk, commit, or linked issue; never invent rationale.
 
 ## Inputs
-- `$ARGUMENTS` (optional): `TARGET_BRANCH` (default `origin/main`), feedback-focus hint, a compact `VERIFICATION_SUMMARY`, optional `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256`, or `--orchestrated` when a parent workflow owns the final summary. Read the live repo state at runtime — never assume a prior phase ran.
-- Resolve just-in-time:
-  - `BRANCH = git rev-parse --abbrev-ref HEAD`. If on `main`/`master` → stop and ask (nothing to PR).
-  - `TARGET_BRANCH` (default `origin/main`); `PR_BASE = TARGET_BRANCH` with a leading remote name such as `origin/` removed. `git fetch`, then resolve `BASE_SHA` and `HEAD_SHA`.
-  - `DIFF = git diff {BASE_SHA}...{HEAD_SHA}`; `DIFF_SHA256` uses `git-diff-v1`: SHA-256 over raw stdout from `git diff --binary --full-index --no-ext-diff --no-color --no-renames {BASE_SHA}...{HEAD_SHA}`; `COMMITS = git log {BASE_SHA}..{HEAD_SHA}`; branch name; any issue ref found in branch name or commits (`#123`, `PROJ-123`).
-  - If any expected candidate field is supplied, require all three and compare them with the fetched base, current head, canonical diff hash, and a clean candidate worktree before push or PR creation. Canonical review/proof artifacts must already be committed; ignored lifecycle state is excluded. Any tracked or non-ignored untracked change returns `PR_CANDIDATE_STALE` with expected/observed state and performs neither action.
-  - `gh` availability + unpushed commits. If `gh` is absent → output the title + body for manual creation and say so.
+
+- `$ARGUMENTS`: `TARGET_BRANCH` (default `origin/main`), feedback focus, compact `VERIFICATION_SUMMARY`, all-or-none `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256`, or `--orchestrated`.
+- Orchestrated mode accepts `--pr-phase pending|final-update`. `pending` requires the complete candidate tuple and sets local verification `RUNNING`; return its draft URL and body. `final-update` requires that URL/body, the same complete tuple, and `FINAL_VERIFICATION_SUMMARY`; it updates the existing draft's Testing section only.
+- Resolve just-in-time: branch (not `main`/`master`), fetch target and derive `PR_BASE`, `BASE_SHA`, `HEAD_SHA`, canonical `git-diff-v1` `DIFF_SHA256` over binary/full-index/no-color/no-renames `{BASE_SHA}...{HEAD_SHA}`, commits, branch/commit issue ref, `gh`, and unpushed commits.
+- Any expected field requires all three. After fetch, compare them with the live tuple and a clean candidate worktree (committed canonical review/proof artifacts are allowed; ignored lifecycle state is excluded). Tracked or non-ignored untracked changes return `PR_CANDIDATE_STALE` with expected/observed state before push, create, or edit. If `gh` is absent, return title/body for manual draft creation.
 
 ## Working Set
-The diff between `TARGET_BRANCH` and `HEAD`, the commit log over that range, and any `.github/pull_request_template.md` / `.github/PULL_REQUEST_TEMPLATE/`. If a repo template exists, honor its required sections over the defaults below.
+
+The target-to-HEAD diff and commit log, issue reference, and any GitHub PR template (whose required sections win).
 
 ## Outputs + DONE
-- A PR title in conventional-commit form: `type(scope): summary` (<70 chars, imperative, lowercase after colon, no trailing period).
-- A PR body grounded per the Method, scaled to PR size.
-- An opened draft PR via `gh pr create --draft`; the **PR URL output as the final deliverable**. This skill never opens a ready-for-review PR. If `gh` is unavailable, the title + body are output for manual draft creation instead.
 
-**DONE when:** any supplied candidate tuple was verified after fetch; every factual claim in the body traces to a diff hunk, a commit message, or a linked issue; the Testing section reflects whether test files actually changed (no claimed tests that don't exist in the diff); no "Why" was fabricated (placeholder used if no source); title follows conventional-commit form; PR opened in draft state (or body emitted with the gh-unavailable note for manual draft creation) and URL returned.
+- Conventional `type(scope): summary` title: <70 chars, imperative, lowercase after colon, no period; grounded body scaled to the change.
+- Standalone/pending opens only `gh pr create --draft`; pending returns URL/body with Testing `RUNNING`. Final-update returns the existing URL/body after replacing only Testing from final verification.
+
+**DONE:** fetched tuple is verified; every factual claim is grounded; Testing honestly reflects diff tests and supplied verification (never turns advisory non-green into pass); Why is sourced or the placeholder; no secret/credential/PII is quoted; and only a draft is opened or updated.
 
 ## Method / guardrails
-1. **Ground each section in a real source — never the model's prior knowledge of the codebase:**
-   - **What** ← summarize the **behavioral** change from `DIFF`. Describe what the code now does, not which files/lines moved. Never recite the diff.
-   - **Why** ← linked issue body, then commit messages, then branch name. If no source exists, emit `<!-- WHY: motivation not found in commits/issue — fill in -->` rather than inventing rationale.
-   - **How / trade-offs** ← decisions visible in commit messages or diff structure. Omit for trivial changes; never infer design intent from code shape alone.
-   - **Testing** ← inspect the diff for test-file changes and include any supplied `VERIFICATION_SUMMARY` verbatim in substance: exact command/scope, pass/fail counts, attribution, repairs, routed findings, and CI-pending status. If tests changed, summarize what they cover. If none changed, state that plainly. Never turn non-green advisory verification into a claimed pass or block PR creation because the summary is non-green.
-2. **Scale the template to PR size** (lines changed + concern count):
-   - **Trivial** (small, single-concern): What + Why + `Closes #`.
-   - **Standard**: Summary · Changes (behavioral bullets) · Testing · `Closes #`.
-   - **Complex** (large/multi-area/risky): add How & Trade-offs, Breaking Changes / Rollback, Screenshots (UI/CLI), and a **Feedback Requested** line directing the reviewer (e.g. "focus on the data model in `src/models/`") — the highest-leverage section for review quality.
-3. **Title** — derive `type` from the dominant change (`feat`/`fix`/`refactor`/`docs`/`test`/`chore`/`perf`), `scope` from the primary area touched.
-4. **Issue linking** — if an issue ref was found, add `Closes #NNN` (or the tracker's pattern) as its own line. Do not invent issue numbers.
-5. **Self-verification pass (required)** — before opening: re-read the diff and check each claim in the body maps to a specific hunk. Drop or flag any claim that doesn't. Confirm no secrets/keys/PII are quoted from the diff into the body.
-6. **Pin the candidate, then open as draft.** After the required fetch, verify any expected tuple before side effects. Only then push unpushed commits (`git push -u origin {BRANCH}`) and run `gh pr create --base {PR_BASE} --title … --body … --draft`. Output the URL. Never omit `--draft` or mark the PR ready for review.
+
+1. **Ground sections:** What is behavioral diff effect, not file churn; Why is issue, then commits, then branch or `<!-- WHY: motivation not found in commits/issue — fill in -->`; How/trade-offs are visible decisions only; Testing includes supplied verification in substance (command/scope, counts, attribution, repairs, findings, CI status), summarizes changed tests, or says none changed.
+2. **Scale:** trivial uses What/Why/Closes; standard uses Summary, behavioral Changes, Testing, Closes; complex also adds visible trade-offs, breaking/rollback, UI/CLI screenshots, and focused reviewer feedback. Derive type from dominant change and scope from primary area; add only found issue links.
+3. **Verify before side effects:** reread the diff, map every body claim to a hunk/commit/issue, drop unsupported claims, and reject secrets/keys/PII. Verify tuple and clean candidate after fetch; push only then.
+4. **Draft lifecycle:** pending grounds `RUNNING`, pushes, creates the draft, and returns URL/body. Final-update rechecks its tuple/clean candidate and draft; if repairs changed the tuple, refresh candidate-sensitive claims under freshness, grounding, and secret gates, verify clean repaired HEAD, pushes, re-resolves/rechecks live tuple, then replaces only Testing using `FINAL_VERIFICATION_SUMMARY` and `gh pr edit`; never mark ready.
 
 ## Handoff
-Terminal skill — output is the PR URL (or the body + gh-unavailable note). With `--orchestrated`, return it or `PR_CANDIDATE_STALE` to the caller without user-facing Next Steps. Standalone: `Next (recommended): review the PR.` Add `spectre-code_review` only when an additional adversarial review is requested or the diff risk warrants it.
+
+Return the URL/body or `PR_CANDIDATE_STALE`; orchestrated calls add no next step. Standalone: `Next (recommended): review the PR.`
 
 ## Escalate-If
-- On `main`/`master`, or no commits ahead of `TARGET_BRANCH` → stop and ask; there is nothing to PR.
-- Expected candidate tuple is incomplete or differs after fetch → return `PR_CANDIDATE_STALE`; do not push or open a PR.
-- A secret/credential/PII appears in the diff → surface it; do not embed it in the body or open the PR until resolved.
-- The diff is large and intent cannot be grounded from commits/issue/branch → open as `--draft` with the `WHY` placeholder and flag the gap, rather than fabricating rationale.
+
+- Branch is main/master or has no target-ahead commits; candidate tuple is incomplete/different; branch/target/remote is unsafe; or the diff has secrets/PII.
+- Large intent is ungrounded: use the Why placeholder and draft, never fabricate.
