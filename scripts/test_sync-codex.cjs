@@ -1474,6 +1474,18 @@ test('ship opens the pending draft beside the full-suite lane then updates Testi
   assert.match(ship, /after the suite[\s\S]*final-update[\s\S]*Testing only/i);
 });
 
+test('create-pr final update pushes and rechecks a repaired candidate before Testing-only edit', () => {
+  const createPr = fs.readFileSync(path.join(
+    path.resolve(__dirname, '..'),
+    'plugins', 'spectre', 'skills', 'spectre-create_pr', 'SKILL.md',
+  ), 'utf8');
+
+  assert.match(
+    createPr,
+    /Final-update[\s\S]*clean repaired HEAD[\s\S]*pushes[\s\S]*re-resolves\/rechecks live tuple[\s\S]*only Testing/i,
+  );
+});
+
 test('ship composes focused skills without a proof prerequisite', () => {
   const repoRoot = path.resolve(__dirname, '..');
 

@@ -404,10 +404,20 @@ function codexUsage(totalTokens, inputTokens = totalTokens - 10, outputTokens = 
   };
 }
 
-function claudeUsage(inputTokens, outputTokens) {
+function claudeUsage(inputTokens, outputTokens, {
+  cacheCreationInputTokens = 0,
+  cacheReadInputTokens = 0,
+} = {}) {
   return {
     type: 'assistant',
-    message: { usage: { input_tokens: inputTokens, output_tokens: outputTokens } },
+    message: {
+      usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_creation_input_tokens: cacheCreationInputTokens,
+        cache_read_input_tokens: cacheReadInputTokens,
+      },
+    },
   };
 }
 
@@ -465,6 +475,33 @@ describe('workflow measurement runtime', () => {
       reasoningOutputTokens: 0,
       totalTokens: 0,
     });
+  });
+
+  it('includes Claude cache creation and read tokens in an exact stage delta', (t) => {
+    const hosts = measurementFixture(t);
+    const sessionId = '77777777-7777-4777-8777-777777777777';
+    const sessionPath = path.join(hosts.claudeProjectsDir, 'project', `${sessionId}.jsonl`);
+    const startUsage = claudeUsage(10, 5, {
+      cacheCreationInputTokens: 4,
+      cacheReadInputTokens: 6,
+    });
+    const finishUsage = claudeUsage(20, 7, {
+      cacheCreationInputTokens: 8,
+      cacheReadInputTokens: 9,
+    });
+    writeJsonl(sessionPath, [startUsage]);
+    const snapshot = startMeasurement({
+      label: 'Sweep',
+      now: () => 4_000,
+      env: { CLAUDE_SESSION_ID: sessionId },
+      hosts,
+    });
+    writeJsonl(sessionPath, [startUsage, finishUsage]);
+
+    const row = finishMeasurement({ snapshot, now: () => 4_100, hosts });
+    assert.equal(row.tokens, 44);
+    assert.equal(row.hostCounters.start.totalTokens, 25);
+    assert.equal(row.hostCounters.end.totalTokens, 69);
   });
 
   it('collapses unattributed concurrent pairs to one exact parallel-group total', (t) => {

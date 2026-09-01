@@ -26,17 +26,20 @@ function number(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-function counters(value = {}) {
+function counters(value = {}, { claude = false } = {}) {
   const inputTokens = number(value.input_tokens);
   const outputTokens = number(value.output_tokens);
+  const cachedInputTokens = claude
+    ? number(value.cache_creation_input_tokens) + number(value.cache_read_input_tokens)
+    : number(value.cached_input_tokens ?? value.cache_read_input_tokens);
   return {
     inputTokens,
-    cachedInputTokens: number(value.cached_input_tokens ?? value.cache_read_input_tokens),
+    cachedInputTokens,
     outputTokens,
     reasoningOutputTokens: number(value.reasoning_output_tokens),
-    totalTokens: Number.isSafeInteger(value.total_tokens) && value.total_tokens >= 0
+    totalTokens: !claude && Number.isSafeInteger(value.total_tokens) && value.total_tokens >= 0
       ? value.total_tokens
-      : inputTokens + outputTokens,
+      : inputTokens + cachedInputTokens + outputTokens,
   };
 }
 
@@ -108,7 +111,7 @@ function readClaudeCounters(filePath) {
   const read = readJsonLines(filePath, (entry) => {
     const usage = entry?.type === 'assistant' ? entry.message?.usage : null;
     if (usage) {
-      total = addCounters(total, counters(usage));
+      total = addCounters(total, counters(usage, { claude: true }));
       found = true;
     }
   });
