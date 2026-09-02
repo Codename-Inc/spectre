@@ -7,6 +7,14 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
+import {
+  readWorkflowRun,
+  summaryFor,
+} from '../plugins/spectre/hooks/scripts/workflow/store.mjs';
+import {
+  finishExecuteMeasurement,
+  startExecuteMeasurement,
+} from '../plugins/spectre/hooks/scripts/workflow/measurement.mjs';
 
 const CLI_PATH = path.resolve('bin/spectre.js');
 const BUNDLED_CLI_PATH = path.resolve('plugins/spectre/hooks/scripts/workflow-cli.mjs');
@@ -75,6 +83,140 @@ test('top-level and bundled workflow CLIs share stable JSON commands', (t) => {
   assert.equal(stageResult.ok, true);
   assert.match(stageResult.eventId, /^evt_/);
   assert.deepEqual(Object.keys(stageResult).sort(), ['eventId', 'ok']);
+});
+
+test('Execute runs retain explicit provenance and privacy-safe measurement defaults', async (t) => {
+  const value = makeFixture(t);
+  const bugRoot = path.join(value.projectDir, '.spectre', 'bugs', 'cli-bug');
+  const bugReport = path.join(bugRoot, 'bug-report.md');
+  const directPlan = path.join(value.projectDir, '.spectre', 'features', 'cli', 'specs', 'plan.md');
+  fs.mkdirSync(bugRoot, { recursive: true });
+  fs.writeFileSync(bugReport, '# Approved bug report\n');
+  fs.writeFileSync(directPlan, '# Direct plan\n');
+
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const cases = [
+    { source: value.sourcePath, origin: 'plan', category: 'plan', shape: 'structured', featureRoot: '.spectre/features/cli' },
+    { source: directPlan, origin: 'plan', category: 'plan-direct', shape: 'direct', featureRoot: '.spectre/features/cli' },
+    { source: bugReport, origin: 'fix', category: 'fix', shape: 'direct', featureRoot: '.spectre/bugs/cli-bug' },
+    { source: value.sourcePath, origin: 'delegate', category: 'delegate', shape: 'structured', featureRoot: '.spectre/features/cli' },
+  ];
+
+  for (const item of cases) {
+    const started = invoke(BUNDLED_CLI_PATH, [
+      'run', 'start', '--source', item.source, '--origin', item.origin, '--no-resume', ...common,
+    ], value);
+    assert.equal(started.status, 0, started.stderr);
+    const run = JSON.parse(started.stdout);
+    const { state } = await readWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: run.runId,
+    });
+    assert.deepEqual(state.provenance, {
+      category: item.category,
+      originWorkflow: item.origin,
+      executionShape: item.shape,
+    });
+    assert.equal(state.featureRoot, item.featureRoot);
+    assert.deepEqual(state.measurement, {
+      elapsedMs: 'unavailable',
+      elapsedStatus: 'unavailable',
+      totalTokens: 'unavailable',
+      primaryTokens: 'unavailable',
+      workerTokens: 'unavailable',
+      tokenStatus: 'unavailable',
+      reconciliationStatus: 'unavailable',
+    });
+  }
+
+  const terminalStart = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, '--origin', 'plan', '--no-resume', ...common,
+  ], value).stdout);
+  const terminal = invoke(BUNDLED_CLI_PATH, [
+    'run', 'finish', '--run-id', terminalStart.runId, '--actor-id', terminalStart.primaryActorId,
+    '--status', 'failed', ...common,
+  ], value);
+  assert.equal(terminal.status, 0, terminal.stderr);
+  const finished = await readWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: terminalStart.runId,
+  });
+  const summary = JSON.parse(fs.readFileSync(finished.paths.summaryPath, 'utf8'));
+  assert.equal(summary.measurement.elapsedStatus, 'complete');
+  assert.equal(typeof summary.measurement.elapsedMs, 'number');
+  assert.equal(summary.measurement.totalTokens, 'unavailable');
+
+  const legacy = summaryFor({
+    schemaVersion: 1,
+    runId: 'run_00000000-0000-4000-8000-000000000000',
+    workflow: 'execute',
+    status: 'failed',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    endedAt: '2026-01-01T00:01:00.000Z',
+    lastEventAt: '2026-01-01T00:01:00.000Z',
+    tasks: {},
+    actors: {},
+    contractHash: 'a'.repeat(64),
+    sourceDefinitionHash: 'b'.repeat(64),
+  }, []);
+  assert.equal(legacy.provenance.category, 'unknown');
+  assert.equal(legacy.measurement.totalTokens, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(legacy), /session|hostCounters|prompt|transcript|command/i);
+});
+
+test('Execute measurement reconciles only complete aggregate primary and worker counters', (t) => {
+  const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-execute-measurement-'));
+  t.after(() => fs.rmSync(sessions, { recursive: true, force: true }));
+  const hosts = { codexSessionsDir: sessions };
+  const writeUsage = (id, total) => fs.writeFileSync(
+    path.join(sessions, `session-${id}.jsonl`),
+    `${JSON.stringify({
+      type: 'event_msg',
+      payload: { type: 'token_count', info: { total_token_usage: { total_tokens: total } } },
+    })}\n`,
+  );
+  writeUsage('primary', 20);
+  const primary = startExecuteMeasurement({
+    now: () => 100,
+    env: { CODEX_SESSION_ID: 'primary' },
+    hosts,
+  });
+  writeUsage('primary', 31);
+  writeUsage('worker', 9);
+  const measurement = finishExecuteMeasurement({
+    primarySnapshot: primary,
+    workerSnapshots: [{
+      epochMs: 120,
+      session: { host: 'codex', id: 'worker' },
+      counters: { totalTokens: 5 },
+    }],
+    now: () => 150,
+    hosts,
+  });
+  assert.deepEqual(measurement, {
+    elapsedMs: 50,
+    elapsedStatus: 'complete',
+    totalTokens: 15,
+    primaryTokens: 11,
+    workerTokens: 4,
+    tokenStatus: 'complete',
+    reconciliationStatus: 'reconciled',
+  });
+
+  const unavailable = finishExecuteMeasurement({ primarySnapshot: null, now: () => 150, hosts });
+  assert.equal(unavailable.totalTokens, 'unavailable');
+  assert.equal(unavailable.reconciliationStatus, 'unavailable');
+
+  const missingWorker = finishExecuteMeasurement({
+    primarySnapshot: primary,
+    workersExpected: true,
+    now: () => 150,
+    hosts,
+  });
+  assert.equal(missingWorker.workerTokens, 'unavailable');
+  assert.equal(missingWorker.totalTokens, 'unavailable');
 });
 
 test('workflow CLI returns minimal confirmations across the task lifecycle', (t) => {

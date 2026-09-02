@@ -10,7 +10,7 @@ Orchestrate the source without placing implementation in primary context. Maximi
 
 ## Inputs
 
-- `$ARGUMENTS`: optional feature/artifact/plan path, wave hints, `--orchestrated`, and orchestrated-only `--finalization-owner parent`. Default owner: `self`.
+- `$ARGUMENTS`: optional feature/artifact/plan path, `--origin plan|fix|delegate`, wave hints, `--orchestrated`, and orchestrated-only `--finalization-owner parent`. Default owner: `self`. Callers provide origin; unknown stays `unknown` rather than inferred.
 - Optional `--review-profile final-only`, valid only with `--orchestrated --finalization-owner parent`; it defers intermediate review and requires the orchestrating caller to invoke `Skill(spectre-code_review)` exactly once on the final candidate. The caller owns sequencing, never semantic review. Default: risk-routed review.
 - `structured`: execute index + resolvable `tasks.json`; malformed structured input escalates, never becomes a plan.
 - `plan-direct`: any other explicit readable plan, or a plan whose header records `Execution Mode: direct`; it alone owns requirements; never rewrite, approve, or route it through `spectre-create_tasks`.
@@ -21,7 +21,7 @@ Orchestrate the source without placing implementation in primary context. Maximi
 - Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Keep the invocation checkout.
 - Structured detail precedence: declared `Tasks JSON` → adjacent `tasks.json` → sibling `.tasks.json`; else escalate. Read the index whole and task detail by targeted slices.
-- Structured and plan-direct modes read `references/telemetry.md`, start/resume one local event run, and follow its primary/worker task authority contract; that local store is the sole lifecycle/progress authority and source plans/tasks remain immutable. Plan-direct emits workstream-granularity events. Telemetry failure degrades observation, never delivery authority.
+- Structured and plan-direct modes read `references/telemetry.md`, start/resume one local event run with explicit caller origin, and follow its primary/worker task authority contract; that local store is the sole lifecycle/progress authority and source plans/tasks remain immutable. Terminal summaries retain origin, actual execution shape, category, elapsed time, and aggregate primary/worker token measurements only; unavailable is explicit. Plan-direct emits workstream-granularity events. Telemetry failure degrades observation, never delivery authority.
 - `SCOPE_DOCS`: structured manifest paths or scope/UX/research paths cited by the plan.
 - On first plan-direct use/resume, read `references/plan-direct.md`. On the first verification failure, review finding, E2E gap, or proof failure, read `references/repair-policy.md`.
 - Maintain a compact local verification ledger by HEAD, stable check id, changed/dependency surface, result, attribution, and disposition; it controls final reruns. Never persist raw output or per-wave evidence/checkpoint/report files.

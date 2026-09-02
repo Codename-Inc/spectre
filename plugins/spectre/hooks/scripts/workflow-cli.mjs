@@ -16,8 +16,10 @@ import {
   startPlanTelemetry,
 } from './workflow/plan-telemetry.mjs';
 import {
+  finishExecuteMeasurement,
   finishMeasurement,
   persistShipMeasurement,
+  startExecuteMeasurement,
   startMeasurement,
   summarizeMeasurement,
 } from './workflow/measurement.mjs';
@@ -27,6 +29,10 @@ import {
   recordWorkflowEvents,
   startWorkflowRun,
 } from './workflow/store.mjs';
+
+// These snapshots are deliberately process-local. A fresh CLI process has no
+// raw host counter baseline, so terminal token fields degrade to unavailable.
+const executeMeasurements = new Map();
 
 // Resume reads one bit: is this task accepted, or must it be redone? `assigned`,
 // `in_progress`, and `submitted` collapse so a submission — which is never
@@ -64,7 +70,7 @@ function parseArgs(argv) {
 function usage() {
   return [
     'Usage:',
-    '  spectre-workflow run start --source <tasks.json> [--owner self|parent] [--provider <id> --model <id> --effort <id>] [--project-dir <path>] --json',
+    '  spectre-workflow run start --source <tasks.json|plan.md|bug-report.md> [--origin plan|fix|delegate] [--owner self|parent] [--provider <id> --model <id> --effort <id>] [--project-dir <path>] --json',
     '  spectre-workflow run status --run-id <id> [--project-dir <path>] --json',
     '  spectre-workflow run finish --run-id <id> --actor-id <id> --status <status> --json',
     '  spectre-workflow stage|phase|wave start|finish --run-id <id> --actor-id <id> --id <value> --json',
@@ -193,7 +199,13 @@ async function runCommand(action, flags) {
       provider: flags.get('--provider') || null,
       model: flags.get('--model') || null,
       effort: flags.get('--effort') || null,
+      origin: flags.get('--origin') || flags.get('--origin-workflow') || null,
       resume: flags.get('--no-resume') ? false : true,
+    });
+    if (!result.resumed) executeMeasurements.set(result.runId, {
+      primarySnapshot: startExecuteMeasurement(),
+      workerSnapshots: [],
+      workersExpected: false,
     });
     return result;
   }
@@ -218,11 +230,22 @@ async function runCommand(action, flags) {
     interrupted: 'run.interrupted',
   }[status];
   if (!type) throw codedError('INVALID_RUN_STATUS', `Invalid run status ${status}`);
-  return record(flags, [{
+  const snapshot = executeMeasurements.get(required(flags, '--run-id'));
+  const measurement = snapshot
+    ? finishExecuteMeasurement(snapshot)
+    : undefined;
+  const result = await record(flags, [{
     type,
     actorId: required(flags, '--actor-id'),
-    payload: { reasonCode: flags.get('--reason') || null },
+    payload: {
+      reasonCode: flags.get('--reason') || null,
+      ...(measurement ? { measurement } : {}),
+    },
   }], `run:finish:${required(flags, '--run-id')}:${status}`);
+  if (['implementation_ready', 'passed', 'failed', 'interrupted'].includes(status)) {
+    executeMeasurements.delete(required(flags, '--run-id'));
+  }
+  return result;
 }
 
 async function boundaryCommand(kind, action, flags) {
@@ -281,6 +304,8 @@ async function agentCommand(action, flags) {
       idempotencyKey(flags, `agent:dispatch:${runId}:${taskIds.join(',')}`),
     );
     const dispatched = result.events[0];
+    const executeMeasurement = executeMeasurements.get(runId);
+    if (executeMeasurement) executeMeasurement.workersExpected = true;
     return {
       ...result,
       workerActorId: dispatched?.payload?.workerActorId || workerActorId,

@@ -18,22 +18,21 @@ Standalone approval-gated bug workflow. Delegate diagnosis and repair mechanics 
 - Affected paths, history, analysts, tests, and diagnostics are owned by the core and read just-in-time.
 
 ## Outputs + DONE
-The core's full diagnosis and experience contract rendered in-thread, mirrored in full into a self-locating managed repair plan at `{BUG_ROOT}/bug-report.md` before code mutation, recording `Bug`, `Bug Root`, `Status`, and the reported problem in the user's own words, plus a verified fix. DONE when:
+The core's full diagnosis and experience contract rendered in-thread, mirrored in full into a self-locating managed repair plan at `{BUG_ROOT}/bug-report.md` before code mutation, recording `Bug`, `Bug Root`, `Status`, and the reported problem in the user's own words, plus an explicit Execute handoff. DONE when:
 - Root cause and candidate repair boundary are grounded, not symptom-suppressed — name the cause and affected files.
 - The transcript carries every contract row with its evidence; the plan beneath the managed bug root matches it. A file path is not a presentation.
 - Before code, the user approves the current→expected product experience, preserved invariants, and disclosed collateral changes.
-- The intended regression is confirmed RED before GREEN; risk-proportional invariant checks protect adjacent behavior.
-- Fix includes `[🪳 TEMP {TOPIC}]`-prefixed debug logging to confirm the fix and gather data if it fails.
-- At close the report `Status` becomes `fixed|partial|blocked` and its Outcome maps delivered behavior, side effects, limitations, changed files, and checks to the approved contract with exact validation steps.
+- The completed handoff gives the exact approved bug-report path, explicit `fix` origin, and one copy-ready Execute invocation that works in a fresh session.
+- Command display is non-mutating: it does not begin repair or transfer approval beyond the approved diagnosis/experience contract.
 
 ## Method / guardrails
 1. Run `Skill(spectre-fix-core)` with the bug report, `PHASE=diagnose`, and `--orchestrated`; require `DIAGNOSIS_READY` and reject symptom-only explanations.
 2. Present the experience contract first in product language: what users do and observe now, what they will do and observe after repair, and which adjacent journeys change or remain unchanged. Then present the root cause, affected files, repair boundary, and verification plan; resolve every `unresolved` row. Mirror that render into `{BUG_ROOT}/bug-report.md`, using a scoped name if one already exists; never alter canonical Scope or overwrite a reviewed plan. **YOU MUST hold for user approval here — do NOT write code (HoldForApproval).**
-3. After approval, run the core with the exact diagnosis and approved experience contract, `PHASE=repair`, `USER_APPROVED_FIX_CONTRACT=true`, and `--orchestrated`; require `FIX_COMPLETE`.
-4. Report the Outcome and `Status` in-thread, then mirror both into the report, including when blocked or escalating. Never set parent authorization on the user's behalf. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval.
+3. After approval, keep `{BUG_ROOT}/bug-report.md` immutable as the repair authority and present exactly one copy-ready Execute invocation with explicit `fix` provenance: the host-specific `spectre-execute {BUG_ROOT}/bug-report.md --origin fix` command. Do not run `spectre-fix-core` repair from this user-facing parent.
+4. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval. Displaying the command never starts repair or grants execution approval.
 
 ## Handoff
-Map actual behavior and evidence to every approved experience-contract row, then give concrete validation steps. The closeout route commits the report, not fix. Recommend `/spectre:prove` for repaired user-observable behavior, `/spectre:test` only for a concrete remaining coverage gap, or `/spectre:clean` only when proof is explicitly deferred. Emit one primary route tied to the observed repair state.
+Return the approved diagnosis/experience contract and the copy-ready Execute route. The closeout route commits the report, not repair. Emit one primary route tied to the approved handoff.
 
 ## Escalate-If
 - Bug report is empty or too thin to form hypotheses → ask the user for error, repro, and context.

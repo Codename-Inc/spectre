@@ -10,6 +10,7 @@ import {
   resolveProjectStore,
   withStoreLock,
 } from '../knowledge/store.mjs';
+import { executeUnavailableMeasurement } from './measurement.mjs';
 
 const WORKFLOW_SCHEMA_VERSION = 1;
 const TERMINAL_RUN_STATUSES = new Set([
@@ -23,6 +24,7 @@ const RUN_ID_PATTERN = /^run_[0-9a-f-]{36}$/;
 const ACTOR_ID_PATTERN = /^actor_[0-9a-f-]{36}$/;
 const SAFE_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ROUTING_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const EXECUTE_ORIGINS = new Set(['plan', 'fix', 'delegate', 'unknown']);
 
 function codedError(code, message) {
   const error = new Error(message);
@@ -150,7 +152,9 @@ export function readTaskSource(projectDir, sourcePath) {
       relativePath,
       rawHash: sha256(raw),
       definitionHash: sha256(raw),
-      featureRoot: path.dirname(path.dirname(relativePath)),
+      featureRoot: path.basename(relativePath) === 'bug-report.md'
+        ? path.dirname(relativePath)
+        : path.dirname(path.dirname(relativePath)),
       tasks: {},
       planDirect: true,
     };
@@ -175,6 +179,64 @@ export function readTaskSource(projectDir, sourcePath) {
     definitionHash: sha256(JSON.stringify(stripTaskStatuses(document))),
     featureRoot: document.meta?.feature_root || path.dirname(path.dirname(relativePath)),
     tasks,
+  };
+}
+
+function normalizeOriginWorkflow(value) {
+  if (value === null || value === undefined || value === '') return 'unknown';
+  if (!EXECUTE_ORIGINS.has(value)) {
+    throw codedError('INVALID_EXECUTE_ORIGIN', 'Execute origin must be plan, fix, delegate, or unknown');
+  }
+  return value;
+}
+
+function provenanceFor(origin, source) {
+  const originWorkflow = normalizeOriginWorkflow(origin);
+  const executionShape = source?.planDirect ? 'direct' : 'structured';
+  const category = originWorkflow === 'fix' || originWorkflow === 'delegate'
+    ? originWorkflow
+    : originWorkflow === 'plan' && executionShape === 'direct'
+      ? 'plan-direct'
+      : originWorkflow === 'plan'
+        ? 'plan'
+        : 'unknown';
+  return { category, originWorkflow, executionShape };
+}
+
+function measurementForState(value) {
+  const fallback = executeUnavailableMeasurement();
+  if (!value || typeof value !== 'object') return fallback;
+  const validNumber = (number) => Number.isSafeInteger(number) && number >= 0;
+  const tokens = ['totalTokens', 'primaryTokens', 'workerTokens'];
+  const result = {
+    elapsedMs: validNumber(value.elapsedMs) ? value.elapsedMs : fallback.elapsedMs,
+    elapsedStatus: validNumber(value.elapsedMs) ? 'complete' : 'unavailable',
+    totalTokens: validNumber(value.totalTokens) ? value.totalTokens : fallback.totalTokens,
+    primaryTokens: validNumber(value.primaryTokens) ? value.primaryTokens : fallback.primaryTokens,
+    workerTokens: validNumber(value.workerTokens) ? value.workerTokens : fallback.workerTokens,
+    tokenStatus: 'unavailable',
+    reconciliationStatus: 'unavailable',
+  };
+  if (tokens.every((field) => validNumber(value[field]))
+    && result.totalTokens === result.primaryTokens + result.workerTokens) {
+    result.tokenStatus = 'complete';
+    result.reconciliationStatus = 'reconciled';
+  }
+  return result;
+}
+
+function terminalMeasurementFor(state, value, endedAt) {
+  const measurement = measurementForState(value);
+  if (measurement.elapsedStatus === 'complete') return measurement;
+  const startedAt = Date.parse(state.startedAt);
+  const endedAtMs = Date.parse(endedAt);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAtMs) || endedAtMs < startedAt) {
+    return measurement;
+  }
+  return {
+    ...measurement,
+    elapsedMs: endedAtMs - startedAt,
+    elapsedStatus: 'complete',
   };
 }
 
@@ -511,6 +573,7 @@ function applyEvent(state, event) {
       assertAllTasksTerminal(state);
       state.status = 'implementation_ready';
       state.endedAt = event.timestamp;
+      state.measurement = terminalMeasurementFor(state, event.payload?.measurement, event.timestamp);
       break;
     case 'run.completed':
       requirePrimary(state, event.actorId);
@@ -523,11 +586,13 @@ function applyEvent(state, event) {
       }
       state.status = 'passed';
       state.endedAt = event.timestamp;
+      state.measurement = terminalMeasurementFor(state, event.payload?.measurement, event.timestamp);
       break;
     case 'run.failed':
       requirePrimary(state, event.actorId);
       state.status = 'failed';
       state.endedAt = event.timestamp;
+      state.measurement = terminalMeasurementFor(state, event.payload?.measurement, event.timestamp);
       break;
     case 'run.blocked':
       requirePrimary(state, event.actorId);
@@ -537,6 +602,7 @@ function applyEvent(state, event) {
       requirePrimary(state, event.actorId);
       state.status = 'interrupted';
       state.endedAt = event.timestamp;
+      state.measurement = terminalMeasurementFor(state, event.payload?.measurement, event.timestamp);
       break;
     default:
       throw codedError('UNKNOWN_WORKFLOW_EVENT', `Unknown event type ${event.type}`);
@@ -614,6 +680,12 @@ function summaryFor(state, events) {
     routing,
     contractHash: state.contractHash,
     sourceDefinitionHash: state.sourceDefinitionHash,
+    provenance: state.provenance || {
+      category: 'unknown',
+      originWorkflow: 'unknown',
+      executionShape: 'unknown',
+    },
+    measurement: measurementForState(state.measurement),
   };
 }
 
@@ -640,6 +712,7 @@ export async function startWorkflowRun(options) {
     }
   }
   const source = readTaskSource(projectDir, options.source);
+  const provenance = provenanceFor(options.origin, source);
   const checkout = checkoutMetadata(projectDir);
   const contractHash = executeContractHash(options);
   const resolved = await resolveProjectStore(projectDir, { spectreHome: options.spectreHome });
@@ -662,6 +735,7 @@ export async function startWorkflowRun(options) {
           && candidate.sourcePath === source.relativePath
           && candidate.featureRoot === source.featureRoot
           && candidate.contractHash === contractHash
+          && candidate.provenance?.originWorkflow === provenance.originWorkflow
         ) {
           return {
             ok: true,
@@ -692,6 +766,8 @@ export async function startWorkflowRun(options) {
       sourceDefinitionHash: source.definitionHash,
       featureRoot: source.featureRoot,
       planDirect: source.planDirect || false,
+      provenance,
+      measurement: executeUnavailableMeasurement(),
       contractHash,
       primaryActorId,
       startedAt,
@@ -736,6 +812,8 @@ export async function startWorkflowRun(options) {
         sourceRawHash: source.rawHash,
         sourceDefinitionHash: source.definitionHash,
         featureRoot: source.featureRoot,
+        provenance,
+        measurement: state.measurement,
         contractHash,
         provider: options.provider || null,
         model: options.model || null,

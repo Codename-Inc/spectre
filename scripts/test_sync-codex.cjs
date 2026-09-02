@@ -1021,8 +1021,9 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
     assert.doesNotMatch(route, /≤1-file|≤5 files|Hard-stops:|automatic COMPREHENSIVE/i);
     assert.match(plan, /immutable canonical scope/i);
     assert.match(plan, /high-level-design-gate\.md/i);
-    assert.match(plan, /final pre-code approval/i);
-    assert.match(plan, /every size/i);
+    assert.match(plan, /Do not require a final `Approved` reply/i);
+    assert.match(plan, /displaying the command is non-mutating/i);
+    assert.match(plan, /explicit `--origin plan`/i);
     assert.match(plan, /one plan-review pipeline/i);
     assert.match(plan, /XL[^\n]*spectre-task_review[^\n]*--finalize-index[^\n]*validate-pair/);
     assert.doesNotMatch(plan, /goal-prompts\.md/);
@@ -1293,7 +1294,7 @@ test('workflow artifacts keep canonical decisions and proof while lifecycle resi
   }
 });
 
-test('Fix persists an approval-gated managed repair plan before mutation', () => {
+test('Fix persists an approval-gated managed repair plan before its Execute handoff', () => {
   const repoRoot = path.resolve(__dirname, '..');
   for (const rootName of ['spectre', 'spectre-codex']) {
     const fix = fs.readFileSync(
@@ -1313,13 +1314,13 @@ test('Fix persists an approval-gated managed repair plan before mutation', () =>
     assert.doesNotMatch(fix, /specs\/plan\.md/);
     assert.match(fix, /`KIND=bug`/);
     assert.match(fix, /Never adopt an ambient feature root/);
-    assert.match(fix, /`fixed\|partial\|blocked`/);
-    assert.match(fix, /including when blocked or escalating/);
+    assert.match(fix, /explicit `fix` provenance/i);
+    assert.match(fix, /Displaying the command never starts repair/i);
+    assert.doesNotMatch(fix, /PHASE=repair/);
 
     // The transcript is the decision surface; bug-report.md is the matching record.
     assert.match(fix, /rendered in-thread/i);
     assert.match(fix, /A file path is not a presentation/);
-    assert.match(fix, /Report the Outcome and `Status` in-thread/);
     const presentIndex = fix.indexOf('Present the experience contract first');
     const mirrorIndex = fix.indexOf('Mirror that render into');
     assert.ok(presentIndex !== -1 && mirrorIndex !== -1);

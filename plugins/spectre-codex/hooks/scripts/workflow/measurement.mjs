@@ -224,6 +224,79 @@ function unavailableRow(snapshot, elapsedMs) {
   };
 }
 
+function executeUnavailableMeasurement() {
+  return {
+    elapsedMs: 'unavailable',
+    elapsedStatus: 'unavailable',
+    totalTokens: 'unavailable',
+    primaryTokens: 'unavailable',
+    workerTokens: 'unavailable',
+    tokenStatus: 'unavailable',
+    reconciliationStatus: 'unavailable',
+  };
+}
+
+function executeSnapshotResult(snapshot, { now = Date.now, hosts = {} } = {}) {
+  if (!snapshot || !Number.isSafeInteger(snapshot.epochMs)) {
+    return { elapsedMs: 'unavailable', elapsedStatus: 'unavailable', tokens: 'unavailable' };
+  }
+  const elapsedMs = Math.max(0, now() - snapshot.epochMs);
+  const current = readHostSession(snapshot.session, hosts);
+  if (!current || !snapshot.counters) {
+    return { elapsedMs, elapsedStatus: 'complete', tokens: 'unavailable' };
+  }
+  const tokens = current.counters.totalTokens - snapshot.counters.totalTokens;
+  return {
+    elapsedMs,
+    elapsedStatus: 'complete',
+    tokens: Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : 'unavailable',
+  };
+}
+
+// Execute snapshots remain caller memory. This module intentionally returns only
+// aggregate values; session identities and counter snapshots never cross into
+// durable workflow state.
+export function startExecuteMeasurement({ now = Date.now, env = process.env, hosts = {} } = {}) {
+  const detected = detectHostSession(env, hosts);
+  return {
+    epochMs: now(),
+    session: detected?.session || null,
+    counters: detected?.counters || null,
+  };
+}
+
+export function finishExecuteMeasurement({
+  primarySnapshot,
+  workerSnapshots = [],
+  workersExpected = false,
+  now = Date.now,
+  hosts = {},
+} = {}) {
+  const primary = executeSnapshotResult(primarySnapshot, { now, hosts });
+  const workers = workerSnapshots.map((snapshot) => executeSnapshotResult(snapshot, { now, hosts }));
+  const primaryAvailable = Number.isSafeInteger(primary.tokens);
+  const workersAvailable = workers.length > 0
+    ? workers.every((worker) => Number.isSafeInteger(worker.tokens))
+    : !workersExpected;
+  const workerTokens = workersAvailable
+    ? workers.reduce((total, worker) => total + worker.tokens, 0)
+    : 'unavailable';
+  const totalTokens = primaryAvailable && workersAvailable
+    ? primary.tokens + workerTokens
+    : 'unavailable';
+  return {
+    elapsedMs: primary.elapsedMs,
+    elapsedStatus: primary.elapsedStatus,
+    totalTokens,
+    primaryTokens: primaryAvailable ? primary.tokens : 'unavailable',
+    workerTokens,
+    tokenStatus: Number.isSafeInteger(totalTokens) ? 'complete' : 'unavailable',
+    reconciliationStatus: Number.isSafeInteger(totalTokens) ? 'reconciled' : 'unavailable',
+  };
+}
+
+export { executeUnavailableMeasurement };
+
 export function startMeasurement({ label, now = Date.now, env = process.env, hosts = {} }) {
   if (!LABELS.has(label)) {
     throw measurementError('INVALID_MEASUREMENT_LABEL', `Unsupported measurement label ${label}`);
