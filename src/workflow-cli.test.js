@@ -39,10 +39,10 @@ function makeFixture(t) {
   return { root, projectDir, spectreHome, sourcePath };
 }
 
-function invoke(script, args, value) {
+function invoke(script, args, value, env = {}) {
   return spawnSync(process.execPath, [script, ...args], {
     cwd: value.projectDir,
-    env: { ...process.env, SPECTRE_HOME: value.spectreHome },
+    env: { ...process.env, SPECTRE_HOME: value.spectreHome, ...env },
     encoding: 'utf8',
   });
 }
@@ -166,6 +166,118 @@ test('Execute runs retain explicit provenance and privacy-safe measurement defau
   assert.doesNotMatch(JSON.stringify(legacy), /session|hostCounters|prompt|transcript|command/i);
 });
 
+test('Execute resumes legacy or origin-unknown runs without weakening explicit origin matching', async (t) => {
+  const value = makeFixture(t);
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const started = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, '--origin', 'plan', ...common,
+  ], value).stdout);
+  const omittedOrigin = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, ...common,
+  ], value).stdout);
+  assert.equal(omittedOrigin.resumed, true);
+  assert.equal(omittedOrigin.runId, started.runId);
+  const closePlan = invoke(BUNDLED_CLI_PATH, [
+    'run', 'finish', '--run-id', started.runId, '--actor-id', started.primaryActorId,
+    '--status', 'failed', ...common,
+  ], value);
+  assert.equal(closePlan.status, 0, closePlan.stderr);
+
+  const explicitFix = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, '--origin', 'fix', ...common,
+  ], value).stdout);
+  assert.notEqual(explicitFix.runId, started.runId);
+
+  const { paths } = await readWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: explicitFix.runId,
+  });
+  const legacy = JSON.parse(fs.readFileSync(paths.statePath, 'utf8'));
+  delete legacy.provenance;
+  fs.writeFileSync(paths.statePath, JSON.stringify(legacy));
+  const legacyResume = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, ...common,
+  ], value).stdout);
+  assert.equal(legacyResume.resumed, true);
+  assert.equal(legacyResume.runId, explicitFix.runId);
+});
+
+test('Execute accepts empty origin, preserves scoped bug roots, and round-trips transient measurements', async (t) => {
+  const value = makeFixture(t);
+  const common = ['--project-dir', value.projectDir, '--json'];
+  const scopedBugRoot = path.join(value.projectDir, '.spectre', 'bugs', 'scoped');
+  const scopedBugReport = path.join(scopedBugRoot, 'bug-report-login.md');
+  fs.mkdirSync(scopedBugRoot, { recursive: true });
+  fs.writeFileSync(scopedBugReport, '# Approved scoped bug report\n');
+  const emptyOrigin = invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', scopedBugReport, '--origin', '', ...common,
+  ], value);
+  assert.equal(emptyOrigin.status, 0, emptyOrigin.stderr);
+  const scoped = JSON.parse(emptyOrigin.stdout);
+  const scopedState = await readWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: scoped.runId,
+  });
+  assert.equal(scopedState.state.provenance.originWorkflow, 'unknown');
+  assert.equal(scopedState.state.featureRoot, '.spectre/bugs/scoped');
+
+  const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-execute-cli-measurement-'));
+  t.after(() => fs.rmSync(sessions, { recursive: true, force: true }));
+  const writeUsage = (id, total) => fs.writeFileSync(
+    path.join(sessions, `session-${id}.jsonl`),
+    `${JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { total_tokens: total } } } })}\n`,
+  );
+  const primaryEnv = { SPECTRE_CODEX_SESSIONS_DIR: sessions, CODEX_SESSION_ID: 'primary' };
+  const workerEnv = { SPECTRE_CODEX_SESSIONS_DIR: sessions, CODEX_SESSION_ID: 'worker' };
+  writeUsage('primary', 20);
+  const run = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'run', 'start', '--source', value.sourcePath, '--origin', 'plan', '--no-resume', ...common,
+  ], value, primaryEnv).stdout);
+  assert.equal(run.measurementSnapshot.counters.totalTokens, 20);
+  writeUsage('primary', 31);
+  const dispatched = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'agent', 'dispatch', '--run-id', run.runId, '--actor-id', run.primaryActorId,
+    '--tasks', '1.1', ...common,
+  ], value, primaryEnv).stdout);
+  writeUsage('worker', 5);
+  const workerStart = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+    'agent', 'start', '--run-id', run.runId, '--actor-id', dispatched.workerActorId,
+    '--assignment-id', dispatched.assignmentId, ...common,
+  ], value, workerEnv).stdout);
+  writeUsage('worker', 12);
+  const workerFinish = invoke(BUNDLED_CLI_PATH, [
+    'agent', 'finish', '--run-id', run.runId, '--actor-id', dispatched.workerActorId,
+    '--assignment-id', dispatched.assignmentId, '--measurement-snapshot', JSON.stringify(workerStart.measurementSnapshot),
+    ...common,
+  ], value, workerEnv);
+  assert.equal(workerFinish.status, 0, workerFinish.stderr);
+  const terminal = invoke(BUNDLED_CLI_PATH, [
+    'run', 'finish', '--run-id', run.runId, '--actor-id', run.primaryActorId, '--status', 'failed',
+    '--measurement-snapshot', JSON.stringify(run.measurementSnapshot), ...common,
+  ], value, primaryEnv);
+  assert.equal(terminal.status, 0, terminal.stderr);
+  const finished = await readWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: run.runId,
+  });
+  const summary = JSON.parse(fs.readFileSync(finished.paths.summaryPath, 'utf8'));
+  assert.deepEqual(summary.measurement, {
+    elapsedMs: summary.measurement.elapsedMs,
+    elapsedStatus: 'complete',
+    totalTokens: 18,
+    primaryTokens: 11,
+    workerTokens: 7,
+    tokenStatus: 'complete',
+    reconciliationStatus: 'reconciled',
+  });
+  assert.doesNotMatch(JSON.stringify(summary), /session|hostCounters|raw|snapshot/i);
+  const projectStore = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+  assert.equal(fs.existsSync(path.join(projectStore.storePath, 'measurements')), false);
+});
+
 test('Execute measurement reconciles only complete aggregate primary and worker counters', (t) => {
   const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-execute-measurement-'));
   t.after(() => fs.rmSync(sessions, { recursive: true, force: true }));
@@ -228,8 +340,9 @@ test('workflow CLI returns minimal confirmations across the task lifecycle', (t)
   ], value).stdout);
   assert.deepEqual(
     Object.keys(run).sort(),
-    ['ok', 'primaryActorId', 'resumed', 'runId', 'status'],
+    ['measurementSnapshot', 'ok', 'primaryActorId', 'resumed', 'runId', 'status'],
   );
+  assert.equal(typeof run.measurementSnapshot.epochMs, 'number');
 
   const ids = ['--run-id', run.runId, '--actor-id', run.primaryActorId];
   const dispatch = invoke(BUNDLED_CLI_PATH, [

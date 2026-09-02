@@ -30,10 +30,6 @@ import {
   startWorkflowRun,
 } from './workflow/store.mjs';
 
-// These snapshots are deliberately process-local. A fresh CLI process has no
-// raw host counter baseline, so terminal token fields degrade to unavailable.
-const executeMeasurements = new Map();
-
 // Resume reads one bit: is this task accepted, or must it be redone? `assigned`,
 // `in_progress`, and `submitted` collapse so a submission — which is never
 // acceptance without a passing gate — can never read as done.
@@ -57,7 +53,7 @@ function parseArgs(argv) {
       continue;
     }
     const next = argv[index + 1];
-    if (!next || next.startsWith('--')) {
+    if (next === undefined || next.startsWith('--')) {
       flags.set(value, true);
       continue;
     }
@@ -144,6 +140,7 @@ function confirmation(resource, action, result) {
       runId: result.runId,
       primaryActorId: result.primaryActorId,
       status: result.status,
+      measurementSnapshot: result.measurementSnapshot || null,
     };
   }
   const compact = { ok: true };
@@ -155,6 +152,9 @@ function confirmation(resource, action, result) {
     compact.workerActorId = result.workerActorId;
     compact.assignmentId = result.assignmentId;
     compact.taskIds = result.taskIds;
+  }
+  if (resource === 'agent' && action === 'start') {
+    compact.measurementSnapshot = result.measurementSnapshot || null;
   }
   return compact;
 }
@@ -175,6 +175,20 @@ function outputResult(result, compact, flags, output = process.stdout) {
 function idempotencyKey(flags, fallback) {
   const explicit = flags.get('--idempotency-key');
   return explicit && explicit !== true ? String(explicit) : fallback;
+}
+
+function measurementSnapshot(flags) {
+  const value = flags.get('--measurement-snapshot');
+  if (value === undefined || value === true || value === '') return null;
+  try {
+    const snapshot = JSON.parse(value);
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      throw new Error('not an object');
+    }
+    return snapshot;
+  } catch {
+    throw codedError('INVALID_MEASUREMENT_SNAPSHOT', '--measurement-snapshot must be a JSON object');
+  }
 }
 
 async function record(flags, events, fallbackKey) {
@@ -199,15 +213,13 @@ async function runCommand(action, flags) {
       provider: flags.get('--provider') || null,
       model: flags.get('--model') || null,
       effort: flags.get('--effort') || null,
-      origin: flags.get('--origin') || flags.get('--origin-workflow') || null,
+      origin: typeof flags.get('--origin') === 'string' ? flags.get('--origin') : null,
       resume: flags.get('--no-resume') ? false : true,
     });
-    if (!result.resumed) executeMeasurements.set(result.runId, {
-      primarySnapshot: startExecuteMeasurement(),
-      workerSnapshots: [],
-      workersExpected: false,
-    });
-    return result;
+    return {
+      ...result,
+      measurementSnapshot: result.resumed ? null : startExecuteMeasurement(),
+    };
   }
   if (action === 'status') {
     const { state } = await readWorkflowRun({
@@ -230,9 +242,9 @@ async function runCommand(action, flags) {
     interrupted: 'run.interrupted',
   }[status];
   if (!type) throw codedError('INVALID_RUN_STATUS', `Invalid run status ${status}`);
-  const snapshot = executeMeasurements.get(required(flags, '--run-id'));
+  const snapshot = measurementSnapshot(flags);
   const measurement = snapshot
-    ? finishExecuteMeasurement(snapshot)
+    ? finishExecuteMeasurement({ primarySnapshot: snapshot })
     : undefined;
   const result = await record(flags, [{
     type,
@@ -242,9 +254,6 @@ async function runCommand(action, flags) {
       ...(measurement ? { measurement } : {}),
     },
   }], `run:finish:${required(flags, '--run-id')}:${status}`);
-  if (['implementation_ready', 'passed', 'failed', 'interrupted'].includes(status)) {
-    executeMeasurements.delete(required(flags, '--run-id'));
-  }
   return result;
 }
 
@@ -304,8 +313,6 @@ async function agentCommand(action, flags) {
       idempotencyKey(flags, `agent:dispatch:${runId}:${taskIds.join(',')}`),
     );
     const dispatched = result.events[0];
-    const executeMeasurement = executeMeasurements.get(runId);
-    if (executeMeasurement) executeMeasurement.workersExpected = true;
     return {
       ...result,
       workerActorId: dispatched?.payload?.workerActorId || workerActorId,
@@ -317,12 +324,22 @@ async function agentCommand(action, flags) {
     throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown agent command ${action}`);
   }
   const actorId = required(flags, '--actor-id');
-  return record(flags, [{
+  const snapshot = action === 'finish' ? measurementSnapshot(flags) : null;
+  const finishedMeasurement = snapshot
+    ? finishExecuteMeasurement({ primarySnapshot: snapshot })
+    : null;
+  const result = await record(flags, [{
     type: action === 'start' ? 'agent.started' : 'agent.completed',
     actorId,
     assignmentId: flags.get('--assignment-id') || undefined,
-    payload: { result: flags.get('--result') || null },
+    payload: {
+      result: flags.get('--result') || null,
+      ...(finishedMeasurement ? { measurement: { tokens: finishedMeasurement.primaryTokens } } : {}),
+    },
   }], `agent:${action}:${runId}:${actorId}`);
+  return action === 'start'
+    ? { ...result, measurementSnapshot: startExecuteMeasurement() }
+    : result;
 }
 
 async function taskCommand(action, flags) {
