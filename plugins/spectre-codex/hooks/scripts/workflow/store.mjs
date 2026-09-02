@@ -474,13 +474,19 @@ function applyEvent(state, event) {
     case 'agent.completed': {
       const current = actor(state, event.actorId);
       current.state = 'completed';
-      if (current.role === 'worker') {
-        const tokens = event.payload?.measurement?.tokens;
-        state.workerMeasurements ||= {};
-        state.workerMeasurements[event.actorId] = {
-          tokens: Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : 'unavailable',
-        };
+      break;
+    }
+    case 'agent.measured': {
+      requirePrimary(state, event.actorId);
+      const worker = actor(state, event.payload?.workerActorId);
+      if (worker.role !== 'worker') {
+        throw codedError('INVALID_MEASUREMENT_TARGET', `${worker.id} is not a worker actor`);
       }
+      const tokens = event.payload?.measurement?.tokens;
+      state.workerMeasurements ||= {};
+      state.workerMeasurements[worker.id] = {
+        tokens: Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : 'unavailable',
+      };
       break;
     }
     case 'task.assigned': {

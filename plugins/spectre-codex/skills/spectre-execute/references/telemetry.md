@@ -53,13 +53,21 @@ Emit the dispatch below; the store moves the selected parent and child tasks to 
 node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" agent dispatch --run-id "$RUN_ID" --actor-id "$PRIMARY_ACTOR_ID" --tasks "<comma-separated parent+subtask ids>" --attempt <N> --idempotency-key "dispatch:$RUN_ID:<batch>:<N>" --project-dir "$PROJECT_ROOT" --json
 ```
 
-When routing is known, append `--provider "<provider>" --model "<worker-model>" --effort "<effort>"` to `agent dispatch`. Pass the returned `workerActorId`, `assignmentId`, exact task ids/attempt, recorded provider/model/effort, project root, and command name `node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs"` inside `<workflow_telemetry>`. Omit unknown routing values; never guess. The worker:
+When routing is known, append `--provider "<provider>" --model "<worker-model>" --effort "<effort>"` to `agent dispatch`. Retain its returned transient `measurementSnapshot` and the host-provided child identity only in primary caller memory. Pass the returned `workerActorId`, `assignmentId`, exact task ids/attempt, recorded provider/model/effort, project root, and command name `node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs"` inside `<workflow_telemetry>`. Omit unknown routing values; never guess. The worker:
 
 1. emits `agent start`;
 2. emits `task start` immediately before each assigned parent/subtask;
 3. emits `task submit` after implementation and focused checks are ready;
 4. emits `task block` for a genuine blocked assignment;
 5. emits `agent finish` before its Completion Report.
+
+After that Completion Report, the primary emits exactly one observation-only aggregate measurement for the worker; the primary remains the caller and the worker retains no new task authority:
+
+```bash
+node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" agent measure --run-id "$RUN_ID" --actor-id "$PRIMARY_ACTOR_ID" --worker-actor-id "$WORKER_ACTOR_ID" --child-agent-id "$CHILD_AGENT_ID" --measurement-snapshot '<dispatch returned JSON>' --project-dir "$PROJECT_ROOT" --json
+```
+
+`CHILD_AGENT_ID` is transient host identity such as `codex:<id>`, never a workflow actor id. This command may record `unavailable` when host counters are absent; it never blocks delivery. Do not ask the worker to persist or report a snapshot, child id, raw counters, host counters, prompt, output, or command. Only the aggregate token total is retained in workflow state and its terminal summary.
 
 Only a `repair-policy.md`-bounded follow-up may use `task start` and `task submit` with `PRIMARY_ACTOR_ID`; planned work always has a worker actor. A missing worker submission may be reconciled only from returned evidence by submitting as the primary with `--source-kind primary-reconciliation`; preserve the telemetry warning.
 

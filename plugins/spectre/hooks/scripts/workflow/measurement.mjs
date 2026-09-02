@@ -295,6 +295,22 @@ export function finishExecuteMeasurement({
   };
 }
 
+// A dispatched child is measured only after its host has flushed the final
+// counters. The caller retains the snapshot and child identity; durable state
+// receives this aggregate alone.
+export function finishExecuteWorkerMeasurement({
+  snapshot,
+  childAgentId,
+  hosts = {},
+} = {}) {
+  if (!snapshot || !Number.isSafeInteger(snapshot.epochMs)) return 'unavailable';
+  const child = parseIdentity(childAgentId);
+  const current = child ? readHostSession(child, hosts) : null;
+  return Number.isSafeInteger(current?.counters?.totalTokens) && current.counters.totalTokens >= 0
+    ? current.counters.totalTokens
+    : 'unavailable';
+}
+
 export { executeUnavailableMeasurement };
 
 export function startMeasurement({ label, now = Date.now, env = process.env, hosts = {} }) {

@@ -15,6 +15,7 @@ import {
 } from '../plugins/spectre/hooks/scripts/workflow/store.mjs';
 import {
   finishExecuteMeasurement,
+  finishExecuteWorkerMeasurement,
   startExecuteMeasurement,
 } from '../plugins/spectre/hooks/scripts/workflow/measurement.mjs';
 
@@ -237,7 +238,7 @@ test('Execute resumes legacy or origin-unknown runs without weakening explicit o
   assert.equal(legacyResume.runId, explicitFix.runId);
 });
 
-test('Execute accepts empty origin, preserves scoped bug roots, and round-trips transient measurements', async (t) => {
+test('Execute accepts empty origin, preserves scoped bug roots, and records post-return worker measurements', async (t) => {
   const value = makeFixture(t);
   const common = ['--project-dir', value.projectDir, '--json'];
   const scopedBugRoot = path.join(value.projectDir, '.spectre', 'bugs', 'scoped');
@@ -279,19 +280,38 @@ test('Execute accepts empty origin, preserves scoped bug roots, and round-trips 
   ], value, primaryEnv).stdout);
   assert.equal(run.measurementSnapshot.counters.totalTokens, 20);
   writeUsage('primary', 31);
-  const dispatched = await dispatchWorker(value, run);
+  const dispatch = invoke(BUNDLED_CLI_PATH, [
+    'agent', 'dispatch', '--run-id', run.runId, '--actor-id', run.primaryActorId,
+    '--tasks', '1.1', '--attempt', '1', ...common,
+  ], value, primaryEnv);
+  assert.equal(dispatch.status, 0, dispatch.stderr);
+  const dispatched = JSON.parse(dispatch.stdout);
+  assert.equal(typeof dispatched.measurementSnapshot.epochMs, 'number');
+  assert.doesNotMatch(dispatch.stdout, /taskDefinitions|payload|sourceRawHash/);
   writeUsage('worker', 5);
-  const workerStart = JSON.parse(invoke(BUNDLED_CLI_PATH, [
+  const workerStart = invoke(BUNDLED_CLI_PATH, [
     'agent', 'start', '--run-id', run.runId, '--actor-id', dispatched.workerActorId,
     '--assignment-id', dispatched.assignmentId, ...common,
-  ], value, workerEnv).stdout);
+  ], value, workerEnv);
+  assert.equal(workerStart.status, 0, workerStart.stderr);
   writeUsage('worker', 12);
   const workerFinish = invoke(BUNDLED_CLI_PATH, [
     'agent', 'finish', '--run-id', run.runId, '--actor-id', dispatched.workerActorId,
-    '--assignment-id', dispatched.assignmentId, '--measurement-snapshot', JSON.stringify(workerStart.measurementSnapshot),
-    ...common,
+    '--assignment-id', dispatched.assignmentId, ...common,
   ], value, workerEnv);
   assert.equal(workerFinish.status, 0, workerFinish.stderr);
+  assert.equal(finishExecuteWorkerMeasurement({
+    snapshot: dispatched.measurementSnapshot,
+    childAgentId: 'codex:missing',
+    hosts: { codexSessionsDir: sessions },
+  }), 'unavailable');
+  const measure = invoke(BUNDLED_CLI_PATH, [
+    'agent', 'measure', '--run-id', run.runId, '--actor-id', run.primaryActorId,
+    '--worker-actor-id', dispatched.workerActorId, '--child-agent-id', 'codex:worker',
+    '--measurement-snapshot', JSON.stringify(dispatched.measurementSnapshot), ...common,
+  ], value, primaryEnv);
+  assert.equal(measure.status, 0, measure.stderr);
+  assert.doesNotMatch(measure.stdout, /worker|child|session|hostCounters|raw|snapshot/i);
   const terminal = invoke(BUNDLED_CLI_PATH, [
     'run', 'finish', '--run-id', run.runId, '--actor-id', run.primaryActorId, '--status', 'failed',
     '--measurement-snapshot', JSON.stringify(run.measurementSnapshot), ...common,
@@ -306,15 +326,23 @@ test('Execute accepts empty origin, preserves scoped bug roots, and round-trips 
   assert.deepEqual(summary.measurement, {
     elapsedMs: summary.measurement.elapsedMs,
     elapsedStatus: 'complete',
-    totalTokens: 18,
+    totalTokens: 23,
     primaryTokens: 11,
-    workerTokens: 7,
+    workerTokens: 12,
     tokenStatus: 'complete',
     reconciliationStatus: 'reconciled',
   });
   assert.doesNotMatch(JSON.stringify(summary), /session|hostCounters|raw|snapshot/i);
+  assert.deepEqual(finished.state.workerMeasurements[dispatched.workerActorId], { tokens: 12 });
+  const workerMeasurements = finished.events.filter((event) => event.type === 'agent.measured');
+  assert.equal(workerMeasurements.length, 1);
+  assert.equal(workerMeasurements[0].payload.workerActorId, dispatched.workerActorId);
+  assert.deepEqual(workerMeasurements[0].payload.measurement, { tokens: 12 });
+  assert.doesNotMatch(JSON.stringify(workerMeasurements), /childAgentId|measurementSnapshot|hostCounters|total_token_usage/i);
+  assert.doesNotMatch(JSON.stringify(finished.state.idempotency), /codex:worker|codex:missing/);
   const projectStore = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
   assert.equal(fs.existsSync(path.join(projectStore.storePath, 'measurements')), false);
+  assert.equal(fs.existsSync(path.join(projectStore.storePath, 'workflow', 'ship-measurements.json')), false);
 });
 
 test('Execute measurement reconciles only complete aggregate primary and worker counters', (t) => {
@@ -368,6 +396,36 @@ test('Execute measurement reconciles only complete aggregate primary and worker 
   });
   assert.equal(missingWorker.workerTokens, 'unavailable');
   assert.equal(missingWorker.totalTokens, 'unavailable');
+});
+
+test('post-return worker measurement is primary-owned and worker-targeted', async (t) => {
+  const value = makeFixture(t);
+  const run = await startWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    source: value.sourcePath,
+    resume: false,
+  });
+  const worker = await dispatchWorker(value, run);
+  const options = (actorId, workerActorId) => ({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: run.runId,
+    idempotencyKey: `test:measure:${actorId}:${workerActorId}`,
+    events: [{
+      type: 'agent.measured',
+      actorId,
+      payload: { workerActorId, measurement: { tokens: 7 } },
+    }],
+  });
+  await assert.rejects(
+    recordWorkflowEvents(options(worker.workerActorId, worker.workerActorId)),
+    (error) => error.code === 'PRIMARY_REQUIRED',
+  );
+  await assert.rejects(
+    recordWorkflowEvents(options(run.primaryActorId, run.primaryActorId)),
+    (error) => error.code === 'INVALID_MEASUREMENT_TARGET',
+  );
 });
 
 test('workflow CLI returns minimal confirmations across the task lifecycle', (t) => {

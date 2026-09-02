@@ -17,6 +17,7 @@ import {
 } from './workflow/plan-telemetry.mjs';
 import {
   finishExecuteMeasurement,
+  finishExecuteWorkerMeasurement,
   finishMeasurement,
   persistShipMeasurement,
   startExecuteMeasurement,
@@ -70,7 +71,7 @@ function usage() {
     '  spectre-workflow run status --run-id <id> [--project-dir <path>] --json',
     '  spectre-workflow run finish --run-id <id> --actor-id <id> --status <status> --json',
     '  spectre-workflow stage|phase|wave start|finish --run-id <id> --actor-id <id> --id <value> --json',
-    '  spectre-workflow agent dispatch|start|finish --run-id <id> --actor-id <id> --json',
+    '  spectre-workflow agent dispatch|start|finish|measure --run-id <id> --actor-id <id> --json',
     '  spectre-workflow task assign|start|submit|complete|block|skip --run-id <id> --task-id <id> --actor-id <id> --json',
     '  spectre-workflow gate record --run-id <id> --actor-id <id> --kind verification|review|proof --status pass|fail [--tasks <ids>] [--checks <ids>] [--evidence <paths>] --json',
     '  spectre-workflow human-input require|resolve --run-id <id> --actor-id <id> --json',
@@ -152,8 +153,6 @@ function confirmation(resource, action, result) {
     compact.workerActorId = result.workerActorId;
     compact.assignmentId = result.assignmentId;
     compact.taskIds = result.taskIds;
-  }
-  if (resource === 'agent' && action === 'start') {
     compact.measurementSnapshot = result.measurementSnapshot || null;
   }
   return compact;
@@ -318,28 +317,35 @@ async function agentCommand(action, flags) {
       workerActorId: dispatched?.payload?.workerActorId || workerActorId,
       assignmentId: dispatched?.assignmentId || assignmentId,
       taskIds,
+      measurementSnapshot: startExecuteMeasurement(),
     };
+  }
+  if (action === 'measure') {
+    const actorId = required(flags, '--actor-id');
+    const workerActorId = required(flags, '--worker-actor-id');
+    const tokens = finishExecuteWorkerMeasurement({
+      snapshot: measurementSnapshot(flags),
+      childAgentId: required(flags, '--child-agent-id'),
+    });
+    return record(flags, [{
+      type: 'agent.measured',
+      actorId,
+      payload: { workerActorId, measurement: { tokens } },
+    }], `agent:measure:${runId}:${actorId}:${workerActorId}`);
   }
   if (!['start', 'finish'].includes(action)) {
     throw codedError('UNKNOWN_WORKFLOW_COMMAND', `Unknown agent command ${action}`);
   }
   const actorId = required(flags, '--actor-id');
-  const snapshot = action === 'finish' ? measurementSnapshot(flags) : null;
-  const finishedMeasurement = snapshot
-    ? finishExecuteMeasurement({ primarySnapshot: snapshot })
-    : null;
   const result = await record(flags, [{
     type: action === 'start' ? 'agent.started' : 'agent.completed',
     actorId,
     assignmentId: flags.get('--assignment-id') || undefined,
     payload: {
       result: flags.get('--result') || null,
-      ...(finishedMeasurement ? { measurement: { tokens: finishedMeasurement.primaryTokens } } : {}),
     },
   }], `agent:${action}:${runId}:${actorId}`);
-  return action === 'start'
-    ? { ...result, measurementSnapshot: startExecuteMeasurement() }
-    : result;
+  return result;
 }
 
 async function taskCommand(action, flags) {
