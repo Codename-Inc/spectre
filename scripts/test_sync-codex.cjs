@@ -1150,7 +1150,8 @@ test('plan surfaces time-only planning and implementation estimates', () => {
     assert.doesNotMatch(plan, /API-equivalent/);
     assert.doesNotMatch(guidance, /API-equivalent|processed tokens|Typical full .* expenditure/);
     assert.match(guidance, /high-level design gate/i);
-    assert.match(guidance, /final pre-code approval gate/i);
+    assert.match(guidance, /completed planning handoff presentation/i);
+    assert.doesNotMatch(guidance, /final pre-code approval gate/i);
     assert.match(guidance, /L[\s\S]*STANDARD legacy analog/i);
     assert.match(guidance, /XL[\s\S]*COMPREHENSIVE legacy analog/i);
     assert.match(guidance, /XS, S, and M[\s\S]*no shipped seed analog/i);
@@ -1303,13 +1304,13 @@ test('Fix persists an approval-gated managed repair plan before its Execute hand
     ).replaceAll('/spectre:', 'spectre-');
     const repairPlanIndex = fix.search(/self-locating (?:compact )?(?:managed )?repair plan/i);
     const fixApprovalIndex = fix.indexOf('HoldForApproval');
-    const fixRepairIndex = fix.indexOf('PHASE=repair');
+    const fixExecuteIndex = fix.indexOf('spectre-execute {BUG_REPORT_PATH} --origin fix');
     assert.ok(repairPlanIndex !== -1);
     assert.ok(repairPlanIndex < fixApprovalIndex);
-    assert.ok(fixApprovalIndex < fixRepairIndex);
+    assert.ok(fixApprovalIndex < fixExecuteIndex);
     assert.match(fix, /repair plan[^\n]*before (?:code )?mutation/i);
     assert.match(fix, /scoped name if one already exists/i);
-    assert.match(fix, /\{BUG_ROOT\}\/bug-report\.md/);
+    assert.match(fix, /\{BUG_REPORT_PATH\}/);
     assert.doesNotMatch(fix, /\{FEATURE_ROOT\}/);
     assert.doesNotMatch(fix, /specs\/plan\.md/);
     assert.match(fix, /`KIND=bug`/);
@@ -1798,7 +1799,7 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.match(fix, /experience contract first in product language/);
     assert.match(fix, /what users do and observe now, what they will do and observe after repair/);
     assert.match(fix, /preserved invariants, and disclosed collateral changes/);
-    assert.match(fix, /USER_APPROVED_FIX_CONTRACT=true/);
+    assert.match(fix, /spectre-execute \{BUG_REPORT_PATH\} --origin fix/);
     assert.match(fixCore, /user-invocable: false/);
     assert.match(fixCore, /PARENT_AUTHORIZATION/);
     assert.match(fixCore, /AUTHORIZED_SCOPE_SHA256/);
@@ -1807,7 +1808,7 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.match(fixCore, /PARENT=spectre-delegate/);
     assert.doesNotMatch(fixCore, /spectre-deliver/);
     assert.doesNotMatch(fixCore, /align-and-deliver/);
-    assert.match(fixCore, /USER_APPROVED_FIX_CONTRACT=true/);
+    assert.doesNotMatch(fixCore, /USER_APPROVED_FIX_CONTRACT=true|PHASE=repair/);
     assert.doesNotMatch(fixCore, /USER_APPROVED_DIAGNOSIS=true/);
     assert.match(fixCore, /Explore product \+ technical impact/);
     assert.match(fixCore, /dispatch ≥1 independent read-only/);

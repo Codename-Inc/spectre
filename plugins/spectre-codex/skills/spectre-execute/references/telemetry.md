@@ -4,13 +4,13 @@ Load for structured `tasks.json` and plan-direct execution. Plan-direct passes i
 
 ## Start or resume
 
-Run once after resolving the source artifact (`TASKS_JSON`, or `PLAN_SOURCE` in plan-direct mode), `FEATURE_ROOT`, and caller-owned `ORIGIN` (`plan`, `fix`, or `delegate`):
+Run once after resolving the source artifact (`TASKS_JSON`, or `PLAN_SOURCE` in plan-direct mode), `FEATURE_ROOT`, and caller-owned `ORIGIN` (`plan`, `fix`, or `delegate`). Omit `--origin` when it is unknown; never pass an empty flag:
 
 ```bash
-node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run start --source "$TASKS_JSON" --origin "$ORIGIN" --owner "$FINALIZATION_OWNER" --project-dir "$PROJECT_ROOT" --json
+node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run start --source "$TASKS_JSON" --owner "$FINALIZATION_OWNER" --project-dir "$PROJECT_ROOT" --json
 ```
 
-Keep returned `runId` as `RUN_ID` and `primaryActorId` as `PRIMARY_ACTOR_ID`. Start the `execute` stage. Start each phase and wave before its first work. Use stable idempotency keys from the run + boundary/task/attempt.
+Append `--origin "$ORIGIN"` only when it is known. Keep returned `runId` as `RUN_ID`, `primaryActorId` as `PRIMARY_ACTOR_ID`, and the returned transient `measurementSnapshot` only in caller memory; pass it back as `--measurement-snapshot '<returned JSON>'` to terminal `run finish`. Start the `execute` stage. Start each phase and wave before its first work. Use stable idempotency keys from the run + boundary/task/attempt.
 
 When routing is known, append `--provider "<provider>" --model "<primary-model>" --effort "<effort>"` to `run start`. Omit unknown values; never guess. The retained summary keeps only origin, actual execution shape, derived category, elapsed time, aggregate token totals, and primary/worker reconciliation state—never host session ids, raw counters, prompts, transcripts, commands, code, or child output. If a live snapshot is unavailable after resume, token fields stay `unavailable` without blocking completion.
 
@@ -29,7 +29,7 @@ The command reads the project-local Spectre store and returns exactly one matchi
 The store is the only progress record; source artifacts carry none. Recover it, never reconstruct it from memory or the working tree:
 
 ```bash
-node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run start --source "$TASKS_JSON" --origin "$ORIGIN" --project-dir "$PROJECT_ROOT" --json
+node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run start --source "$TASKS_JSON" --project-dir "$PROJECT_ROOT" --json
 node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" run status --run-id "$RUN_ID" --project-dir "$PROJECT_ROOT" --json
 ```
 

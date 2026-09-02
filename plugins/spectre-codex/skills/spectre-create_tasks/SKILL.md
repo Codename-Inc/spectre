@@ -58,7 +58,7 @@ The primary directly writes only the selected canonical artifacts. Do not delega
 
 ## Handoff
 
-Report mode, written paths, and `{X} phases, {Y} parents, {Z} subtasks`; add `{N} waves` only for a finalized index. `--orchestrated` omits user-facing Next Steps. Standalone load-bearing user-facing behavior without adequate UX/prototype acceptance evidence routes to `spectre-ux` if unresolved, else `spectre-prototype`; regenerate tasks. Comprehensive `--tasks-only` routes to `spectre-task_review`; otherwise route to `spectre-execute`, plus a pause handoff when stopping.
+Report mode, written paths, and `{X} phases, {Y} parents, {Z} subtasks`; add `{N} waves` only for a finalized index. `--orchestrated` omits user-facing Next Steps. Standalone load-bearing user-facing behavior without adequate UX/prototype acceptance evidence routes to `spectre-ux` if unresolved, else `spectre-prototype`; regenerate tasks. Comprehensive `--tasks-only` routes to `spectre-task_review`; otherwise route to `spectre-execute {EXECUTE_INDEX} --origin plan`, plus a pause handoff when stopping.
 
 ## Escalate-If
 

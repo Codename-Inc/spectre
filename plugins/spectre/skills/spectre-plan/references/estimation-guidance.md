@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Render one concise time estimate at an applicable high-level design gate and at every final pre-code approval gate when a valid analog exists. Estimates are planning aids, never commitments or reasons to hold a gate.
+Render one concise time estimate at an applicable high-level design gate and at completed planning handoff presentation when a valid analog exists. Estimates are planning aids, never commitments or reasons to hold a gate.
 
 ## Source precedence
 
@@ -14,7 +14,7 @@ Do not scan transcripts during a live Plan. Do not combine Plan, Execute, and op
 
 ## Presentation invariant
 
-At either gate, render at most one bold duration sentence immediately before the approval sentence. Do not add a heading, bullets, caveats, confidence labels, cohort details, token usage, monetary estimates, billing explanations, graph details, or follow-on guidance. If no valid analog exists, omit the estimate without an unavailable-state warning.
+At either presentation, render at most one bold duration sentence immediately before the gate or copy-ready handoff sentence. Do not add a heading, bullets, caveats, confidence labels, cohort details, token usage, monetary estimates, billing explanations, graph details, or follow-on guidance. If no valid analog exists, omit the estimate without an unavailable-state warning.
 
 Historical analysis may retain richer telemetry for offline evaluation, but the live Plan workflow presents time only.
 
@@ -30,7 +30,7 @@ Select the size-compatible Plan estimate. Its duration excludes time waiting for
 
 After route artifacts and reviews settle, count parents, subtasks, and dependency waves when they exist. Select the closest contract-compatible successful analog by waves first, then parents; do not fit a regression from the seed cohort.
 
-When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the final approval sentence:
+When a valid analog exists, round its duration to the nearest 10 minutes and place exactly this sentence immediately before the copy-ready Execute handoff:
 
 ```text
 **Estimated implementation time: about {rounded duration}, based on completed projects of similar size.**

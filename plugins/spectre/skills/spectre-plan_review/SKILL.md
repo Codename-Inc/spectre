@@ -44,7 +44,7 @@ DONE when both stages complete; research ran once at most; every mechanism trace
 
 ## Handoff
 
-Return routes, correctness status, deletions/retained exceptions, structural delta, dispositions, reports, withheld scope changes, and updated plan in ≤1,000 tokens. Orchestrated calls return; standalone success recommends `/spectre:create_tasks` or direct `/spectre:execute`.
+Return routes, correctness status, deletions/retained exceptions, structural delta, dispositions, reports, withheld scope changes, and updated plan in ≤1,000 tokens. Orchestrated calls return; standalone success recommends `/spectre:create_tasks` or direct `/spectre:execute {PLAN_FILE} --origin plan`.
 
 ## Escalate-If
 

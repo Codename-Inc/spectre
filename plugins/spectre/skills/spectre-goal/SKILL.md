@@ -85,7 +85,7 @@ DONE means the one prompt passes the contract and quality checks, references aut
 Report `GOAL_FILE`, target runtime, cap, source artifacts, assumptions, and validation result.
 
 - `--orchestrated`: return that result to the caller without user-facing Next Steps.
-- Standalone: `Next (recommended): run the /goal prompt in {GOAL_FILE}.` Add `Alternative: /spectre:execute — use the direct interactive path instead.` Offer `/spectre:handoff` only when pausing.
+- Standalone: `Next (recommended): run the /goal prompt in {GOAL_FILE}.` Offer `/spectre:handoff` only when pausing.
 
 ## Escalate-If
 

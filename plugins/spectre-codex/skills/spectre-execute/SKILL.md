@@ -18,7 +18,8 @@ Orchestrate the source without placing implementation in primary context. Maximi
 
 ## Working Set
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- A `--origin fix` approved bug-report source adopts its containing `BUG_ROOT` directly, before feature-root resolution.
 - Keep the invocation checkout.
 - Structured detail precedence: declared `Tasks JSON` → adjacent `tasks.json` → sibling `.tasks.json`; else escalate. Read the index whole and task detail by targeted slices.
 - Structured and plan-direct modes read `references/telemetry.md`, start/resume one local event run with explicit caller origin, and follow its primary/worker task authority contract; that local store is the sole lifecycle/progress authority and source plans/tasks remain immutable. Terminal summaries retain origin, actual execution shape, category, elapsed time, and aggregate primary/worker token measurements only; unavailable is explicit. Plan-direct emits workstream-granularity events. Telemetry failure degrades observation, never delivery authority.

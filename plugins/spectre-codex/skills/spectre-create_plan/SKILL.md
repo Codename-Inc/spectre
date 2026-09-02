@@ -51,7 +51,7 @@ DONE when every planned mechanism maps to a current requirement, constraint, pre
 ## Handoff
 
 - `--no-review` / orchestrated: return path, depth, assumptions, complexity exceptions, and unresolved findings to the caller.
-- Standalone: save and await approval. Approved direct → `spectre-execute`; approved XS structured override → `spectre-create_tasks --depth xs`; approved light structured → `spectre-create_tasks`; approved standard/comprehensive → `spectre-plan_review`. Route unresolved product behavior to UX/prototype first.
+- Standalone: save and await approval. Approved direct → `spectre-execute {PLAN_FILE} --origin plan`; approved XS structured override → `spectre-create_tasks --depth xs`; approved light structured → `spectre-create_tasks`; approved standard/comprehensive → `spectre-plan_review`. Route unresolved product behavior to UX/prototype first.
 - Render one primary recommendation, at most one conditional alternative, and the existing pause handoff when stopping.
 
 ## Escalate-If
