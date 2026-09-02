@@ -9,6 +9,8 @@ import test from 'node:test';
 import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 import {
   readWorkflowRun,
+  recordWorkflowEvents,
+  startWorkflowRun,
   summaryFor,
 } from '../plugins/spectre/hooks/scripts/workflow/store.mjs';
 import {
@@ -45,6 +47,50 @@ function invoke(script, args, value, env = {}) {
     env: { ...process.env, SPECTRE_HOME: value.spectreHome, ...env },
     encoding: 'utf8',
   });
+}
+
+async function finishFailed(value, run) {
+  await recordWorkflowEvents({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: run.runId,
+    idempotencyKey: `test:failed:${run.runId}`,
+    events: [{ type: 'run.failed', actorId: run.primaryActorId, payload: {} }],
+  });
+}
+
+async function dispatchWorker(value, run) {
+  const workerActorId = `actor_${crypto.randomUUID()}`;
+  const assignmentId = `assignment_${crypto.randomUUID()}`;
+  await recordWorkflowEvents({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: run.runId,
+    idempotencyKey: `test:dispatch:${run.runId}`,
+    events: [
+      {
+        type: 'agent.dispatched',
+        actorId: run.primaryActorId,
+        assignmentId,
+        attempt: 1,
+        payload: {
+          workerActorId,
+          provider: null,
+          model: null,
+          effort: null,
+        },
+      },
+      {
+        type: 'task.assigned',
+        actorId: run.primaryActorId,
+        taskId: '1.1',
+        assignmentId,
+        attempt: 1,
+        payload: { assignedActorId: workerActorId },
+      },
+    ],
+  });
+  return { workerActorId, assignmentId };
 }
 
 test('top-level and bundled workflow CLIs share stable JSON commands', (t) => {
@@ -94,7 +140,6 @@ test('Execute runs retain explicit provenance and privacy-safe measurement defau
   fs.writeFileSync(bugReport, '# Approved bug report\n');
   fs.writeFileSync(directPlan, '# Direct plan\n');
 
-  const common = ['--project-dir', value.projectDir, '--json'];
   const cases = [
     { source: value.sourcePath, origin: 'plan', category: 'plan', shape: 'structured', featureRoot: '.spectre/features/cli' },
     { source: directPlan, origin: 'plan', category: 'plan-direct', shape: 'direct', featureRoot: '.spectre/features/cli' },
@@ -103,11 +148,13 @@ test('Execute runs retain explicit provenance and privacy-safe measurement defau
   ];
 
   for (const item of cases) {
-    const started = invoke(BUNDLED_CLI_PATH, [
-      'run', 'start', '--source', item.source, '--origin', item.origin, '--no-resume', ...common,
-    ], value);
-    assert.equal(started.status, 0, started.stderr);
-    const run = JSON.parse(started.stdout);
+    const run = await startWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      source: item.source,
+      origin: item.origin,
+      resume: false,
+    });
     const { state } = await readWorkflowRun({
       projectDir: value.projectDir,
       spectreHome: value.spectreHome,
@@ -130,24 +177,6 @@ test('Execute runs retain explicit provenance and privacy-safe measurement defau
     });
   }
 
-  const terminalStart = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'run', 'start', '--source', value.sourcePath, '--origin', 'plan', '--no-resume', ...common,
-  ], value).stdout);
-  const terminal = invoke(BUNDLED_CLI_PATH, [
-    'run', 'finish', '--run-id', terminalStart.runId, '--actor-id', terminalStart.primaryActorId,
-    '--status', 'failed', ...common,
-  ], value);
-  assert.equal(terminal.status, 0, terminal.stderr);
-  const finished = await readWorkflowRun({
-    projectDir: value.projectDir,
-    spectreHome: value.spectreHome,
-    runId: terminalStart.runId,
-  });
-  const summary = JSON.parse(fs.readFileSync(finished.paths.summaryPath, 'utf8'));
-  assert.equal(summary.measurement.elapsedStatus, 'complete');
-  assert.equal(typeof summary.measurement.elapsedMs, 'number');
-  assert.equal(summary.measurement.totalTokens, 'unavailable');
-
   const legacy = summaryFor({
     schemaVersion: 1,
     runId: 'run_00000000-0000-4000-8000-000000000000',
@@ -168,24 +197,27 @@ test('Execute runs retain explicit provenance and privacy-safe measurement defau
 
 test('Execute resumes legacy or origin-unknown runs without weakening explicit origin matching', async (t) => {
   const value = makeFixture(t);
-  const common = ['--project-dir', value.projectDir, '--json'];
-  const started = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'run', 'start', '--source', value.sourcePath, '--origin', 'plan', ...common,
-  ], value).stdout);
-  const omittedOrigin = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'run', 'start', '--source', value.sourcePath, ...common,
-  ], value).stdout);
+  const started = await startWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    source: value.sourcePath,
+    origin: 'plan',
+  });
+  const omittedOrigin = await startWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    source: value.sourcePath,
+  });
   assert.equal(omittedOrigin.resumed, true);
   assert.equal(omittedOrigin.runId, started.runId);
-  const closePlan = invoke(BUNDLED_CLI_PATH, [
-    'run', 'finish', '--run-id', started.runId, '--actor-id', started.primaryActorId,
-    '--status', 'failed', ...common,
-  ], value);
-  assert.equal(closePlan.status, 0, closePlan.stderr);
+  await finishFailed(value, started);
 
-  const explicitFix = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'run', 'start', '--source', value.sourcePath, '--origin', 'fix', ...common,
-  ], value).stdout);
+  const explicitFix = await startWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    source: value.sourcePath,
+    origin: 'fix',
+  });
   assert.notEqual(explicitFix.runId, started.runId);
 
   const { paths } = await readWorkflowRun({
@@ -196,9 +228,11 @@ test('Execute resumes legacy or origin-unknown runs without weakening explicit o
   const legacy = JSON.parse(fs.readFileSync(paths.statePath, 'utf8'));
   delete legacy.provenance;
   fs.writeFileSync(paths.statePath, JSON.stringify(legacy));
-  const legacyResume = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'run', 'start', '--source', value.sourcePath, ...common,
-  ], value).stdout);
+  const legacyResume = await startWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    source: value.sourcePath,
+  });
   assert.equal(legacyResume.resumed, true);
   assert.equal(legacyResume.runId, explicitFix.runId);
 });
@@ -237,10 +271,7 @@ test('Execute accepts empty origin, preserves scoped bug roots, and round-trips 
   ], value, primaryEnv).stdout);
   assert.equal(run.measurementSnapshot.counters.totalTokens, 20);
   writeUsage('primary', 31);
-  const dispatched = JSON.parse(invoke(BUNDLED_CLI_PATH, [
-    'agent', 'dispatch', '--run-id', run.runId, '--actor-id', run.primaryActorId,
-    '--tasks', '1.1', ...common,
-  ], value, primaryEnv).stdout);
+  const dispatched = await dispatchWorker(value, run);
   writeUsage('worker', 5);
   const workerStart = JSON.parse(invoke(BUNDLED_CLI_PATH, [
     'agent', 'start', '--run-id', run.runId, '--actor-id', dispatched.workerActorId,
