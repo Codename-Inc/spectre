@@ -152,7 +152,7 @@ export function readTaskSource(projectDir, sourcePath) {
       relativePath,
       rawHash: sha256(raw),
       definitionHash: sha256(raw),
-      featureRoot: path.basename(relativePath) === 'bug-report.md'
+      featureRoot: /^bug-report(?:-[A-Za-z0-9._-]+)?\.md$/.test(path.basename(relativePath))
         ? path.dirname(relativePath)
         : path.dirname(path.dirname(relativePath)),
       tasks: {},
@@ -226,7 +226,23 @@ function measurementForState(value) {
 }
 
 function terminalMeasurementFor(state, value, endedAt) {
-  const measurement = measurementForState(value);
+  const workerActors = Object.values(state.actors || {}).filter((current) => current.role === 'worker');
+  const workerMeasurements = state.workerMeasurements || {};
+  const validNumber = (number) => Number.isSafeInteger(number) && number >= 0;
+  const primaryTokens = validNumber(value?.primaryTokens) ? value.primaryTokens : 'unavailable';
+  const workerTokens = workerActors.length === 0
+    ? 0
+    : workerActors.every((current) => validNumber(workerMeasurements[current.id]?.tokens))
+      ? workerActors.reduce((total, current) => total + workerMeasurements[current.id].tokens, 0)
+      : 'unavailable';
+  const measurement = measurementForState({
+    elapsedMs: value?.elapsedMs,
+    primaryTokens,
+    workerTokens,
+    totalTokens: validNumber(primaryTokens) && validNumber(workerTokens)
+      ? primaryTokens + workerTokens
+      : 'unavailable',
+  });
   if (measurement.elapsedStatus === 'complete') return measurement;
   const startedAt = Date.parse(state.startedAt);
   const endedAtMs = Date.parse(endedAt);
@@ -455,9 +471,18 @@ function applyEvent(state, event) {
       current.state = 'active';
       break;
     }
-    case 'agent.completed':
-      actor(state, event.actorId).state = 'completed';
+    case 'agent.completed': {
+      const current = actor(state, event.actorId);
+      current.state = 'completed';
+      if (current.role === 'worker') {
+        const tokens = event.payload?.measurement?.tokens;
+        state.workerMeasurements ||= {};
+        state.workerMeasurements[event.actorId] = {
+          tokens: Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : 'unavailable',
+        };
+      }
       break;
+    }
     case 'task.assigned': {
       requirePrimary(state, event.actorId);
       const task = sourceTask(state, event);
@@ -712,6 +737,7 @@ export async function startWorkflowRun(options) {
     }
   }
   const source = readTaskSource(projectDir, options.source);
+  const hasExplicitOrigin = typeof options.origin === 'string' && options.origin.length > 0;
   const provenance = provenanceFor(options.origin, source);
   const checkout = checkoutMetadata(projectDir);
   const contractHash = executeContractHash(options);
@@ -735,7 +761,7 @@ export async function startWorkflowRun(options) {
           && candidate.sourcePath === source.relativePath
           && candidate.featureRoot === source.featureRoot
           && candidate.contractHash === contractHash
-          && candidate.provenance?.originWorkflow === provenance.originWorkflow
+          && (!hasExplicitOrigin || candidate.provenance?.originWorkflow === provenance.originWorkflow)
         ) {
           return {
             ok: true,
@@ -768,6 +794,7 @@ export async function startWorkflowRun(options) {
       planDirect: source.planDirect || false,
       provenance,
       measurement: executeUnavailableMeasurement(),
+      workerMeasurements: {},
       contractHash,
       primaryActorId,
       startedAt,
