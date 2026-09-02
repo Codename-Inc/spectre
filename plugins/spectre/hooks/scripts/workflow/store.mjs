@@ -705,6 +705,9 @@ function summaryFor(state, events) {
     routing,
     contractHash: state.contractHash,
     sourceDefinitionHash: state.sourceDefinitionHash,
+    featureRoot: typeof state.featureRoot === 'string' && state.featureRoot
+      ? state.featureRoot
+      : 'unknown',
     provenance: state.provenance || {
       category: 'unknown',
       originWorkflow: 'unknown',

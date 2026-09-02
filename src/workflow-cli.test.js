@@ -256,6 +256,14 @@ test('Execute accepts empty origin, preserves scoped bug roots, and round-trips 
   });
   assert.equal(scopedState.state.provenance.originWorkflow, 'unknown');
   assert.equal(scopedState.state.featureRoot, '.spectre/bugs/scoped');
+  await finishFailed(value, scoped);
+  const scopedFinished = await readWorkflowRun({
+    projectDir: value.projectDir,
+    spectreHome: value.spectreHome,
+    runId: scoped.runId,
+  });
+  const scopedSummary = JSON.parse(fs.readFileSync(scopedFinished.paths.summaryPath, 'utf8'));
+  assert.equal(scopedSummary.featureRoot, '.spectre/bugs/scoped');
 
   const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-execute-cli-measurement-'));
   t.after(() => fs.rmSync(sessions, { recursive: true, force: true }));
