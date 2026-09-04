@@ -217,17 +217,17 @@ A managed feature or bug gets a collision-safe root:
 
 ### 5.2 Plan: adapt ceremony to semantic risk
 
-`spectre-plan` always creates a durable plan but scales the amount of research, review, and task decomposition. `spectre-plan-route` classifies semantic shape, uncertainty, evidence, protected boundaries, and task-graph risk—not raw file count or sensitive-domain keywords.
+`spectre-plan` always creates a durable aligned draft and scales its evidence depth to semantic risk. `spectre-plan-route` classifies semantic shape, uncertainty, evidence, protected boundaries, and task-graph risk—not raw file count or sensitive-domain keywords. Plan presents the draft's requested outcome, approach, decisions, boundaries, risks, verification intent, and ordering constraints, then hands it to Execute with an explicit preflight marker.
 
 | Size | Semantic shape | Required planning output |
 | --- | --- | --- |
-| XS | Atomic, low uncertainty, no changed protected boundary | Compact direct plan |
-| S | Atomic with a protected boundary, or direct and low uncertainty | Direct plan |
-| M | Atomic/direct with moderate or high uncertainty | Direct plan plus paired plan review |
-| L | Structured work with ordinary graph risk | Reviewed plan, `tasks.json`, `execute.md` |
-| XL | Structured work with high uncertainty or graph risk | L artifacts plus adversarial task review |
+| XS | Atomic, low uncertainty, no changed protected boundary | Light aligned draft |
+| S | Atomic with a protected boundary, or direct and low uncertainty | Light aligned draft |
+| M | Atomic/direct with moderate or high uncertainty | Standard aligned draft |
+| L | Structured work with ordinary graph risk | Standard aligned draft |
+| XL | Structured work with high uncertainty or graph risk | Comprehensive aligned draft |
 
-Material product, compatibility, destructive, migration, rollback, or long-term architecture decisions require an explicit design-approval gate. Every size also stops at a final pre-code approval gate. Planning telemetry is useful for route analysis, but a telemetry failure degrades observability rather than blocking approved work.
+Scope is the enduring user contract. A missing irreversible decision, Scope change, or contradiction with an explicit design stops the Plan handoff for authority; otherwise launching the marked command is alignment. Planning telemetry is useful for route analysis, but a telemetry failure degrades observability rather than blocking approved work.
 
 ### 5.3 Execute: dependency-safe parallel work
 
@@ -235,6 +235,8 @@ Material product, compatibility, destructive, migration, rollback, or long-term 
 
 - **Structured mode:** `execute.md` plus a resolvable `tasks.json`.
 - **Plan-direct mode:** a readable direct plan, represented at runtime as coarse workstreams.
+
+It also accepts a marked aligned draft from Plan. Before normal mode resolution or run creation, Execute skips preflight if a valid structured pair already exists; otherwise it runs the unchanged correctness-then-simplification review, stops for any Scope/authority/Blocker condition, assesses safe parallelism, creates the normal task/index pair, and resumes as structured mode. The review reports and plan hashes finalize `plan.md`; task definitions are derivative and remain immutable once generated.
 
 The execution algorithm is:
 
@@ -279,8 +281,8 @@ The PR is downstream of accepted implementation and evidence; it is not used as 
 | Concern | Authority | Why |
 | --- | --- | --- |
 | Product boundary | `concepts/scope.md` | Human-approved statement of what is and is not being built |
-| Technical design | `specs/plan.md` | Reviewed implementation intent |
-| Structured work definition | `specs/tasks.json` | Approved task graph; immutable during execution |
+| Technical design | `specs/plan.md` | Aligned draft, then reviewed implementation intent after Execute preflight |
+| Structured work definition | `specs/tasks.json` | Derivative task graph; immutable during execution |
 | Compact structured index | `specs/execute.md` | Dispatch-oriented navigation into the task graph |
 | Source code | Git working tree and commits | Native repository history and integration surface |
 | Execution lifecycle | `events.jsonl` and materialized `state.json` | Durable, resumable record of observed progress |

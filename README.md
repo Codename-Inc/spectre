@@ -82,7 +82,7 @@ Spectre uses "meta skills". Meta Skills are skills that call other skills in one
 
 | Workflow | What it delivers | When to use it |
 | --- | --- | --- |
-| `/spectre:plan` | An approved Scope and right-sized implementation plan | Before changing code |
+| `/spectre:plan` | An aligned draft plan and Execute-preflight handoff | Before changing code |
 | `/spectre:execute` | Orchestrated implementation, verification, review, and proof | When the plan is ready |
 | `/spectre:ship` | Cleanup, testing, rebase, and a pull request | When the feature is ready to check in |
 
@@ -93,10 +93,10 @@ Spectre uses "meta skills". Meta Skills are skills that call other skills in one
 It will:
 
 - Create durable Scope and plan artifacts—even for XS changes.
-- Add research, plan review, task decomposition, and task review only when the selected size requires them.
-- Give XL task plans a final adversarial correctness review.
+- Add proportional research and create one right-sized aligned draft; Plan owns no review or task pipeline.
+- Present a concise alignment brief and a marked Execute handoff for every size.
 - Wait for your explicit approval before any code changes.
-- Generate execution artifacts and print the exact `/spectre:execute` command to start implementation.
+- Print the exact marked `/spectre:execute` command that starts preflight before any structured work exists.
 
 **/spectre:execute** — Implement, verify, and prove the feature</summary>
 
@@ -104,7 +104,7 @@ It will:
 
 It will:
 
-- Read `execute.md` to determine which subagents to dispatch and what context each needs.
+- For an aligned Plan draft, run the existing scope-safe review, assess safe parallelism, then create and read the normal `execute.md`/`tasks.json` pair.
 - Give each `@spectre:dev` subagent in Claude Code—or `@spectre_dev` in Codex—only the context required for its task.
 - Run affected verification after every execution wave.
 - Add intermediate reviews when the plan records compounding risk.
@@ -187,9 +187,9 @@ In SPECTRE, the **structured workflows** generate some combination of the follow
 
 - `concepts/scope.md` - what are we building and importantly what are we NOT building
 - `ux.md` - the core user flows and components/layouts/interactions
-- `specs/plan.md` - high level technical design and phasing
-- `specs/execute.md` - compact execution index
-- `specs/tasks.json` - specific parent & sub-tasks to execute
+- `specs/plan.md` - aligned technical design and phasing; finalized by Execute preflight before structured work
+- `specs/execute.md` - compact execution index generated after Execute preflight
+- `specs/tasks.json` - specific parent & sub-tasks generated after Execute preflight
 - `execution_state.md` - execution progress tracker when using `/spectre:execute` with a plan SPECTRE did not generate
 - `reviews/plan_correctness.md`, `reviews/plan_review.md`, `reviews/task_review.md`, and `reviews/comprehensive_code_review.md` - correctness evidence plus prioritized review feedback
 - `validation/validation_gaps.md` - task list of gaps identified from validation
@@ -290,9 +290,9 @@ Although I do sometimes use `@spectre:web-research` in Claude Code or `@spectre_
 
   - if the feature's ux/user flow is unclear to me, or I want to make sure to really nail it, i run /spectre:ux. Its similar to /spectre:scope but focuses on getting clear on the core user flows.
 
-- /spectre:plan to choose the smallest sufficient XS–XL planning path, leave its durable artifact, and wait for explicit pre-code approval
+- /spectre:plan to choose the smallest sufficient XS–XL planning path, leave its aligned draft, and review the concise handoff before starting Execute
 
-  - once i have scope/plan/tasks, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
+  - once i have scope/plan, I typically run /spectre:handoff to get a fresh context window with awareness of what we're working on.
 
 - then run /spectre:execute to use parallel subagents to work through the tasks. Execute also runs one final /spectre:code_review and an end-only /spectre:prove pass.
 

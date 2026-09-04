@@ -128,7 +128,7 @@ test("review gates retain their route-specific models and efforts", () => {
   );
 });
 
-test("plan review runs correctness before simplification and applies only scope-safe plan edits", () => {
+test("Execute preflight owns scope-safe plan review before unchanged task creation", () => {
   const plan = readFileSync(
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
     "utf8",
@@ -139,6 +139,10 @@ test("plan review runs correctness before simplification and applies only scope-
     "spectre",
     "skills",
     "spectre-plan_review",
+  );
+  const execute = readFileSync(
+    join(repositoryRoot, "plugins", "spectre", "skills", "spectre-execute", "SKILL.md"),
+    "utf8",
   );
   const planReview = readFileSync(
     join(planReviewDir, "SKILL.md"),
@@ -153,29 +157,23 @@ test("plan review runs correctness before simplification and applies only scope-
     "utf8",
   );
 
-  assert.match(
-    plan,
-    /one plan-review pipeline means one [^\n]*spectre-plan_review[^\n]*correctness then simplification/i,
-  );
-  assert.match(
-    plan,
-    /M → [^\n]*spectre-create_plan[^\n]*spectre-plan_review/,
-  );
+  assert.match(plan, /aligned draft/i);
+  assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
+  assert.doesNotMatch(plan, /spectre-plan_review/);
+  assert.doesNotMatch(plan, /spectre-create_tasks/);
+  assert.doesNotMatch(plan, /spectre-task_review/);
   assert.doesNotMatch(plan, /spectre-goal/);
-  assert.match(
-    plan,
-    /L → [^\n]*spectre-plan_review[^\n]*spectre-create_tasks/,
-  );
-  assert.match(
-    plan,
-    /XL → [^\n]*spectre-plan_review[^\n]*spectre-create_tasks/,
-  );
-  assert.match(plan, /no repeated review absent an explicit request/i);
-  assert.match(plan, /no unresolved correctness Blocker\/High/i);
-  assert.doesNotMatch(
-    plan,
-    /apply the smallest `plan\.md` edit, re-run `plan_review/,
-  );
+  const reviewIndex = execute.indexOf("Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated");
+  const parallelismIndex = execute.indexOf("maximize safe parallelism");
+  const tasksIndex = execute.indexOf("Skill(spectre-create_tasks) --depth <mapped depth> --orchestrated");
+  assert.ok(reviewIndex >= 0);
+  assert.ok(parallelismIndex > reviewIndex);
+  assert.ok(tasksIndex > parallelismIndex);
+  assert.match(execute, /`--preflight-plan <depth>` with an explicit readable plan enters preflight/i);
+  assert.match(execute, /valid structured pair[\s\S]*skip preflight entirely/i);
+  assert.match(execute, /No automatic task review/i);
+  assert.match(execute, /Scope change, unresolved Blocker\/High, explicit-design contradiction, or unavailable authority stops preflight before task generation/i);
+  assert.match(execute, /scope-safe result proceeds without a second user gate/i);
 
   assert.match(planReview, /reviews\/plan_correctness\.md/);
   assert.match(planReview, /reviews\/plan_review\.md/);
@@ -236,11 +234,7 @@ test("usable review reports are normalized by the primary without reviewer repai
   }
 });
 
-test("XL planning reviews tasks before finalizing execute.md", () => {
-  const plan = readFileSync(
-    join(repositoryRoot, "plugins", "spectre", "skills", "spectre-plan", "SKILL.md"),
-    "utf8",
-  );
+test("preflight leaves task-review and task-definition contracts unchanged", () => {
   const createTasks = readFileSync(
     join(
       repositoryRoot,
@@ -252,18 +246,6 @@ test("XL planning reviews tasks before finalizing execute.md", () => {
     ),
     "utf8",
   );
-  const xl = plan.match(/- XL → ([^\n]+)/)?.[1] ?? "";
-
-  const tasksOnly = xl.indexOf("--tasks-only");
-  const taskReviewIndex = xl.indexOf("spectre-task_review");
-  const finalizeIndex = xl.indexOf("--finalize-index");
-  const pairValidation = xl.indexOf("validate-pair");
-  assert.ok(tasksOnly >= 0);
-  assert.ok(taskReviewIndex > tasksOnly);
-  assert.ok(finalizeIndex > taskReviewIndex);
-  assert.ok(pairValidation > finalizeIndex);
-  assert.equal(xl.indexOf("spectre-goal"), -1);
-
   assert.match(createTasks, /--tasks-only/);
   assert.match(createTasks, /--finalize-index/);
   assert.match(

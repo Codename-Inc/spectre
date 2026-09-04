@@ -606,6 +606,32 @@ test('plan-direct execute resolves explicit plans without changing structured de
   }
 });
 
+test('only a marked aligned draft enters Execute preflight', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const plan = fs.readFileSync(
+      path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const execute = readExecuteContract(repoRoot, rootName).replaceAll('/spectre:', 'spectre-');
+    const reviewIndex = execute.indexOf('Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated');
+    const parallelismIndex = execute.indexOf('maximize safe parallelism');
+    const taskIndex = execute.indexOf('Skill(spectre-create_tasks) --depth <mapped depth> --orchestrated');
+
+    assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
+    assert.match(plan, /XS → `Skill\(spectre-create_plan\) --depth light --no-review --execution structured`/);
+    assert.doesNotMatch(plan, /spectre-plan_review|spectre-create_tasks|spectre-task_review/);
+    assert.match(execute, /`--preflight-plan <depth>` with an explicit readable plan enters preflight/i);
+    assert.match(execute, /Without the marker, preserve current structured and plan-direct selection/i);
+    assert.match(execute, /existing valid structured pair[\s\S]*skip preflight/i);
+    assert.ok(reviewIndex >= 0 && parallelismIndex > reviewIndex && taskIndex > parallelismIndex);
+    assert.match(execute, /No automatic task review/i);
+    assert.match(execute, /Scope change, unresolved Blocker\/High, explicit-design contradiction, or unavailable authority stops preflight before task generation/i);
+    assert.match(execute, /telemetry[\s\S]*degraded[\s\S]*never blocks/i);
+  }
+});
+
 test('plan-direct execute preserves source-plan authority without a completeness gate', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
@@ -865,12 +891,10 @@ test('planning hands off directly to execute without goal-prompt generation', ()
     assert.doesNotMatch(plan, /spectre-goal/);
     assert.doesNotMatch(plan, /goal-prompts\.md/);
     assert.match(plan, /Never generate a goal prompt/i);
-    assert.match(plan, /copy-ready fenced launch command as the primary next step/);
-    assert.match(plan, /host's explicit `spectre-execute` invocation/);
-    assert.match(plan, /Claude Code `\/spectre:` prefix, Codex `\$` prefix/);
-    assert.match(plan, /`specs\/execute\.md` for L\/XL, the direct `specs\/plan\.md` for S\/M/);
+    assert.match(plan, /exactly one copy-ready fenced command/);
+    assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan/);
+    assert.match(plan, /--preflight-plan <xs\|light\|standard\|comprehensive>/);
     assert.match(plan, /Never pass `--orchestrated`/);
-    assert.match(plan, /at most one short runtime-only instruction/i);
 
     assert.match(
       execute,
@@ -912,12 +936,10 @@ test('Plan and Execute emit one non-authoritative calibration lifecycle', () => 
     for (const eventType of [
       'plan.started',
       'plan.reclassified',
-      'plan.review_completed',
-      'plan.gate_completed',
       'plan.completed',
     ]) assert.match(plan, new RegExp(eventType.replace('.', '\\.')));
     assert.match(plan, /probe flags|probe_used/);
-    assert.match(plan, /review yield/i);
+    assert.doesNotMatch(plan, /plan\.review_completed/);
     assert.match(plan, /artifact hashes|artifact_hashes/);
     assert.match(plan, /planning elapsed|planning_elapsed_ms/);
     assert.match(plan, /telemetry failure[^\n]*(?:continue|never blocks|degraded)/i);
@@ -1038,18 +1060,16 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
     assert.doesNotMatch(plan, /≤1-file|≤5 files|Hard-stops:|automatic COMPREHENSIVE/i);
     assert.doesNotMatch(route, /≤1-file|≤5 files|Hard-stops:|automatic COMPREHENSIVE/i);
     assert.match(plan, /immutable canonical scope/i);
-    assert.match(plan, /high-level-design-gate\.md/i);
-    assert.match(plan, /Do not require a final `Approved` reply/i);
-    assert.match(plan, /displaying the command is non-mutating/i);
-    assert.match(plan, /explicit `--origin plan`/i);
-    assert.match(plan, /one plan-review pipeline/i);
-    assert.match(plan, /XL[^\n]*spectre-task_review[^\n]*--finalize-index[^\n]*validate-pair/);
+    assert.match(plan, /user's alignment signal/i);
+    assert.match(plan, /--origin plan/);
+    assert.match(plan, /aligned draft/i);
+    assert.doesNotMatch(plan, /spectre-plan_review|spectre-create_tasks|spectre-task_review/);
     assert.doesNotMatch(plan, /goal-prompts\.md/);
     assert.doesNotMatch(plan, /Skill\(spectre-goal\)/);
-    assert.match(plan, /Research agents return evidence only/i);
-    assert.match(plan, /reviewer write surfaces/i);
+    assert.match(plan, /Gather proportional evidence/i);
+    assert.match(plan, /draft finalization/i);
     assert.match(plan, /never silently rerun/i);
-    assert.match(plan, /final planning artifact step.*after any review/i);
+    assert.match(plan, /plan\.completed/);
     assert.match(plan, /DONE when/i);
 
     assert.ok(repositoryTokenCount(repoRoot, planPath) < 2000);
@@ -1057,7 +1077,7 @@ test('Plan delegates one semantic XS-S-M-L-XL classifier and keeps orchestration
   }
 });
 
-test('Plan high-level design gate stays concise and requires explicit approval', () => {
+test('Plan defers design authority to its aligned-draft handoff', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -1067,10 +1087,10 @@ test('Plan high-level design gate stays concise and requires explicit approval',
     assert.ok(fs.existsSync(gatePath), `${rootName} must contain the high-level design gate`);
     const gate = fs.readFileSync(gatePath, 'utf8');
 
-    assert.match(plan, /For L\/XL[^\n]*XS–M[^\n]*material user-owned decision/i);
-    assert.match(plan, /high-level-design-gate\.md[^\n]*through DONE before invoking any child/i);
-    assert.match(plan, /current-run explicitly approved `## Selected Design` is the only fast path/i);
-    assert.match(plan, /every required high-level design gate was explicitly approved and recorded/i);
+    assert.doesNotMatch(plan, /high-level-design-gate\.md/);
+    assert.match(plan, /Scope remains the immutable user contract/i);
+    assert.match(plan, /missing irreversible decision.*withhold the handoff/i);
+    assert.match(plan, /Launch(?:ing)? that command is the user's alignment signal/i);
 
     assert.match(gate, /targeting 250–350 words with a hard maximum of 400 words/i);
     for (const section of [
@@ -1149,7 +1169,7 @@ test('public guidance and compatibility preserve one adaptive XS-S-M-L-XL route'
   }
 });
 
-test('plan surfaces time-only planning and implementation estimates', () => {
+test('aligned Plan does not add a separate planning or implementation estimate gate', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
@@ -1160,8 +1180,7 @@ test('plan surfaces time-only planning and implementation estimates', () => {
       'utf8',
     );
 
-    assert.match(plan, /Estimated remaining planning time/);
-    assert.match(plan, /Estimated implementation time/);
+    assert.doesNotMatch(plan, /Estimated remaining planning time|Estimated implementation time/);
     assert.doesNotMatch(plan, /Execution guidance/);
     assert.match(plan, /never delays or blocks the gate/);
     assert.doesNotMatch(plan, /Historical guidance/);
@@ -1400,9 +1419,9 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(prototype, /reclassify as `post-scope`/);
 
     assert.ok(plan.includes('`ux.md` (preferred) or legacy `specs/ux.md`'));
-    assert.match(plan, /copy-ready fenced launch command as the primary next step/);
-    assert.match(plan, /spectre-create_tasks.*--orchestrated/);
-    assert.match(plan, /spectre-task_review.*--orchestrated/);
+    assert.match(plan, /exactly one copy-ready fenced command/);
+    assert.match(plan, /--preflight-plan <xs\|light\|standard\|comprehensive>/);
+    assert.doesNotMatch(plan, /spectre-create_tasks|spectre-task_review/);
     assert.doesNotMatch(plan, /spectre-goal/);
 
     assert.match(createPlan, /Approved direct.*spectre-execute/i);
@@ -2114,9 +2133,9 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
     const taskReview = readSkill('spectre-task_review');
     const codeReview = readSkill('spectre-code_review');
 
-    assert.match(plan, /primary planning agent owns synthesis, routing, and deterministic finalization/i);
-    assert.match(plan, /explicit scope-safe reviewer write surfaces/i);
-    assert.match(plan, /Research agents return evidence only and never write planning artifacts/i);
+    assert.match(plan, /primary owns synthesis, routing, and draft finalization/i);
+    assert.match(plan, /Scope remains the immutable user contract/i);
+    assert.doesNotMatch(plan, /spectre-plan_review|spectre-create_tasks|spectre-task_review/);
     assert.doesNotMatch(plan, /never write `plan\.md`, `execute\.md`, or `tasks\.json` content yourself/i);
 
     assert.match(createPlan, /primary owns synthesis and `plan\.md`/i);
