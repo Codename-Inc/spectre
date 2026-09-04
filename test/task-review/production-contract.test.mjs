@@ -144,6 +144,7 @@ test("Execute preflight owns scope-safe plan review before unchanged task creati
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-execute", "SKILL.md"),
     "utf8",
   );
+  const architecture = readFileSync(join(repositoryRoot, "Architecture.md"), "utf8");
   const planReview = readFileSync(
     join(planReviewDir, "SKILL.md"),
     "utf8",
@@ -158,22 +159,26 @@ test("Execute preflight owns scope-safe plan review before unchanged task creati
   );
 
   assert.match(plan, /aligned draft/i);
-  assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
+  assert.match(plan, /\/spectre:execute <repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
+  assert.match(plan, /XS → xs; S → light; M\/L → standard; XL → comprehensive/);
   assert.doesNotMatch(plan, /spectre-plan_review/);
   assert.doesNotMatch(plan, /spectre-create_tasks/);
   assert.doesNotMatch(plan, /spectre-task_review/);
   assert.doesNotMatch(plan, /spectre-goal/);
   const reviewIndex = execute.indexOf("Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated");
   const parallelismIndex = execute.indexOf("maximize safe parallelism");
-  const tasksIndex = execute.indexOf("Skill(spectre-create_tasks) --depth <mapped depth> --orchestrated");
+  const tasksIndex = execute.indexOf("Skill(spectre-create_tasks) --depth <marker depth> --orchestrated");
   assert.ok(reviewIndex >= 0);
   assert.ok(parallelismIndex > reviewIndex);
   assert.ok(tasksIndex > parallelismIndex);
   assert.match(execute, /`--preflight-plan <depth>` with an explicit readable plan enters preflight/i);
-  assert.match(execute, /valid structured pair[\s\S]*skip preflight entirely/i);
+  assert.match(execute, /pair metadata[\s\S]*closed review reports[\s\S]*current plan bytes/i);
+  assert.match(execute, /older, unrelated, or unprovable pair[\s\S]*NEEDS_AUTHORITY[\s\S]*before review, task regeneration, or structured resume/i);
+  assert.match(execute, /marked plan recording `Execution Mode: direct` is rejected before review/i);
   assert.match(execute, /No automatic task review/i);
   assert.match(execute, /Scope change, unresolved Blocker\/High, explicit-design contradiction, or unavailable authority stops preflight before task generation/i);
   assert.match(execute, /scope-safe result proceeds without a second user gate/i);
+  assert.match(architecture, /legacy route labels.*observational telemetry.*no longer describe review or delivery shape/i);
 
   assert.match(planReview, /reviews\/plan_correctness\.md/);
   assert.match(planReview, /reviews\/plan_review\.md/);

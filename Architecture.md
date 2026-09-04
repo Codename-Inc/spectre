@@ -229,6 +229,8 @@ A managed feature or bug gets a collision-safe root:
 
 Scope is the enduring user contract. A missing irreversible decision, Scope change, or contradiction with an explicit design stops the Plan handoff for authority; otherwise launching the marked command is alignment. Planning telemetry is useful for route analysis, but a telemetry failure degrades observability rather than blocking approved work.
 
+Legacy route labels remain observational telemetry for compatibility; they no longer describe review or delivery shape of aligned-draft runs.
+
 ### 5.3 Execute: dependency-safe parallel work
 
 `spectre-execute` accepts either:

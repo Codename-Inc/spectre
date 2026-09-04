@@ -613,22 +613,32 @@ test('only a marked aligned draft enters Execute preflight', () => {
     const plan = fs.readFileSync(
       path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-plan', 'SKILL.md'),
       'utf8',
-    ).replaceAll('/spectre:', 'spectre-');
+    );
     const execute = readExecuteContract(repoRoot, rootName).replaceAll('/spectre:', 'spectre-');
     const reviewIndex = execute.indexOf('Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated');
     const parallelismIndex = execute.indexOf('maximize safe parallelism');
-    const taskIndex = execute.indexOf('Skill(spectre-create_tasks) --depth <mapped depth> --orchestrated');
+    const taskIndex = execute.indexOf('Skill(spectre-create_tasks) --depth <marker depth> --orchestrated');
 
-    assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
+    const handoff = rootName === 'spectre' ? /\/spectre:execute/ : /spectre-execute/;
+    assert.match(plan, handoff);
+    assert.match(plan, /<repo-relative plan\.md> --origin plan --preflight-plan <xs\|light\|standard\|comprehensive>/);
     assert.match(plan, /XS → `Skill\(spectre-create_plan\) --depth light --no-review --execution structured`/);
+    assert.match(plan, /XS → xs; S → light; M\/L → standard; XL → comprehensive/);
+    assert.match(plan, /requested outcome.*material decisions.*Scope\/anti-scope boundaries.*credible risks.*verification intent/i);
     assert.doesNotMatch(plan, /spectre-plan_review|spectre-create_tasks|spectre-task_review/);
     assert.match(execute, /`--preflight-plan <depth>` with an explicit readable plan enters preflight/i);
     assert.match(execute, /Without the marker, preserve current structured and plan-direct selection/i);
-    assert.match(execute, /existing valid structured pair[\s\S]*skip preflight/i);
+    assert.match(execute, /pair metadata[\s\S]*closed review reports[\s\S]*current plan bytes/i);
+    assert.match(execute, /older, unrelated, or unprovable pair[\s\S]*NEEDS_AUTHORITY[\s\S]*before review, task regeneration, or structured resume/i);
+    assert.match(execute, /marked plan recording `Execution Mode: direct` is rejected before review/i);
     assert.ok(reviewIndex >= 0 && parallelismIndex > reviewIndex && taskIndex > parallelismIndex);
     assert.match(execute, /No automatic task review/i);
     assert.match(execute, /Scope change, unresolved Blocker\/High, explicit-design contradiction, or unavailable authority stops preflight before task generation/i);
     assert.match(execute, /telemetry[\s\S]*degraded[\s\S]*never blocks/i);
+    assert.match(
+      fs.readFileSync(path.join(repoRoot, 'Architecture.md'), 'utf8'),
+      /legacy route labels.*observational telemetry.*no longer describe review or delivery shape/i,
+    );
   }
 });
 
@@ -892,7 +902,7 @@ test('planning hands off directly to execute without goal-prompt generation', ()
     assert.doesNotMatch(plan, /goal-prompts\.md/);
     assert.match(plan, /Never generate a goal prompt/i);
     assert.match(plan, /exactly one copy-ready fenced command/);
-    assert.match(plan, /spectre-execute <repo-relative plan\.md> --origin plan/);
+    assert.match(plan, rootName === 'spectre' ? /\/spectre:execute <repo-relative plan\.md> --origin plan/ : /spectre-execute <repo-relative plan\.md> --origin plan/);
     assert.match(plan, /--preflight-plan <xs\|light\|standard\|comprehensive>/);
     assert.match(plan, /Never pass `--orchestrated`/);
 
