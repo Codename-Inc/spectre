@@ -9,6 +9,7 @@ import {
 } from '../knowledge/store.mjs';
 import {
   interruptStoredWorkflowRun,
+  migrateLegacyExecuteRuns,
   recordWorkflowEvents,
   TERMINAL_RUN_STATUSES,
   workflowPaths,
@@ -71,11 +72,15 @@ function removeOwnedPath(targetPath, root, dryRun, actions, reason) {
 }
 
 function listRuns(workflowRoot) {
-  const runsDir = path.join(workflowRoot, 'runs');
-  if (!fs.existsSync(runsDir)) return [];
-  return fs.readdirSync(runsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith('run_'))
+  const runRoots = [
+    path.join(workflowRoot, 'execute', 'runs'),
+    path.join(workflowRoot, 'runs'),
+  ].filter((runsDir) => fs.existsSync(runsDir));
+  const seen = new Set();
+  return runRoots.flatMap((runsDir) => fs.readdirSync(runsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('run_') && !seen.has(entry.name))
     .map((entry) => {
+      seen.add(entry.name);
       const runDir = path.join(runsDir, entry.name);
       const statePath = path.join(runDir, 'state.json');
       const summaryPath = path.join(runDir, 'summary.json');
@@ -96,7 +101,7 @@ function listRuns(workflowRoot) {
         endedAt: Number.isFinite(endedAt) ? endedAt : null,
         lastEventAt: Number.isFinite(lastEventAt) ? lastEventAt : null,
       };
-    });
+    }));
 }
 
 async function interruptStaleRuns(projectDir, runs, options) {
@@ -127,6 +132,11 @@ async function cleanupStoredWorkflow(storePath, options = {}) {
   const workflowRoot = workflowPaths(storePath).workflowRoot;
   if (!fs.existsSync(workflowRoot)) {
     return { ok: true, skipped: 'NO_WORKFLOW_STORE', actions: [], remainingBytes: 0 };
+  }
+  if (!options.dryRun) {
+    await withStoreLock(storePath, 'workflow-namespace-migration', async () => {
+      migrateLegacyExecuteRuns(storePath);
+    });
   }
   const nowMs = milliseconds(options.now);
   const staleActions = [];

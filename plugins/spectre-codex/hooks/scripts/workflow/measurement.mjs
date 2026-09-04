@@ -8,6 +8,7 @@ import {
   resolveProjectStore,
   withStoreLock,
 } from '../knowledge/store.mjs';
+import { workflowStorageLayout } from './layout.mjs';
 
 const STAGES = ['Prune', 'Test', 'Sweep', 'Rebase', 'Full suite', 'Create PR'];
 const LABELS = new Set(['Ship', ...STAGES]);
@@ -501,6 +502,29 @@ function readHistory(historyPath) {
   return history.measurements;
 }
 
+function migrateLegacyShipHistory(storePath, maxMeasurements, now) {
+  const layout = workflowStorageLayout(storePath);
+  if (!fs.existsSync(layout.legacyShipMeasurementsPath)) return false;
+  fs.mkdirSync(layout.shipRoot, { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(layout.shipMeasurementsPath)) {
+    fs.renameSync(layout.legacyShipMeasurementsPath, layout.shipMeasurementsPath);
+    return true;
+  }
+  const legacy = readHistory(layout.legacyShipMeasurementsPath);
+  const current = readHistory(layout.shipMeasurementsPath);
+  const byId = new Map();
+  for (const measurement of [...legacy, ...current]) {
+    if (measurement?.measurement_id) byId.set(measurement.measurement_id, measurement);
+  }
+  atomicWriteJson(layout.shipMeasurementsPath, {
+    schema_version: HISTORY_SCHEMA_VERSION,
+    updated_at: new Date(now()).toISOString(),
+    measurements: [...byId.values()].slice(-maxMeasurements),
+  });
+  fs.rmSync(layout.legacyShipMeasurementsPath);
+  return true;
+}
+
 function persistedRows(rows) {
   return rows.map((row) => ({
     stage: row.stage,
@@ -527,8 +551,10 @@ export async function persistShipMeasurement({
     throw persistenceError('INVALID_SHIP_MEASUREMENT_PERSISTENCE', 'A project directory and positive history limit are required');
   }
   const store = await resolveProjectStore(projectDir, { spectreHome });
-  const historyPath = path.join(store.storePath, 'workflow', 'ship-measurements.json');
+  const layout = workflowStorageLayout(store.storePath);
+  const historyPath = layout.shipMeasurementsPath;
   return withStoreLock(store.storePath, 'persist-ship-measurement', async () => {
+    migrateLegacyShipHistory(store.storePath, maxMeasurements, now);
     const measurements = readHistory(historyPath);
     if (measurements.some((measurement) => measurement?.measurement_id === outerSnapshot.measurementId)) {
       return { status: 'duplicate', historyPath };

@@ -11,9 +11,8 @@ Turn an unstructured request into clear scope boundaries (IN / OUT / ANTI-SCOPE)
 ## Inputs
 
 - `$ARGUMENTS` — the feature/problem brain-dump. If empty → greet, ask for context, and **WAIT** for the user.
-- Optional explicit managed feature name/root or an artifact beneath one.
+- Existing root/artifact: context for new work; reuse only for the same scope run, `FROM_KICKOFF=true`, or explicit resume/re-scope. On re-scope, read `concepts/scope.md` fully, surface settled decisions and the delta, and confirm before rewriting the immutable downstream anchor.
 - `FROM_KICKOFF=true` + `KICKOFF_DOC` → read the doc, extract (Core Problem, User Value, Decisions Made, Remaining Ambiguities, Key Code Refs), then **skip grounding + exploration** and go straight to clarifications. Already-grounded.
-- Prior `{FEATURE_ROOT}/concepts/scope.md` → treat as a **re-scope**: read it fully, surface what's already settled, ask only about what's new or changed. scope.md is the **immutable anchor** for downstream phases — never silently narrow or expand it; surface the delta and get user confirmation before rewriting.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
@@ -22,7 +21,7 @@ Turn an unstructured request into clear scope boundaries (IN / OUT / ANTI-SCOPE)
 
 ## Feature root contract
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Method / guardrails
 
@@ -33,7 +32,7 @@ Turn an unstructured request into clear scope boundaries (IN / OUT / ANTI-SCOPE)
 
 ## Outputs + DONE
 
-Write `{FEATURE_ROOT}/concepts/scope.md` (scoped filename if one already exists), beginning immediately below the title with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then user value & boundaries before technical detail, with **all** of:
+Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title with `Feature: <feature-name>` and `Feature Root: .spectre/features/<feature-name>`, then user value & boundaries before technical detail, with **all** of:
 
  1. **The Problem** — pain, impact, current state
  2. **Target Users** — primary, secondary, needs

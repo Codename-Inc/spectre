@@ -11,11 +11,11 @@ Add risk-weighted behavioral tests and commit standalone batches. Test boundarie
 ## Inputs
 
 - `$ARGUMENTS` — optional explicit feature name/root or descendant artifact, scope hint, or specific files to focus on, plus `--orchestrated` when a parent workflow owns the next step.
-- Optional orchestrator-provided risk plan from `spectre-clean`: files already tiered P0-P3 plus batch assignment. When present, use it as the plan for this batch.
+- Optional orchestrator-provided risk plan from `spectre-clean` or `spectre-ship`: files already tiered P0-P3 plus batch assignment. When present, use it as the plan for this batch.
 
 ## Working Set (late-bound — read at run-time, never inline)
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Repair stale feature/root metadata in artifacts this workflow touches.
 - **Full Working Set = UNION** of: committed changes (validate any provided `commit_id`; invalid → STOP and ask), staged (`git diff --cached --name-only`), unstaged (`git diff --name-only`), untracked (`git ls-files --others --exclude-standard`). Keep the projection local/in-thread; write no working-set artifact.
 - Standalone: baseline-lint the set and map import/dependency edges. All paths absolute from repo root.

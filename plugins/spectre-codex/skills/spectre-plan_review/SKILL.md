@@ -17,7 +17,7 @@ Produce the smallest correct plan through one evidence wave, correctness review,
 
 ## Working Set
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Reports: `reviews/plan_correctness.md` and `reviews/plan_review.md`. Resume a sole correctness report only when its post-edit hash matches `plan.md`; otherwise use absent canonical paths or timestamped siblings.
 
 ## Outputs + DONE

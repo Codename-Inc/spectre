@@ -373,6 +373,34 @@ describe('workflow event runtime', () => {
     assert.match(serialized, /verification\.txt/);
     assert.doesNotMatch(serialized, /PRIVATE_OUTPUT_MUST_NOT_BE_STORED/);
   });
+
+  it('stores Execute runs under their namespace and migrates a legacy run directory', async (t) => {
+    const value = fixture(t);
+    const started = await startWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      source: value.sourcePath,
+    });
+    const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+    const namespaced = workflowPaths(resolved.storePath, started.runId);
+    assert.equal(
+      namespaced.runDir,
+      path.join(resolved.storePath, 'workflow', 'execute', 'runs', started.runId),
+    );
+
+    const legacyRunDir = path.join(resolved.storePath, 'workflow', 'runs', started.runId);
+    fs.mkdirSync(path.dirname(legacyRunDir), { recursive: true });
+    fs.renameSync(namespaced.runDir, legacyRunDir);
+
+    const loaded = await readWorkflowRun({
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      runId: started.runId,
+    });
+    assert.equal(loaded.paths.runDir, namespaced.runDir);
+    assert.equal(fs.existsSync(namespaced.statePath), true);
+    assert.equal(fs.existsSync(legacyRunDir), false);
+  });
 });
 
 function writeJsonl(filePath, entries) {
@@ -688,7 +716,7 @@ describe('workflow measurement runtime', () => {
     const result = JSON.parse(first.stdout);
     assert.equal(result.persistence.status, 'stored');
     const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
-    const historyPath = path.join(store.storePath, 'workflow', 'ship-measurements.json');
+    const historyPath = path.join(store.storePath, 'workflow', 'ship', 'measurements.json');
     assert.equal(result.persistence.historyPath, historyPath);
     const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
     assert.equal(history.schema_version, 1);
@@ -719,6 +747,42 @@ describe('workflow measurement runtime', () => {
     assert.equal(JSON.parse(fs.readFileSync(historyPath, 'utf8')).measurements.length, 1);
   });
 
+  it('migrates legacy flat Ship history into the Ship namespace without losing rows', async (t) => {
+    const value = measurementFixture(t);
+    const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+    const legacyPath = path.join(store.storePath, 'workflow', 'ship-measurements.json');
+    const legacyMeasurementId = crypto.randomUUID();
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      schema_version: 1,
+      updated_at: '2026-01-01T00:00:00.000Z',
+      measurements: [{ measurement_id: legacyMeasurementId }],
+    }));
+
+    const measurementId = crypto.randomUUID();
+    const summary = summarizeMeasurement({
+      rows: [],
+      outerSnapshot: { label: 'Ship', epochMs: 1_000 },
+      now: () => 1_020,
+    });
+    await persistShipMeasurement({
+      summary,
+      outerSnapshot: { label: 'Ship', measurementId, session: null },
+      projectDir: value.projectDir,
+      spectreHome: value.spectreHome,
+      featureRoot: '.spectre/features/runtime-test',
+      candidate: { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), diffSha256: 'c'.repeat(64) },
+    });
+
+    const historyPath = path.join(store.storePath, 'workflow', 'ship', 'measurements.json');
+    const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+    assert.deepEqual(
+      history.measurements.map((measurement) => measurement.measurement_id),
+      [legacyMeasurementId, measurementId],
+    );
+    assert.equal(fs.existsSync(legacyPath), false);
+  });
+
   it('keeps the latest persisted Ship summaries in oldest-first bounded order', async (t) => {
     const value = measurementFixture(t);
     const summary = summarizeMeasurement({
@@ -741,7 +805,7 @@ describe('workflow measurement runtime', () => {
     }
     const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
     const history = JSON.parse(fs.readFileSync(path.join(
-      store.storePath, 'workflow', 'ship-measurements.json',
+      store.storePath, 'workflow', 'ship', 'measurements.json',
     ), 'utf8'));
     assert.equal(history.measurements.length, 2);
     assert.deepEqual(history.measurements.map((measurement) => measurement.measurement_id), measurementIds.slice(1));
@@ -764,7 +828,7 @@ describe('workflow measurement runtime', () => {
     })));
     const store = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
     const history = JSON.parse(fs.readFileSync(path.join(
-      store.storePath, 'workflow', 'ship-measurements.json',
+      store.storePath, 'workflow', 'ship', 'measurements.json',
     ), 'utf8'));
     assert.deepEqual(
       new Set(history.measurements.map((measurement) => measurement.measurement_id)),

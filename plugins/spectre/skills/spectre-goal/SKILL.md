@@ -19,7 +19,7 @@ Write one autonomous completion contract whose success is provable by surfaced e
 
 ## Working Set
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Structured source: execute index plus targeted task projections needed for objective, trace, acceptance, and verification; read run progress from `spectre-workflow run status`, never from the task graph. Plan-direct source: plan, existing state, and its recorded scope/process manifest.
 - `GOAL_FILE={FEATURE_ROOT}/goal-prompts.md`.
 

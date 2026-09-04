@@ -342,7 +342,9 @@ test('Execute accepts empty origin, preserves scoped bug roots, and records post
   assert.doesNotMatch(JSON.stringify(finished.state.idempotency), /codex:worker|codex:missing/);
   const projectStore = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
   assert.equal(fs.existsSync(path.join(projectStore.storePath, 'measurements')), false);
-  assert.equal(fs.existsSync(path.join(projectStore.storePath, 'workflow', 'ship-measurements.json')), false);
+  assert.equal(fs.existsSync(path.join(
+    projectStore.storePath, 'workflow', 'ship', 'measurements.json',
+  )), false);
 });
 
 test('Execute measurement reconciles only complete aggregate primary and worker counters', (t) => {
@@ -729,7 +731,7 @@ test('workflow CLI records a local plan telemetry lifecycle outside the working 
   assert.equal(outcome.status, 0, outcome.stderr);
 
   const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
-  const telemetryPath = path.join(resolved.storePath, 'workflow', 'plan-classification.jsonl');
+  const telemetryPath = path.join(resolved.storePath, 'workflow', 'plan', 'events.jsonl');
   const workingTreeTelemetryPath = path.join(
     value.projectDir,
     '.spectre',
@@ -910,7 +912,7 @@ test('plan telemetry imports a legacy working-tree log without modifying it', as
   assert.equal(fs.readFileSync(legacyPath, 'utf8'), legacyBytes);
 
   const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
-  const externalPath = path.join(resolved.storePath, 'workflow', 'plan-classification.jsonl');
+  const externalPath = path.join(resolved.storePath, 'workflow', 'plan', 'events.jsonl');
   assert.equal(fs.readFileSync(externalPath, 'utf8'), legacyBytes);
   const migration = JSON.parse(fs.readFileSync(
     path.join(resolved.storePath, 'migrations', 'plan-telemetry-worktree-v1.json'),
@@ -918,6 +920,40 @@ test('plan telemetry imports a legacy working-tree log without modifying it', as
   ));
   assert.equal(migration.importedEventCount, 1);
   assert.equal(migration.result, 'imported');
+});
+
+test('plan telemetry migrates the legacy flat external log into the Plan namespace', async (t) => {
+  const value = makeFixture(t);
+  const artifactHash = 'c'.repeat(64);
+  const scopeHash = 'd'.repeat(64);
+  const planRunId = 'plan_run_33333333-3333-4333-8333-333333333333';
+  const resolved = await resolveProjectStore(value.projectDir, { spectreHome: value.spectreHome });
+  const legacyPath = path.join(resolved.storePath, 'workflow', 'plan-classification.jsonl');
+  const legacyEvent = {
+    schema_version: 1,
+    event_id: 'plan_evt_44444444-4444-4444-8444-444444444444',
+    plan_run_id: planRunId,
+    timestamp: '2026-08-27T00:00:00.000Z',
+    event_type: 'plan.completed',
+    feature_root: '.spectre/features/cli',
+    scope_hash: scopeHash,
+    payload: { artifact_hashes: [artifactHash] },
+  };
+  fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+  fs.writeFileSync(legacyPath, `${JSON.stringify(legacyEvent)}\n`);
+
+  const matched = invoke(BUNDLED_CLI_PATH, [
+    'plan', 'match',
+    '--feature-root', '.spectre/features/cli',
+    '--artifact-hash', artifactHash,
+    '--project-dir', value.projectDir,
+  ], value);
+  assert.equal(matched.status, 0, matched.stderr);
+  assert.equal(JSON.parse(matched.stdout).planRunId, planRunId);
+
+  const namespacedPath = path.join(resolved.storePath, 'workflow', 'plan', 'events.jsonl');
+  assert.equal(fs.readFileSync(namespacedPath, 'utf8'), `${JSON.stringify(legacyEvent)}\n`);
+  assert.equal(fs.existsSync(legacyPath), false);
 });
 
 test('workflow CLI rejects plan telemetry payload keys outside the allow-list', (t) => {

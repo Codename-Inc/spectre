@@ -13,6 +13,7 @@ import {
   timestamp,
   withStoreLock,
 } from './store.mjs';
+import { workflowStorageLayout } from './layout.mjs';
 
 const PLAN_TELEMETRY_SCHEMA_VERSION = 1;
 const PLAN_RUN_ID_PATTERN = /^plan_run_[0-9a-f-]{36}$/;
@@ -100,12 +101,14 @@ const INPUT_KEYS = {
 };
 
 function planTelemetryPaths(storePath) {
-  const root = path.join(storePath, 'workflow');
+  const layout = workflowStorageLayout(storePath);
   return {
-    root,
-    recoveryDir: path.join(root, 'recovery', 'plan-telemetry'),
-    runDir: path.join(root, 'plan-classification'),
-    eventsPath: path.join(root, 'plan-classification.jsonl'),
+    root: layout.workflowRoot,
+    recoveryDir: path.join(layout.recoveryDir, 'plan-telemetry'),
+    runDir: layout.planRoot,
+    eventsPath: layout.planEventsPath,
+    legacyExternalEventsPath: layout.legacyPlanEventsPath,
+    namespaceMigrationPath: path.join(storePath, 'migrations', 'plan-telemetry-namespace-v2.json'),
     legacyMigrationPath: path.join(storePath, 'migrations', 'plan-telemetry-worktree-v1.json'),
   };
 }
@@ -121,6 +124,28 @@ function legacyPlanTelemetryPaths(projectDir) {
 }
 
 function importLegacyPlanTelemetry(projectDir, paths) {
+  if (fs.existsSync(paths.legacyExternalEventsPath)) {
+    fs.mkdirSync(paths.runDir, { recursive: true, mode: 0o700 });
+    const legacyPaths = {
+      eventsPath: paths.legacyExternalEventsPath,
+      recoveryDir: paths.recoveryDir,
+    };
+    const legacyEvents = readEventLog(legacyPaths, { repairTail: false }).events;
+    if (!fs.existsSync(paths.eventsPath)) {
+      fs.renameSync(paths.legacyExternalEventsPath, paths.eventsPath);
+    } else {
+      const existingIds = new Set(readEventLog(paths, { repairTail: false }).events.map((event) => event.event_id));
+      const unseen = legacyEvents.filter((event) => !existingIds.has(event.event_id));
+      if (unseen.length > 0) appendEvents(paths.eventsPath, unseen);
+      fs.rmSync(paths.legacyExternalEventsPath);
+    }
+    atomicWriteJson(paths.namespaceMigrationPath, {
+      schemaVersion: 1,
+      migratedAt: timestamp(),
+      importedEventCount: legacyEvents.length,
+      result: 'migrated',
+    });
+  }
   if (fs.existsSync(paths.legacyMigrationPath)) return false;
   if (fs.existsSync(paths.eventsPath)) {
     atomicWriteJson(paths.legacyMigrationPath, {

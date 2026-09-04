@@ -20,7 +20,7 @@ Codebase research: spawn parallel read-only agents, synthesize their findings in
 
 ## Feature root contract
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Method / guardrails
 1. **Immediate reply first** — acknowledge the topic and state the feature name/root the workflow will use (or ask for the topic) with NO tool calls in the opening turn.

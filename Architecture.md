@@ -301,16 +301,20 @@ ${SPECTRE_HOME:-~/.spectre}/projects/<readable-project-identity>/
 ├── knowledge-index.json
 ├── knowledge-activity.json
 └── workflow/
-    ├── plan-classification.jsonl # Observational Plan calibration events
-    ├── runs/
-    │   └── run_<uuid>/
-    │       ├── events.jsonl      # Append-only authority
-    │       ├── state.json        # Materialized current state
-    │       └── summary.json      # Terminal compact summary
+    ├── execute/
+    │   └── runs/
+    │       └── run_<uuid>/
+    │           ├── events.jsonl  # Append-only authority
+    │           ├── state.json    # Materialized current state
+    │           └── summary.json  # Terminal compact summary
+    ├── plan/
+    │   └── events.jsonl          # Observational Plan calibration events
+    ├── ship/
+    │   └── measurements.json     # Bounded completed Ship summaries
     └── ...retention metadata
 ```
 
-Project identity prefers Git's common directory, so linked worktrees resolve to the same project store while run metadata still records checkout identity, branch, and HEAD. Outside Git, canonical project paths provide the fallback identity. Plan telemetry is stored here rather than in the working tree so agent-generated append-only state never participates in Git merges; exact feature roots and artifact hashes preserve feature-level joins inside the project-wide calibration log.
+Project identity prefers Git's common directory, so linked worktrees resolve to the same project store while run metadata still records checkout identity, branch, and HEAD. Outside Git, canonical project paths provide the fallback identity. Execute, Plan, and Ship share this operational boundary but retain separate schemas and authority: Execute owns resumable per-run state, Plan owns the project-wide calibration log, and Ship owns bounded measurement history. None participates in Git merges. Exact feature roots and artifact hashes preserve feature-level joins between the separate stores.
 
 Events include run, stage, phase, wave, agent, task, gate, and human-input transitions. The store validates identifiers, actors, ownership, task transitions, paths, and event payloads before appending.
 

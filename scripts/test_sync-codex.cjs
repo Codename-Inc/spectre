@@ -504,32 +504,50 @@ test('spectre-execute preserves affected verification, risk-triggered review rou
 
 test('spectre-code_review is one final falsification-first review with launcher-only timing', () => {
   const repoRoot = path.resolve(__dirname, '..');
-  const skillPaths = [
-    path.join(repoRoot, 'plugins', 'spectre', 'skills', 'spectre-code_review', 'SKILL.md'),
-    path.join(repoRoot, 'plugins', 'spectre-codex', 'skills', 'spectre-code_review', 'SKILL.md'),
-  ];
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const skillDir = path.join(repoRoot, 'plugins', rootName, 'skills', 'spectre-code_review');
+    const skill = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+    const prompt = fs.readFileSync(
+      path.join(skillDir, 'references', 'adversarial-review.md'),
+      'utf8',
+    );
 
-  for (const skillPath of skillPaths) {
-    const skill = fs.readFileSync(skillPath, 'utf8');
     assert.match(skill, /final adversarial review/);
     assert.match(skill, /final boundary to falsify correctness, safety, production readiness, and requirement delivery/);
     assert.match(skill, /Try to prove the work wrong, unsafe, unreachable, or unable to meet requirements/);
-    assert.match(skill, /Falsify; do not confirm/);
-    assert.match(skill, /Actively seek counterexamples, broken invariants, failure paths, false-positive tests, unreachable outcomes/);
+    assert.match(skill, /references\/adversarial-review\.md/);
+    assert.match(skill, /send it verbatim to one fresh reviewer/i);
+    assert.match(skill, /followed only by structured context/i);
+    assert.match(skill, /primary does not paraphrase or augment the template/i);
+    assert.match(prompt, /Try to prove the completed work wrong, unsafe, unreachable, or unable to meet the supplied requirements/);
+    assert.match(prompt, /Actively seek counterexamples, broken invariants, failure paths, false-positive tests, unreachable outcomes/);
     assert.match(skill, /--effort high/);
     assert.match(skill, /20-minute launcher-side poll limit/);
     assert.match(skill, /do not pass duration guidance to the reviewer/i);
     assert.match(skill, /Quiet output is not failure/);
     assert.match(skill, /A usable review ends semantic review/);
-    assert.doesNotMatch(skill, /at least 20 minutes|--checkpoint|REVIEW_MODE = checkpoint/i);
-    assert.match(skill, /requirement reachability/i);
-    assert.match(skill, /scope\/dead paths/i);
-    assert.match(skill, /finding_fingerprint\s*=\s*sha256/);
-    assert.match(skill, /invariant_family\s*=\s*sha256/);
-    assert.match(skill, /Requirement Delivery Coverage/);
-    assert.match(skill, /Requirement\/AC \| Status \| Consumer\/outcome evidence \| Gap\/Finding/);
-    assert.match(skill, /Scope and Dead-Path Audit/);
+    assert.doesNotMatch(`${skill}\n${prompt}`, /at least 20 minutes|--checkpoint|REVIEW_MODE = checkpoint/i);
+    assert.match(prompt, /requirement reachability/i);
+    assert.match(prompt, /finding_fingerprint\s*=\s*sha256/);
+    assert.match(prompt, /invariant_family\s*=\s*sha256/);
+    assert.match(prompt, /Requirement Delivery Coverage/);
+    assert.match(prompt, /Requirement\/AC \| Status \| Consumer\/outcome evidence \| Gap\/Finding/);
+    assert.match(prompt, /Scope and Dead-Path Audit/);
     assert.match(skill, /every requirement\/AC has one evidence-backed status/);
+    assert.ok(
+      repositoryTokenCount(
+        repoRoot,
+        `plugins/${rootName}/skills/spectre-code_review/SKILL.md`,
+      ) <= 1500,
+      `${rootName} code-review orchestration should remain compact`,
+    );
+    assert.ok(
+      repositoryTokenCount(
+        repoRoot,
+        `plugins/${rootName}/skills/spectre-code_review/references/adversarial-review.md`,
+      ) <= 1000,
+      `${rootName} adversarial prompt should remain compact`,
+    );
   }
 });
 
@@ -1617,7 +1635,7 @@ test('feature-root establishment is centralized behind one concise internal skil
     'spectre-ux',
     'spectre-validate',
   ];
-  const canonicalResolver = 'Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.';
+  const canonicalResolver = 'Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.';
   const codexResolver = canonicalResolver.replace(
     '`@skill-spectre:spectre-feature-root`',
     '`Skill(spectre-feature-root)`',
@@ -1671,6 +1689,19 @@ test('feature-root establishment is centralized behind one concise internal skil
       assert.doesNotMatch(skill, /Root selection is workflow-owned/);
       assert.doesNotMatch(skill, /ask the user to name, choose, approve, reuse, or disambiguate a root/);
     }
+
+    const scope = readSkill('spectre-scope');
+    assert.match(scope, /Existing root\/artifact: context for new work/);
+    assert.match(scope, /reuse only for the same scope run[\s\S]*explicit resume\/re-scope/);
+    assert.doesNotMatch(scope, /scoped filename if one already exists/);
+
+    const plan = readSkill('spectre-plan');
+    assert.match(plan, /confirmed Scope—thread or managed root\/descendant/);
+    assert.match(plan, /Immutable canonical Scope:[^\n]*when present, else confirmed thread/);
+
+    const createPlan = readSkill('spectre-create_plan');
+    assert.match(createPlan, /confirmed Scope—thread, root, or descendant/);
+    assert.match(createPlan, /Treat confirmed IN\/OUT\/ANTI-SCOPE/);
 
     const research = readSkill('spectre-research');
     assert.match(research, /state the feature name\/root the workflow will use/);
@@ -2124,22 +2155,25 @@ test('code review is adversarial and self-finalizing execute delegates the final
   const repoRoot = path.resolve(__dirname, '..');
 
   for (const rootName of ['spectre', 'spectre-codex']) {
-    const codeReviewPath = path.join(
+    const codeReviewDir = path.join(
       repoRoot,
       'plugins',
       rootName,
       'skills',
       'spectre-code_review',
-      'SKILL.md',
     );
-    const codeReview = fs.readFileSync(codeReviewPath, 'utf8');
-    assert.match(codeReview, /Try to prove the work wrong/);
-    assert.match(codeReview, /Falsify; do not confirm/);
-    assert.match(codeReview, /Actively seek counterexamples, broken invariants, failure paths/);
-    assert.match(codeReview, /correctness; regression\/integration; security; performance\/reliability/i);
-    assert.match(codeReview, /materially avoidable overengineering/);
-    assert.match(codeReview, /Evidence \/ Reproduction/);
-    assert.doesNotMatch(codeReview, /Scores \(0(?:-|\u2013)10\)/);
+    const codeReview = fs.readFileSync(path.join(codeReviewDir, 'SKILL.md'), 'utf8');
+    const adversarialPrompt = fs.readFileSync(
+      path.join(codeReviewDir, 'references', 'adversarial-review.md'),
+      'utf8',
+    );
+    assert.match(adversarialPrompt, /Try to prove the completed work wrong/);
+    assert.match(adversarialPrompt, /Actively seek counterexamples, broken invariants, failure paths/);
+    assert.match(adversarialPrompt, /correctness; regression\/integration; security; performance\/reliability/i);
+    assert.match(adversarialPrompt, /materially avoidable overengineering/);
+    assert.match(adversarialPrompt, /Evidence \/ Reproduction/);
+    assert.doesNotMatch(adversarialPrompt, /Scores \(0(?:-|\u2013)10\)/);
+    assert.match(codeReview, /same verbatim template and structured context/i);
 
     const execute = readExecuteContract(repoRoot, rootName);
     assert.match(execute, /## Finalization/);

@@ -11,6 +11,7 @@ import {
   withStoreLock,
 } from '../knowledge/store.mjs';
 import { executeUnavailableMeasurement } from './measurement.mjs';
+import { workflowStorageLayout } from './layout.mjs';
 
 const WORKFLOW_SCHEMA_VERSION = 1;
 const TERMINAL_RUN_STATUSES = new Set([
@@ -275,18 +276,42 @@ function executeContractHash(options = {}) {
 }
 
 function workflowPaths(storePath, runId) {
-  const workflowRoot = path.join(storePath, 'workflow');
-  const runsDir = path.join(workflowRoot, 'runs');
+  const layout = workflowStorageLayout(storePath);
+  const { workflowRoot, executeRoot, executeRunsDir: runsDir, recoveryDir } = layout;
   const runDir = runId ? path.join(runsDir, runId) : null;
   return {
     workflowRoot,
+    executeRoot,
     runsDir,
-    recoveryDir: path.join(workflowRoot, 'recovery'),
+    recoveryDir,
     runDir,
     eventsPath: runDir ? path.join(runDir, 'events.jsonl') : null,
     statePath: runDir ? path.join(runDir, 'state.json') : null,
     summaryPath: runDir ? path.join(runDir, 'summary.json') : null,
   };
+}
+
+function migrateLegacyExecuteRuns(storePath) {
+  const layout = workflowStorageLayout(storePath);
+  if (!fs.existsSync(layout.legacyExecuteRunsDir)) return false;
+  fs.mkdirSync(layout.executeRoot, { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(layout.executeRunsDir)) {
+    fs.renameSync(layout.legacyExecuteRunsDir, layout.executeRunsDir);
+    return true;
+  }
+  for (const entry of fs.readdirSync(layout.legacyExecuteRunsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !RUN_ID_PATTERN.test(entry.name)) continue;
+    const source = path.join(layout.legacyExecuteRunsDir, entry.name);
+    const destination = path.join(layout.executeRunsDir, entry.name);
+    if (fs.existsSync(destination)) {
+      throw codedError('WORKFLOW_NAMESPACE_CONFLICT', `Run exists in both workflow namespaces: ${entry.name}`);
+    }
+    fs.renameSync(source, destination);
+  }
+  if (fs.readdirSync(layout.legacyExecuteRunsDir).length === 0) {
+    fs.rmdirSync(layout.legacyExecuteRunsDir);
+  }
+  return true;
 }
 
 function validateRunId(runId) {
@@ -752,9 +777,10 @@ export async function startWorkflowRun(options) {
   const contractHash = executeContractHash(options);
   const resolved = await resolveProjectStore(projectDir, { spectreHome: options.spectreHome });
   const paths = workflowPaths(resolved.storePath);
-  fs.mkdirSync(paths.runsDir, { recursive: true, mode: 0o700 });
 
   return withStoreLock(resolved.storePath, 'workflow-run-start', async () => {
+    migrateLegacyExecuteRuns(resolved.storePath);
+    fs.mkdirSync(paths.runsDir, { recursive: true, mode: 0o700 });
     if (options.resume !== false) {
       for (const entry of fs.readdirSync(paths.runsDir, { withFileTypes: true })) {
         if (!entry.isDirectory() || !RUN_ID_PATTERN.test(entry.name)) continue;
@@ -884,6 +910,7 @@ export async function recordWorkflowEvents(options) {
     throw codedError('INVALID_IDEMPOTENCY_KEY', 'idempotency key must be a short machine-readable value');
   }
   return withStoreLock(resolved.storePath, 'workflow-event-record', async () => {
+    migrateLegacyExecuteRuns(resolved.storePath);
     const loaded = loadRun(resolved.storePath, options.runId, { repairTail: true });
     const { state, events, paths } = loaded;
     if (TERMINAL_RUN_STATUSES.has(state.status)) {
@@ -977,12 +1004,16 @@ export async function readWorkflowRun(options) {
     readOnly: true,
   });
   if (!resolved.storePath) throw codedError('RUN_NOT_FOUND', `No Spectre store for ${projectDir}`);
-  return loadRun(resolved.storePath, options.runId, { repairTail: false });
+  return withStoreLock(resolved.storePath, 'workflow-run-read', async () => {
+    migrateLegacyExecuteRuns(resolved.storePath);
+    return loadRun(resolved.storePath, options.runId, { repairTail: false });
+  });
 }
 
 export async function interruptStoredWorkflowRun(options) {
   const storePath = canonicalPath(options.storePath);
   return withStoreLock(storePath, 'workflow-retention-interrupt', async () => {
+    migrateLegacyExecuteRuns(storePath);
     const loaded = loadRun(storePath, options.runId, { repairTail: true });
     const { state, events, paths } = loaded;
     if (!['active', 'blocked'].includes(state.status)) {
@@ -1025,6 +1056,7 @@ export {
   appendEvents,
   canonicalPath,
   codedError,
+  migrateLegacyExecuteRuns,
   readEventLog,
   relativeProjectPath,
   sha256,

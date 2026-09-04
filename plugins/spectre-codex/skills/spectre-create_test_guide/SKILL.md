@@ -13,7 +13,7 @@ Produce a manual testing guide, scaled to the change, that a human can run to va
 - Task context: features added/modified/removed, stack/environment, user personas, integration points/dependencies. Prioritize an explicitly passed source-plan path ahead of literal `plan.md`; otherwise read from canonical artifacts (scope.md, plan.md, tasks.json slices) and the diff. Use `execute.md` only to locate `tasks.json`; do not inline the full task graph.
 
 ## Working Set
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Repair stale feature/root metadata in artifacts this workflow touches.
 - Read-only: explicitly supplied feature artifacts and the implemented diff.
 - Write: the single test-guide artifact only.

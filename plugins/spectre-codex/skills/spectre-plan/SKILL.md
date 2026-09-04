@@ -13,13 +13,13 @@ Turn confirmed Scope into the smallest sufficient approved implementation handof
 
 ## Inputs
 
-- `$ARGUMENTS`: confirmed managed Scope/root or descendant artifact. Ordinary repository-changing work without confirmed Scope returns to `spectre-scope`; reported bugs normally use `spectre-fix`. Read-only diagnosis/review, release, and execution of approved artifacts remain direct.
+- `$ARGUMENTS`: confirmed Scope—thread or managed root/descendant. Ordinary repository-changing work without confirmed Scope returns to `spectre-scope`; reported bugs normally use `spectre-fix`. Read-only diagnosis/review, release, and execution of approved artifacts remain direct.
 - Existing `concepts/scope.md`, `specs/prd.md`, `ux.md` (preferred) or legacy `specs/ux.md`, `task_context.md`, plans, reviews, and tasks/index.
 
 ## Working Set
 
-- Resolve one managed `FEATURE_ROOT` for this work from explicit/current-thread evidence only (physical directory wins; never branch/recency/lifecycle/scans). If none is confirmed, including when the candidate path is occupied, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- Treat `concepts/scope.md` as immutable canonical scope; downstream work may not narrow, expand, or reinterpret it without explicit scope-change approval.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Immutable canonical Scope: `concepts/scope.md` when present, else confirmed thread; never narrow, expand, or reinterpret it without explicit scope-change approval.
 - Read `references/estimation-guidance.md` only at an applicable gate; each estimate excludes user waits and never delays or blocks the gate.
 
 ## Outputs + DONE
