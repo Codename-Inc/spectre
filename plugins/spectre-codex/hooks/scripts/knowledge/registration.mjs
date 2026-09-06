@@ -1,21 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { parseKnowledgeRecord, refreshKnowledgeIndex } from './records.mjs';
+import {
+  RECORD_FILE_NAME,
+  parseKnowledgeRecord,
+  readRecordRevision,
+  refreshKnowledgeIndex,
+} from './records.mjs';
 import { atomicWriteFile, resolveProjectStore, withStoreLock } from './store.mjs';
 
 const RETIRED_NATIVE_RECORD_IDS = new Set(['spectre-recall', 'spectre-find']);
-const MAX_ACTIVATION_CUES = 16;
-const MAX_ACTIVATION_CUE_LENGTH = 120;
-const ACTIVATION_CUE_STRUCTURAL_SYNTAX = /[/.:_-]/u;
-const GENERIC_STANDALONE_ACTIVATION_CUES = new Set([
-  'test',
-  'plan',
-  'plugin',
-  'learn',
-  'knowledge',
-  'registry',
-]);
 
 function codedError(code, message, details = {}) {
   const error = new Error(message);
@@ -36,59 +30,6 @@ function proposalRecordDir(recordPath) {
     throw codedError('MISSING_RECORD', `Record path does not exist: ${absolutePath}`);
   }
   return stat.isDirectory() ? absolutePath : path.dirname(absolutePath);
-}
-
-function normalizeActivationCue(cue) {
-  return cue
-    .normalize('NFKC')
-    .replace(/\s+/gu, ' ')
-    .trim();
-}
-
-function activationCueLexicalTokens(cue) {
-  const lexical = cue
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-  return lexical === '' ? [] : lexical.split(/\s+/u);
-}
-
-function validateActivationCues(triggers, skillPath) {
-  if (triggers.length > MAX_ACTIVATION_CUES) {
-    throw codedError(
-      'KNOWLEDGE_RECORD_INVALID',
-      `${skillPath}: spectre-triggers must contain at most ${MAX_ACTIVATION_CUES} activation cues`,
-    );
-  }
-
-  for (const [index, cue] of triggers.entries()) {
-    const normalized = normalizeActivationCue(cue);
-    if ([...normalized].length > MAX_ACTIVATION_CUE_LENGTH) {
-      throw codedError(
-        'KNOWLEDGE_RECORD_INVALID',
-        `${skillPath}: activation cue ${index + 1} must contain at most ` +
-          `${MAX_ACTIVATION_CUE_LENGTH} normalized characters`,
-      );
-    }
-    const lexicalTokens = activationCueLexicalTokens(normalized);
-    const normalizedStandaloneCue =
-      lexicalTokens.length === 1 ? lexicalTokens[0].toLowerCase() : null;
-    if (GENERIC_STANDALONE_ACTIVATION_CUES.has(normalizedStandaloneCue)) {
-      throw codedError(
-        'KNOWLEDGE_RECORD_INVALID',
-        `${skillPath}: activation cue ${index + 1} (${JSON.stringify(cue)}) is a ` +
-          'generic standalone term after normalization',
-      );
-    }
-    const hasSpecificStructure =
-      lexicalTokens.length > 0 && ACTIVATION_CUE_STRUCTURAL_SYNTAX.test(normalized);
-    if (lexicalTokens.length < 2 && !hasSpecificStructure) {
-      throw codedError(
-        'KNOWLEDGE_RECORD_INVALID',
-        `${skillPath}: activation cue ${index + 1} (${JSON.stringify(cue)}) must contain ` +
-          'at least two lexical tokens or structural syntax (/ . : _ -)',
-      );
-    }
-  }
 }
 
 function copyDirectory(sourceDir, destinationDir) {
@@ -185,7 +126,7 @@ function beginRecordDirectoryReplacement(destinationPath, stagePath) {
 function validateStagedRecord(stagePath) {
   let parsed;
   try {
-    parsed = parseKnowledgeRecord(path.join(stagePath, 'SKILL.md'));
+    parsed = parseKnowledgeRecord(path.join(stagePath, RECORD_FILE_NAME));
   } catch (error) {
     throw codedError(
       'KNOWLEDGE_RECORD_INVALID',
@@ -198,8 +139,45 @@ function validateStagedRecord(stagePath) {
       `${parsed.record.id} is a retired generated recall surface, not learned knowledge`,
     );
   }
-  validateActivationCues(parsed.record.triggers, path.join(stagePath, 'SKILL.md'));
   return parsed;
+}
+
+/**
+ * Compare-and-swap over the whole package: a create requires absence, a replacement
+ * requires the caller's expected token, and identical content never rewrites the store.
+ */
+function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, stagedRevision }) {
+  const exists = fs.existsSync(destinationPath);
+  const currentRevision = exists ? readRecordRevision(destinationPath) : null;
+  if (!exists) {
+    if (expectedRevision) {
+      throw codedError(
+        'KNOWLEDGE_REVISION_CONFLICT',
+        `Expected revision ${expectedRevision} for ${id}, but no record exists to replace.`,
+        { status: 'conflict', expectedRevision, currentRevision: null },
+      );
+    }
+    return { status: 'created', currentRevision: null };
+  }
+  if (currentRevision !== null && currentRevision === stagedRevision) {
+    return { status: 'noop', currentRevision };
+  }
+  if (!expectedRevision) {
+    throw codedError(
+      'KNOWLEDGE_REVISION_REQUIRED',
+      `Replacing ${id} requires --expected-revision ${currentRevision ?? '<unreadable current package>'}.`,
+      { status: 'conflict', currentRevision },
+    );
+  }
+  if (expectedRevision !== currentRevision) {
+    throw codedError(
+      'KNOWLEDGE_REVISION_CONFLICT',
+      `Expected revision ${expectedRevision} for ${id}, but the current revision is `
+        + `${currentRevision ?? '<unreadable current package>'}.`,
+      { status: 'conflict', expectedRevision, currentRevision },
+    );
+  }
+  return { status: 'updated', currentRevision };
 }
 
 export async function registerCanonicalKnowledge(options) {
@@ -228,6 +206,25 @@ export async function registerCanonicalKnowledge(options) {
         const parsed = validateStagedRecord(stagedRecordDir);
         const destinationPath = path.join(storePath, 'knowledge', parsed.record.id);
         const indexPath = path.join(storePath, 'index.json');
+        const outcome = resolveRegistrationOutcome({
+          id: parsed.record.id,
+          destinationPath,
+          expectedRevision: options.expectedRevision,
+          stagedRevision: parsed.revisionToken,
+        });
+        if (outcome.status === 'noop') {
+          return {
+            ok: true,
+            status: 'noop',
+            id: parsed.record.id,
+            storePath,
+            recordPath: path.join(destinationPath, RECORD_FILE_NAME),
+            indexPath,
+            revisionToken: parsed.revisionToken,
+            previousRevisionToken: outcome.currentRevision,
+            historyPath: null,
+          };
+        }
         const priorIndexBytes = fs.existsSync(indexPath) ? fs.readFileSync(indexPath) : null;
         fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
         const replacement = beginRecordDirectoryReplacement(destinationPath, stagedRecordDir);
@@ -263,10 +260,14 @@ export async function registerCanonicalKnowledge(options) {
         }
         return {
           ok: true,
+          status: outcome.status,
           id: parsed.record.id,
           storePath,
-          recordPath: path.join(destinationPath, 'SKILL.md'),
+          recordPath: path.join(destinationPath, RECORD_FILE_NAME),
           indexPath,
+          revisionToken: parsed.revisionToken,
+          previousRevisionToken: outcome.currentRevision,
+          historyPath: null,
         };
       } catch (error) {
         if (error?.code) throw error;
@@ -292,5 +293,10 @@ export function serializeKnowledgeError(error) {
     ok: false,
     code,
     message: error instanceof Error ? error.message : String(error),
+    ...(error?.status ? { status: error.status } : {}),
+    ...(error?.expectedRevision ? { expectedRevision: error.expectedRevision } : {}),
+    ...(error && Object.hasOwn(error, 'currentRevision')
+      ? { currentRevision: error.currentRevision }
+      : {}),
   };
 }

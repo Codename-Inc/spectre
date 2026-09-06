@@ -80,7 +80,7 @@ describe('typed knowledge record packages', () => {
     const work = workRecord();
     const parsedWork = parseKnowledgeRecord(writeRecordPackage(tmp, work));
     assert.deepEqual(parsedWork.record, work);
-    assert.match(parsedWork.digest, /^sha256:[a-f0-9]{64}$/);
+    assert.match(parsedWork.revisionToken, /^sha256:[a-f0-9]{64}$/);
 
     for (const category of ['decision', 'pattern', 'gotcha', 'blocker']) {
       for (const status of ['active', 'disputed', 'superseded', 'archived']) {
@@ -245,7 +245,7 @@ describe('typed knowledge record packages', () => {
 
   it('digests canonical field values independently of stored key order and spacing', async (t) => {
     const tmp = makeTmp(t);
-    const { canonicalRecordBytes, canonicalRecordDigest, parseKnowledgeRecord } =
+    const { canonicalRecordBytes, canonicalRecordDigest, parseKnowledgeRecord, revisionTokenFor } =
       await loadRecordModule();
 
     const record = knowledgeRecord({ id: 'canonical-digest' });
@@ -257,8 +257,8 @@ describe('typed knowledge record packages', () => {
 
     assert.equal(canonicalRecordBytes(record), canonicalRecordBytes(reordered));
     assert.equal(
-      parseKnowledgeRecord(compactPath).digest,
-      canonicalRecordDigest(record),
+      parseKnowledgeRecord(compactPath).revisionToken,
+      revisionTokenFor(record, []),
     );
     assert.notEqual(
       canonicalRecordDigest(record),
@@ -362,7 +362,7 @@ describe('derived current knowledge index', () => {
     assert.deepEqual(knowledgeEntry.tags, ['auth', 'http']);
     assert.deepEqual(knowledgeEntry.applicability, { scope: 'project' });
     assert.equal(knowledgeEntry.recordPath, path.join('knowledge', 'active-knowledge', 'record.json'));
-    assert.match(knowledgeEntry.canonicalDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.match(knowledgeEntry.revisionToken, /^sha256:[a-f0-9]{64}$/);
     assert.equal(workEntry.kind, 'work');
     assert.equal(Object.hasOwn(workEntry, 'status'), false);
     for (const retired of ['description', 'triggers', 'version', 'sourceFingerprint']) {

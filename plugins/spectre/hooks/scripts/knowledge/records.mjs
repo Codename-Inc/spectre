@@ -93,6 +93,49 @@ export function canonicalRecordDigest(record) {
   return `sha256:${createHash('sha256').update(canonicalRecordBytes(record)).digest('hex')}`;
 }
 
+const REVISION_TOKEN_PATTERN = /^sha256:[a-f0-9]{64}$/;
+
+function sha256Token(input) {
+  return `sha256:${createHash('sha256').update(input).digest('hex')}`;
+}
+
+/**
+ * Whole-package revision token: canonical record bytes plus sorted resource path and
+ * content hashes, so a resource-only edit changes the token that guards a replacement.
+ */
+export function revisionTokenFor(record, resourceDigests = []) {
+  const resources = [...resourceDigests]
+    .map(({ path: resourcePath, digest }) => [resourcePath, digest])
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  return sha256Token(JSON.stringify([canonicalRecordBytes(record), resources]));
+}
+
+/** History directories address a revision by token; `:` is not portable in a path. */
+export function revisionDirectoryName(revisionToken) {
+  if (typeof revisionToken !== 'string' || !REVISION_TOKEN_PATTERN.test(revisionToken)) {
+    throw new Error(`Not a canonical revision token: ${JSON.stringify(revisionToken)}`);
+  }
+  return revisionToken.replace(':', '-');
+}
+
+export function revisionTokenFromDirectoryName(directoryName) {
+  const token = String(directoryName).replace('-', ':');
+  return REVISION_TOKEN_PATTERN.test(token) ? token : null;
+}
+
+function digestResources(recordDir, relativePaths) {
+  return relativePaths.map((relativePath) => {
+    const resourcePath = path.join(recordDir, relativePath);
+    let bytes;
+    try {
+      bytes = fs.readFileSync(resourcePath);
+    } catch {
+      throw recordError(resourcePath, 'resource changed during discovery');
+    }
+    return { path: relativePath.split(path.sep).join('/'), digest: sha256Token(bytes) };
+  });
+}
+
 function allowedFields(kind) {
   return kind === 'knowledge' ? new Set([...COMMON_FIELDS, ...KNOWLEDGE_FIELDS]) : COMMON_FIELDS;
 }
@@ -434,10 +477,12 @@ function listResources(recordDir) {
 
 function parseKnowledgeContent(text, recordPath, resources = []) {
   const record = parseRecordJson(text, recordPath);
+  const resourceDigests = digestResources(path.dirname(recordPath), resources);
   return {
     record,
-    digest: canonicalRecordDigest(record),
     resources,
+    resourceDigests,
+    revisionToken: revisionTokenFor(record, resourceDigests),
   };
 }
 
@@ -447,6 +492,17 @@ export function parseKnowledgeRecord(recordPath) {
   }
   const text = fs.readFileSync(recordPath, 'utf8');
   return parseKnowledgeContent(text, recordPath, listResources(path.dirname(recordPath)));
+}
+
+/** Current revision of a stored package, or null when it is absent or unreadable. */
+export function readRecordRevision(recordDir) {
+  const recordPath = path.join(recordDir, RECORD_FILE_NAME);
+  if (!fs.existsSync(recordPath)) return null;
+  try {
+    return parseKnowledgeRecord(recordPath).revisionToken;
+  } catch {
+    return null;
+  }
 }
 
 function indexEntry(storePath, recordPath, parsed) {
@@ -463,7 +519,7 @@ function indexEntry(storePath, recordPath, parsed) {
       ? { category: record.category, useWhen: record.useWhen, status: record.status }
       : {}),
     recordPath: path.relative(storePath, recordPath),
-    canonicalDigest: parsed.digest,
+    revisionToken: parsed.revisionToken,
     sourceSize: stat.size,
     sourceMtimeMs: stat.mtimeMs,
   };
@@ -543,7 +599,7 @@ export function readVerifiedIndexedRecord(storePath, entry, options = {}) {
     } catch {
       return null;
     }
-    if (parsed.digest !== entry.canonicalDigest) continue;
+    if (parsed.revisionToken !== entry.revisionToken) continue;
     return parsed;
   }
   return null;
