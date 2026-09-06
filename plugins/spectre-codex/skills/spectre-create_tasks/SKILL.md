@@ -12,7 +12,7 @@ Produce a scope-faithful task graph and compact execution index. The primary wri
 
 ## Inputs
 
-- `$ARGUMENTS`: explicit feature root/name or descendant requirements artifact; `--depth xs|light|standard|comprehensive` (default `standard`); mutually exclusive `--tasks-only` or `--finalize-index`; optional `--orchestrated`.
+- `$ARGUMENTS`: explicit feature root/name or descendant requirements artifact; `--depth xs|light|standard|comprehensive` (default `standard`); mutually exclusive `--tasks-only` or `--finalize-index`; optional `--orchestrated`. An authorized Execute caller may supply complexity-based structured direction for a reviewed selected plan.
 - Read selected scope/summary, PRD, plan, UX, context, and research in full. Plan `Out-of-Bounds` and `Verification` are load-bearing. Thin requirements route to `spectre-plan`; never invent scope.
 
 ## Working Set
@@ -45,7 +45,7 @@ DONE when files satisfy these contracts; `tasks.json` reparses/self-locates; eve
 4. Put RED-before-GREEN in each behavior-changing build subtask. Create a separate RED subtask only when its failing contract/fixture is independently dispatchable and consumed by later work; LIGHT requires RED when risky, ambiguous, or regression-prone.
 5. Context is 2-4 file:line references plus one canonical pattern and one plan anchor for STANDARD/COMPREHENSIVE; LIGHT uses 1-2 references plus a plan anchor. Provide evidence, not snippets or implementation scripts.
 6. Mark parent `risk` only when a named threatened invariant and downstream consumer cross an auth/trust, persistence/migration, concurrency/order/retry, destructive, high-fan-out, or shared-contract boundary. Omit it when focused checks settle the risk. Derive semantic predecessor/unblocks edges and topological waves at parent granularity; phases are organizational.
-7. Execution slicing only: depth shapes granularity after planning; this workflow never derives Plan size or overrides `spectre-plan-route`. `xs` = one explicitly rerouted parent; `light` = 1-3 parents/optional waves; `standard` = concise graph; `comprehensive` = full context, RED, coverage, semantic dependencies, post-review waves.
+7. Execution slicing only: depth shapes granularity after planning; this workflow never derives Plan size or overrides `spectre-plan-route`. `xs` = one explicitly rerouted parent; `light` = 1-3 parents/optional waves; `standard` = concise graph; `comprehensive` = full context, RED, coverage, semantic dependencies, post-review waves. When an authorized Execute caller has already reviewed/finalized a plan, a legacy `Execution Mode: direct` header does not veto task creation.
 8. Validate coverage, verification mapping, integration consumers, dependencies, and Out-of-Bounds before writing. Do not add terminal verification/E2E tasks for checks Execute or Prove owns; a qualification task is valid only when it produces an explicit prerequisite or product-consumed artifact at a product-owned path. Never encode vague criteria or orphan outputs.
 
 **Mode contract**
@@ -62,7 +62,7 @@ Report mode, written paths, and `{X} phases, {Y} parents, {Z} subtasks`; add `{N
 
 ## Escalate-If
 
-- `plan.md` says `Execution Mode: direct` -> stop; require explicit structured re-route and update it before task writes.
+- Standalone `plan.md` says `Execution Mode: direct` without an authorized Execute caller -> stop; require explicit structured re-route before task writes.
 - Requirements are too thin -> `spectre-scope` or `spectre-plan`.
 - Out-of-Bounds or Verification is missing -> flag it; proceed only with otherwise-clear scope.
 - A requirement cannot become an executable `test|observable|state` criterion -> surface it.

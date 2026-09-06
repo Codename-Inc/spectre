@@ -12,12 +12,13 @@ Produce the smallest correct plan through one evidence wave, correctness review,
 
 ## Inputs
 
-- `$ARGUMENTS`: feature root/name or descendant `plan.md`; optional `--auto-apply scope-safe`, `--orchestrated`.
-- Require `{FEATURE_ROOT}/specs/plan.md` or route to `spectre-create_plan`. Authority: `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, then explicit `task_context.md` requirements. Reuse existing research.
+- `$ARGUMENTS`: feature root/name or exact selected plan path; optional explicit authority sources, `--auto-apply scope-safe`, `--orchestrated`.
+- Require the selected plan or route to `spectre-create_plan`. Authority sources are `concepts/scope.md`, `specs/prd.md`, `specs/ux.md`, explicit `task_context.md` requirements, or the selected plan's explicit requirements/boundaries when no separate Scope exists. Reuse existing research.
 
 ## Working Set
 
 - Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
+- Review the exact selected plan path. Never copy its prose into another authoritative plan, overwrite a sibling plan, or manufacture a second Scope document.
 - Reports: `reviews/plan_correctness.md` and `reviews/plan_review.md`. Resume a sole correctness report only when its post-edit hash matches `plan.md`; otherwise use absent canonical paths or timestamped siblings.
 
 ## Outputs + DONE

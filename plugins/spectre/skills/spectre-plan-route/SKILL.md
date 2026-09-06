@@ -1,6 +1,6 @@
 ---
 name: "spectre-plan-route"
-description: "Internal semantic classifier for spectre-plan. Use only from Plan with a bounded routing input; never for planning, artifacts, telemetry, or user gates."
+description: "Internal semantic classifier for Plan-or-Execute preparation. Use only from Plan or Execute with bounded routing input; never for planning, artifacts, telemetry, or user gates."
 user-invocable: false
 ---
 
@@ -8,17 +8,18 @@ user-invocable: false
 
 ## Purpose
 
-Return a deterministic plan-routing/v1 decision to spectre-plan. Classify only; Plan owns workflow authority.
+Return a deterministic plan-routing/v1 decision to spectre-plan or spectre-execute. Classify only; the Plan or Execute caller owns workflow authority.
 
 ## Inputs
 
-- Immutable canonical Scope + bounded repository observations; observations describe work, not size.
+- Immutable canonical Scope or explicit selected plan authority + bounded repository observations; observations describe work, not size.
 - Mode initial, or observed with the prior decision + plan Routing Observations.
+- Execute caller mode for a selected plan when no valid transported assessment exists or material observations invalidate it.
 - Resume-only legacy size is validated and normalized once.
 
 ## Working Set
 
-- Plan supplies one bounded scan: implementation topology, uncertainty, evidence, protected boundaries, graph risk, shipped precedent, and user-owned decisions.
+- Plan or Execute supplies one bounded scan: implementation topology, uncertainty, evidence, protected boundaries, graph risk, shipped precedent, and user-owned decisions.
 - If missing evidence alone would cross a costlier route, use exactly one bounded probe (`@spectre:finder`/`@spectre:patterns`) for one repository question.
 
 ## Outputs + DONE
@@ -41,7 +42,7 @@ DONE when fields validate; any probe is consumed; STRUCTURED names workstreams; 
 - Two shipped instances of a change-shape make the next DIRECT; its layers are not workstreams; STRUCTURED requires a named delta beyond repetition.
 - HIGH graph risk requires a credible implementation ordering/coordination/rollback failure; workflow gates/state transitions do not qualify.
 - A protected boundary needs a concrete invariant + credible failure mode; it floors size at S but never creates structure or HIGH graph risk.
-- Honor confirmed Scope assumptions. Missing paths/evidence permit at most the one probe; when Scope mandates an abstraction, spend it on whether it ships; classify the real delta. Only unresolved, approach-changing uncertainty affects size.
+- Honor confirmed Scope assumptions and explicit selected-plan boundaries. Missing paths/evidence permit at most the one probe; when Scope mandates an abstraction, spend it on whether it ships; classify the real delta. Only unresolved, approach-changing uncertainty affects size.
 - Design authority requires an unresolved product, compatibility, destructive, migration/rollback, or architecture choice outside implementation discretion; size and routine placement never create it.
 - Observed reports regret and KEEP|RERUN_SMALLER|RERUN_LARGER; never repeats work or removes artifacts.
 - Normalize legacy reads once: MICRO→XS, LIGHT→S, STANDARD-DIRECT→M, STANDARD→L, COMPREHENSIVE→XL; legacy labels never decide.
@@ -49,7 +50,7 @@ DONE when fields validate; any probe is consumed; STRUCTURED names workstreams; 
 
 ## Handoff
 
-Return the record plus probe evidence. Plan owns persistence, explanation, orchestration, gates, and telemetry.
+Return the record plus probe evidence. The caller owns persistence, explanation, orchestration, gates, and telemetry.
 
 ## Escalate-If
 

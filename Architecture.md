@@ -227,7 +227,7 @@ A managed feature or bug gets a collision-safe root:
 | L | Structured work with ordinary graph risk | Standard aligned draft |
 | XL | Structured work with high uncertainty or graph risk | Comprehensive aligned draft |
 
-Scope is the enduring user contract. A missing irreversible decision, Scope change, or contradiction with an explicit design stops the Plan handoff for authority; otherwise launching the marked command is alignment. Planning telemetry is useful for route analysis, but a telemetry failure degrades observability rather than blocking approved work.
+Scope is the enduring user contract. A missing irreversible decision, Scope change, or contradiction with an explicit design stops the Plan handoff for authority; otherwise launching the handoff command is alignment. Planning telemetry is useful for route analysis, but a telemetry failure degrades observability rather than blocking approved work. Plan also transports the final observed routing record in `task_context.md`, bound to the draft hash and authority hash, so Execute can reuse the same assessment without depending on telemetry.
 
 Legacy route labels remain observational telemetry for compatibility; they no longer describe review or delivery shape of aligned-draft runs.
 
@@ -238,7 +238,9 @@ Legacy route labels remain observational telemetry for compatibility; they no lo
 - **Structured mode:** `execute.md` plus a resolvable `tasks.json`.
 - **Plan-direct mode:** a readable direct plan, represented at runtime as coarse workstreams.
 
-It also accepts a marked aligned draft from Plan. Before normal mode resolution or run creation, Execute skips preflight if a valid structured pair already exists; otherwise it runs the unchanged correctness-then-simplification review, stops for any Scope/authority/Blocker condition, assesses safe parallelism, creates the normal task/index pair, and resumes as structured mode. The review reports and plan hashes finalize `plan.md`; task definitions are derivative and remain immutable once generated.
+Any explicit readable plan enters one preparation path whether supplied as a plain path, a Plan handoff, or a legacy direct-header plan. The explicit plan wins over ambient artifacts. Execute reuses applicable plan-routing records from `task_context.md` and classifies once when absent or materially stale; `--preflight-plan` is only a depth hint. Scope-safe review finalizes the selected plan path, then the observed assessment decides coordination: ATOMIC/DIRECT uses bounded local workstreams and Active Wave state, while STRUCTURED creates the normal task/index pair. Legacy route labels remain observational telemetry; they no longer describe review or delivery shape.
+
+Preparation and resume evidence lives in the existing local `execution_state.md` envelope as paths, hashes, routing records, review hashes, pair hashes, and resolved source/run identity. Existing Markdown direct runs preserve their source and workstream ids. Existing JSON runs preserve their source and accepted ids; any source-required definition repair must update the source graph through the adaptation contract before new JSON task ids are emitted. The review reports and plan hashes finalize `plan.md`; task definitions are derivative and remain immutable once generated.
 
 The execution algorithm is:
 
