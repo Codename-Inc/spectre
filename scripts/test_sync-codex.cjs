@@ -553,9 +553,6 @@ test('spectre-code_review is one final falsification-first review with launcher-
 
 const fixedWorkstreamCapPattern =
   /(?:\b(?:at most|up to|no more than|max(?:imum)?(?: of)?|limited to)\s+|<=\s*)(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+workstreams?\b/i;
-const planDirectCreateTasksRoutePattern =
-  /(?:in )?plan-direct mode,?\s+(?:(?:must|should|shall|may|will|can|needs? to|has to)\s+)?(?:always\s+|first\s+)?(?:stops?|routes?(?: to)?|invokes?|calls?|runs?|uses?|dispatches?|requires?)[^\n]*spectre-create_tasks/i;
-
 test('plan-direct fixed-workstream guard rejects representative cap forms', () => {
   for (const forbiddenContract of [
     'Maximum of 4 workstreams may be dispatched.',
@@ -565,20 +562,6 @@ test('plan-direct fixed-workstream guard rejects representative cap forms', () =
   }
 
   assert.doesNotMatch('No fixed workstream count is imposed.', fixedWorkstreamCapPattern);
-});
-
-test('plan-direct create_tasks guard rejects representative invocation forms', () => {
-  for (const forbiddenContract of [
-    'Plan-direct mode must invoke spectre-create_tasks before execution.',
-    'In plan-direct mode, call spectre-create_tasks before execution.',
-  ]) {
-    assert.match(forbiddenContract, planDirectCreateTasksRoutePattern);
-  }
-
-  assert.doesNotMatch(
-    'Plan-direct mode never routes to spectre-create_tasks.',
-    planDirectCreateTasksRoutePattern,
-  );
 });
 
 test('execute resolves explicit plans through one authorized preparation path', () => {
@@ -600,13 +583,19 @@ test('execute resolves explicit plans through one authorized preparation path', 
     assert.match(execute, /`plan-direct`:[^\n]*explicit readable plan/i);
     assert.ok(structuredMode !== -1);
     assert.ok(planDirectMode > structuredMode);
-    assert.match(execute, /No path:[^\n]*structured mode at `\{FEATURE_ROOT\}\/specs\/execute\.md`/i);
+    assert.match(execute, /No path:[^\n]*same-run source evidence first/i);
     assert.doesNotMatch(execute, /default `docs\/tasks\/\{branch\}/i);
     assert.match(execute, /explicit supplied plan wins over ambient task artifacts/i);
     assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
+    assert.match(execute, /depth hint must not create authority pause/i);
     assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
     assert.match(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
     assert.match(execute, /for no-path calls, use existing same-run source evidence first/i);
+    assert.match(
+      execute,
+      /same-run source evidence first[^\n]*then a plan at the confirmed root[^\n]*then structured-only fallback/i,
+    );
+    assert.doesNotMatch(execute, /same-run source evidence first[^\n]*execute\.md[^\n]*then plan-direct/i);
     assert.doesNotMatch(execute, /never rewrite, approve, or route it through `spectre-create_tasks`/);
     assert.doesNotMatch(execute, /marked plan recording `Execution Mode: direct` is rejected before review/i);
     assert.doesNotMatch(planDirect, /hard-stop signal[\s\S]*recommend routing the plan through `spectre-create_tasks`/i);
@@ -645,8 +634,8 @@ test('execute preflight reuses observed assessment and proportionally creates ta
       'utf8',
     ).replaceAll('/spectre:', 'spectre-');
     const reviewIndex = execute.indexOf('Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated');
-    const assessmentIndex = execute.indexOf('assessment');
-    const taskIndex = execute.indexOf('Skill(spectre-create_tasks)');
+    const assessmentIndex = execute.toLowerCase().indexOf('reuse an applicable semantic assessment');
+    const taskIndex = execute.indexOf('STRUCTURED invokes existing `Skill(spectre-create_tasks) --orchestrated`');
 
     const handoff = rootName === 'spectre' ? /\/spectre:execute/ : /spectre-execute/;
     assert.match(plan, handoff);
@@ -673,13 +662,20 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.match(planReview, /selected plan/i);
     assert.match(planReview, /exact selected plan path/i);
     assert.match(planReview, /authority sources/i);
-    assert.match(createTasks, /authorized Execute caller/i);
+    assert.match(execute, /finalized plan hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
+    assert.match(createTasks, /finalized plan path\/hash and closed-review evidence/i);
     assert.match(createTasks, /Execution Mode: direct/);
+    assert.doesNotMatch(createTasks, /authorized Execute caller/i);
     assert.match(planDirect, /selected plan\/authority hashes/i);
     assert.match(planDirect, /assessment/i);
     assert.match(planDirect, /review paths\/hashes/i);
     assert.match(planDirect, /derived pair paths\/hashes/i);
     assert.match(execute, /telemetry[\s\S]*degraded[\s\S]*never blocks/i);
+    assert.doesNotMatch(
+      execute,
+      /selected plan\/authority\/review\/pair binding[^\n]*(?:older|unrelated|unprovable)[^\n]*NEEDS_AUTHORITY/i,
+    );
+    assert.doesNotMatch(execute, /depth hint is invalid[^\n]*NEEDS_AUTHORITY/i);
     assert.match(
       fs.readFileSync(path.join(repoRoot, 'Architecture.md'), 'utf8'),
       /Execute.*reuses applicable plan-routing records.*classifies once when absent/i,
@@ -694,7 +690,7 @@ test('plan-direct execute preserves source-plan authority without a completeness
     const execute = readExecuteContract(repoRoot, rootName).replaceAll('/spectre:', 'spectre-');
 
     assert.match(execute, /The source plan is the sole requirements authority/);
-    assert.match(execute, /must carry its seven spine sections/i);
+    assert.doesNotMatch(execute, /must carry its seven spine sections/i);
     assert.match(execute, /Legacy unmarked plans start without a quality\/completeness gate/i);
     assert.match(execute, /Never rewrite it or durably copy its prose/i);
     assert.doesNotMatch(
@@ -738,6 +734,7 @@ test('plan-direct execute creates compact local execution state before dispatch'
     assert.match(execute, /If binding is absent and cannot be established[\s\S]*preserve the pair[\s\S]*regenerate only necessary preparation/i);
     assert.match(execute, /For an existing direct run, preserve its Markdown event source and stable workstream IDs/i);
     assert.match(execute, /Existing JSON runs retain their source and accepted IDs/i);
+    assert.match(execute, /Fresh structured selection persists its resolved JSON event source/i);
     assert.match(execute, /JSON runs add derivative work only through source-required definition repair/i);
     assert.match(execute, /Do not mutate historical completion events or clear accepted state/i);
     assert.match(execute, /No raw output or report prose/);
@@ -806,6 +803,7 @@ test('plan-direct quality gates use the explicit plan and derivative execution e
     assert.match(validate, /explicit arbitrary plan as a requirement source/i);
     assert.match(validate, /plan as authoritative when passed/i);
     assert.match(proof, /explicitly passed source plan[^\n]*acceptance source/i);
+    assert.match(execute, /never create one merely to satisfy a gate/i);
     assert.doesNotMatch(execute, /Skill\(spectre-create_test_guide\)/);
   }
 });
@@ -2237,7 +2235,7 @@ test('planning artifact ownership confines reviewer-authored scope-safe writebac
     assert.match(createTasks, /primary directly writes only the selected canonical artifacts/i);
     assert.match(createTasks, /research agents (?:return|supply) evidence only/i);
 
-    assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
+    assert.match(planReview, /Reviewers write only their report and the selected plan/i);
     assert.match(planReview, /report written before plan edits/i);
     assert.match(planCorrectnessTemplate, /Write the report before authorized plan edits/i);
     assert.match(planSimplificationTemplate, /Write the report before authorized plan edits/i);

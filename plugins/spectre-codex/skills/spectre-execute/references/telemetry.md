@@ -81,7 +81,7 @@ node "${PLUGIN_ROOT}/hooks/scripts/workflow-cli.mjs" gate record --run-id "$RUN_
 
 Emit `task complete` leaf-first using the passing gate event id; emit `task skip` with its source-owned reason. Never write status to `tasks.json` or a plan. Failed checks get a failed gate, then repair and a fresh gate.
 
-Record intermediate/final review and proof as `gate record --kind review|proof`. `--evidence` may reference only an existing canonical review/proof or product-owned test artifact. For authority waits, emit `human-input require`, then `resolve`.
+Record intermediate/final review and proof as `gate record --kind review|proof`. `--evidence` may reference only an existing canonical review/proof or product-owned test artifact; never create one merely to satisfy a gate. For authority waits, emit `human-input require`, then `resolve`.
 
 ## Finish
 

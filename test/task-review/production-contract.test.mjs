@@ -108,7 +108,7 @@ test("review gates retain their route-specific models and efforts", () => {
   assert.match(planReview, /high effort \(20-minute limit\)/);
   assert.match(planReview, /Codex (?:→|->) Claude Code `opus`/);
   assert.match(planReview, /Claude Code (?:→|->) Codex `gpt-5\.6-sol`/);
-  assert.match(planReview, /Reviewers write only their report and `plan\.md`/);
+  assert.match(planReview, /Reviewers write only their report and the selected plan/);
   assert.match(codeReview, /claude -p --model opus --effort high/);
   assert.match(
     codeReview,
@@ -167,22 +167,30 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.doesNotMatch(plan, /spectre-task_review/);
   assert.doesNotMatch(plan, /spectre-goal/);
   const reviewIndex = execute.indexOf("Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated");
-  const assessmentIndex = execute.indexOf("assessment");
-  const tasksIndex = execute.indexOf("Skill(spectre-create_tasks)");
+  const assessmentIndex = execute.toLowerCase().indexOf("reuse an applicable semantic assessment");
+  const tasksIndex = execute.indexOf("STRUCTURED invokes existing `Skill(spectre-create_tasks) --orchestrated`");
   assert.ok(reviewIndex >= 0);
   assert.ok(assessmentIndex >= 0);
   assert.ok(tasksIndex > assessmentIndex);
   assert.match(execute, /explicit supplied plan wins over ambient task artifacts/i);
   assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
+  assert.match(execute, /depth hint must not create authority pause/i);
   assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
   assert.match(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
   assert.match(execute, /reuse an applicable semantic assessment/i);
   assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
   assert.match(execute, /ATOMIC\/DIRECT use the existing bounded local workstream\/Active Wave pattern/i);
   assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated`/i);
+  assert.match(execute, /finalized plan hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
   assert.match(execute, /L → standard, XL → comprehensive/i);
   assert.match(execute, /No automatic task review/i);
   assert.match(execute, /Scope and explicit-design changes remain withheld/i);
+  assert.doesNotMatch(
+    execute,
+    /selected plan\/authority\/review\/pair binding[^\n]*(?:older|unrelated|unprovable)[^\n]*NEEDS_AUTHORITY/i,
+  );
+  assert.doesNotMatch(execute, /must carry its seven spine sections/i);
+  assert.doesNotMatch(execute, /depth hint is invalid[^\n]*NEEDS_AUTHORITY/i);
   assert.match(execute, /scope-safe result proceeds without a second user gate/i);
   assert.match(architecture, /Execute.*reuses applicable plan-routing records.*classifies once when absent/i);
 
@@ -191,14 +199,14 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.match(planReview, /selected plan/i);
   assert.match(planReview, /exact selected plan path/i);
   assert.match(planReview, /authority sources/i);
-  assert.match(planReview, /post-edit hash matches `plan\.md`/i);
+  assert.match(planReview, /post-edit hash matches the selected plan/i);
   assert.match(planReview, /references\/correctness-review\.md/);
   assert.match(planReview, /references\/simplification-review\.md/);
   assert.match(planReview, /send it verbatim to a fresh reviewer/i);
   assert.match(planReview, /report written before plan edits/i);
   assert.match(correctness, /Write the report before authorized plan edits/i);
   assert.match(simplification, /Write the report before authorized plan edits/i);
-  assert.match(planReview, /Reviewers write only their report and `plan\.md`/i);
+  assert.match(planReview, /Reviewers write only their report and the selected plan/i);
   assert.match(planReview, /addressed.*skipped.*unresolved.*scope-change/is);
   assert.match(correctness, /dispositions\/resulting edits/i);
   assert.match(planReview, /continue on the same route/i);

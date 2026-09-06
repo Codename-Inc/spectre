@@ -19,7 +19,7 @@ Produce the smallest correct plan through one evidence wave, correctness review,
 
 - Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Review the exact selected plan path. Never copy its prose into another authoritative plan, overwrite a sibling plan, or manufacture a second Scope document.
-- Reports: `reviews/plan_correctness.md` and `reviews/plan_review.md`. Resume a sole correctness report only when its post-edit hash matches `plan.md`; otherwise use absent canonical paths or timestamped siblings.
+- Reports: `reviews/plan_correctness.md` and `reviews/plan_review.md`. Resume a sole correctness report only when its post-edit hash matches the selected plan; otherwise use absent canonical paths or timestamped siblings.
 
 ## Outputs + DONE
 
@@ -39,7 +39,7 @@ DONE when both stages complete; research ran once at most; every mechanism trace
 
 3. **Simplification.** After correctness writeback, read `references/simplification-review.md` and send it verbatim to a second fresh reviewer with: corrected plan, Scope, correctness-report, and output-report paths/hashes; edit mode and write bounds; route metadata. Supply existing evidence; allow one cited anchor spot-check.
 
-4. **Writeback.** Reviewers write only their report and `plan.md`, with the report written before plan edits; scope/context/tasks/code remain immutable. `--auto-apply scope-safe` permits Blocker/High and unambiguous Medium edits; otherwise ask `all|blockers|IDs|skip`, then continue on the same route. Record `addressed|skipped|unresolved|scope-change`. Stop on unresolved correctness Blocker/High, scope change, unavailable writeback, or failed schema/hash/scope/Out-of-Bounds checks. The primary may normalize mechanics, never semantics.
+4. **Writeback.** Reviewers write only their report and the selected plan, with the report written before plan edits; scope/context/tasks/code remain immutable. `--auto-apply scope-safe` permits Blocker/High and unambiguous Medium edits; otherwise ask `all|blockers|IDs|skip`, then continue on the same route. Record `addressed|skipped|unresolved|scope-change`. Stop on unresolved correctness Blocker/High, scope change, unavailable writeback, or failed schema/hash/scope/Out-of-Bounds checks. The primary may normalize mechanics, never semantics.
 
 5. **Route.** Run each stage fresh at high effort (20-minute limit): Codex → Claude Code `opus`; Claude Code → Codex `gpt-5.6-sol`. Record stage/runtime/model/effort/route. If unusable, use one clean-context native `@spectre:reviewer` with the same template and context. A usable review is terminal.
 
