@@ -6,8 +6,21 @@ import {
   parseKnowledgeRecord,
   readRecordRevision,
   refreshKnowledgeIndex,
+  revisionDirectoryName,
 } from './records.mjs';
-import { atomicWriteFile, resolveProjectStore, withStoreLock } from './store.mjs';
+import {
+  findImportReceipt,
+  importReceiptsPath,
+  readImportReceipts,
+  validateImportReceipt,
+  withImportReceipt,
+} from './receipts.mjs';
+import {
+  atomicWriteFile,
+  atomicWriteJson,
+  resolveProjectStore,
+  withStoreLock,
+} from './store.mjs';
 
 const RETIRED_NATIVE_RECORD_IDS = new Set(['spectre-recall', 'spectre-find']);
 
@@ -180,9 +193,51 @@ function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, sta
   return { status: 'updated', currentRevision };
 }
 
+/**
+ * Archive first: the complete prior package is published immutably under
+ * knowledge-history/<id>/<revisionToken>/ before the destination is replaced.
+ */
+function archivePriorRevision(storePath, id, destinationPath, currentRevision, stageRoot) {
+  const directoryName = revisionDirectoryName(currentRevision);
+  const historyPath = path.join(storePath, 'knowledge-history', id, directoryName);
+  if (fs.existsSync(historyPath)) return { historyPath, published: false };
+  const stagedHistory = path.join(stageRoot, 'history', directoryName);
+  copyDirectory(destinationPath, stagedHistory);
+  fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+  fs.renameSync(stagedHistory, historyPath);
+  return { historyPath, published: true };
+}
+
+function commitImportReceipt(storePath, receipt, recordId, revisionToken, now) {
+  const receiptsPath = importReceiptsPath(storePath);
+  const priorBytes = fs.existsSync(receiptsPath) ? fs.readFileSync(receiptsPath) : null;
+  const entry = {
+    sourceDigest: receipt.sourceDigest,
+    ...(receipt.sourcePath === undefined ? {} : { sourcePath: receipt.sourcePath }),
+    recordId,
+    revisionToken,
+    importedAt: new Date(typeof now === 'function' ? now() : Date.now()).toISOString(),
+  };
+  atomicWriteJson(receiptsPath, withImportReceipt(readImportReceipts(storePath), entry));
+  return { receiptsPath, priorBytes, entry };
+}
+
+function restoreBytes(filePath, priorBytes) {
+  if (priorBytes === null) fs.rmSync(filePath, { force: true });
+  else atomicWriteFile(filePath, priorBytes);
+}
+
 export async function registerCanonicalKnowledge(options) {
   const projectDir = path.resolve(options.projectDir || options.projectRoot || process.cwd());
   const sourceDir = proposalRecordDir(options.recordPath || options.record);
+  let importReceipt = null;
+  if (options.importReceipt) {
+    try {
+      importReceipt = validateImportReceipt(options.importReceipt);
+    } catch (error) {
+      throw codedError('KNOWLEDGE_IMPORT_RECEIPT_INVALID', error.message);
+    }
+  }
   const resolved = await resolveProjectStore(projectDir, {
     spectreHome: options.spectreHome,
     gitRunner: options.gitRunner,
@@ -213,6 +268,18 @@ export async function registerCanonicalKnowledge(options) {
           stagedRevision: parsed.revisionToken,
         });
         if (outcome.status === 'noop') {
+          const recorded = importReceipt
+            ? findImportReceipt(storePath, importReceipt.sourceDigest)
+            : null;
+          const receipt = importReceipt && recorded?.revisionToken !== parsed.revisionToken
+            ? commitImportReceipt(
+              storePath,
+              importReceipt,
+              parsed.record.id,
+              parsed.revisionToken,
+              options.now,
+            ).entry
+            : recorded;
           return {
             ok: true,
             status: 'noop',
@@ -223,13 +290,34 @@ export async function registerCanonicalKnowledge(options) {
             revisionToken: parsed.revisionToken,
             previousRevisionToken: outcome.currentRevision,
             historyPath: null,
+            importReceipt: receipt || null,
           };
         }
         const priorIndexBytes = fs.existsSync(indexPath) ? fs.readFileSync(indexPath) : null;
         fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+        const archive = outcome.status === 'updated'
+          ? archivePriorRevision(
+            storePath,
+            parsed.record.id,
+            destinationPath,
+            outcome.currentRevision,
+            stageRoot,
+          )
+          : { historyPath: null, published: false };
+        if (options.afterHistoryArchive) options.afterHistoryArchive();
         const replacement = beginRecordDirectoryReplacement(destinationPath, stagedRecordDir);
+        let receiptCommit = null;
         try {
           if (options.afterRecordSwap) options.afterRecordSwap();
+          if (importReceipt) {
+            receiptCommit = commitImportReceipt(
+              storePath,
+              importReceipt,
+              parsed.record.id,
+              parsed.revisionToken,
+              options.now,
+            );
+          }
           refreshKnowledgeIndex(storePath);
           if (options.afterIndexRefresh) options.afterIndexRefresh();
           replacement.commit();
@@ -241,11 +329,17 @@ export async function registerCanonicalKnowledge(options) {
             recoveryErrors.push(recoveryError);
           }
           try {
-            if (priorIndexBytes === null) {
-              fs.rmSync(indexPath, { force: true });
-            } else {
-              atomicWriteFile(indexPath, priorIndexBytes);
-            }
+            if (receiptCommit) restoreBytes(receiptCommit.receiptsPath, receiptCommit.priorBytes);
+          } catch (recoveryError) {
+            recoveryErrors.push(recoveryError);
+          }
+          try {
+            restoreBytes(indexPath, priorIndexBytes);
+          } catch (recoveryError) {
+            recoveryErrors.push(recoveryError);
+          }
+          try {
+            if (archive.published) fs.rmSync(archive.historyPath, { recursive: true, force: true });
           } catch (recoveryError) {
             recoveryErrors.push(recoveryError);
           }
@@ -267,7 +361,8 @@ export async function registerCanonicalKnowledge(options) {
           indexPath,
           revisionToken: parsed.revisionToken,
           previousRevisionToken: outcome.currentRevision,
-          historyPath: null,
+          historyPath: archive.historyPath,
+          importReceipt: receiptCommit?.entry || null,
         };
       } catch (error) {
         if (error?.code) throw error;
