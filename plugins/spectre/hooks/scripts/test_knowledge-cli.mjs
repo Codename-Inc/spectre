@@ -15,6 +15,8 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIR, '../../../..');
 const NPM_CLI = path.join(REPOSITORY_ROOT, 'bin', 'spectre.js');
 const BUNDLED_CLI = path.join(SCRIPT_DIR, 'knowledge-cli.mjs');
+const REGISTER_WRAPPER = path.join(SCRIPT_DIR, 'register_learning.mjs');
+const MIGRATE_WRAPPER = path.join(SCRIPT_DIR, 'migrate_knowledge.mjs');
 
 function typedRecord(id, tags = ['cli-test']) {
   return {
@@ -50,6 +52,12 @@ function run(kind, args, value) {
   const command = kind === 'npm' ? NPM_CLI : BUNDLED_CLI;
   const prefix = kind === 'npm' ? ['knowledge'] : [];
   return spawnSync(process.execPath, [command, ...prefix, ...args, '--project-dir', value.projectDir, '--json'], {
+    cwd: value.projectDir, env: { ...process.env, SPECTRE_HOME: value.spectreHome }, encoding: 'utf8',
+  });
+}
+
+function runWrapper(script, args, value) {
+  return spawnSync(process.execPath, [script, ...args, '--project-dir', value.projectDir, '--json'], {
     cwd: value.projectDir, env: { ...process.env, SPECTRE_HOME: value.spectreHome }, encoding: 'utf8',
   });
 }
@@ -92,5 +100,37 @@ describe('typed public knowledge CLI parity', () => {
       assert.equal(rejected.status, 1);
       assert.equal(output(rejected).code, 'KNOWLEDGE_REVISION_CONFLICT');
     }
+  });
+
+  it('keeps register and migrate wrapper results aligned with the canonical typed CLI', async (t) => {
+    const value = await fixture(t);
+    const proposalId = 'wrapper-typed-record';
+    const proposal = path.join(value.root, 'proposal', proposalId);
+    fs.mkdirSync(proposal, { recursive: true });
+    fs.writeFileSync(path.join(proposal, 'record.json'), JSON.stringify(typedRecord(proposalId)));
+
+    const registered = runWrapper(REGISTER_WRAPPER, ['--record', proposal], value);
+    assert.equal(registered.status, 0, registered.stderr);
+    assert.equal(output(registered).status, 'created');
+    const noop = run('bundled', ['register', '--record', proposal], value);
+    assert.equal(noop.status, 0, noop.stderr);
+    assert.equal(output(noop).status, 'noop');
+
+    const wrappedMigration = runWrapper(MIGRATE_WRAPPER, [], value);
+    const canonicalMigration = run('bundled', ['migrate'], value);
+    assert.equal(wrappedMigration.status, 0, wrappedMigration.stderr);
+    assert.equal(canonicalMigration.status, 0, canonicalMigration.stderr);
+    assert.deepEqual(output(wrappedMigration), output(canonicalMigration));
+
+    const invalid = path.join(value.root, 'invalid-proposal');
+    fs.mkdirSync(invalid, { recursive: true });
+    fs.writeFileSync(path.join(invalid, 'record.json'), '{"schemaVersion":1}\n');
+    const wrapperFailure = runWrapper(REGISTER_WRAPPER, ['--record', invalid], value);
+    const canonicalFailure = run('bundled', ['register', '--record', invalid], value);
+    assert.equal(wrapperFailure.status, 1);
+    assert.equal(canonicalFailure.status, 1);
+    assert.equal(output(wrapperFailure).code, output(canonicalFailure).code);
+    assert.match(output(wrapperFailure).message, /unknown kind undefined/);
+    assert.match(output(canonicalFailure).message, /unknown kind undefined/);
   });
 });
