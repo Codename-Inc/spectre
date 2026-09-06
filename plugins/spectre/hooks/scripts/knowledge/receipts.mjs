@@ -5,6 +5,7 @@ export const IMPORT_RECEIPTS_FILE_NAME = 'import-receipts.json';
 export const IMPORT_RECEIPTS_SCHEMA_VERSION = 1;
 
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const REVISION_PATTERN = /^sha256:[a-f0-9]{64}$/;
 
 export function importReceiptsPath(storePath) {
   return path.join(storePath, IMPORT_RECEIPTS_FILE_NAME);
@@ -34,7 +35,7 @@ export function validateImportReceipt(receipt) {
     throw new Error('An import receipt must be an object.');
   }
   for (const key of Object.keys(receipt)) {
-    if (!['sourceDigest', 'sourcePath'].includes(key)) {
+    if (!['sourceDigest', 'sourcePath', 'recordId', 'revisionToken', 'importedAt'].includes(key)) {
       throw new Error(`Unknown import receipt field ${key}.`);
     }
   }
@@ -43,6 +44,15 @@ export function validateImportReceipt(receipt) {
   }
   if (receipt.sourcePath !== undefined && typeof receipt.sourcePath !== 'string') {
     throw new Error('An import receipt sourcePath must be a string.');
+  }
+  if (receipt.recordId !== undefined && typeof receipt.recordId !== 'string') {
+    throw new Error('An import receipt recordId must be a string.');
+  }
+  if (receipt.revisionToken !== undefined && !REVISION_PATTERN.test(receipt.revisionToken)) {
+    throw new Error('An import receipt revisionToken must be a sha256 revision token.');
+  }
+  if (receipt.importedAt !== undefined && typeof receipt.importedAt !== 'string') {
+    throw new Error('An import receipt importedAt must be an ISO timestamp.');
   }
   return receipt;
 }

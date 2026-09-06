@@ -44,6 +44,38 @@ function knowledgeRecord(overrides = {}) {
   };
 }
 
+function workRecord(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    id: 'receipt-record',
+    kind: 'work',
+    title: 'Imported receipt record',
+    summary: 'A legacy import receipt transaction fixture.',
+    tags: [],
+    applicability: { scope: 'work', workId: 'receipt-record' },
+    provenance: {
+      origin: 'legacy-import',
+      capturedAt: '2026-07-19T00:00:00.000Z',
+      sourceFingerprint: `sha256:${'a'.repeat(64)}`,
+    },
+    relatedRecordIds: [],
+    work: {
+      requestedOutcome: 'unknown — imported record', scope: 'unknown — imported record',
+      actualChanges: 'unknown — imported record', reasons: 'unknown — imported record',
+      discoveries: 'unknown — imported record', verification: 'unknown — imported record',
+      remainingWork: 'unknown — imported record', relatedContext: 'unknown — imported record',
+      execution: { state: 'unknown' }, verificationState: { state: 'unknown' },
+      pullRequest: { state: 'unknown' },
+      associations: { sourceRunIds: [], pullRequestIds: [], candidates: [] },
+    },
+    importedSource: {
+      body: 'Original legacy source body.', useWhen: 'Use when testing import receipts.',
+      cues: ['import receipt'], category: 'feature', status: 'active', version: '1',
+    },
+    ...overrides,
+  };
+}
+
 function writePackage(root, record, { resources = {}, directoryName = record.id, raw } = {}) {
   const recordDir = path.join(root, directoryName);
   fs.rmSync(recordDir, { recursive: true, force: true });
@@ -392,21 +424,7 @@ describe('immutable history and the extended transaction', () => {
 
   it('commits an import receipt with the record and rolls it back with the index', async (t) => {
     const workspace = makeWorkspace(t);
-    const proposal = writePackage(workspace.proposals, knowledgeRecord({
-      id: 'receipt-record',
-      kind: 'work',
-      applicability: { scope: 'work', workId: 'receipt-record' },
-      provenance: {
-        origin: 'legacy-import',
-        capturedAt: '2026-07-19T00:00:00.000Z',
-        sourceFingerprint: `sha256:${'a'.repeat(64)}`,
-      },
-      category: undefined,
-      useWhen: undefined,
-      content: undefined,
-      evidence: undefined,
-      status: undefined,
-    }));
+    const proposal = writePackage(workspace.proposals, workRecord());
     const sourceDigest = `sha256:${'a'.repeat(64)}`;
 
     const created = await register(workspace, proposal, {
@@ -426,20 +444,9 @@ describe('immutable history and the extended transaction', () => {
 
     const receiptBytes = fs.readFileSync(path.join(storePath, 'import-receipts.json'), 'utf8');
     const indexBytes = fs.readFileSync(path.join(storePath, 'index.json'), 'utf8');
-    const update = writePackage(path.join(workspace.proposals, 'update'), {
-      ...knowledgeRecord({
-        id: 'receipt-record',
-        kind: 'work',
-        applicability: { scope: 'work', workId: 'receipt-record' },
-        provenance: { origin: 'legacy-import', capturedAt: '2026-07-19T00:00:00.000Z' },
-        summary: 'A second import of the same legacy source.',
-      }),
-      category: undefined,
-      useWhen: undefined,
-      content: undefined,
-      evidence: undefined,
-      status: undefined,
-    });
+    const update = writePackage(path.join(workspace.proposals, 'update'), workRecord({
+      summary: 'A second import of the same legacy source.',
+    }));
     await assert.rejects(register(workspace, update, {
       expectedRevision: created.revisionToken,
       importReceipt: { sourceDigest: `sha256:${'b'.repeat(64)}` },

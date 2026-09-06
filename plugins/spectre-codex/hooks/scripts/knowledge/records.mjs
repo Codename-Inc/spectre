@@ -38,6 +38,26 @@ const KNOWLEDGE_FIELDS = new Set([
   'status',
   'blocker',
 ]);
+const WORK_FIELDS = new Set(['work', 'importedSource']);
+const WORK_SECTION_FIELDS = [
+  'requestedOutcome',
+  'scope',
+  'actualChanges',
+  'reasons',
+  'discoveries',
+  'verification',
+  'remainingWork',
+  'relatedContext',
+];
+const EXECUTION_STATES = new Set([
+  'unknown',
+  'in-progress',
+  'implementation-ready',
+  'acceptance-pending',
+  'blocked',
+]);
+const VERIFICATION_STATES = new Set(['unknown', 'not-run', 'checked', 'passed', 'failed']);
+const PULL_REQUEST_STATES = new Set(['unknown', 'none', 'draft-open', 'closed', 'merged']);
 const AGENT_SKILLS_FIELDS = new Set([
   'name',
   'description',
@@ -137,7 +157,9 @@ function digestResources(recordDir, relativePaths) {
 }
 
 function allowedFields(kind) {
-  return kind === 'knowledge' ? new Set([...COMMON_FIELDS, ...KNOWLEDGE_FIELDS]) : COMMON_FIELDS;
+  return kind === 'knowledge'
+    ? new Set([...COMMON_FIELDS, ...KNOWLEDGE_FIELDS])
+    : new Set([...COMMON_FIELDS, ...WORK_FIELDS]);
 }
 
 function validateNoForeignFields(record, recordPath) {
@@ -150,14 +172,14 @@ function validateNoForeignFields(record, recordPath) {
         `AgentSkills frontmatter field ${key} is not part of the typed record schema`,
       );
     }
-    if (KNOWLEDGE_FIELDS.has(key)) {
+    if (KNOWLEDGE_FIELDS.has(key) || WORK_FIELDS.has(key)) {
       throw recordError(recordPath, `field ${key} is not allowed on a ${record.kind} record`);
     }
     throw recordError(recordPath, `unknown field ${key}`);
   }
 }
 
-function validateIdentity(record, recordPath) {
+function validateIdentity(record, recordPath, expectedId) {
   if (
     typeof record.id !== 'string'
     || record.id.length > 64
@@ -165,7 +187,7 @@ function validateIdentity(record, recordPath) {
   ) {
     throw recordError(recordPath, 'id must be a canonical lowercase hyphenated record ID');
   }
-  if (record.id !== path.basename(path.dirname(path.resolve(recordPath)))) {
+  if (record.id !== (expectedId || path.basename(path.dirname(path.resolve(recordPath))))) {
     throw recordError(recordPath, 'id must match its parent record directory');
   }
 }
@@ -273,9 +295,90 @@ function validateKnowledgeFields(record, recordPath) {
  * Work records currently carry the common fields only. The templated work body and
  * lifecycle fields extend this one authority; they never become a second format.
  */
-function validateWorkFields() {}
+function validateState(value, allowedStates, field, recordPath, optional = []) {
+  if (!isPlainObject(value)) {
+    throw recordError(recordPath, `${field} must be an object`);
+  }
+  const allowed = new Set(['state', ...optional]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    throw recordError(recordPath, `unknown field ${field}`);
+  }
+  if (!allowedStates.has(value.state)) {
+    throw recordError(recordPath, `unknown ${field}.state ${value.state}`);
+  }
+  for (const key of optional) {
+    if (value[key] !== undefined && !isNonEmptyString(value[key])) {
+      throw recordError(recordPath, `${field}.${key} must be a non-empty string`);
+    }
+  }
+}
 
-export function validateKnowledgeRecord(record, recordPath) {
+function validateCandidate(candidate, recordPath) {
+  if (!isPlainObject(candidate) || Object.keys(candidate).some((key) =>
+    !['repository', 'base', 'head', 'diff'].includes(key))) {
+    throw recordError(recordPath, 'work.associations.candidates must use exact candidate fields');
+  }
+  for (const field of ['repository', 'base', 'head', 'diff']) {
+    if (!isNonEmptyString(candidate[field])) {
+      throw recordError(recordPath, `work.associations.candidates.${field} must be a non-empty string`);
+    }
+  }
+}
+
+function validateImportedSource(record, recordPath) {
+  if (record.provenance.origin !== LEGACY_IMPORT_ORIGIN) {
+    if (record.importedSource !== undefined) {
+      throw recordError(recordPath, 'importedSource requires legacy-import provenance');
+    }
+    return;
+  }
+  const source = record.importedSource;
+  const fields = ['body', 'useWhen', 'cues', 'category', 'status', 'version'];
+  if (!isPlainObject(source) || Object.keys(source).some((key) => !fields.includes(key))) {
+    throw recordError(recordPath, 'legacy-import work records require importedSource metadata');
+  }
+  for (const field of ['body', 'useWhen', 'category', 'status', 'version']) {
+    if (!isNonEmptyString(source[field])) {
+      throw recordError(recordPath, `importedSource.${field} must be a non-empty string`);
+    }
+  }
+  if (!isUniqueStringArray(source.cues)) {
+    throw recordError(recordPath, 'importedSource.cues must be a unique non-empty string array');
+  }
+}
+
+function validateWorkFields(record, recordPath) {
+  const work = record.work;
+  const allowed = new Set([
+    ...WORK_SECTION_FIELDS,
+    'execution',
+    'verificationState',
+    'pullRequest',
+    'associations',
+  ]);
+  if (!isPlainObject(work) || Object.keys(work).some((key) => !allowed.has(key))) {
+    throw recordError(recordPath, 'work must contain only the work template and lifecycle fields');
+  }
+  for (const field of WORK_SECTION_FIELDS) {
+    if (!isNonEmptyString(work[field])) {
+      throw recordError(recordPath, `work.${field} must be a non-empty explicit statement`);
+    }
+  }
+  validateState(work.execution, EXECUTION_STATES, 'work.execution', recordPath);
+  validateState(work.verificationState, VERIFICATION_STATES, 'work.verificationState', recordPath, ['evidenceRef']);
+  validateState(work.pullRequest, PULL_REQUEST_STATES, 'work.pullRequest', recordPath, ['identity', 'url']);
+  if (!isPlainObject(work.associations)
+    || Object.keys(work.associations).some((key) => !['sourceRunIds', 'pullRequestIds', 'candidates'].includes(key))
+    || !isUniqueStringArray(work.associations.sourceRunIds)
+    || !isUniqueStringArray(work.associations.pullRequestIds)
+    || !Array.isArray(work.associations.candidates)) {
+    throw recordError(recordPath, 'work.associations must contain exact source run, PR, and candidate arrays');
+  }
+  for (const candidate of work.associations.candidates) validateCandidate(candidate, recordPath);
+  validateImportedSource(record, recordPath);
+}
+
+export function validateKnowledgeRecord(record, recordPath, options = {}) {
   if (!isPlainObject(record)) {
     throw recordError(recordPath, 'record must be a JSON object');
   }
@@ -289,7 +392,7 @@ export function validateKnowledgeRecord(record, recordPath) {
     throw recordError(recordPath, `unknown kind ${JSON.stringify(record.kind)}`);
   }
   validateNoForeignFields(record, recordPath);
-  validateIdentity(record, recordPath);
+  validateIdentity(record, recordPath, options.expectedId);
   if (!isNonEmptyString(record.title) || record.title.length > TITLE_LIMIT) {
     throw recordError(recordPath, `title must contain 1-${TITLE_LIMIT} characters`);
   }
@@ -348,6 +451,11 @@ export function renderKnowledgeRecord(record) {
     `- ID: ${record.id}`,
     `- Kind: ${record.kind}`,
     ...(isKnowledge ? [`- Category: ${record.category}`, `- Status: ${record.status}`] : []),
+    ...(!isKnowledge ? [
+      `- Execution state: ${record.work.execution.state}`,
+      `- Verification state: ${record.work.verificationState.state}`,
+      `- Pull request state: ${record.work.pullRequest.state}`,
+    ] : []),
     `- Applicability: ${applicabilityLabel(record.applicability)}`,
     ...(record.tags.length > 0 ? [`- Tags: ${record.tags.join(', ')}`] : []),
     ...(record.relatedRecordIds.length > 0
@@ -370,11 +478,38 @@ export function renderKnowledgeRecord(record) {
           : []),
       ]
       : []),
+    ...(!isKnowledge
+      ? [
+        ...section('Requested outcome and scope', [
+          record.work.requestedOutcome,
+          '',
+          `Scope: ${record.work.scope}`,
+        ].join('\n')),
+        ...section('Actual changes and affected components', record.work.actualChanges),
+        ...section('Reasons and accepted decisions', record.work.reasons),
+        ...section('Discoveries and approaches tried', record.work.discoveries),
+        ...section('Verification performed', record.work.verification),
+        ...section('Remaining work, limitations, and unknowns', record.work.remainingWork),
+        ...section('Related knowledge and source context', record.work.relatedContext),
+        ...(record.importedSource
+          ? [
+            ...section('Imported source', record.importedSource.body),
+            ...section('Use when', record.importedSource.useWhen),
+            ...section('Discovery cues', record.importedSource.cues.join(', ')),
+            ...section('Imported source metadata', [
+              `- Category: ${record.importedSource.category}`,
+              `- Status: ${record.importedSource.status}`,
+              `- Version: ${record.importedSource.version}`,
+            ].join('\n')),
+          ]
+          : []),
+      ]
+      : []),
   ];
   return lines.join('\n');
 }
 
-function parseRecordJson(text, recordPath) {
+function parseRecordJson(text, recordPath, options) {
   if (text.startsWith('---')) {
     throw recordError(recordPath, 'AgentSkills frontmatter is not a typed record package');
   }
@@ -384,7 +519,7 @@ function parseRecordJson(text, recordPath) {
   } catch (error) {
     throw recordError(recordPath, `malformed record JSON: ${error.message}`);
   }
-  return validateKnowledgeRecord(parsed, recordPath);
+  return validateKnowledgeRecord(parsed, recordPath, options);
 }
 
 function pathIsWithin(rootPath, candidatePath) {
@@ -475,8 +610,8 @@ function listResources(recordDir) {
   return resources.sort();
 }
 
-function parseKnowledgeContent(text, recordPath, resources = []) {
-  const record = parseRecordJson(text, recordPath);
+function parseKnowledgeContent(text, recordPath, resources = [], options) {
+  const record = parseRecordJson(text, recordPath, options);
   const resourceDigests = digestResources(path.dirname(recordPath), resources);
   return {
     record,
@@ -492,6 +627,15 @@ export function parseKnowledgeRecord(recordPath) {
   }
   const text = fs.readFileSync(recordPath, 'utf8');
   return parseKnowledgeContent(text, recordPath, listResources(path.dirname(recordPath)));
+}
+
+/** Parse a verified archive package whose parent directory is its revision token. */
+export function parseHistoricalKnowledgeRecord(recordPath, expectedId) {
+  if (path.basename(recordPath) !== RECORD_FILE_NAME) {
+    throw recordError(recordPath, `a typed record package must be named ${RECORD_FILE_NAME}`);
+  }
+  const text = fs.readFileSync(recordPath, 'utf8');
+  return parseKnowledgeContent(text, recordPath, listResources(path.dirname(recordPath)), { expectedId });
 }
 
 /** Current revision of a stored package, or null when it is absent or unreadable. */
@@ -541,7 +685,7 @@ function isCurrentRecord(record) {
 
 export function refreshKnowledgeIndex(storePath, options = {}) {
   const knowledgeDir = path.join(storePath, 'knowledge');
-  const records = [];
+  const discoveredRecords = [];
   const errors = [];
   if (fs.existsSync(knowledgeDir)) {
     const entries = fs.readdirSync(knowledgeDir, { withFileTypes: true })
@@ -553,7 +697,7 @@ export function refreshKnowledgeIndex(storePath, options = {}) {
       try {
         const parsed = parseKnowledgeRecord(recordPath);
         if (isCurrentRecord(parsed.record)) {
-          records.push(indexEntry(storePath, recordPath, parsed));
+          discoveredRecords.push(indexEntry(storePath, recordPath, parsed));
         }
       } catch (error) {
         errors.push({ path: recordPath, message: error.message });
@@ -563,6 +707,34 @@ export function refreshKnowledgeIndex(storePath, options = {}) {
 
   const indexPath = path.join(storePath, 'index.json');
   const existing = readExistingIndex(indexPath);
+  const trustedRecordIds = new Set(options.trustedRecordIds || []);
+  const existingById = new Map((existing?.records || []).map((entry) => [entry.id, entry]));
+  const records = [];
+  for (const discovered of discoveredRecords) {
+    const persisted = existingById.get(discovered.id);
+    if (
+      persisted
+      && persisted.revisionToken !== discovered.revisionToken
+      && !trustedRecordIds.has(discovered.id)
+    ) {
+      errors.push({
+        path: path.resolve(storePath, discovered.recordPath),
+        message: `current record revision differs from persisted revision for ${discovered.id}`,
+      });
+      records.push(persisted);
+    } else {
+      records.push(discovered);
+    }
+    existingById.delete(discovered.id);
+  }
+  for (const persisted of existingById.values()) {
+    errors.push({
+      path: path.resolve(storePath, persisted.recordPath),
+      message: `persisted record is missing from the current store: ${persisted.id}`,
+    });
+    records.push(persisted);
+  }
+  records.sort((left, right) => left.id.localeCompare(right.id));
   const unchanged =
     existing !== null &&
     JSON.stringify(existing.records) === JSON.stringify(records);

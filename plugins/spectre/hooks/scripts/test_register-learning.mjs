@@ -601,6 +601,63 @@ describe('canonical knowledge registration process', () => {
     }
   });
 
+  it('does not delete a live record when its backup rename fails before replacement', async () => {
+    const tmp = createTmpDir();
+    try {
+      const projectDir = path.join(tmp, 'workspace', 'project');
+      const spectreHome = path.join(tmp, 'spectre-home');
+      const proposals = path.join(tmp, 'proposals');
+      fs.mkdirSync(projectDir, { recursive: true });
+      const writeTypedWork = (root, title) => {
+        const directory = path.join(root, 'feature-rename-failure');
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(path.join(directory, 'record.json'), `${JSON.stringify({
+          schemaVersion: 1,
+          id: 'feature-rename-failure',
+          kind: 'work',
+          title,
+          summary: 'Tests a failed backup rename.',
+          tags: [],
+          applicability: { scope: 'project' },
+          provenance: { origin: 'captured', capturedAt: '2026-09-06T00:00:00.000Z' },
+          relatedRecordIds: [],
+          work: {
+            requestedOutcome: 'known test record', scope: 'known test record',
+            actualChanges: 'known test record', reasons: 'known test record',
+            discoveries: 'known test record', verification: 'known test record',
+            remainingWork: 'known test record', relatedContext: 'known test record',
+            execution: { state: 'unknown' }, verificationState: { state: 'unknown' },
+            pullRequest: { state: 'unknown' },
+            associations: { sourceRunIds: [], pullRequestIds: [], candidates: [] },
+          },
+        })}\n`);
+        return directory;
+      };
+      const initial = writeTypedWork(proposals, 'Prior');
+      const created = await registerCanonicalKnowledge({ projectDir, recordPath: initial, spectreHome });
+      const recordDir = path.join(findOnlyStore(spectreHome), 'knowledge', 'feature-rename-failure');
+      const prior = snapshotTree(recordDir);
+      const update = writeTypedWork(path.join(proposals, 'update'), 'Replacement');
+      const originalRename = fs.renameSync;
+      fs.renameSync = function injectedRename(source, destination, ...args) {
+        if (source === recordDir && destination.startsWith(`${recordDir}.previous-`)) {
+          throw new Error('injected-backup-rename-failure');
+        }
+        return originalRename.call(this, source, destination, ...args);
+      };
+      try {
+        await assert.rejects(registerCanonicalKnowledge({
+          projectDir, recordPath: update, spectreHome, expectedRevision: created.revisionToken,
+        }), /injected-backup-rename-failure/);
+      } finally {
+        fs.renameSync = originalRename;
+      }
+      assert.deepEqual(snapshotTree(recordDir), prior);
+    } finally {
+      cleanup(tmp);
+    }
+  });
+
   it('recovers interrupted record replacements before processing the next proposal', async () => {
     const tmp = createTmpDir();
     try {

@@ -67,14 +67,23 @@ function copyDirectory(sourceDir, destinationDir) {
 function removeRegistrationStages(storePath) {
   for (const entry of fs.readdirSync(storePath, { withFileTypes: true })) {
     if (entry.name.startsWith('.registration-stage-') && entry.isDirectory()) {
-      fs.rmSync(path.join(storePath, entry.name), { recursive: true, force: true });
+      const match = /^\.registration-stage-(\d+)-\d+$/.exec(entry.name);
+      const pid = Number(match?.[1]);
+      let alive = false;
+      try {
+        if (Number.isInteger(pid) && pid > 0) process.kill(pid, 0);
+        alive = Number.isInteger(pid) && pid > 0;
+      } catch {
+        // A stage whose owner no longer exists is safe to remove.
+      }
+      if (!alive) fs.rmSync(path.join(storePath, entry.name), { recursive: true, force: true });
     }
   }
 }
 
-function recoverInterruptedRecordReplacements(storePath) {
+export function recoverInterruptedRecordReplacements(storePath) {
   const knowledgeDir = path.join(storePath, 'knowledge');
-  if (!fs.existsSync(knowledgeDir)) return false;
+  if (!fs.existsSync(knowledgeDir)) return [];
 
   const backupsByDestination = new Map();
   for (const entry of fs.readdirSync(knowledgeDir, { withFileTypes: true })) {
@@ -90,6 +99,7 @@ function recoverInterruptedRecordReplacements(storePath) {
     backupsByDestination.set(destinationPath, backups);
   }
 
+  const recoveredIds = [];
   for (const [destinationPath, backups] of backupsByDestination) {
     backups.sort(
       (left, right) =>
@@ -103,8 +113,9 @@ function recoverInterruptedRecordReplacements(storePath) {
     for (const { backupPath } of backups) {
       fs.rmSync(backupPath, { recursive: true, force: true });
     }
+    recoveredIds.push(path.basename(destinationPath));
   }
-  return backupsByDestination.size > 0;
+  return recoveredIds;
 }
 
 function beginRecordDirectoryReplacement(destinationPath, stagePath) {
@@ -117,7 +128,7 @@ function beginRecordDirectoryReplacement(destinationPath, stagePath) {
     }
     fs.renameSync(stagePath, destinationPath);
   } catch (error) {
-    fs.rmSync(destinationPath, { recursive: true, force: true });
+    if (backedUp) fs.rmSync(destinationPath, { recursive: true, force: true });
     if (backedUp && fs.existsSync(backupPath)) {
       fs.renameSync(backupPath, destinationPath);
     }
@@ -137,6 +148,15 @@ function beginRecordDirectoryReplacement(destinationPath, stagePath) {
 }
 
 function validateStagedRecord(stagePath) {
+  if (
+    !fs.existsSync(path.join(stagePath, RECORD_FILE_NAME))
+    && fs.existsSync(path.join(stagePath, 'SKILL.md'))
+  ) {
+    throw codedError(
+      'KNOWLEDGE_LEGACY_WRITE_RETIRED',
+      'Legacy SKILL.md packages are retired. Run `node "${PLUGIN_ROOT}/hooks/scripts/knowledge-cli.mjs" migrate` to preserve the source, then update the typed record.',
+    );
+  }
   let parsed;
   try {
     parsed = parseKnowledgeRecord(path.join(stagePath, RECORD_FILE_NAME));
@@ -174,6 +194,13 @@ function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, sta
   }
   if (currentRevision !== null && currentRevision === stagedRevision) {
     return { status: 'noop', currentRevision };
+  }
+  if (currentRevision === null) {
+    throw codedError(
+      'KNOWLEDGE_CURRENT_RECORD_UNREADABLE',
+      `Current record ${id} is unreadable. Preserve or recover its package before retrying; migration cannot replace an unreadable typed record.`,
+      { status: 'conflict', currentRevision: null },
+    );
   }
   if (!expectedRevision) {
     throw codedError(
@@ -250,8 +277,9 @@ export async function registerCanonicalKnowledge(options) {
     'register-knowledge',
     async () => {
       removeRegistrationStages(storePath);
-      if (recoverInterruptedRecordReplacements(storePath)) {
-        refreshKnowledgeIndex(storePath);
+      const recoveredRecordIds = recoverInterruptedRecordReplacements(storePath);
+      if (recoveredRecordIds.length > 0) {
+        refreshKnowledgeIndex(storePath, { trustedRecordIds: recoveredRecordIds });
       }
       const stageRoot = path.join(storePath, `.registration-stage-${process.pid}-${Date.now()}`);
       fs.mkdirSync(stageRoot, { recursive: true });
@@ -318,7 +346,7 @@ export async function registerCanonicalKnowledge(options) {
               options.now,
             );
           }
-          refreshKnowledgeIndex(storePath);
+          refreshKnowledgeIndex(storePath, { trustedRecordIds: [parsed.record.id] });
           if (options.afterIndexRefresh) options.afterIndexRefresh();
           replacement.commit();
         } catch (error) {

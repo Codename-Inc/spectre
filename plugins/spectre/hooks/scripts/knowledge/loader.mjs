@@ -13,12 +13,12 @@ import {
   refreshKnowledgeIndex,
   renderKnowledgeRecord,
 } from './records.mjs';
+import { recoverInterruptedRecordReplacements } from './registration.mjs';
 import { resolveProjectStore, withStoreLock } from './store.mjs';
 
 const RECORD_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RETIRED_RECORD_FILE_NAME = 'SKILL.md';
-// Load activity aggregates per record until revision identity replaces the integer key.
-const RECORD_ACTIVITY_VERSION = 1;
+const ROUTINE_LOAD_ALLOWANCE_TOKENS = 1500;
 
 function knowledgeLoadError(code, message, details = {}) {
   const error = new Error(message);
@@ -176,6 +176,21 @@ function mapLockError(error) {
   );
 }
 
+function estimateLoadTokens(rendered) {
+  return Math.ceil(Buffer.byteLength(rendered, 'utf8') / 4);
+}
+
+function activationFor(record, options) {
+  if (record.applicability.scope === 'project') {
+    return { historical: false, activation: 'current-guidance' };
+  }
+  const matchingWork = options.workId === record.applicability.workId;
+  const matchingRun = record.applicability.runIds?.includes(options.runId);
+  return matchingWork || matchingRun
+    ? { historical: false, activation: 'current-guidance' }
+    : { historical: true, activation: 'historical' };
+}
+
 export async function loadKnowledgeById(options = {}) {
   validateExactId(options.id);
   const projectDir = path.resolve(options.projectDir || process.cwd());
@@ -196,6 +211,7 @@ export async function loadKnowledgeById(options = {}) {
       resolved.storePath,
       'load-knowledge',
       async () => {
+        recoverInterruptedRecordReplacements(resolved.storePath);
         const { index } = refreshKnowledgeIndex(resolved.storePath);
         const entry = index.records.find((candidate) => candidate.id === options.id);
         if (!entry) classifyMissingActiveEntry(resolved.storePath, options.id);
@@ -234,10 +250,46 @@ export async function loadKnowledgeById(options = {}) {
           parsed.resources,
           expectedCanonicalDirectory,
         );
-        const currentActivity = readKnowledgeActivity(resolved.storePath);
-        const { activity, versionActivity } = incrementKnowledgeLoadActivity(currentActivity, {
+        const rendered = renderKnowledgeRecord(parsed.record);
+        const estimatedTokens = estimateLoadTokens(rendered);
+        const allowanceTokens = options.allowanceTokens ?? ROUTINE_LOAD_ALLOWANCE_TOKENS;
+        if (!Number.isSafeInteger(allowanceTokens) || allowanceTokens < 0) {
+          throw new TypeError('allowanceTokens must be a non-negative safe integer');
+        }
+        const activation = activationFor(parsed.record, options);
+        const metadata = {
           id: parsed.record.id,
-          version: RECORD_ACTIVITY_VERSION,
+          kind: parsed.record.kind,
+          applicability: parsed.record.applicability,
+          revisionToken: parsed.revisionToken,
+          estimatedTokens,
+          ...activation,
+        };
+        if (estimatedTokens > allowanceTokens) {
+          return {
+            ok: true,
+            status: 'expansion-needed',
+            ...metadata,
+            allowanceTokens,
+            reason: 'complete-record-exceeds-allowance',
+          };
+        }
+        if (activation.historical) {
+          return {
+            ok: true,
+            status: 'loaded',
+            ...metadata,
+            record: parsed.record,
+            rendered,
+            recordPath,
+            recordDirectory,
+            resources,
+          };
+        }
+        const currentActivity = readKnowledgeActivity(resolved.storePath);
+        const { activity, revisionActivity } = incrementKnowledgeLoadActivity(currentActivity, {
+          id: parsed.record.id,
+          revisionToken: parsed.revisionToken,
           now: options.now,
         });
         try {
@@ -257,14 +309,14 @@ export async function loadKnowledgeById(options = {}) {
 
         return {
           ok: true,
-          id: parsed.record.id,
-          kind: parsed.record.kind,
+          status: 'loaded',
+          ...metadata,
           record: parsed.record,
-          rendered: renderKnowledgeRecord(parsed.record),
+          rendered,
           recordPath,
           recordDirectory,
           resources,
-          activity: versionActivity,
+          activity: revisionActivity,
         };
       },
       options.lockOptions,
@@ -284,6 +336,9 @@ export function serializeKnowledgeLoadError(error) {
 }
 
 export function formatKnowledgeLoadHuman(result) {
+  if (result.status === 'expansion-needed') {
+    return `Knowledge load needs expansion: ${result.id} requires ${result.estimatedTokens} estimated tokens (allowance ${result.allowanceTokens}).\n`;
+  }
   const content = result.rendered.endsWith('\n') ? result.rendered : `${result.rendered}\n`;
   const locations = {
     recordDirectory: result.recordDirectory,
@@ -291,3 +346,5 @@ export function formatKnowledgeLoadHuman(result) {
   };
   return `${content}\nSPECTRE_KNOWLEDGE_RESOURCE_LOCATIONS=${JSON.stringify(locations)}\n`;
 }
+
+export { ROUTINE_LOAD_ALLOWANCE_TOKENS };

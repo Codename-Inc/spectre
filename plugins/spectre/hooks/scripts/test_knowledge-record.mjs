@@ -60,6 +60,28 @@ function workRecord(overrides = {}) {
       sourceFingerprint: 'sha256:0123456789abcdef',
     },
     relatedRecordIds: ['auth-token-refresh'],
+    work: {
+      requestedOutcome: 'unknown — imported record',
+      scope: 'unknown — imported record',
+      actualChanges: 'unknown — imported record',
+      reasons: 'unknown — imported record',
+      discoveries: 'unknown — imported record',
+      verification: 'unknown — imported record',
+      remainingWork: 'unknown — imported record',
+      relatedContext: 'unknown — imported record',
+      execution: { state: 'unknown' },
+      verificationState: { state: 'unknown' },
+      pullRequest: { state: 'unknown' },
+      associations: { sourceRunIds: [], pullRequestIds: [], candidates: [] },
+    },
+    importedSource: {
+      body: 'Original legacy guidance is retained as historical source material.',
+      useWhen: 'Investigating the historical auth retry work.',
+      cues: ['auth retry', 'token refresh'],
+      category: 'pattern',
+      status: 'active',
+      version: '1',
+    },
     ...overrides,
   };
 }
@@ -329,6 +351,48 @@ describe('rendered typed records', () => {
     assert.match(rendered, /historical evidence/i);
     assert.equal(rendered.includes('## Guidance'), false);
     assert.match(rendered, /Historical account of the auth retry work\./);
+    for (const heading of [
+      'Requested outcome and scope',
+      'Actual changes and affected components',
+      'Reasons and accepted decisions',
+      'Discoveries and approaches tried',
+      'Verification performed',
+      'Remaining work, limitations, and unknowns',
+      'Related knowledge and source context',
+    ]) {
+      assert.match(rendered, new RegExp(`## ${heading}`));
+    }
+    assert.match(rendered, /## Imported source/);
+    assert.match(rendered, /Original legacy guidance is retained/);
+  });
+
+  it('rejects work lifecycle states that would claim draft-open and merged together', async (t) => {
+    const tmp = makeTmp(t);
+    const { parseKnowledgeRecord } = await loadRecordModule();
+    const record = workRecord({
+      work: {
+        ...workRecord().work,
+        pullRequest: { state: 'draft-open', mergedAt: '2026-07-19T00:00:00.000Z' },
+      },
+    });
+
+    assert.throws(
+      () => parseKnowledgeRecord(writeRecordPackage(tmp, record)),
+      /pullRequest/,
+    );
+  });
+
+  it('requires every work template section to state an explicit unknown rather than be empty', async (t) => {
+    const tmp = makeTmp(t);
+    const { parseKnowledgeRecord } = await loadRecordModule();
+    const record = workRecord({
+      work: { ...workRecord().work, remainingWork: '' },
+    });
+
+    assert.throws(
+      () => parseKnowledgeRecord(writeRecordPackage(tmp, record)),
+      /remainingWork/,
+    );
   });
 });
 

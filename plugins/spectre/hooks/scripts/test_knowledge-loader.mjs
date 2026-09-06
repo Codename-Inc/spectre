@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LOADER_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'loader.mjs');
 const RECORD_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'records.mjs');
+const SEARCH_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'search.mjs');
 const STORE_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'store.mjs');
 const execFileAsync = promisify(execFile);
 
@@ -22,12 +23,13 @@ function makeTmp(t) {
 }
 
 async function loadModules() {
-  const [loader, records, store] = await Promise.all([
+  const [loader, records, search, store] = await Promise.all([
     import(pathToFileURL(LOADER_MODULE).href),
     import(pathToFileURL(RECORD_MODULE).href),
+    import(pathToFileURL(SEARCH_MODULE).href),
     import(pathToFileURL(STORE_MODULE).href),
   ]);
-  return { ...loader, ...records, ...store };
+  return { ...loader, ...records, ...search, ...store };
 }
 
 function knowledgeRecord(id, overrides = {}) {
@@ -61,6 +63,28 @@ function workRecord(id) {
     applicability: { scope: 'work', workId: id },
     provenance: { origin: 'legacy-import', capturedAt: '2026-07-19T00:00:00.000Z' },
     relatedRecordIds: [],
+    work: {
+      requestedOutcome: 'Unknown from the imported source.',
+      scope: 'Unknown from the imported source.',
+      actualChanges: 'Unknown from the imported source.',
+      reasons: 'Unknown from the imported source.',
+      discoveries: 'Unknown from the imported source.',
+      verification: 'Unknown from the imported source.',
+      remainingWork: 'Unknown from the imported source.',
+      relatedContext: 'Unknown from the imported source.',
+      execution: { state: 'unknown' },
+      verificationState: { state: 'unknown' },
+      pullRequest: { state: 'unknown' },
+      associations: { sourceRunIds: ['legacy-run'], pullRequestIds: ['legacy-pr'], candidates: [] },
+    },
+    importedSource: {
+      body: 'Imported historical source.',
+      useWhen: 'Reviewing the imported work.',
+      cues: ['imported work'],
+      category: 'historical',
+      status: 'unreviewed',
+      version: '1',
+    },
   };
 }
 
@@ -100,6 +124,91 @@ function readActivity(storePath) {
 }
 
 describe('verified exact-ID typed knowledge loader', () => {
+  it('requires an explicit expansion for a complete body over the routine allowance', async (t) => {
+    const { projectDir, spectreHome, storePath } = await fixture(t);
+    const id = 'expansion-record';
+    writeRecord(storePath, id, knowledgeRecord(id, { content: 'verified guidance '.repeat(800) }));
+    const { loadKnowledgeById } = await loadModules();
+
+    const result = await loadKnowledgeById({ projectDir, spectreHome, id, allowanceTokens: 10 });
+
+    assert.deepEqual(result, {
+      ok: true,
+      status: 'expansion-needed',
+      id,
+      kind: 'knowledge',
+      applicability: { scope: 'project' },
+      revisionToken: result.revisionToken,
+      estimatedTokens: result.estimatedTokens,
+      historical: false,
+      activation: 'current-guidance',
+      allowanceTokens: 10,
+      reason: 'complete-record-exceeds-allowance',
+    });
+    assert.match(result.revisionToken, /^sha256:[a-f0-9]{64}$/);
+    assert.ok(result.estimatedTokens > result.allowanceTokens);
+    for (const bodyField of ['record', 'rendered', 'resources', 'recordPath', 'recordDirectory']) {
+      assert.equal(Object.hasOwn(result, bodyField), false, bodyField);
+    }
+    assert.equal(readActivity(storePath), null);
+  });
+
+  it('keeps unrelated work-scoped guidance historical and out of current activation', async (t) => {
+    const { projectDir, spectreHome, storePath } = await fixture(t);
+    const id = 'other-work-guidance';
+    writeRecord(storePath, id, knowledgeRecord(id, {
+      applicability: { scope: 'work', workId: 'originating-work' },
+    }));
+    const { loadKnowledgeById } = await loadModules();
+
+    const result = await loadKnowledgeById({
+      projectDir,
+      spectreHome,
+      id,
+      workId: 'unrelated-work',
+    });
+
+    assert.equal(result.historical, true);
+    assert.equal(result.activation, 'historical');
+    assert.deepEqual(result.applicability, { scope: 'work', workId: 'originating-work' });
+    assert.equal(readActivity(storePath), null);
+  });
+
+  it('rejects an on-disk tamper after a search refresh without releasing a body', async (t) => {
+    const { projectDir, spectreHome, storePath } = await fixture(t);
+    const id = 'persisted-integrity-record';
+    const written = writeRecord(storePath, id);
+    const { loadKnowledgeById, refreshKnowledgeIndex } = await loadModules();
+    refreshKnowledgeIndex(storePath);
+    fs.writeFileSync(written.recordPath, JSON.stringify({
+      ...written.record,
+      content: 'Tampered after the registered revision was indexed.',
+    }, null, 2));
+
+    refreshKnowledgeIndex(storePath);
+    await assert.rejects(
+      loadKnowledgeById({ projectDir, spectreHome, id }),
+      assertLoadError('KNOWLEDGE_CHANGED_DURING_READ'),
+    );
+    assert.equal(readActivity(storePath), null);
+  });
+
+  it('recovers an interrupted replacement before verifying a load', async (t) => {
+    const { projectDir, spectreHome, storePath } = await fixture(t);
+    const id = 'recoverable-load-record';
+    const written = writeRecord(storePath, id);
+    fs.renameSync(
+      written.recordDirectory,
+      `${written.recordDirectory}.previous-${process.pid}-${Date.now()}`,
+    );
+    const { loadKnowledgeById } = await loadModules();
+
+    const result = await loadKnowledgeById({ projectDir, spectreHome, id });
+
+    assert.equal(result.record.content, 'Exact canonical guidance.');
+    assert.equal(fs.existsSync(written.recordDirectory), true);
+  });
+
   it('returns the rendered typed record, safe resources, and one committed load', async (t) => {
     const { projectDir, spectreHome, storePath, tmp } = await fixture(t);
     const id = 'exact-loader-record';
@@ -129,8 +238,14 @@ describe('verified exact-ID typed knowledge loader', () => {
     const { rendered, ...rest } = result;
     assert.deepEqual(rest, {
       ok: true,
+      status: 'loaded',
       id,
       kind: 'knowledge',
+      applicability: { scope: 'project' },
+      revisionToken: rest.revisionToken,
+      estimatedTokens: rest.estimatedTokens,
+      historical: false,
+      activation: 'current-guidance',
       record: written.record,
       recordPath: written.recordPath,
       recordDirectory: written.recordDirectory,
@@ -158,7 +273,7 @@ describe('verified exact-ID typed knowledge loader', () => {
       result.resources.some(({ relativePath }) => relativePath === 'record.json'),
       false,
     );
-    assert.equal(readActivity(storePath).records[id].versions['1'].successfulLoads, 1);
+    assert.equal(readActivity(storePath).records[id].revisions[result.revisionToken].successfulLoads, 1);
   });
 
   it('loads a work record as labeled historical evidence', async (t) => {
@@ -171,7 +286,8 @@ describe('verified exact-ID typed knowledge loader', () => {
 
     assert.equal(result.kind, 'work');
     assert.match(result.rendered, /historical evidence/i);
-    assert.equal(readActivity(storePath).records[id].versions['1'].successfulLoads, 1);
+    assert.equal(result.historical, true);
+    assert.equal(readActivity(storePath), null);
   });
 
   it('increments the exact record activity exactly once per invocation', async (t) => {
@@ -184,7 +300,7 @@ describe('verified exact-ID typed knowledge loader', () => {
     const second = await loadKnowledgeById({ projectDir, spectreHome, id });
 
     assert.equal(second.activity.successfulLoads, 2);
-    assert.equal(readActivity(storePath).records[id].versions['1'].successfulLoads, 2);
+    assert.equal(readActivity(storePath).records[id].revisions[second.revisionToken].successfulLoads, 2);
   });
 
   it('serializes concurrent exact loads without losing increments', async (t) => {
@@ -206,7 +322,7 @@ describe('verified exact-ID typed knowledge loader', () => {
     )));
 
     assert.equal(
-      readActivity(storePath).records[id].versions['1'].successfulLoads,
+      Object.values(readActivity(storePath).records[id].revisions)[0].successfulLoads,
       invocations,
     );
   });
@@ -373,7 +489,8 @@ describe('verified exact-ID typed knowledge loader', () => {
       }),
       assertLoadError('KNOWLEDGE_ACTIVITY_WRITE_FAILED'),
     );
-    assert.equal(readActivity(storePath).records[id].versions['1'].successfulLoads, 1);
+    const activity = readActivity(storePath).records[id].revisions;
+    assert.equal(Object.values(activity)[0].successfulLoads, 1);
   });
 
   it('renders the human load output from the typed record', async (t) => {
