@@ -476,6 +476,24 @@ function scoreTag(id, entry, query) {
   return matched ? { rank: 4, matchedVia: 'description' } : null;
 }
 
+function encodeTagCursor(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function decodeTagCursor(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    if (
+      !parsed || typeof parsed.query !== 'string' || typeof parsed.revision !== 'string'
+      || !Number.isSafeInteger(parsed.offset) || parsed.offset < 0
+    ) throw new Error('invalid');
+    return parsed;
+  } catch {
+    throw codedError('TAG_SEARCH_CURSOR_INVALID', 'Tag search cursor is invalid.');
+  }
+}
+
 /**
  * Bounded vocabulary answers only: canonical names, descriptions, aliases, and derived
  * counts. Similarity here suggests reuse; it never consolidates anything.
@@ -486,12 +504,17 @@ export async function searchTags(options) {
     MAX_TAG_SEARCH_LIMIT,
   );
   const resolved = await resolveStore(options, { readOnly: true });
-  if (!resolved.storePath) return { results: [], total: 0, truncated: false, revision: null };
+  if (!resolved.storePath) return { results: [], total: 0, truncated: false, revision: null, cursor: null };
 
   const catalog = readTagCatalog(resolved.storePath);
   const usage = deriveTagUsage(resolved.storePath, catalog);
   const query = normalizeSearchText(options.query);
   const normalizedQuery = query === '' ? '' : query.replace(/\s+/g, ' ');
+  const revision = tagCatalogRevision(catalog);
+  const pageCursor = decodeTagCursor(options.cursor);
+  if (pageCursor && (pageCursor.query !== normalizedQuery || pageCursor.revision !== revision)) {
+    throw codedError('TAG_SEARCH_CURSOR_STALE', 'Tag catalog changed; restart the query.');
+  }
 
   const matches = [];
   for (const [id, entry] of Object.entries(catalog.tags)) {
@@ -510,16 +533,18 @@ export async function searchTags(options) {
   }
   matches.sort((left, right) => left.rank - right.rank || (left.id < right.id ? -1 : 1));
 
-  const revision = tagCatalogRevision(catalog);
   const results = [];
-  for (const { rank, ...result } of matches) {
-    if (results.length >= limit) break;
+  const offset = pageCursor?.offset || 0;
+  for (let position = offset; position < matches.length && results.length < limit; position += 1) {
+    const { rank, ...result } = matches[position];
     const candidate = [...results, result];
+    const next = offset + candidate.length;
     const page = {
       results: candidate,
       total: matches.length,
-      truncated: matches.length > candidate.length,
+      truncated: next < matches.length,
       revision,
+      cursor: next < matches.length ? encodeTagCursor({ query: normalizedQuery, revision, offset: next }) : null,
     };
     if (measurePayload('codex', JSON.stringify(page)).measured > TAG_SEARCH_TOKEN_LIMIT) break;
     results.push(result);
@@ -528,8 +553,11 @@ export async function searchTags(options) {
   return {
     results,
     total: matches.length,
-    truncated: matches.length > results.length,
+    truncated: offset + results.length < matches.length,
     revision,
+    cursor: offset + results.length < matches.length
+      ? encodeTagCursor({ query: normalizedQuery, revision, offset: offset + results.length })
+      : null,
   };
 }
 

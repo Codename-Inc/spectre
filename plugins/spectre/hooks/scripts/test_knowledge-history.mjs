@@ -49,15 +49,24 @@ describe('knowledge history', () => {
 
     const preview = await listKnowledgeHistory({ projectDir, spectreHome, id });
     assert.equal(preview.entries.length, 5);
-    assert.ok(preview.continuation);
+    assert.ok(preview.cursor);
     assert.ok(preview.entries.every((entry) => entry.historical && entry.revisionToken));
     assert.equal(fs.existsSync(path.join(storePath, 'activity.json')), false);
 
+    const next = await listKnowledgeHistory({ projectDir, spectreHome, id, cursor: preview.cursor });
+    assert.equal(next.entries.length, 1);
+    assert.equal(next.cursor, null);
     const inspected = await inspectKnowledgeRevision({ projectDir, spectreHome, id, revisionToken: revisions[0] });
     assert.equal(inspected.historical, true);
     assert.equal(inspected.activation, 'historical');
     assert.equal(inspected.revisionToken, revisions[0]);
     assert.equal(inspected.record.content, 'Archived revision 0.');
+    fs.rmSync(path.join(storePath, 'knowledge-history', id, revisionDirectoryName(revisions[0])), { recursive: true });
+    await assert.rejects(
+      () => listKnowledgeHistory({ projectDir, spectreHome, id, cursor: preview.cursor }),
+      (error) => error.code === 'KNOWLEDGE_HISTORY_CURSOR_STALE',
+    );
+
     assert.equal(fs.existsSync(path.join(storePath, 'activity.json')), false);
   });
 });

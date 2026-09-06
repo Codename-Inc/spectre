@@ -284,6 +284,7 @@ describe('bounded tag search', () => {
     assert.equal(page.results.length, 5, 'an empty query returns a bounded page, never the corpus');
     assert.equal(page.total, 6);
     assert.equal(page.truncated, true);
+    assert.ok(page.cursor);
     assert.deepEqual(
       Object.keys(page.results[0]).sort(),
       ['aliases', 'description', 'id', 'matchedVia', 'recordCount'],
@@ -300,6 +301,24 @@ describe('bounded tag search', () => {
       withoutBodies.results[0].recordCount,
       1,
       'tag search must read compact index metadata, never record bodies',
+    );
+  });
+
+  it('pages a catalog cursor to omitted tags and rejects it after a catalog revision change', async (t) => {
+    const workspace = makeWorkspace(t);
+    await ensure(workspace, Array.from({ length: 7 }, (_, index) => ({
+      id: `area-${index}`, description: `Area ${index} procedures.`,
+    })));
+    const first = await searchTags({ ...storeOptions(workspace), query: '' });
+    const second = await searchTags({ ...storeOptions(workspace), query: '', cursor: first.cursor });
+    assert.deepEqual([...first.results, ...second.results].map(({ id }) => id), [
+      'area-0', 'area-1', 'area-2', 'area-3', 'area-4', 'area-5', 'area-6',
+    ]);
+    assert.equal(second.cursor, null);
+    await ensure(workspace, [{ id: 'area-next', description: 'Changed catalog revision.' }]);
+    await assert.rejects(
+      () => searchTags({ ...storeOptions(workspace), query: '', cursor: first.cursor }),
+      (error) => codeOf(error) === 'TAG_SEARCH_CURSOR_STALE',
     );
   });
 
@@ -322,7 +341,7 @@ describe('bounded tag search', () => {
   it('returns an empty bounded page when the project has no store yet', async (t) => {
     const workspace = makeWorkspace(t);
     const page = await searchTags({ ...storeOptions(workspace), query: 'auth' });
-    assert.deepEqual(page, { results: [], total: 0, truncated: false, revision: null });
+    assert.deepEqual(page, { results: [], total: 0, truncated: false, revision: null, cursor: null });
   });
 
   it('enforces the five-entry and 500-token response budgets even when callers request more', async (t) => {

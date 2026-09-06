@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { measurePayload } from './payload.mjs';
 import { refreshKnowledgeIndex } from './records.mjs';
-import { readTagCatalog } from './tags.mjs';
+import { readTagCatalog, resolveTagId, tagCatalogRevision } from './tags.mjs';
 import { resolveProjectStore } from './store.mjs';
 
 const SEARCH_RESPONSE_TOKEN_LIMIT = 500;
@@ -35,7 +35,8 @@ function decodeCursor(cursor) {
   if (!cursor) return null;
   try {
     const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (!value || typeof value.query !== 'string' || typeof value.index !== 'string'
+    if (!value || typeof value.query !== 'string' || typeof value.index !== 'string' || typeof value.catalog !== 'string'
+      || !Array.isArray(value.tags) || value.tags.some((tag) => typeof tag !== 'string')
       || !Number.isSafeInteger(value.offset) || value.offset < 0) throw new Error('invalid');
     return value;
   } catch {
@@ -60,18 +61,41 @@ function activation(entry, options) {
     : { historical: true, value: 'work-history' };
 }
 
-function aliases(storePath) {
+function tagCatalog(storePath) {
   try {
-    const catalog = readTagCatalog(storePath);
-    return new Map(Object.entries(catalog.tags).map(([id, tag]) => [id, [id, ...tag.aliases]]));
+    return readTagCatalog(storePath);
   } catch {
-    return new Map();
+    return { tags: {}, redirects: {} };
   }
 }
 
-function score(entry, query, queryTokens, tagAliases, paths) {
+function tagTerms(entry, catalog) {
+  return entry.tags.flatMap((tag) => {
+    const resolved = resolveTagId(catalog, tag);
+    return resolved ? [resolved.id, ...catalog.tags[resolved.id].aliases] : [tag];
+  });
+}
+
+function resolvedTags(catalog, requestedTags) {
+  if (requestedTags === undefined) return [];
+  if (!Array.isArray(requestedTags) || requestedTags.some((tag) => typeof tag !== 'string')) {
+    throw codedError('SEARCH_TAG_INVALID', 'Search tags must be an array of tag IDs.');
+  }
+  const resolved = requestedTags.map((tag) => resolveTagId(catalog, tag));
+  const missing = requestedTags.find((tag, index) => resolved[index] === null);
+  if (missing !== undefined) {
+    throw codedError('SEARCH_TAG_UNKNOWN', `Search tag does not resolve: ${missing}`);
+  }
+  return [...new Set(resolved.map(({ id }) => id))].sort();
+}
+
+function entryTags(entry, catalog) {
+  return new Set(entry.tags.map((tag) => resolveTagId(catalog, tag)?.id || tag));
+}
+
+function score(entry, query, queryTokens, catalog, paths) {
   const values = [entry.id, entry.title, entry.summary, entry.useWhen, entry.sourceBody,
-    ...(entry.cues || []), ...entry.tags.flatMap((tag) => tagAliases.get(tag) || [tag])]
+    ...(entry.cues || []), ...tagTerms(entry, catalog)]
     .filter(Boolean).map(normalizeSearchText);
   const allTokens = new Set(values.flatMap((value) => value.split(' ')));
   const phrase = query !== '' && values.some((value) => ` ${value} `.includes(` ${query} `));
@@ -103,7 +127,7 @@ function preview(entry, match, state) {
   };
 }
 
-function boundedPage(results, base, limit, fingerprint, query, offset) {
+function boundedPage(results, base, limit, cursorState, offset) {
   const entries = [];
   const end = Math.min(results.length, offset + limit);
   for (let position = offset; position < end; position += 1) {
@@ -112,7 +136,7 @@ function boundedPage(results, base, limit, fingerprint, query, offset) {
     const response = {
       ...base,
       results: candidate,
-      ...(next < results.length ? { cursor: cursor({ query, index: fingerprint, offset: next }) } : {}),
+      ...(next < results.length ? { cursor: cursor({ ...cursorState, offset: next }) } : {}),
     };
     if (measurePayload('codex', JSON.stringify(response)).measured > SEARCH_RESPONSE_TOKEN_LIMIT) break;
     entries.push(results[position]);
@@ -121,7 +145,7 @@ function boundedPage(results, base, limit, fingerprint, query, offset) {
   return {
     ...base,
     results: entries,
-    ...(next < results.length ? { cursor: cursor({ query, index: fingerprint, offset: next }) } : { cursor: null }),
+    ...(next < results.length ? { cursor: cursor({ ...cursorState, offset: next }) } : { cursor: null }),
   };
 }
 
@@ -130,33 +154,46 @@ export async function searchKnowledge(options = {}) {
   const resolved = await resolveProjectStore(options.projectDir, {
     spectreHome: options.spectreHome, gitRunner: options.gitRunner, readOnly: true,
   });
-  if (!resolved.storePath) return { results: [], warnings: [], cursor: null };
+  if (!resolved.storePath) {
+    if (options.tags?.length) throw codedError('SEARCH_TAG_UNKNOWN', 'Search tags require a known tag catalog.');
+    return { results: [], warnings: [], cursor: null };
+  }
   const { index, errors } = refreshKnowledgeIndex(resolved.storePath);
   const query = normalizeSearchText(options.query);
   const fingerprint = indexFingerprint(index);
-  const pageCursor = decodeCursor(options.cursor);
-  if (pageCursor && (pageCursor.query !== query || pageCursor.index !== fingerprint)) {
-    throw codedError('SEARCH_CURSOR_STALE', 'Search index changed; restart the query.');
-  }
   const kind = options.kind || 'all';
   if (!['all', 'knowledge', 'work'].includes(kind)) {
     throw codedError('SEARCH_KIND_INVALID', `Unsupported search kind: ${kind}`);
   }
   const limit = Math.min(Math.max(Number.isInteger(options.limit) ? options.limit : SEARCH_RESULT_LIMIT, 1), SEARCH_RESULT_LIMIT);
-  const tagAliases = aliases(resolved.storePath);
+  const catalog = tagCatalog(resolved.storePath);
+  const catalogRevision = tagCatalogRevision(catalog);
+  const requestedTags = resolvedTags(catalog, options.tags);
+  const pageCursor = decodeCursor(options.cursor);
+  if (pageCursor && (pageCursor.query !== query || pageCursor.index !== fingerprint
+    || pageCursor.catalog !== catalogRevision || JSON.stringify(pageCursor.tags) !== JSON.stringify(requestedTags))) {
+    throw codedError('SEARCH_CURSOR_STALE', 'Search results changed; restart the query.');
+  }
   const queryTokens = tokens(query);
   const paths = Array.isArray(options.paths) ? options.paths : [];
   const ranked = index.records
     .filter((entry) => kind === 'all' || entry.kind === kind)
+    .filter((entry) => requestedTags.length === 0 || requestedTags.some((tag) => entryTags(entry, catalog).has(tag)))
     .map((entry) => {
       const state = activation(entry, options);
-      const match = score(entry, query, queryTokens, tagAliases, paths);
+      const match = score(entry, query, queryTokens, catalog, paths);
       return { ...preview(entry, match, state), coverage: match.coverage, current: !state.historical };
     })
     .filter((entry) => query === '' || entry.coverage > 0)
     .sort(compare)
     .map(({ coverage, current, ...entry }) => entry);
-  return boundedPage(ranked, { results: [], warnings: errors, query, index: fingerprint }, limit, fingerprint, query, pageCursor?.offset || 0);
+  return boundedPage(
+    ranked,
+    { results: [], warnings: errors, query, index: fingerprint },
+    limit,
+    { query, index: fingerprint, catalog: catalogRevision, tags: requestedTags },
+    pageCursor?.offset || 0,
+  );
 }
 
 export function formatKnowledgeSearchHuman({ results }, query = '') {

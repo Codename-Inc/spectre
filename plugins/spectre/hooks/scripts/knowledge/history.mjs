@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -29,6 +30,28 @@ function validateExactId(id) {
 
 function estimateTokens(value) {
   return Math.ceil(Buffer.byteLength(JSON.stringify(value), 'utf8') / 4);
+}
+
+function historyFingerprint(revisions) {
+  return createHash('sha256').update(JSON.stringify(revisions)).digest('hex');
+}
+
+function encodeHistoryCursor(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function decodeHistoryCursor(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    if (
+      !parsed || typeof parsed.id !== 'string' || typeof parsed.revisions !== 'string'
+      || !Number.isSafeInteger(parsed.offset) || parsed.offset < 0
+    ) throw new Error('invalid');
+    return parsed;
+  } catch {
+    throw historyError('KNOWLEDGE_HISTORY_CURSOR_INVALID', 'Knowledge history cursor is invalid.');
+  }
 }
 
 function historyDirectory(storePath, id) {
@@ -110,14 +133,14 @@ export async function listKnowledgeHistory(options = {}) {
     gitRunner: options.gitRunner,
     readOnly: true,
   });
-  if (!resolved.storePath) return { ok: true, id: options.id, entries: [], continuation: null };
+  if (!resolved.storePath) return { ok: true, id: options.id, entries: [], cursor: null };
   return withStoreLock(resolved.storePath, 'list-knowledge-history', async () => {
     const root = historyDirectory(resolved.storePath, options.id);
     let directories;
     try {
       directories = fs.readdirSync(root, { withFileTypes: true });
     } catch (error) {
-      if (error?.code === 'ENOENT') return { ok: true, id: options.id, entries: [], continuation: null };
+      if (error?.code === 'ENOENT') return { ok: true, id: options.id, entries: [], cursor: null };
       throw historyError('KNOWLEDGE_INVALID', `Knowledge history could not be read: ${options.id}`, { cause: error });
     }
     const revisions = directories
@@ -125,9 +148,18 @@ export async function listKnowledgeHistory(options = {}) {
       .map((entry) => revisionTokenFromDirectoryName(entry.name))
       .filter(Boolean)
       .sort((left, right) => right.localeCompare(left));
+    const revisionsFingerprint = historyFingerprint(revisions);
+    const pageCursor = decodeHistoryCursor(options.cursor);
+    if (
+      pageCursor
+      && (pageCursor.id !== options.id || pageCursor.revisions !== revisionsFingerprint)
+    ) {
+      throw historyError('KNOWLEDGE_HISTORY_CURSOR_STALE', 'Knowledge history changed; restart the listing.');
+    }
+    const offset = pageCursor?.offset || 0;
     const entries = [];
-    for (const revisionToken of revisions) {
-      if (entries.length === HISTORY_PREVIEW_LIMIT) break;
+    for (let position = offset; position < revisions.length && entries.length < HISTORY_PREVIEW_LIMIT; position += 1) {
+      const revisionToken = revisions[position];
       const { parsed } = readHistoricalPackage(resolved.storePath, options.id, revisionToken);
       const entry = {
         id: parsed.record.id,
@@ -137,14 +169,27 @@ export async function listKnowledgeHistory(options = {}) {
         revisionToken,
         historical: true,
       };
-      if (estimateTokens([...entries, entry]) > HISTORY_PREVIEW_TOKEN_BUDGET) break;
+      const candidate = [...entries, entry];
+      const next = offset + candidate.length;
+      const page = {
+        ok: true,
+        id: options.id,
+        entries: candidate,
+        cursor: next < revisions.length
+          ? encodeHistoryCursor({ id: options.id, revisions: revisionsFingerprint, offset: next })
+          : null,
+      };
+      if (estimateTokens(page) > HISTORY_PREVIEW_TOKEN_BUDGET) break;
       entries.push(entry);
     }
+    const next = offset + entries.length;
     return {
       ok: true,
       id: options.id,
       entries,
-      continuation: entries.length < revisions.length ? entries.at(-1)?.revisionToken || 'more' : null,
+      cursor: next < revisions.length
+        ? encodeHistoryCursor({ id: options.id, revisions: revisionsFingerprint, offset: next })
+        : null,
     };
   }, options.lockOptions);
 }

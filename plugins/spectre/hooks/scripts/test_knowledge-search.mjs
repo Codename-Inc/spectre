@@ -7,6 +7,7 @@ import test from 'node:test';
 import { measurePayload } from './knowledge/payload.mjs';
 import { searchKnowledge } from './knowledge/search.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
+import { ensureTags, loadTagCatalog, mergeTags } from './knowledge/tags.mjs';
 
 function noGit() { throw new Error('not a Git project'); }
 
@@ -77,9 +78,45 @@ test('filters guidance by explicit work/run context while keeping inactive and w
   assert.equal(contextual.results[0].activation, 'current-guidance');
 });
 
+test('matches a record tag retained through a merge when searching the surviving canonical tag', async (t) => {
+  const value = await fixture(t);
+  await ensureTags({ ...options(value), tags: [
+    { id: 'auth-tokens', description: 'Token refresh and session authentication.' },
+    { id: 'authentication', description: 'Login identity.' },
+  ] });
+  write(value.storePath, knowledge('retired-tag-record', {
+    tags: ['authentication'], useWhen: 'Use for retained authentication constraints.',
+  }));
+  const before = await loadTagCatalog(options(value));
+  await mergeTags({ ...options(value), from: ['authentication'], into: 'auth-tokens', expectedRevision: before.revision });
+
+  const found = await searchKnowledge(options(value, { query: 'auth tokens' }));
+  assert.deepEqual(found.results.map(({ id }) => id), ['retired-tag-record']);
+
+  write(value.storePath, knowledge('untagged-auth-record', {
+    useWhen: 'Use for untagged auth tokens constraints.',
+  }));
+  const filtered = await searchKnowledge(options(value, {
+    query: 'auth tokens', tags: ['auth-tokens'],
+  }));
+  assert.deepEqual(filtered.results.map(({ id }) => id), ['retired-tag-record']);
+  await assert.rejects(
+    () => searchKnowledge(options(value, { query: 'auth tokens', tags: ['unknown-tag'] })),
+    (error) => error.code === 'SEARCH_TAG_UNKNOWN',
+  );
+});
+
 test('bounds empty pages, supports deterministic cursor pagination, and rejects a stale index', async (t) => {
   const value = await fixture(t);
-  for (let index = 0; index < 10; index += 1) write(value.storePath, knowledge(`record-${String(index).padStart(2, '0')}`));
+  await ensureTags({ ...options(value), tags: [
+    { id: 'first-page', description: 'First page records.' },
+    { id: 'other-page', description: 'Other page records.' },
+  ] });
+  for (let index = 0; index < 10; index += 1) {
+    write(value.storePath, knowledge(`record-${String(index).padStart(2, '0')}`, {
+      tags: index < 6 ? ['first-page'] : ['other-page'],
+    }));
+  }
   const first = await searchKnowledge(options(value, { query: '' }));
   assert.ok(first.results.length <= 5 && first.results.length > 0);
   assert.ok(first.cursor);
@@ -92,6 +129,12 @@ test('bounds empty pages, supports deterministic cursor pagination, and rejects 
     next = page.cursor;
   }
   assert.deepEqual(all.map(({ id }) => id), Array.from({ length: 10 }, (_, index) => `record-${String(index).padStart(2, '0')}`));
+  const filtered = await searchKnowledge(options(value, { query: '', tags: ['first-page'] }));
+  assert.ok(filtered.cursor);
+  await assert.rejects(
+    () => searchKnowledge(options(value, { query: '', tags: ['other-page'], cursor: filtered.cursor })),
+    (error) => error.code === 'SEARCH_CURSOR_STALE',
+  );
   write(value.storePath, knowledge('record-new'));
   await assert.rejects(() => searchKnowledge(options(value, { query: '', cursor: first.cursor })), (error) => error.code === 'SEARCH_CURSOR_STALE');
 });
