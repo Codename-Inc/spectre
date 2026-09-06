@@ -181,7 +181,13 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
   assert.match(execute, /depth hint must not create authority pause/i);
   assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
-  assert.match(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
+  assert.match(
+    execute,
+    /Every selected readable plan, including XS\/ATOMIC, needs a closed correctness\+simplification review chain before first dispatch unless a valid closed chain is reused/i,
+  );
+  assert.match(execute, /No selected readable plan needs a completeness\/header ceremony/i);
+  assert.doesNotMatch(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
+  assert.match(execute, /first selected readable-plan use\/resume[^\n]*read `references\/plan-direct\.md` for preparation state/i);
   assert.match(execute, /reuse an applicable semantic assessment/i);
   assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
   assert.match(execute, /ATOMIC\/DIRECT use the existing bounded local workstream\/Active Wave pattern/i);

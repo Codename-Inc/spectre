@@ -591,7 +591,12 @@ test('execute resolves explicit plans through one authorized preparation path', 
     assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
     assert.match(execute, /depth hint must not create authority pause/i);
     assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
-    assert.match(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
+    assert.match(
+      execute,
+      /Every selected readable plan, including XS\/ATOMIC, needs a closed correctness\+simplification review chain before first dispatch unless a valid closed chain is reused/i,
+    );
+    assert.match(execute, /No selected readable plan needs a completeness\/header ceremony/i);
+    assert.doesNotMatch(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
     assert.match(execute, /No path:[^\n]*use existing same-run source evidence first/i);
     assert.match(
       execute,
@@ -656,6 +661,14 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.ok(taskIndex > assessmentIndex);
     assert.ok(reviewIndex < dispatchIndex);
     assert.match(execute, /No-path selected plans receive this preparation before dispatch/i);
+    assert.match(execute, /first selected readable-plan use\/resume[^\n]*read `references\/plan-direct\.md` for preparation state/i);
+    assert.match(planDirect, /Use for selected readable plan preparation, resume, or reconciliation/i);
+    assert.match(
+      planDirect,
+      /STRUCTURED outcomes use only source\/preparation bindings[^\n]*JSON task events remain governed by structured telemetry/i,
+    );
+    assert.match(planDirect, /Plan-origin STRUCTURED creates\/updates this state before task generation/i);
+    assert.match(planDirect, /For Markdown event sources[^\n]*with `--source "\$PLAN_SOURCE"`/i);
     assert.match(execute, /reuse an applicable semantic assessment/i);
     assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
     assert.match(execute, /Missing assessment causes one classification/i);
@@ -697,7 +710,8 @@ test('plan-direct execute preserves source-plan authority without a completeness
 
     assert.match(execute, /The source plan is the sole requirements authority/);
     assert.doesNotMatch(execute, /must carry its seven spine sections/i);
-    assert.match(execute, /Legacy unmarked plans start without a quality\/completeness gate/i);
+    assert.doesNotMatch(execute, /Legacy unmarked plans start without a quality\/completeness gate/i);
+    assert.match(execute, /legacy headers or missing headers waive only ceremony, never review preparation/i);
     assert.match(execute, /Never rewrite it or durably copy its prose/i);
     assert.doesNotMatch(
       execute,
@@ -741,6 +755,7 @@ test('plan-direct execute creates compact local execution state before dispatch'
     assert.match(execute, /For an existing direct run, preserve its Markdown event source and stable workstream IDs/i);
     assert.match(execute, /Existing JSON runs retain their source and accepted IDs/i);
     assert.match(execute, /Fresh structured selection persists its resolved JSON event source/i);
+    assert.match(execute, /Plan-origin STRUCTURED creates\/updates this state before task generation/i);
     assert.match(execute, /JSON runs add derivative work only through source-required definition repair/i);
     assert.match(execute, /Do not mutate historical completion events or clear accepted state/i);
     assert.match(execute, /No raw output or report prose/);
