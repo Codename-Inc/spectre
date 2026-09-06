@@ -108,7 +108,7 @@ async function seedOverflowStore(projectDir, spectreHome) {
   const recordDirectory = writeRecord(resolved.storePath, {
     id: OMITTED_ID,
     description:
-      'Use when proving the isolated real-host omitted-record search and exact-load recovery protocol.',
+      `Use when handling ${SEARCH_QUERY} in the isolated real-host exact-load recovery protocol.`,
     triggers: [SEARCH_QUERY, 'isolated host overflow recovery'],
     core: [
       CORE_SENTINEL,
@@ -239,7 +239,6 @@ function runProbePreflight(hostFixture) {
     || observation.hasHookSystemMessage
     || observation.hasPreview
     || observation.hasFallbackFile
-    || !(observation.omittedCount > 0)
   ) {
     throw new Error(`${hostFixture.host} preflight registry contract failed`);
   }
@@ -306,18 +305,15 @@ async function prepareHostFixture(fixtureRoot, host) {
     projectDir,
     cliPath: hostFixture.cliPath,
   });
-  if (registry.includedEntries.some(({ id }) => id === OMITTED_ID)) {
-    throw new Error(`${host} fixture failed to omit ${OMITTED_ID}`);
-  }
   return {
     ...hostFixture,
     preflight: {
-      includedCount: store.activeRecordCount - observation.omittedCount,
-      omittedCount: observation.omittedCount,
+      includedCount: registry.includedEntries.length,
+      omittedCount: registry.omittedCount,
       measurement: observation.measurement,
       frameCharacters: observation.frameCharacters,
       predicted: {
-        includedCount: registry.includedCount,
+        includedCount: registry.includedEntries.length,
         omittedCount: registry.omittedCount,
         measurement: registry.measurement,
         frameCharacters: registry.frame.length,

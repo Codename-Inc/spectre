@@ -280,7 +280,8 @@ async function seedCanonicalRecord(projectDir, {
   fs.mkdirSync(path.dirname(resourcePath), { recursive: true });
   fs.writeFileSync(skillPath, JSON.stringify({
     schemaVersion: 1, id, kind: 'knowledge', title: id,
-    summary: 'Use when diagnosing a hook timeout in the real CLI gate.', tags: [trigger],
+    summary: 'Use when diagnosing a hook timeout in the real CLI gate.',
+    tags: [trigger.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()],
     applicability: { scope: 'project' },
     provenance: { origin: 'captured', capturedAt: '2026-07-22T00:00:00.000Z' },
     relatedRecordIds: [], category: 'gotcha',
@@ -344,14 +345,15 @@ g.check(registryOutput !== null, 'load-knowledge emits valid SessionStart JSON o
 const registry = registryOutput?.hookSpecificOutput?.additionalContext;
 g.check(
   typeof registry === 'string' && registry.includes('- hook-timeout:') &&
-    registry.includes("load '<ID>'"),
+    registry.includes("load '<id>'"),
   'SessionStart delivers searchable metadata and exact-load guidance',
   `unexpected registry: ${registry}`,
 );
 g.check(
   typeof registry === 'string' &&
-    (registry.match(/knowledge-cli\.mjs' load /g) || []).length === 1,
-  'SessionStart hoists one load command template instead of one per record',
+    (registry.match(/search '<task>'/g) || []).length === 2 &&
+    (registry.match(/load '<id>'/g) || []).length === 1,
+  'SessionStart provides one bounded search and exact-load workflow',
   `unexpected registry: ${registry}`,
 );
 
@@ -410,7 +412,7 @@ let loadOutput = null;
 try { loadOutput = JSON.parse(loadRun.stdout); } catch { /* handled below */ }
 g.check(loadRun.code === 0, 'knowledge load exits 0 for an exact ID', loadRun.stderr);
 g.check(
-  loadOutput?.content?.includes(canonical.sentinel),
+  loadOutput?.rendered?.includes(canonical.sentinel),
   'knowledge load returns the complete verified canonical record',
 );
 g.check(
@@ -555,7 +557,7 @@ const codexLoadRun = codexKnowledgeCli(['load', codexCanonical.id], codexProject
 let codexLoadOutput = null;
 try { codexLoadOutput = JSON.parse(codexLoadRun.stdout); } catch { /* handled below */ }
 g.check(
-  codexLoadRun.code === 0 && codexLoadOutput?.content?.includes(codexCanonical.sentinel),
+  codexLoadRun.code === 0 && codexLoadOutput?.rendered?.includes(codexCanonical.sentinel),
   'generated Codex bundled exact load returns the verified full core',
   codexLoadRun.stderr || codexLoadRun.stdout,
 );
