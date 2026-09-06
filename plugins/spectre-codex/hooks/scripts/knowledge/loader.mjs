@@ -181,6 +181,9 @@ function estimateLoadTokens(rendered) {
 }
 
 function activationFor(record, options) {
+  if (record.kind === 'knowledge' && record.status !== 'active') {
+    return { historical: true, activation: 'historical' };
+  }
   if (record.applicability.scope === 'project') {
     return { historical: false, activation: 'current-guidance' };
   }
@@ -242,6 +245,17 @@ export async function loadKnowledgeById(options = {}) {
           throw knowledgeLoadError(
             'KNOWLEDGE_CHANGED_DURING_READ',
             `Knowledge record changed while it was being verified: ${options.id}`,
+          );
+        }
+
+        if (
+          parsed.record.kind === 'knowledge'
+          && parsed.record.status !== 'active'
+          && options.inspectHistorical !== true
+        ) {
+          throw knowledgeLoadError(
+            'KNOWLEDGE_NOT_ACTIVE',
+            `Knowledge record is not active: ${options.id}`,
           );
         }
 

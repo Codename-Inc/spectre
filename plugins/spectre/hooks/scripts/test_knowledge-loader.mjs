@@ -351,6 +351,15 @@ describe('verified exact-ID typed knowledge loader', () => {
       loadKnowledgeById({ projectDir, spectreHome, id: 'inactive-record' }),
       assertLoadError('KNOWLEDGE_NOT_ACTIVE'),
     );
+    const inspected = await loadKnowledgeById({
+      projectDir,
+      spectreHome,
+      id: 'inactive-record',
+      inspectHistorical: true,
+    });
+    assert.equal(inspected.historical, true);
+    assert.equal(inspected.activation, 'historical');
+    assert.equal(readActivity(storePath), null);
     await assert.rejects(
       loadKnowledgeById({ projectDir, spectreHome, id: 'invalid-record' }),
       assertLoadError('KNOWLEDGE_INVALID'),
