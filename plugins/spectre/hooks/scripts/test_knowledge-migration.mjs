@@ -171,6 +171,59 @@ describe('recoverable legacy-to-work import', () => {
     assert.equal(fs.existsSync(agentsDir), false);
   });
 
+  it('keeps divergent duplicate sources recoverable without choosing or deleting either copy', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const claude = addLegacySource(projectDir, 'feature-ambiguous', legacySkill('feature-ambiguous', 'First source'));
+    const agentsDir = path.join(projectDir, '.agents', 'skills', 'feature-ambiguous');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(path.join(agentsDir, 'SKILL.md'), legacySkill('feature-ambiguous', 'Second source'));
+    const registry = path.join(projectDir, '.agents', 'skills', 'spectre-recall', 'references', 'registry.toon');
+    fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.writeFileSync(registry, 'feature-ambiguous|feature|legacy import|Use when importing feature-ambiguous\n');
+
+    const report = await migrate({ projectDir, storePath, now: fixedNow });
+    assert.equal(report.entries[0].code, 'RECOVERABLE_FAILURE');
+    assert.equal(fs.existsSync(path.join(storePath, 'knowledge', 'feature-ambiguous')), false);
+    assert.equal(fs.existsSync(path.join(claude, 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(agentsDir, 'SKILL.md')), true);
+  });
+
+  it('rejects a symlinked source resource without following or deleting it', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    const external = path.join(makeTmp(t), 'external.txt');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(external, 'must never be imported\n');
+    const sourceDir = addLegacySource(projectDir, 'feature-symlink', legacySkill('feature-symlink'));
+    fs.symlinkSync(external, path.join(sourceDir, 'references-link'));
+
+    const report = await migrate({ projectDir, storePath, now: fixedNow });
+    assert.equal(report.entries[0].code, 'RECOVERABLE_FAILURE');
+    assert.equal(fs.readFileSync(external, 'utf8'), 'must never be imported\n');
+    assert.equal(fs.lstatSync(path.join(sourceDir, 'references-link')).isSymbolicLink(), true);
+    assert.equal(fs.existsSync(path.join(storePath, 'knowledge', 'feature-symlink')), false);
+  });
+
+  it('retains inactive source status as historical metadata instead of current guidance', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    addLegacySource(projectDir, 'feature-inactive', [
+      '---', 'name: feature-inactive', 'description: Use when consulting a superseded rule',
+      'spectre-status: superseded', 'spectre-version: 4', '---', '# Historical rule', '',
+    ].join('\n'));
+
+    await migrate({ projectDir, storePath, now: fixedNow });
+    const record = JSON.parse(fs.readFileSync(
+      path.join(storePath, 'knowledge', 'feature-inactive', 'record.json'), 'utf8',
+    ));
+    assert.equal(record.kind, 'work');
+    assert.equal(record.importedSource.status, 'superseded');
+    assert.equal(record.work.verification, 'unknown — imported record');
+  });
+
   it('reports invalid sources recoverably without dropping their bytes or active registry row', async (t) => {
     const projectDir = path.join(makeTmp(t), 'project');
     const storePath = path.join(makeTmp(t), 'store');
