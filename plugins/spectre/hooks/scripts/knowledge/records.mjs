@@ -269,6 +269,68 @@ export function validateKnowledgeRecord(record, recordPath) {
   return record;
 }
 
+const HISTORICAL_WORK_NOTICE =
+  'Historical work record: historical evidence only, not active guidance.';
+
+function applicabilityLabel(applicability) {
+  if (applicability.scope !== 'work') return applicability.scope;
+  const runs = applicability.runIds?.length ? `; runs: ${applicability.runIds.join(', ')}` : '';
+  return `work (${applicability.workId}${runs})`;
+}
+
+function provenanceLines(provenance) {
+  const optional = [
+    ['Source commit', provenance.sourceCommit],
+    ['Source branch', provenance.sourceBranch],
+    ['Source runs', provenance.sourceRunIds?.join(', ')],
+    ['Source fingerprint', provenance.sourceFingerprint],
+  ];
+  return [
+    `- Provenance: ${provenance.origin} at ${provenance.capturedAt}`,
+    ...optional
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([label, value]) => `- ${label}: ${value}`),
+  ];
+}
+
+function section(heading, body) {
+  return [`## ${heading}`, '', body, ''];
+}
+
+export function renderKnowledgeRecord(record) {
+  const isKnowledge = record.kind === 'knowledge';
+  const lines = [
+    `# ${record.title}`,
+    '',
+    `- ID: ${record.id}`,
+    `- Kind: ${record.kind}`,
+    ...(isKnowledge ? [`- Category: ${record.category}`, `- Status: ${record.status}`] : []),
+    `- Applicability: ${applicabilityLabel(record.applicability)}`,
+    ...(record.tags.length > 0 ? [`- Tags: ${record.tags.join(', ')}`] : []),
+    ...(record.relatedRecordIds.length > 0
+      ? [`- Related records: ${record.relatedRecordIds.join(', ')}`]
+      : []),
+    ...provenanceLines(record.provenance),
+    '',
+    ...(isKnowledge ? [] : [HISTORICAL_WORK_NOTICE, '']),
+    ...section('Summary', record.summary),
+    ...(isKnowledge
+      ? [
+        ...section('Use when', record.useWhen),
+        ...section('Guidance', record.content),
+        ...section('Evidence', record.evidence),
+        ...(record.category === 'blocker'
+          ? [
+            ...section('Blocking condition', record.blocker.condition),
+            ...section('Resolution criterion', record.blocker.resolutionCriterion),
+          ]
+          : []),
+      ]
+      : []),
+  ];
+  return lines.join('\n');
+}
+
 function parseRecordJson(text, recordPath) {
   if (text.startsWith('---')) {
     throw recordError(recordPath, 'AgentSkills frontmatter is not a typed record package');

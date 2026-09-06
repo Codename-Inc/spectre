@@ -4,8 +4,6 @@ import path from 'node:path';
 import { measurePayload } from './payload.mjs';
 import {
   CATEGORIES,
-  LEGACY_SPECTRE_LEARNING_METADATA_FIELD,
-  LEGACY_SPECTRE_LEARNING_METADATA_VALUE,
   parseKnowledgeRecord,
   refreshKnowledgeIndex,
 } from './records.mjs';
@@ -16,6 +14,10 @@ import {
   withStoreLock,
 } from './store.mjs';
 
+// Migration is the only reader of the retired SKILL.md format, so its markers live here
+// rather than in the typed record authority.
+const LEGACY_SPECTRE_LEARNING_METADATA_FIELD = 'spectre-migration-origin';
+const LEGACY_SPECTRE_LEARNING_METADATA_VALUE = 'legacy-spectre-learning';
 const LEGACY_ROOTS = [
   { nativeRoot: '.claude', recallName: 'spectre-recall' },
   { nativeRoot: '.agents', recallName: 'spectre-recall' },

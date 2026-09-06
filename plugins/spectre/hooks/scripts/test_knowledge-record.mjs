@@ -266,3 +266,192 @@ describe('typed knowledge record packages', () => {
     );
   });
 });
+
+describe('rendered typed records', () => {
+  it('renders every typed knowledge field as readable sections', async () => {
+    const { renderKnowledgeRecord } = await loadRecordModule();
+    const record = knowledgeRecord({
+      id: 'deploy-token-blocker',
+      category: 'blocker',
+      status: 'disputed',
+      relatedRecordIds: ['work-auth-retry'],
+      blocker: {
+        condition: 'The staging deploy rejects the refreshed token.',
+        resolutionCriterion: 'A staging deploy accepts a refreshed token.',
+      },
+    });
+
+    assert.equal(renderKnowledgeRecord(record), [
+      '# Refresh expired auth tokens before retrying',
+      '',
+      '- ID: deploy-token-blocker',
+      '- Kind: knowledge',
+      '- Category: blocker',
+      '- Status: disputed',
+      '- Applicability: project',
+      '- Tags: auth, http',
+      '- Related records: work-auth-retry',
+      '- Provenance: captured at 2026-07-19T00:00:00.000Z',
+      '',
+      '## Summary',
+      '',
+      'Expired access tokens surface as a 401 on the retried request.',
+      '',
+      '## Use when',
+      '',
+      'Changing retry behavior around authenticated requests.',
+      '',
+      '## Guidance',
+      '',
+      'Refresh the token, then retry the request exactly once.',
+      '',
+      '## Evidence',
+      '',
+      'Reproduced the 401 twice, then verified the refresh-then-retry fix.',
+      '',
+      '## Blocking condition',
+      '',
+      'The staging deploy rejects the refreshed token.',
+      '',
+      '## Resolution criterion',
+      '',
+      'A staging deploy accepts a refreshed token.',
+      '',
+    ].join('\n'));
+  });
+
+  it('labels a work record as historical evidence rather than guidance', async () => {
+    const { renderKnowledgeRecord } = await loadRecordModule();
+    const rendered = renderKnowledgeRecord(workRecord());
+
+    assert.match(rendered, /- Kind: work/);
+    assert.match(rendered, /- Applicability: work \(work-auth-retry\)/);
+    assert.match(rendered, /historical evidence/i);
+    assert.equal(rendered.includes('## Guidance'), false);
+    assert.match(rendered, /Historical account of the auth retry work\./);
+  });
+});
+
+describe('derived current knowledge index', () => {
+  it('projects active knowledge and work records with typed fields only', async (t) => {
+    const storePath = makeTmp(t);
+    const { refreshKnowledgeIndex } = await loadRecordModule();
+    writeRecordPackage(storePath, knowledgeRecord({ id: 'active-knowledge' }));
+    writeRecordPackage(storePath, knowledgeRecord({
+      id: 'archived-knowledge',
+      status: 'archived',
+    }));
+    writeRecordPackage(storePath, knowledgeRecord({
+      id: 'superseded-knowledge',
+      status: 'superseded',
+    }));
+    writeRecordPackage(storePath, workRecord());
+
+    const { index, rebuilt, errors } = refreshKnowledgeIndex(storePath, {
+      now: () => Date.parse('2026-07-19T00:00:00.000Z'),
+    });
+
+    assert.equal(rebuilt, true);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(index.records.map(({ id }) => id), ['active-knowledge', 'work-auth-retry']);
+    const [knowledgeEntry, workEntry] = index.records;
+    assert.equal(knowledgeEntry.kind, 'knowledge');
+    assert.equal(knowledgeEntry.category, 'pattern');
+    assert.equal(knowledgeEntry.status, 'active');
+    assert.equal(knowledgeEntry.useWhen, 'Changing retry behavior around authenticated requests.');
+    assert.deepEqual(knowledgeEntry.tags, ['auth', 'http']);
+    assert.deepEqual(knowledgeEntry.applicability, { scope: 'project' });
+    assert.equal(knowledgeEntry.recordPath, path.join('knowledge', 'active-knowledge', 'record.json'));
+    assert.match(knowledgeEntry.canonicalDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(workEntry.kind, 'work');
+    assert.equal(Object.hasOwn(workEntry, 'status'), false);
+    for (const retired of ['description', 'triggers', 'version', 'sourceFingerprint']) {
+      assert.equal(Object.hasOwn(knowledgeEntry, retired), false, retired);
+    }
+    assert.equal(fs.existsSync(path.join(storePath, 'index.json')), true);
+  });
+
+  it('never indexes archived revisions and rebuilds a retired index file', async (t) => {
+    const storePath = makeTmp(t);
+    const { refreshKnowledgeIndex } = await loadRecordModule();
+    const record = knowledgeRecord({ id: 'revised-knowledge' });
+    writeRecordPackage(storePath, record);
+    const historyPath = path.join(
+      storePath,
+      'knowledge-history',
+      'revised-knowledge',
+      'sha256-0123456789abcdef',
+      'record.json',
+    );
+    fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+    fs.writeFileSync(historyPath, JSON.stringify({
+      ...record,
+      summary: 'Prior revision summary that must never be current guidance.',
+    }, null, 2));
+
+    fs.writeFileSync(
+      path.join(storePath, 'index.json'),
+      JSON.stringify({ schemaVersion: 1, generatedAt: '2026-07-18T00:00:00.000Z', records: [] }),
+    );
+    const { index, rebuilt, errors } = refreshKnowledgeIndex(storePath);
+
+    assert.equal(rebuilt, true);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(index.records.map(({ id }) => id), ['revised-knowledge']);
+    assert.equal(
+      index.records[0].summary,
+      'Expired access tokens surface as a 401 on the retried request.',
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8')).schemaVersion,
+      2,
+    );
+  });
+
+  it('reports invalid neighbors without dropping valid typed records', async (t) => {
+    const storePath = makeTmp(t);
+    const { refreshKnowledgeIndex } = await loadRecordModule();
+    writeRecordPackage(storePath, knowledgeRecord({ id: 'valid-neighbor' }));
+    writeRecordPackage(storePath, null, {
+      directoryName: 'invalid-neighbor',
+      raw: '---\nname: invalid-neighbor\n---\nretired skill\n',
+    });
+
+    const result = refreshKnowledgeIndex(storePath);
+
+    assert.deepEqual(result.index.records.map(({ id }) => id), ['valid-neighbor']);
+    assert.equal(result.errors.length, 1);
+    assert.match(result.errors[0].path, /invalid-neighbor/);
+    assert.match(result.errors[0].message, /frontmatter/i);
+  });
+
+  it('rereads once on a digest mismatch and returns nothing for a tampered package', async (t) => {
+    const storePath = makeTmp(t);
+    const { refreshKnowledgeIndex, readVerifiedIndexedRecord } = await loadRecordModule();
+    const record = knowledgeRecord({ id: 'raced-knowledge' });
+    const recordPath = writeRecordPackage(storePath, record);
+    const entry = refreshKnowledgeIndex(storePath).index.records[0];
+    const canonical = fs.readFileSync(recordPath, 'utf8');
+    const tampered = JSON.stringify({ ...record, content: 'Tampered guidance.' }, null, 2);
+
+    let reads = 0;
+    const recovered = readVerifiedIndexedRecord(storePath, entry, {
+      readFile() {
+        reads += 1;
+        return reads === 1 ? tampered : canonical;
+      },
+    });
+    assert.equal(reads, 2);
+    assert.equal(recovered.record.id, 'raced-knowledge');
+
+    reads = 0;
+    const rejected = readVerifiedIndexedRecord(storePath, entry, {
+      readFile() {
+        reads += 1;
+        return tampered;
+      },
+    });
+    assert.equal(reads, 2);
+    assert.equal(rejected, null);
+  });
+});

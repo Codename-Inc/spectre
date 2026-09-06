@@ -9,11 +9,16 @@ import {
 import {
   parseKnowledgeRecord,
   readVerifiedIndexedRecord,
+  RECORD_FILE_NAME,
   refreshKnowledgeIndex,
+  renderKnowledgeRecord,
 } from './records.mjs';
 import { resolveProjectStore, withStoreLock } from './store.mjs';
 
 const RECORD_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const RETIRED_RECORD_FILE_NAME = 'SKILL.md';
+// Load activity aggregates per record until revision identity replaces the integer key.
+const RECORD_ACTIVITY_VERSION = 1;
 
 function knowledgeLoadError(code, message, details = {}) {
   const error = new Error(message);
@@ -31,20 +36,26 @@ function validateExactId(id) {
   }
 }
 
-function canonicalSkillPath(storePath, id) {
-  return path.join(storePath, 'knowledge', id, 'SKILL.md');
+function canonicalRecordPath(storePath, id) {
+  return path.join(storePath, 'knowledge', id, RECORD_FILE_NAME);
 }
 
 function classifyMissingActiveEntry(storePath, id) {
-  const recordDirectory = path.dirname(canonicalSkillPath(storePath, id));
-  const skillPath = canonicalSkillPath(storePath, id);
+  const recordPath = canonicalRecordPath(storePath, id);
+  const recordDirectory = path.dirname(recordPath);
   let directoryStat;
-  let skillStat;
+  let recordStat;
   try {
     directoryStat = fs.lstatSync(recordDirectory);
-    skillStat = fs.lstatSync(skillPath);
+    recordStat = fs.lstatSync(recordPath);
   } catch (error) {
     if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+      if (fs.existsSync(path.join(recordDirectory, RETIRED_RECORD_FILE_NAME))) {
+        throw knowledgeLoadError(
+          'KNOWLEDGE_INVALID',
+          `Knowledge record still uses the retired ${RETIRED_RECORD_FILE_NAME} package and must be migrated: ${id}`,
+        );
+      }
       throw knowledgeLoadError(
         'KNOWLEDGE_NOT_FOUND',
         `Knowledge record not found: ${id}`,
@@ -60,8 +71,8 @@ function classifyMissingActiveEntry(storePath, id) {
   if (
     !directoryStat.isDirectory()
     || directoryStat.isSymbolicLink()
-    || !skillStat.isFile()
-    || skillStat.isSymbolicLink()
+    || !recordStat.isFile()
+    || recordStat.isSymbolicLink()
   ) {
     throw knowledgeLoadError(
       'KNOWLEDGE_INVALID',
@@ -71,7 +82,7 @@ function classifyMissingActiveEntry(storePath, id) {
 
   let parsed;
   try {
-    parsed = parseKnowledgeRecord(skillPath);
+    parsed = parseKnowledgeRecord(recordPath);
   } catch (error) {
     throw knowledgeLoadError(
       'KNOWLEDGE_INVALID',
@@ -85,7 +96,7 @@ function classifyMissingActiveEntry(storePath, id) {
       `Knowledge record ID does not match its canonical directory: ${id}`,
     );
   }
-  if (parsed.record.status !== 'active') {
+  if (parsed.record.kind === 'knowledge' && parsed.record.status !== 'active') {
     throw knowledgeLoadError(
       'KNOWLEDGE_NOT_ACTIVE',
       `Knowledge record is not active: ${id}`,
@@ -93,7 +104,7 @@ function classifyMissingActiveEntry(storePath, id) {
   }
   throw knowledgeLoadError(
     'KNOWLEDGE_INVALID',
-    `Active knowledge record was not present in the refreshed index: ${id}`,
+    `Current knowledge record was not present in the refreshed index: ${id}`,
   );
 }
 
@@ -226,7 +237,7 @@ export async function loadKnowledgeById(options = {}) {
         const currentActivity = readKnowledgeActivity(resolved.storePath);
         const { activity, versionActivity } = incrementKnowledgeLoadActivity(currentActivity, {
           id: parsed.record.id,
-          version: parsed.record.version,
+          version: RECORD_ACTIVITY_VERSION,
           now: options.now,
         });
         try {
@@ -247,13 +258,9 @@ export async function loadKnowledgeById(options = {}) {
         return {
           ok: true,
           id: parsed.record.id,
-          category: parsed.record.category,
-          description: parsed.record.description,
-          triggers: [...parsed.record.triggers],
-          status: parsed.record.status,
-          version: parsed.record.version,
-          sourceFingerprint: parsed.fingerprint,
-          content: parsed.content,
+          kind: parsed.record.kind,
+          record: parsed.record,
+          rendered: renderKnowledgeRecord(parsed.record),
           recordPath,
           recordDirectory,
           resources,
@@ -277,7 +284,7 @@ export function serializeKnowledgeLoadError(error) {
 }
 
 export function formatKnowledgeLoadHuman(result) {
-  const content = result.content.endsWith('\n') ? result.content : `${result.content}\n`;
+  const content = result.rendered.endsWith('\n') ? result.rendered : `${result.rendered}\n`;
   const locations = {
     recordDirectory: result.recordDirectory,
     resources: result.resources,
