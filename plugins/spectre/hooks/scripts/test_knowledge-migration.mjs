@@ -167,8 +167,8 @@ describe('recoverable legacy-to-work import', () => {
     const report = await migrate({ projectDir, storePath, now: fixedNow });
     assert.deepEqual(report.entries.map(({ code }) => code), ['IMPORTED']);
     assert.deepEqual(fs.readdirSync(path.join(storePath, 'knowledge')), ['feature-duplicate']);
-    assert.equal(fs.existsSync(path.join(projectDir, '.claude', 'skills', 'feature-duplicate')), false);
-    assert.equal(fs.existsSync(agentsDir), false);
+    assert.equal(fs.existsSync(path.join(projectDir, '.claude', 'skills', 'feature-duplicate')), true);
+    assert.equal(fs.existsSync(agentsDir), true);
   });
 
   it('keeps divergent duplicate sources recoverable without choosing or deleting either copy', async (t) => {

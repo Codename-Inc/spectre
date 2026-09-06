@@ -24,6 +24,7 @@ const LEGACY_ROOTS = [
   { nativeRoot: '.agents', recallName: 'spectre-find' },
 ];
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const MANAGED_LEGACY_ORIGIN = 'legacy-spectre-learning';
 
 function recoverable(message) {
   const error = new Error(message);
@@ -129,6 +130,78 @@ function parseLegacySource(sourceDir, expectedId, row) {
 
 function sourceArchivePath(storePath, sourceDigest) {
   return path.join(storePath, 'knowledge-history', 'imported-sources', sourceDigest.replace(':', '-'));
+}
+
+function managedLegacyCopies(projectDir) {
+  const copies = [];
+  const visitedRoots = new Set();
+  for (const root of LEGACY_ROOTS) {
+    if (visitedRoots.has(root.nativeRoot)) continue;
+    visitedRoots.add(root.nativeRoot);
+    const skillsDir = path.join(projectDir, root.nativeRoot, 'skills');
+    if (!fs.existsSync(skillsDir)) continue;
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === root.recallName) continue;
+      const sourceDir = path.join(skillsDir, entry.name);
+      const skillPath = path.join(sourceDir, 'SKILL.md');
+      let source;
+      try {
+        source = fs.readFileSync(skillPath, 'utf8');
+      } catch {
+        continue;
+      }
+      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source)?.[1];
+      if (!frontmatter) continue;
+      const marker = /^\s{2}spectre-migration-origin:\s*["']?([^"'\s]+)["']?\s*$/m.exec(frontmatter);
+      if (marker?.[1] === MANAGED_LEGACY_ORIGIN) {
+        copies.push({ id: entry.name, sourceDir });
+      }
+    }
+  }
+  return copies;
+}
+
+/** Remove only copies carrying the explicit managed migration marker after every durable proof exists. */
+export function retireManagedLegacyCopies({ projectDir, storePath }) {
+  const results = [];
+  for (const copy of managedLegacyCopies(path.resolve(projectDir))) {
+    let sourceDigest;
+    try {
+      sourceDigest = sourcePackageDigest(copy.sourceDir);
+    } catch (error) {
+      results.push({ id: copy.id, code: 'PRESERVED', message: `Could not verify source package: ${error.message}` });
+      continue;
+    }
+    const archivePath = sourceArchivePath(storePath, sourceDigest);
+    const receipt = findImportReceipt(storePath, sourceDigest);
+    let verified = false;
+    try {
+      const parsed = receipt && parseKnowledgeRecord(path.join(
+        storePath, 'knowledge', receipt.recordId, 'record.json',
+      ));
+      verified = Boolean(
+        parsed
+        && parsed.revisionToken === receipt.revisionToken
+        && parsed.record.provenance.origin === 'legacy-import'
+        && parsed.record.provenance.sourceFingerprint === sourceDigest
+        && fs.existsSync(archivePath)
+        && sourcePackageDigest(archivePath) === sourceDigest,
+      );
+    } catch {
+      verified = false;
+    }
+    if (!verified) {
+      results.push({
+        id: copy.id,
+        code: 'PRESERVED',
+        message: 'Managed copy preserved: verified import, byte-exact archive, and receipt are required before retirement.',
+      });
+      continue;
+    }
+    fs.rmSync(copy.sourceDir, { recursive: true, force: true });
+    results.push({ id: copy.id, code: 'RETIRED', recordId: receipt.recordId, sourceDigest });
+  }
+  return results;
 }
 
 function workRecord(id, source, sourceDigest, now) {
@@ -281,6 +354,7 @@ export async function migrateLegacyKnowledge(options) {
           sourceDigest: receipt.sourceDigest,
           recordId: receipt.recordId,
         })),
+        retirement: retireManagedLegacyCopies({ projectDir, storePath }),
       };
     }
     const groups = new Map();
@@ -307,14 +381,10 @@ export async function migrateLegacyKnowledge(options) {
     }
     refreshKnowledgeIndex(storePath);
     removeRegistryRows(rows);
-    for (const [id, sources] of groups) {
-      const entry = entries.find((candidate) => candidate.id === id);
-      if (entry?.code === 'IMPORTED' || entry?.code === 'NOOP') {
-        for (const source of sources) {
-          fs.rmSync(source.sourceDir, { recursive: true, force: true });
-        }
-      }
-    }
-    return { schemaVersion: 1, entries };
+    return {
+      schemaVersion: 1,
+      entries,
+      retirement: retireManagedLegacyCopies({ projectDir, storePath }),
+    };
   }, options.lockOptions);
 }
