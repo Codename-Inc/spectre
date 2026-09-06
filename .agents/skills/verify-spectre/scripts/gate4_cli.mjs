@@ -275,27 +275,25 @@ async function seedCanonicalRecord(projectDir, {
 } = {}) {
   const resolved = await resolveProjectStore(projectDir, { spectreHome: SPECTRE_HOME });
   const recordDirectory = path.join(resolved.storePath, 'knowledge', id);
-  const skillPath = path.join(recordDirectory, 'SKILL.md');
+  const skillPath = path.join(recordDirectory, 'record.json');
   const resourcePath = path.join(recordDirectory, 'references', 'proof.md');
   fs.mkdirSync(path.dirname(resourcePath), { recursive: true });
-  fs.writeFileSync(skillPath, [
-    '---',
-    `name: ${id}`,
-    'description: Use when diagnosing a hook timeout in the real CLI gate.',
-    'metadata:',
-    '  spectre-category: "gotchas"',
-    `  spectre-triggers: '${JSON.stringify([trigger])}'`,
-    '  spectre-status: "active"',
-    '  spectre-version: "1"',
-    '---',
-    `# ${id}`,
-    '',
-    sentinel,
-    '',
-    'Keep hook diagnostics bounded and deterministic.',
-    '',
-  ].join('\n'));
+  fs.writeFileSync(skillPath, JSON.stringify({
+    schemaVersion: 1, id, kind: 'knowledge', title: id,
+    summary: 'Use when diagnosing a hook timeout in the real CLI gate.', tags: [trigger],
+    applicability: { scope: 'project' },
+    provenance: { origin: 'captured', capturedAt: '2026-07-22T00:00:00.000Z' },
+    relatedRecordIds: [], category: 'gotcha',
+    useWhen: 'Diagnosing a hook timeout in the real CLI gate.',
+    content: `${sentinel}\n\nKeep hook diagnostics bounded and deterministic.`,
+    evidence: 'Gate fixture.', status: 'active',
+  }, null, 2));
   fs.writeFileSync(resourcePath, `${resourceSentinel}\n`);
+  fs.writeFileSync(path.join(resolved.storePath, 'tags.json'), JSON.stringify({
+    schemaVersion: 1,
+    tags: { 'hook-timeout': { description: 'Hook timeout diagnostics.', aliases: [] } },
+    redirects: {},
+  }, null, 2));
   refreshKnowledgeIndex(resolved.storePath);
   return {
     id,
@@ -345,7 +343,7 @@ g.check(registryOutput !== null, 'load-knowledge emits valid SessionStart JSON o
   'Claude Code parses this; malformed JSON silently drops the hook output');
 const registry = registryOutput?.hookSpecificOutput?.additionalContext;
 g.check(
-  typeof registry === 'string' && registry.includes(`ID: ${canonical.id} (v`) &&
+  typeof registry === 'string' && registry.includes('- hook-timeout:') &&
     registry.includes("load '<ID>'"),
   'SessionStart delivers searchable metadata and exact-load guidance',
   `unexpected registry: ${registry}`,
@@ -394,7 +392,7 @@ g.check(
 );
 g.check(
   previewOutput?.measurement?.ok === true &&
-    previewOutput?.includedRecords?.some((record) => record.id === canonical.id) &&
+    previewOutput?.includedCount === 1 &&
     !fs.existsSync(previewActivityPath),
   'knowledge registry preview reports budget and inclusion without activity writes',
 );
@@ -540,7 +538,7 @@ g.check(
 );
 g.check(
   codexPreviewOutput?.measurement?.ok === true &&
-    codexPreviewOutput?.includedRecords?.some((record) => record.id === codexCanonical.id) &&
+    codexPreviewOutput?.includedCount === 1 &&
     !fs.existsSync(codexPreviewActivityPath),
   'generated Codex registry preview reports budget and inclusion without activity writes',
 );

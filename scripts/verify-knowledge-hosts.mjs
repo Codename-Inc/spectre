@@ -71,26 +71,18 @@ function commandVersion(command) {
 }
 
 function recordContent({ id, description, triggers, core }) {
-  return [
-    '---',
-    `name: ${id}`,
-    `description: ${description}`,
-    'metadata:',
-    '  spectre-category: "testing"',
-    `  spectre-triggers: '${JSON.stringify(triggers)}'`,
-    '  spectre-status: "active"',
-    '  spectre-version: "1"',
-    '---',
-    `# ${id}`,
-    '',
-    core,
-    '',
-  ].join('\n');
+  return JSON.stringify({
+    schemaVersion: 1, id, kind: 'knowledge', title: id, summary: description,
+    tags: triggers, applicability: { scope: 'project' },
+    provenance: { origin: 'captured', capturedAt: '2026-07-22T00:00:00.000Z' },
+    relatedRecordIds: [], category: 'testing', useWhen: description,
+    content: core, evidence: 'Host fixture verification.', status: 'active',
+  }, null, 2);
 }
 
 function writeRecord(storePath, { id, description, triggers, core, resource, mtimeMs }) {
   const recordDirectory = path.join(storePath, 'knowledge', id);
-  const skillPath = path.join(recordDirectory, 'SKILL.md');
+  const skillPath = path.join(recordDirectory, 'record.json');
   fs.mkdirSync(recordDirectory, { recursive: true });
   fs.writeFileSync(skillPath, recordContent({ id, description, triggers, core }));
   if (resource !== undefined) {

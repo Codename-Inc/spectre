@@ -24,6 +24,17 @@ import {
 import {
   previewKnowledgeRegistry
 } from '../../plugins/spectre/hooks/scripts/knowledge/preview.mjs';
+import {
+  inspectKnowledgeRevision,
+  listKnowledgeHistory
+} from '../../plugins/spectre/hooks/scripts/knowledge/history.mjs';
+import {
+  applyTagOperationFile,
+  searchTags
+} from '../../plugins/spectre/hooks/scripts/knowledge/tags.mjs';
+import {
+  resolveWorkIdentity
+} from '../../plugins/spectre/hooks/scripts/knowledge/work.mjs';
 
 export async function searchCanonicalKnowledge(options) {
   return searchKnowledge(options);
@@ -43,6 +54,26 @@ export async function loadCanonicalKnowledge(options) {
 
 export async function previewCanonicalKnowledgeRegistry(options) {
   return previewKnowledgeRegistry(options);
+}
+
+export async function listCanonicalKnowledgeHistory(options) {
+  return listKnowledgeHistory(options);
+}
+
+export async function inspectCanonicalKnowledgeRevision(options) {
+  return inspectKnowledgeRevision(options);
+}
+
+export async function searchCanonicalKnowledgeTags(options) {
+  return searchTags(options);
+}
+
+export async function applyCanonicalKnowledgeTagOperation(options) {
+  return applyTagOperationFile(options);
+}
+
+export async function resolveCanonicalKnowledgeWork(options) {
+  return resolveWorkIdentity(options);
 }
 
 export function formatCanonicalKnowledgeLoad(result) {
