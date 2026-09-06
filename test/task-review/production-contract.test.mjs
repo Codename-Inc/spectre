@@ -172,7 +172,12 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.ok(reviewIndex >= 0);
   assert.ok(assessmentIndex >= 0);
   assert.ok(tasksIndex > assessmentIndex);
+  const dispatchIndex = execute.indexOf("3. **Batch and dispatch.**");
+  assert.ok(reviewIndex < dispatchIndex);
   assert.match(execute, /explicit supplied plan wins over ambient task artifacts/i);
+  assert.match(execute, /For any selected readable plan \(explicit or no-path-resolved\)/i);
+  assert.doesNotMatch(execute, /For any explicit readable plan, resolve root/i);
+  assert.match(execute, /No-path selected plans receive this preparation before dispatch/i);
   assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
   assert.match(execute, /depth hint must not create authority pause/i);
   assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);

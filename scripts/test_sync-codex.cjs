@@ -586,6 +586,8 @@ test('execute resolves explicit plans through one authorized preparation path', 
     assert.match(execute, /No path:[^\n]*same-run source evidence first/i);
     assert.doesNotMatch(execute, /default `docs\/tasks\/\{branch\}/i);
     assert.match(execute, /explicit supplied plan wins over ambient task artifacts/i);
+    assert.match(execute, /For any selected readable plan \(explicit or no-path-resolved\)/i);
+    assert.doesNotMatch(execute, /For any explicit readable plan, resolve root/i);
     assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
     assert.match(execute, /depth hint must not create authority pause/i);
     assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
@@ -636,6 +638,7 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     const reviewIndex = execute.indexOf('Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated');
     const assessmentIndex = execute.toLowerCase().indexOf('reuse an applicable semantic assessment');
     const taskIndex = execute.indexOf('STRUCTURED invokes existing `Skill(spectre-create_tasks) --orchestrated`');
+    const dispatchIndex = execute.indexOf('3. **Batch and dispatch.**');
 
     const handoff = rootName === 'spectre' ? /\/spectre:execute/ : /spectre-execute/;
     assert.match(plan, handoff);
@@ -651,6 +654,8 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.ok(reviewIndex >= 0);
     assert.ok(assessmentIndex >= 0);
     assert.ok(taskIndex > assessmentIndex);
+    assert.ok(reviewIndex < dispatchIndex);
+    assert.match(execute, /No-path selected plans receive this preparation before dispatch/i);
     assert.match(execute, /reuse an applicable semantic assessment/i);
     assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
     assert.match(execute, /Missing assessment causes one classification/i);
