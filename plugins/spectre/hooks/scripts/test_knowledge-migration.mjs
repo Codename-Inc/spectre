@@ -224,7 +224,7 @@ describe('recoverable legacy-to-work import', () => {
     assert.equal(record.work.verification, 'unknown — imported record');
   });
 
-  it('reports invalid sources recoverably without dropping their bytes or active registry row', async (t) => {
+  it('reports invalid sources recoverably without dropping their bytes or discoverable registry row', async (t) => {
     const projectDir = path.join(makeTmp(t), 'project');
     const storePath = path.join(makeTmp(t), 'store');
     fs.mkdirSync(projectDir, { recursive: true });
@@ -235,9 +235,51 @@ describe('recoverable legacy-to-work import', () => {
     assert.equal(report.entries[0].code, 'RECOVERABLE_FAILURE');
     assert.deepEqual(fs.readFileSync(path.join(sourceDir, 'SKILL.md')), before);
     assert.equal(fs.existsSync(path.join(storePath, 'knowledge', 'feature-invalid')), false);
-    assert.doesNotMatch(fs.readFileSync(
+    assert.match(fs.readFileSync(
       path.join(projectDir, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon'), 'utf8',
     ), /feature-invalid/);
+  });
+
+  it('preserves a registry row when a stale receipt lacks its imported destination and archive', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const sourceDir = addLegacySource(projectDir, 'feature-stale-receipt', legacySkill('feature-stale-receipt'));
+    const digest = sourceDigest(sourceDir);
+    fs.mkdirSync(storePath, { recursive: true });
+    fs.writeFileSync(path.join(storePath, 'import-receipts.json'), `${JSON.stringify({
+      schemaVersion: 1,
+      receipts: [{
+        sourceDigest: digest, recordId: 'feature-stale-receipt',
+        revisionToken: `sha256:${'a'.repeat(64)}`, importedAt: '2026-09-06T00:00:00.000Z',
+      }],
+    })}\n`);
+
+    const report = await migrate({ projectDir, storePath, now: fixedNow });
+    assert.equal(report.entries[0].code, 'RECOVERABLE_FAILURE');
+    assert.match(report.entries[0].message, /stale receipt.*archive/i);
+    assert.match(fs.readFileSync(
+      path.join(projectDir, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon'), 'utf8',
+    ), /feature-stale-receipt/);
+  });
+
+  it('preserves a registry row when a receipted archive is tampered', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const storePath = path.join(makeTmp(t), 'store');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const sourceDir = addLegacySource(projectDir, 'feature-tampered-archive', legacySkill('feature-tampered-archive'));
+    const digest = sourceDigest(sourceDir);
+    await migrate({ projectDir, storePath, now: fixedNow });
+    const registry = path.join(projectDir, '.claude', 'skills', 'spectre-recall', 'references', 'registry.toon');
+    fs.appendFileSync(registry, 'feature-tampered-archive|feature|legacy import|Use when importing feature-tampered-archive\n');
+    fs.writeFileSync(
+      path.join(storePath, 'knowledge-history', 'imported-sources', digest.replace(':', '-'), 'SKILL.md'),
+      'tampered archive bytes\n',
+    );
+
+    const report = await migrate({ projectDir, storePath, now: fixedNow });
+    assert.equal(report.entries[0].code, 'RECOVERABLE_FAILURE');
+    assert.match(fs.readFileSync(registry, 'utf8'), /feature-tampered-archive/);
   });
 
   it('rejects legacy-package registration with migration guidance without replacing a typed record', async (t) => {

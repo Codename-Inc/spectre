@@ -132,6 +132,28 @@ function sourceArchivePath(storePath, sourceDigest) {
   return path.join(storePath, 'knowledge-history', 'imported-sources', sourceDigest.replace(':', '-'));
 }
 
+function verifiedImportedSource(storePath, sourceDigest) {
+  const receipt = findImportReceipt(storePath, sourceDigest);
+  if (!receipt) return { ok: false, message: 'No migration receipt exists for this source package.' };
+  const archivePath = sourceArchivePath(storePath, sourceDigest);
+  try {
+    if (!fs.existsSync(archivePath) || sourcePackageDigest(archivePath) !== sourceDigest) {
+      return { ok: false, message: 'The byte-exact source archive is missing or no longer matches its digest.' };
+    }
+    const parsed = parseKnowledgeRecord(path.join(storePath, 'knowledge', receipt.recordId, 'record.json'));
+    if (
+      parsed.revisionToken !== receipt.revisionToken
+      || parsed.record.provenance.origin !== 'legacy-import'
+      || parsed.record.provenance.sourceFingerprint !== sourceDigest
+    ) {
+      return { ok: false, message: 'The receipted imported destination no longer matches this source package.' };
+    }
+    return { ok: true, receipt, parsed };
+  } catch {
+    return { ok: false, message: 'The receipted imported destination is missing or unreadable.' };
+  }
+}
+
 function managedLegacyCopies(projectDir) {
   const copies = [];
   const visitedRoots = new Set();
@@ -172,25 +194,8 @@ export function retireManagedLegacyCopies({ projectDir, storePath }) {
       results.push({ id: copy.id, code: 'PRESERVED', message: `Could not verify source package: ${error.message}` });
       continue;
     }
-    const archivePath = sourceArchivePath(storePath, sourceDigest);
-    const receipt = findImportReceipt(storePath, sourceDigest);
-    let verified = false;
-    try {
-      const parsed = receipt && parseKnowledgeRecord(path.join(
-        storePath, 'knowledge', receipt.recordId, 'record.json',
-      ));
-      verified = Boolean(
-        parsed
-        && parsed.revisionToken === receipt.revisionToken
-        && parsed.record.provenance.origin === 'legacy-import'
-        && parsed.record.provenance.sourceFingerprint === sourceDigest
-        && fs.existsSync(archivePath)
-        && sourcePackageDigest(archivePath) === sourceDigest,
-      );
-    } catch {
-      verified = false;
-    }
-    if (!verified) {
+    const verification = verifiedImportedSource(storePath, sourceDigest);
+    if (!verification.ok) {
       results.push({
         id: copy.id,
         code: 'PRESERVED',
@@ -199,7 +204,7 @@ export function retireManagedLegacyCopies({ projectDir, storePath }) {
       continue;
     }
     fs.rmSync(copy.sourceDir, { recursive: true, force: true });
-    results.push({ id: copy.id, code: 'RETIRED', recordId: receipt.recordId, sourceDigest });
+    results.push({ id: copy.id, code: 'RETIRED', recordId: verification.receipt.recordId, sourceDigest });
   }
   return results;
 }
@@ -287,7 +292,18 @@ function removeRegistryRows(rows) {
 function importOne(storePath, row, options) {
   const sourceDigest = sourcePackageDigest(row.sourceDir);
   const receipt = findImportReceipt(storePath, sourceDigest);
-  if (receipt) return { id: row.id, code: 'NOOP', sourceDigest, recordId: receipt.recordId };
+  if (receipt) {
+    const verification = verifiedImportedSource(storePath, sourceDigest);
+    if (!verification.ok) {
+      return {
+        id: row.id,
+        code: 'RECOVERABLE_FAILURE',
+        sourceDigest,
+        message: `Stale receipt preserved for recovery: ${verification.message}`,
+      };
+    }
+    return { id: row.id, code: 'NOOP', sourceDigest, recordId: receipt.recordId };
+  }
 
   const archivePath = sourceArchivePath(storePath, sourceDigest);
   if (!fs.existsSync(archivePath)) {
@@ -380,7 +396,20 @@ export async function migrateLegacyKnowledge(options) {
       }
     }
     refreshKnowledgeIndex(storePath);
-    removeRegistryRows(rows);
+    const verifiedRows = rows.filter((row) => {
+      try {
+        const sourceDigest = sourcePackageDigest(row.sourceDir);
+        const entry = entries.find((candidate) => candidate.id === row.id);
+        return (
+          (entry?.code === 'IMPORTED' || entry?.code === 'NOOP')
+          && entry.sourceDigest === sourceDigest
+          && verifiedImportedSource(storePath, sourceDigest).ok
+        );
+      } catch {
+        return false;
+      }
+    });
+    removeRegistryRows(verifiedRows);
     return {
       schemaVersion: 1,
       entries,
