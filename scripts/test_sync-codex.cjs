@@ -670,17 +670,20 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.match(planDirect, /Plan-origin STRUCTURED creates\/updates this state before task generation/i);
     assert.match(planDirect, /For Markdown event sources[^\n]*with `--source "\$PLAN_SOURCE"`/i);
     assert.match(execute, /reuse an applicable semantic assessment/i);
-    assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
-    assert.match(execute, /Missing assessment causes one classification/i);
-    assert.match(execute, /ATOMIC\/DIRECT use the existing bounded local workstream\/Active Wave pattern/i);
-    assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated`/i);
+    assert.match(execute, /run the existing router only if absent or material observations invalidate it/i);
+    assert.match(execute, /Missing assessment dispatches `Skill\(spectre-plan-route\)` to a fresh child agent/i);
+    assert.match(execute, /consume child DONE inside the same Execute run before proceeding/i);
+    assert.doesNotMatch(execute, /Return recordonly/i);
+    assert.match(execute, /ATOMIC\/DIRECT use the bounded local workstream\/Active Wave pattern/i);
+    assert.match(execute, /dispatch `Skill\(spectre-plan_review\) --auto-apply scope-safe --orchestrated` once for the selected path to a fresh child agent/i);
+    assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated` by fresh child-agent dispatch/i);
     assert.match(execute, /L → standard, XL → comprehensive/i);
     assert.match(execute, /No automatic task review/i);
-    assert.match(execute, /Scope and explicit-design changes remain withheld/i);
+    assert.match(execute, /Scope\/explicit-design changes remain withheld/i);
     assert.match(planReview, /selected plan/i);
     assert.match(planReview, /exact selected plan path/i);
     assert.match(planReview, /authority sources/i);
-    assert.match(execute, /finalized plan hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
+    assert.match(execute, /finalized plan path\/hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
     assert.match(createTasks, /finalized plan path\/hash and closed-review evidence/i);
     assert.match(createTasks, /Execution Mode: direct/);
     assert.doesNotMatch(createTasks, /authorized Execute caller/i);
@@ -711,7 +714,7 @@ test('plan-direct execute preserves source-plan authority without a completeness
     assert.match(execute, /The source plan is the sole requirements authority/);
     assert.doesNotMatch(execute, /must carry its seven spine sections/i);
     assert.doesNotMatch(execute, /Legacy unmarked plans start without a quality\/completeness gate/i);
-    assert.match(execute, /legacy headers or missing headers waive only ceremony, never review preparation/i);
+    assert.doesNotMatch(execute, /legacy headers or missing headers waive/i);
     assert.match(execute, /Never rewrite it or durably copy its prose/i);
     assert.doesNotMatch(
       execute,

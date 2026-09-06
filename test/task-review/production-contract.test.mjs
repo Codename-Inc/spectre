@@ -178,6 +178,7 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.match(execute, /For any selected readable plan \(explicit or no-path-resolved\)/i);
   assert.doesNotMatch(execute, /For any explicit readable plan, resolve root/i);
   assert.match(execute, /No-path selected plans receive this preparation before dispatch/i);
+  assert.match(execute, /description: \"Execute tasks\/plans with checks\/reviews\/proof\. Use after planning\/resume\. Not for planning, unplanned fixes, or pruning\.\"/i);
   assert.match(execute, /`--preflight-plan <depth>` remains a preparation-depth hint/i);
   assert.match(execute, /depth hint must not create authority pause/i);
   assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
@@ -188,14 +189,18 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.match(execute, /No selected readable plan needs a completeness\/header ceremony/i);
   assert.doesNotMatch(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
   assert.match(execute, /first selected readable-plan use\/resume[^\n]*read `references\/plan-direct\.md` for preparation state/i);
+  assert.match(execute, /Missing assessment dispatches `Skill\(spectre-plan-route\)` to a fresh child agent/i);
+  assert.match(execute, /consume child DONE inside the same Execute run before proceeding/i);
+  assert.doesNotMatch(execute, /Return recordonly/i);
   assert.match(execute, /reuse an applicable semantic assessment/i);
-  assert.match(execute, /run the existing router only if it is absent or material observations invalidate it/i);
-  assert.match(execute, /ATOMIC\/DIRECT use the existing bounded local workstream\/Active Wave pattern/i);
-  assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated`/i);
-  assert.match(execute, /finalized plan hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
+  assert.match(execute, /run the existing router only if absent or material observations invalidate it/i);
+  assert.match(execute, /ATOMIC\/DIRECT use the bounded local workstream\/Active Wave pattern/i);
+  assert.match(execute, /dispatch `Skill\(spectre-plan_review\) --auto-apply scope-safe --orchestrated` once for the selected path to a fresh child agent/i);
+  assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated` by fresh child-agent dispatch/i);
+  assert.match(execute, /finalized plan path\/hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
   assert.match(execute, /L → standard, XL → comprehensive/i);
   assert.match(execute, /No automatic task review/i);
-  assert.match(execute, /Scope and explicit-design changes remain withheld/i);
+  assert.match(execute, /Scope\/explicit-design changes remain withheld/i);
   assert.doesNotMatch(
     execute,
     /selected plan\/authority\/review\/pair binding[^\n]*(?:older|unrelated|unprovable)[^\n]*NEEDS_AUTHORITY/i,
