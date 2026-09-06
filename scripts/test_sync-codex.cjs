@@ -641,7 +641,7 @@ test('execute preflight reuses observed assessment and proportionally creates ta
       'utf8',
     ).replaceAll('/spectre:', 'spectre-');
     const reviewIndex = execute.indexOf('Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated');
-    const assessmentIndex = execute.toLowerCase().indexOf('reuse an applicable semantic assessment');
+    const assessmentIndex = execute.toLowerCase().indexOf('reuse applicable');
     const taskIndex = execute.indexOf('STRUCTURED invokes existing `Skill(spectre-create_tasks) --orchestrated`');
     const dispatchIndex = execute.indexOf('3. **Batch and dispatch.**');
 
@@ -667,10 +667,13 @@ test('execute preflight reuses observed assessment and proportionally creates ta
       planDirect,
       /STRUCTURED outcomes use only source\/preparation bindings[^\n]*JSON task events remain governed by structured telemetry/i,
     );
-    assert.match(planDirect, /Plan-origin STRUCTURED creates\/updates this state before task generation/i);
+    assert.match(planDirect, /includes plan-origin STRUCTURED before task generation/i);
     assert.match(planDirect, /For Markdown event sources[^\n]*with `--source "\$PLAN_SOURCE"`/i);
-    assert.match(execute, /reuse an applicable semantic assessment/i);
-    assert.match(execute, /run the existing router only if absent or material observations invalidate it/i);
+    assert.match(execute, /reuse applicable/i);
+    assert.match(execute, /reroute only if absent or material observations invalidate it/i);
+    assert.match(execute, /scope-safe byte-only review edits[\s\S]*mechanically rebind/i);
+    assert.match(execute, /topology\/uncertainty is unchanged/i);
+    assert.doesNotMatch(execute, /Re-bind routing to finalized plan/i);
     assert.match(execute, /Missing assessment dispatches `Skill\(spectre-plan-route\)` to a fresh child agent/i);
     assert.match(execute, /consume child DONE inside the same Execute run before proceeding/i);
     assert.doesNotMatch(execute, /Return recordonly/i);
@@ -687,7 +690,9 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.match(createTasks, /finalized plan path\/hash and closed-review evidence/i);
     assert.match(createTasks, /Execution Mode: direct/);
     assert.doesNotMatch(createTasks, /authorized Execute caller/i);
-    assert.match(planDirect, /selected plan\/authority hashes/i);
+    assert.match(planDirect, /selected\/final plan\+authority hashes/i);
+    assert.match(planDirect, /refresh byte-only reviewed bindings before run creation\/dispatch/i);
+    assert.match(planDirect, /Before first dispatch\/task generation[^\n]*finalized assessment\/review\/pair bindings[^\n]*resolved event source\/run ID/i);
     assert.match(planDirect, /assessment/i);
     assert.match(planDirect, /review paths\/hashes/i);
     assert.match(planDirect, /derived pair paths\/hashes/i);
@@ -743,8 +748,8 @@ test('plan-direct execute creates compact local execution state before dispatch'
     for (const section of requiredSections) {
       assert.match(execute, new RegExp(section));
     }
-    assert.match(execute, /Before first dispatch, create the complete coarse map/i);
-    assert.match(execute, /After every dispatch, gate, review-routing decision, review, or adaptation, update it/i);
+    assert.match(execute, /Before first dispatch\/task generation[^"]*coarse map[^"]*bounded Active Wave/i);
+    assert.match(execute, /update after dispatch, gate, review-routing, review, or adaptation/i);
     assert.match(execute, /one coarse row per plan-native/i);
     assert.match(execute, /Active Wave[^\n]*only currently dispatchable bounded assignments/i);
     assert.match(execute, /full-byte SHA-256/);
@@ -758,7 +763,7 @@ test('plan-direct execute creates compact local execution state before dispatch'
     assert.match(execute, /For an existing direct run, preserve its Markdown event source and stable workstream IDs/i);
     assert.match(execute, /Existing JSON runs retain their source and accepted IDs/i);
     assert.match(execute, /Fresh structured selection persists its resolved JSON event source/i);
-    assert.match(execute, /Plan-origin STRUCTURED creates\/updates this state before task generation/i);
+    assert.match(execute, /includes plan-origin STRUCTURED before task generation/i);
     assert.match(execute, /JSON runs add derivative work only through source-required definition repair/i);
     assert.match(execute, /Do not mutate historical completion events or clear accepted state/i);
     assert.match(execute, /No raw output or report prose/);
@@ -814,7 +819,7 @@ test('plan-direct quality gates use the explicit plan and derivative execution e
     const validate = readSkill('spectre-validate');
     const proof = readSkill('spectre-prove');
 
-    assert.match(execute, /transient verbatim plan text for only the active workstreams/i);
+    assert.match(execute, /transient verbatim plan text only for active workstreams/i);
     assert.match(
       execute,
       /plan-direct passes `PLAN_SOURCE` plus relevant `EXECUTION_STATE` evidence/i,

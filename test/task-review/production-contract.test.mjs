@@ -167,7 +167,7 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.doesNotMatch(plan, /spectre-task_review/);
   assert.doesNotMatch(plan, /spectre-goal/);
   const reviewIndex = execute.indexOf("Skill(spectre-plan_review) --auto-apply scope-safe --orchestrated");
-  const assessmentIndex = execute.toLowerCase().indexOf("reuse an applicable semantic assessment");
+  const assessmentIndex = execute.toLowerCase().indexOf("reuse applicable");
   const tasksIndex = execute.indexOf("STRUCTURED invokes existing `Skill(spectre-create_tasks) --orchestrated`");
   assert.ok(reviewIndex >= 0);
   assert.ok(assessmentIndex >= 0);
@@ -192,8 +192,11 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.match(execute, /Missing assessment dispatches `Skill\(spectre-plan-route\)` to a fresh child agent/i);
   assert.match(execute, /consume child DONE inside the same Execute run before proceeding/i);
   assert.doesNotMatch(execute, /Return recordonly/i);
-  assert.match(execute, /reuse an applicable semantic assessment/i);
-  assert.match(execute, /run the existing router only if absent or material observations invalidate it/i);
+  assert.match(execute, /reuse applicable/i);
+  assert.match(execute, /reroute only if absent or material observations invalidate it/i);
+    assert.match(execute, /scope-safe byte-only review edits[\s\S]*mechanically rebind/i);
+    assert.match(execute, /topology\/uncertainty is unchanged/i);
+    assert.doesNotMatch(execute, /Re-bind routing to finalized plan/i);
   assert.match(execute, /ATOMIC\/DIRECT use the bounded local workstream\/Active Wave pattern/i);
   assert.match(execute, /dispatch `Skill\(spectre-plan_review\) --auto-apply scope-safe --orchestrated` once for the selected path to a fresh child agent/i);
   assert.match(execute, /STRUCTURED invokes existing `Skill\(spectre-create_tasks\) --orchestrated` by fresh child-agent dispatch/i);
