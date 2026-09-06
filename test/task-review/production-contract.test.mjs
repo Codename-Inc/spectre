@@ -196,6 +196,7 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   );
   assert.doesNotMatch(execute, /must carry its seven spine sections/i);
   assert.doesNotMatch(execute, /depth hint is invalid[^\n]*NEEDS_AUTHORITY/i);
+  assert.match(execute, /Never escalate solely[^\n]*unavailable\/red baseline/i);
   assert.match(execute, /scope-safe result proceeds without a second user gate/i);
   assert.match(architecture, /Execute.*reuses applicable plan-routing records.*classifies once when absent/i);
 

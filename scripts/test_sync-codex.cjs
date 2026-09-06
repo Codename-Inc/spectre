@@ -592,7 +592,7 @@ test('execute resolves explicit plans through one authorized preparation path', 
     assert.match(execute, /depth hint must not create authority pause/i);
     assert.match(execute, /`Execution Mode: direct` is a legacy coordination hint/i);
     assert.match(execute, /explicit readable plan needs no ceremonial completeness\/header gate/i);
-    assert.match(execute, /for no-path calls, use existing same-run source evidence first/i);
+    assert.match(execute, /No path:[^\n]*use existing same-run source evidence first/i);
     assert.match(
       execute,
       /same-run source evidence first[^\n]*then a plan at the confirmed root[^\n]*then structured-only fallback/i,
@@ -681,6 +681,7 @@ test('execute preflight reuses observed assessment and proportionally creates ta
       /selected plan\/authority\/review\/pair binding[^\n]*(?:older|unrelated|unprovable)[^\n]*NEEDS_AUTHORITY/i,
     );
     assert.doesNotMatch(execute, /depth hint is invalid[^\n]*NEEDS_AUTHORITY/i);
+    assert.match(execute, /Never escalate solely[^\n]*unavailable\/red baseline/i);
     assert.match(
       fs.readFileSync(path.join(repoRoot, 'Architecture.md'), 'utf8'),
       /Execute.*reuses applicable plan-routing records.*classifies once when absent/i,
