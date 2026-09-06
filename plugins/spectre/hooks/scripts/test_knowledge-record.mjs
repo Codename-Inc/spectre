@@ -397,7 +397,7 @@ describe('rendered typed records', () => {
 });
 
 describe('derived current knowledge index', () => {
-  it('projects active knowledge and work records with typed fields only', async (t) => {
+  it('projects typed records for current guidance and explicit historical inspection', async (t) => {
     const storePath = makeTmp(t);
     const { refreshKnowledgeIndex } = await loadRecordModule();
     writeRecordPackage(storePath, knowledgeRecord({ id: 'active-knowledge' }));
@@ -417,8 +417,11 @@ describe('derived current knowledge index', () => {
 
     assert.equal(rebuilt, true);
     assert.deepEqual(errors, []);
-    assert.deepEqual(index.records.map(({ id }) => id), ['active-knowledge', 'work-auth-retry']);
-    const [knowledgeEntry, workEntry] = index.records;
+    assert.deepEqual(index.records.map(({ id }) => id), [
+      'active-knowledge', 'archived-knowledge', 'superseded-knowledge', 'work-auth-retry',
+    ]);
+    const knowledgeEntry = index.records.find(({ id }) => id === 'active-knowledge');
+    const workEntry = index.records.find(({ id }) => id === 'work-auth-retry');
     assert.equal(knowledgeEntry.kind, 'knowledge');
     assert.equal(knowledgeEntry.category, 'pattern');
     assert.equal(knowledgeEntry.status, 'active');
@@ -428,7 +431,12 @@ describe('derived current knowledge index', () => {
     assert.equal(knowledgeEntry.recordPath, path.join('knowledge', 'active-knowledge', 'record.json'));
     assert.match(knowledgeEntry.revisionToken, /^sha256:[a-f0-9]{64}$/);
     assert.equal(workEntry.kind, 'work');
-    assert.equal(Object.hasOwn(workEntry, 'status'), false);
+    assert.equal(workEntry.historical, true);
+    assert.equal(workEntry.imported, true);
+    assert.equal(workEntry.useWhen, 'Investigating the historical auth retry work.');
+    assert.deepEqual(workEntry.cues, ['auth retry', 'token refresh']);
+    assert.equal(workEntry.status, 'active');
+    assert.equal(workEntry.version, '1');
     for (const retired of ['description', 'triggers', 'version', 'sourceFingerprint']) {
       assert.equal(Object.hasOwn(knowledgeEntry, retired), false, retired);
     }

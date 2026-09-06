@@ -661,7 +661,16 @@ function indexEntry(storePath, recordPath, parsed) {
     applicability: canonicalize(record.applicability),
     ...(record.kind === 'knowledge'
       ? { category: record.category, useWhen: record.useWhen, status: record.status }
-      : {}),
+      : {
+        historical: true,
+        imported: record.provenance.origin === LEGACY_IMPORT_ORIGIN,
+        useWhen: record.importedSource?.useWhen,
+        cues: record.importedSource?.cues || [],
+        sourceBody: record.importedSource?.body,
+        category: record.importedSource?.category,
+        status: record.importedSource?.status,
+        version: record.importedSource?.version,
+      }),
     recordPath: path.relative(storePath, recordPath),
     revisionToken: parsed.revisionToken,
     sourceSize: stat.size,
@@ -680,7 +689,7 @@ function readExistingIndex(indexPath) {
 }
 
 function isCurrentRecord(record) {
-  return record.kind !== 'knowledge' || record.status === 'active';
+  return true;
 }
 
 export function refreshKnowledgeIndex(storePath, options = {}) {
