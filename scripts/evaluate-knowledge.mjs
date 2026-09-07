@@ -141,6 +141,31 @@ function eventPrecedes(left, right) {
   return leftSession < rightSession || (leftSession === rightSession && left.eventOrdinal < right.eventOrdinal);
 }
 
+function classifyKnowledgeCommands(toolOperations = []) {
+  const actions = new Map();
+  const variables = new Map();
+  const ordered = [...toolOperations].sort((left, right) =>
+    (left.sessionOrdinal ?? 0) - (right.sessionOrdinal ?? 0) || (left.eventOrdinal ?? 0) - (right.eventOrdinal ?? 0)
+  );
+  for (const operation of ordered) {
+    const command = operation?.input?.command;
+    if (typeof command !== 'string') continue;
+    const session = operation.sessionOrdinal ?? 0;
+    const available = variables.get(session) ?? new Set();
+    for (const match of command.matchAll(/\b([A-Z][A-Z0-9_]*)=(?:['"])?[^\s;'"]*knowledge-cli\.mjs/g)) available.add(match[1]);
+    variables.set(session, available);
+    const found = new Set();
+    for (const action of ['search', 'load', 'resource', 'history', 'inspect', 'register', 'capture', 'learn']) {
+      const direct = new RegExp(`knowledge-cli\\.mjs['\"]?\\s+${action}\\b`).test(command);
+      const variable = [...command.matchAll(new RegExp(`(?:['\"])?\\$\\{?([A-Z][A-Z0-9_]*)\\}?(?:['\"])?\\s+${action}\\b`, 'g'))]
+        .some((match) => available.has(match[1]));
+      if (direct || variable) found.add(action);
+    }
+    actions.set(operation, found);
+  }
+  return actions;
+}
+
 export function aggregate(cells = []) {
   const required = cells.filter(cell => cell.judged != null);
   const metric = name => cells.map(cell => cell.runtime?.[name]);
@@ -164,11 +189,12 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   if (runtime?.deliverable?.exists !== true) return { valid: false, recalled: false, reason: 'decision artifact was not persisted' };
   if (Array.isArray(expected.requiredRecordHashes)) {
+    const commandActions = classifyKnowledgeCommands(runtime.toolOperations);
     const expectedHashes = new Set(expected.requiredRecordHashes);
     const readCommand = expected.requiredReadCommand === 'inspect' ? 'inspect' : 'load';
     const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
       const command = operation?.input?.command ?? '';
-      return new RegExp(`knowledge-cli\\.mjs\\s+${readCommand}\\s+['\"]?([a-z0-9]+(?:-[a-z0-9]+)*)`).test(command) &&
+      return commandActions.get(operation)?.has(readCommand) && new RegExp(`${readCommand}\\s+['\"]?([a-z0-9]+(?:-[a-z0-9]+)*)`).test(command) &&
         [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => expectedHashes.has(hash(match[0]))) &&
         (operation.status === null || operation.status === 'completed');
     });
@@ -220,14 +246,13 @@ export function judgeCell(cell, runtime, oracle) {
       }
     }
     const captureOperations = (runtime.toolOperations ?? []).filter((operation) =>
-      operation.name === 'Learn' || /knowledge-cli\.mjs\s+(?:register|capture|learn)\b/.test(operation?.input?.command ?? '')
+      operation.name === 'Learn' || ['register', 'capture', 'learn'].some((action) => commandActions.get(operation)?.has(action))
     );
     if (expected.requiresCapture === true && captureOperations.some((operation) => operation.actorRole === 'worker')) {
       return { valid: false, recalled: false, reason: 'worker-owned knowledge capture is not primary evidence' };
     }
-    const commands = (runtime.toolOperations ?? []).map((operation) => operation?.input?.command ?? '').filter((command) => typeof command === 'string');
-    const bodyLoads = commands.filter((command) => /knowledge-cli\.mjs\s+load\b/.test(command)).length;
-    const historyLoads = commands.filter((command) => /knowledge-cli\.mjs\s+(?:history|inspect)\b/.test(command)).length;
+    const bodyLoads = (runtime.toolOperations ?? []).filter((operation) => commandActions.get(operation)?.has('load')).length;
+    const historyLoads = (runtime.toolOperations ?? []).filter((operation) => commandActions.get(operation)?.has('history') || commandActions.get(operation)?.has('inspect')).length;
     if (Number.isInteger(expected.allowedLoads) && bodyLoads > expected.allowedLoads) {
       return { valid: false, recalled: false, reason: 'unnecessary knowledge body load evidence is present' };
     }
@@ -578,15 +603,15 @@ function nativeFullCycleUsage(runs) {
 
 function traceWithOperationCrosscheck(trace, toolOperations) {
   if (trace.availability !== 'available') return trace;
+  const actions = classifyKnowledgeCommands(toolOperations);
   const expected = new Map();
   const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
-    const command = operation?.input?.command;
-    if (typeof command !== 'string') continue;
-    if (/knowledge-cli\.mjs\s+search\b/.test(command)) expect('search');
-    if (/knowledge-cli\.mjs\s+load\b/.test(command)) expect('load');
-    if (/knowledge-cli\.mjs\s+resource\b/.test(command)) expect('resource-read');
-    if (/knowledge-cli\.mjs\s+(?:capture|learn)\b/.test(command)) expect('capture');
+    const found = actions.get(operation);
+    if (found?.has('search')) expect('search');
+    if (found?.has('load')) expect('load');
+    if (found?.has('resource')) expect('resource-read');
+    if (['register', 'capture', 'learn'].some((action) => found?.has(action))) expect('capture');
   }
   const missing = [...expected].flatMap(([type, count]) =>
     Array.from({ length: Math.max(0, count - trace.events.filter((event) => event.type === type).length) }, () => type)

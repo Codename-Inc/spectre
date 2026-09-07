@@ -122,6 +122,16 @@ test('judging requires an exact successful load and a later persisted decision a
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [runtime.toolOperations[0]] }, oracle).recalled, false);
   const pending = judgeCell(cell, runtime, oracle);
   assert.deepEqual(pending, { valid: false, recalled: null, reason: 'manual semantic adjudication pending', structuralValid: true, manualRubric: 'manual review' });
+  const quoted = judgeCell(cell, {
+    ...runtime,
+    toolOperations: [
+      { ...runtime.toolOperations[0], input: { command: `CLI='/fixture/knowledge-cli.mjs'; "$CLI" load '${recordId}'` } }, runtime.toolOperations[1],
+    ],
+  }, oracle);
+  assert.equal(quoted.recalled, null);
+  assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
+    { ...runtime.toolOperations[0], input: { command: `"$CLI" load '${recordId}'` } }, runtime.toolOperations[1],
+  ] }, oracle).recalled, false);
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
     { ...runtime.toolOperations[0], eventOrdinal: 9 }, runtime.toolOperations[1],
   ], toolResults: [{ ...runtime.toolResults[0], eventOrdinal: 9 }] }, oracle).recalled, false);
