@@ -173,7 +173,7 @@ export async function main(argv = process.argv.slice(2)) {
         ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, requiredTokens: result.estimatedTokens, loadedTokens: 0, allowanceTokens, expansionRequested: true, deliveredOverAllowance: false, ...responseMetrics(selectedOutput) }
         : { type: result.historical ? 'history-read' : 'load', subtype: result.historical ? 'history-body' : undefined, id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens, allowanceTokens, expanded: allowanceTokens > ROUTINE_LOAD_ALLOWANCE_TOKENS, ...responseMetrics(selectedOutput) });
       process.stdout.write(selectedOutput);
-    } catch (error) { const payload = serializeKnowledgeLoadError(error); throw codedError(payload.code, payload.message); }
+    } catch (error) { const payload = serializeKnowledgeLoadError(error); throw codedError(payload.code, payload.message, payload); }
     return;
   }
   if (command === 'history' || command === 'inspect') {
@@ -226,7 +226,7 @@ export function writeCliError(error, argv = process.argv.slice(2)) {
   const message = error instanceof Error ? error.message : String(error);
   if (argv.includes('--json') && error?.code) {
     const payload = { ok: false, code: error.code, message };
-    for (const field of ['status', 'expectedRevision', 'currentRevision']) {
+    for (const field of ['status', 'expectedRevision', 'currentRevision', 'inspectionCommand']) {
       if (error[field] !== undefined) payload[field] = error[field];
     }
     process.stdout.write(`${JSON.stringify(payload)}\n`);

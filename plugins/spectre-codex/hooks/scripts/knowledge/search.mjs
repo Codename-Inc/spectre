@@ -121,9 +121,10 @@ function preview(entry, match, state) {
     matchedSignals: match.signals,
     applicability: entry.applicability,
     activation: state.value,
+    historical: state.historical,
     revisionToken: entry.revisionToken,
     estimatedLoadTokens: Math.ceil(entry.sourceSize / 4),
-    loadCommand: `knowledge-cli.mjs load ${entry.id} --project-dir <project-dir>`,
+    loadCommand: `knowledge-cli.mjs load ${entry.id}${state.historical ? ' --inspect-historical' : ''} --project-dir <project-dir>`,
   };
 }
 
@@ -198,7 +199,7 @@ export async function searchKnowledge(options = {}) {
 
 export function formatKnowledgeSearchHuman({ results }, query = '') {
   if (results.length === 0) return query ? `No knowledge matches "${query}".\n` : 'No knowledge found.\n';
-  return `${results.map((result) => `${result.id} [${result.kind}]\n  ${result.summary || result.useWhen}\n  ${result.loadCommand}`).join('\n\n')}\n`;
+  return `${results.map((result) => `${result.id} [${result.kind}]${result.historical ? ` [historical: ${result.activation}]` : ''}\n  ${result.summary || result.useWhen}\n  ${result.loadCommand}`).join('\n\n')}\n`;
 }
 
 export function formatKnowledgeSearchWarningsHuman(warnings = []) {

@@ -49,10 +49,10 @@ async function fixture(t) {
   return { root, projectDir, spectreHome, storePath, id };
 }
 
-function run(kind, args, value) {
+function run(kind, args, value, { json = true } = {}) {
   const command = kind === 'npm' ? NPM_CLI : BUNDLED_CLI;
   const prefix = kind === 'npm' ? ['knowledge'] : [];
-  return spawnSync(process.execPath, [command, ...prefix, ...args, '--project-dir', value.projectDir, '--json'], {
+  return spawnSync(process.execPath, [command, ...prefix, ...args, '--project-dir', value.projectDir, ...(json ? ['--json'] : [])], {
     cwd: value.projectDir, env: { ...process.env, SPECTRE_HOME: value.spectreHome }, encoding: 'utf8',
   });
 }
@@ -96,6 +96,41 @@ describe('typed public knowledge CLI parity', () => {
       assert.equal(loaded.status, 0, loaded.stderr);
       assert.equal(output(loaded).record.content, 'SPECTRE_TYPED_CLI_SENTINEL');
     }
+  });
+
+  it('labels historical previews and routes inactive exact loads to deliberate inspection', async (t) => {
+    const value = await fixture(t);
+    const inactiveId = 'notification-batch-history';
+    const inactive = typedRecord(inactiveId);
+    inactive.summary = 'Archived notification batch history.';
+    inactive.useWhen = 'Use when investigating notification batch history.';
+    inactive.content = 'SPECTRE_ARCHIVED_NOTIFICATION_BODY';
+    inactive.status = 'archived';
+    const inactivePath = path.join(value.storePath, 'knowledge', inactiveId, 'record.json');
+    fs.mkdirSync(path.dirname(inactivePath), { recursive: true });
+    fs.writeFileSync(inactivePath, `${JSON.stringify(inactive, null, 2)}\n`);
+    refreshKnowledgeIndex(value.storePath);
+
+    const human = run('bundled', ['search', 'notification batch history'], value, { json: false });
+    assert.equal(human.status, 0, human.stderr);
+    assert.match(human.stdout, /notification-batch-history \[knowledge\] \[historical: inactive-history\]/);
+    assert.match(human.stdout, /load notification-batch-history --inspect-historical --project-dir <project-dir>/);
+
+    const json = run('bundled', ['search', 'notification batch history'], value);
+    assert.equal(json.status, 0, json.stderr);
+    const preview = output(json).results.find(result => result.id === inactiveId);
+    assert.equal(preview.activation, 'inactive-history');
+    assert.match(preview.loadCommand, /load notification-batch-history --inspect-historical --project-dir <project-dir>/);
+
+    const blocked = run('bundled', ['load', inactiveId], value);
+    assert.equal(blocked.status, 1);
+    assert.equal(output(blocked).code, 'KNOWLEDGE_NOT_ACTIVE');
+    assert.match(output(blocked).inspectionCommand, /load notification-batch-history --inspect-historical --project-dir <project-dir>/);
+
+    const inspected = run('bundled', ['load', inactiveId, '--inspect-historical'], value);
+    assert.equal(inspected.status, 0, inspected.stderr);
+    assert.equal(output(inspected).historical, true);
+    assert.equal(output(inspected).record.content, 'SPECTRE_ARCHIVED_NOTIFICATION_BODY');
   });
 
   it('has matching safe JSON failures and forwards guarded registration revision', async (t) => {

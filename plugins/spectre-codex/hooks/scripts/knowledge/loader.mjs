@@ -27,6 +27,18 @@ function knowledgeLoadError(code, message, details = {}) {
   return error;
 }
 
+function historicalInspectionCommand(id) {
+  return `knowledge-cli.mjs load ${id} --inspect-historical --project-dir <project-dir>`;
+}
+
+function inactiveKnowledgeError(id) {
+  return knowledgeLoadError(
+    'KNOWLEDGE_NOT_ACTIVE',
+    `Knowledge record is not active: ${id}. Use deliberate historical inspection if its prior content is relevant.`,
+    { inspectionCommand: historicalInspectionCommand(id) },
+  );
+}
+
 function validateExactId(id) {
   if (typeof id !== 'string' || !RECORD_ID_PATTERN.test(id)) {
     throw knowledgeLoadError(
@@ -97,10 +109,7 @@ function classifyMissingActiveEntry(storePath, id) {
     );
   }
   if (parsed.record.kind === 'knowledge' && parsed.record.status !== 'active') {
-    throw knowledgeLoadError(
-      'KNOWLEDGE_NOT_ACTIVE',
-      `Knowledge record is not active: ${id}`,
-    );
+    throw inactiveKnowledgeError(id);
   }
   throw knowledgeLoadError(
     'KNOWLEDGE_INVALID',
@@ -253,10 +262,7 @@ export async function loadKnowledgeById(options = {}) {
           && parsed.record.status !== 'active'
           && options.inspectHistorical !== true
         ) {
-          throw knowledgeLoadError(
-            'KNOWLEDGE_NOT_ACTIVE',
-            `Knowledge record is not active: ${options.id}`,
-          );
+          throw inactiveKnowledgeError(options.id);
         }
 
         const resources = resourceManifest(
@@ -346,6 +352,7 @@ export function serializeKnowledgeLoadError(error) {
     code: error?.code || 'KNOWLEDGE_LOAD_FAILED',
     message: error instanceof Error ? error.message : String(error),
     ...(Array.isArray(error?.paths) ? { paths: error.paths } : {}),
+    ...(typeof error?.inspectionCommand === 'string' ? { inspectionCommand: error.inspectionCommand } : {}),
   };
 }
 
