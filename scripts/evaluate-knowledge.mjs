@@ -13,8 +13,7 @@ import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 const CONDITIONS = ['no-knowledge', 'baseline', 'candidate'];
 const HOSTS = ['claude', 'codex'];
-const EVALUATOR_INPUTS = [
-  new URL('./evaluate-knowledge.mjs', import.meta.url),
+const NATIVE_PIPELINE_INPUTS = [
   new URL('./knowledge-evaluation-hosts.mjs', import.meta.url),
   new URL('./knowledge-evaluation-staging.mjs', import.meta.url),
   new URL('./knowledge-host-probe-hook.mjs', import.meta.url),
@@ -31,8 +30,8 @@ const ACCEPTANCE_THRESHOLDS = Object.freeze({
 const hash = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 
-function evaluatorInputsHash() {
-  return hash(JSON.stringify(EVALUATOR_INPUTS.map((url) => [url.pathname, hash(fs.readFileSync(url))])));
+function nativePipelineInputsHash() {
+  return hash(JSON.stringify(NATIVE_PIPELINE_INPUTS.map((url) => [url.pathname, hash(fs.readFileSync(url))])));
 }
 
 function filesHash(root) {
@@ -48,10 +47,13 @@ function filesHash(root) {
   return hash(JSON.stringify(files.sort(([left], [right]) => left.localeCompare(right))));
 }
 
-function strings(value) {
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(strings);
-  if (value && typeof value === 'object') return Object.values(value).flatMap(strings);
+function goldStrings(value, key = null) {
+  if (typeof value === 'string') {
+    const structural = new Set(['requiredRecordHashes', 'requiredStates', 'requiredReadCommand', 'allowedLoads', 'allowedHistoryLoads', 'requiredBeforeDecision', 'requiresCapture', 'requiresSameWorkId', 'minimumPrCreates', 'forbiddenLegacyExposure']);
+    return structural.has(key) ? [] : [value];
+  }
+  if (Array.isArray(value)) return value.flatMap((entry) => goldStrings(entry, key));
+  if (value && typeof value === 'object') return Object.entries(value).flatMap(([entryKey, entry]) => goldStrings(entry, entryKey));
   return [];
 }
 
@@ -83,7 +85,7 @@ function freeze(fixtures, oracle, output, options = {}) {
   if (!Array.isArray(manifest.cases) || manifest.cases.length !== 12) throw new Error('fixture manifest must contain exactly 12 cases');
   const fixtureBytes = fs.readFileSync(path.join(fixtures, 'manifest.json'));
   const oracleBytes = fs.readFileSync(oracle);
-  for (const value of strings(readJson(oracle))) {
+  for (const value of goldStrings(readJson(oracle))) {
     if (value && fixtureBytes.includes(value)) throw new Error('gold oracle value leaked into agent-readable fixture');
   }
   const configurationPath = options.configurationPath ? path.resolve(options.configurationPath) : null;
@@ -108,7 +110,7 @@ function freeze(fixtures, oracle, output, options = {}) {
       fixtures: filesHash(fixtures), oracle: hash(oracleBytes),
       configuration: configurationPath ? hash(fs.readFileSync(configurationPath)) : null,
       candidate: candidatePath ? filesHash(candidatePath) : null,
-      evaluatorInputs: evaluatorInputsHash(),
+      nativePipelineInputs: nativePipelineInputsHash(),
     },
     fixtureRoot: path.resolve(fixtures), oraclePath: path.resolve(oracle), configurationPath, candidatePath, cells,
     concurrency: { total: 4, perHost: 2 }, freshStores: true, longitudinalSequential: true,
@@ -228,7 +230,13 @@ export function judgeCell(cell, runtime, oracle) {
 export async function runCells(freezeManifest, outputDir, invoke) {
   const oracle = freezeManifest.oraclePath ? readJson(freezeManifest.oraclePath) : freezeManifest.oracle;
   fs.mkdirSync(outputDir, { recursive: true });
-  const freezeKey = freezeManifest.hashes ? hash(JSON.stringify(freezeManifest.hashes)) : null;
+  const freezeKey = freezeManifest.hashes ? hash(JSON.stringify({
+    fixtures: freezeManifest.hashes.fixtures,
+    configuration: freezeManifest.hashes.configuration,
+    candidate: freezeManifest.hashes.candidate,
+    nativePipelineInputs: freezeManifest.hashes.nativePipelineInputs,
+    baseline: freezeManifest.baseline,
+  })) : null;
   const cacheDirectory = path.join(outputDir, '.knowledge-evaluation-cells');
   if (freezeKey) fs.mkdirSync(cacheDirectory, { recursive: true });
   const results = [];
@@ -248,7 +256,13 @@ export async function runCells(freezeManifest, outputDir, invoke) {
           try {
             const cached = readJson(cachePath);
             if (cached.freezeKey === freezeKey && cached.cell?.id === cell.id) {
-              results.push(cached.cell);
+              const judged = judgeCell(cell, cached.cell.runtime, oracle);
+              results.push({
+                ...cached.cell,
+                status: cached.cell.runtime?.status === 'completed' && judged.valid ? 'completed'
+                  : cached.cell.runtime?.status === 'completed' ? 'invalid' : cached.cell.runtime?.status ?? 'invalid',
+                judged,
+              });
               continue;
             }
           } catch {
@@ -570,7 +584,7 @@ function assertFrozenInputs(freezeManifest) {
   if (freezeManifest.hashes.oracle !== hash(fs.readFileSync(freezeManifest.oraclePath))) throw new Error('oracle content changed after freeze');
   if (freezeManifest.configurationPath && freezeManifest.hashes.configuration !== hash(fs.readFileSync(freezeManifest.configurationPath))) throw new Error('configuration changed after freeze');
   if (freezeManifest.candidatePath && freezeManifest.hashes.candidate !== filesHash(freezeManifest.candidatePath)) throw new Error('candidate content changed after freeze');
-  if (freezeManifest.hashes.evaluatorInputs && freezeManifest.hashes.evaluatorInputs !== evaluatorInputsHash()) throw new Error('evaluator input changed after freeze');
+  if (freezeManifest.hashes.nativePipelineInputs && freezeManifest.hashes.nativePipelineInputs !== nativePipelineInputsHash()) throw new Error('native pipeline input changed after freeze');
 }
 
 /** Run the frozen native evaluation only after the deterministic hash gate succeeds. */
