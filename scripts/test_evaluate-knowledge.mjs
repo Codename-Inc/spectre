@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -93,4 +93,24 @@ test('judging requires an exact successful load and a later persisted decision a
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
     { ...runtime.toolOperations[0], eventOrdinal: 9 }, runtime.toolOperations[1],
   ], toolResults: [{ ...runtime.toolResults[0], eventOrdinal: 9 }] }, oracle).recalled, false);
+});
+
+test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {
+  const facts = traceRuntimeFacts({ availability: 'available', events: [
+    { type: 'search', responseTokens: 7, responseBytes: 70 },
+    { type: 'history-read', subtype: 'history-preview', responseTokens: 5, responseBytes: 50 },
+    { type: 'load', id: 'record-a', revisionToken: 'rev-a', contextHash: 'ctx', loadedTokens: 11, loadedBytes: 110, responseTokens: 99 },
+    { type: 'load', id: 'record-a', revisionToken: 'rev-a', contextHash: 'ctx', loadedTokens: 11, loadedBytes: 110, responseTokens: 99 },
+    { type: 'resource-read', id: 'record-a', loadedTokens: 3, loadedBytes: 30, responseTokens: 88 },
+  ] }, { sessionStartMeasurement: { injectedTokens: 4, injectedBytes: 40 } });
+  assert.deepEqual(facts, {
+    injectedTokens: 4, injectedBytes: 40, previewTokens: 12, previewBytes: 120,
+    loadedBodyTokens: 22, loadedBodyBytes: 220, resourceTokens: 3, resourceBytes: 30,
+    redundantTokens: 11, totalTokens: 41, nativePrimaryUsage: null, nativeFullCycleUsage: null,
+  });
+  const zero = traceRuntimeFacts({ availability: 'available', events: [] }, { sessionStartMeasurement: { injectedTokens: 0, injectedBytes: 0 } });
+  assert.equal(zero.previewTokens, 0);
+  assert.equal(zero.loadedBodyTokens, 0);
+  assert.equal(zero.redundantTokens, 0);
+  assert.equal(zero.totalTokens, 0);
 });

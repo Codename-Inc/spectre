@@ -243,7 +243,8 @@ function cohortReport(cells) {
     cohort.workflowOperations.push((cell.runtime?.toolOperations ?? []).filter((operation) => ['Skill', 'Task', 'Plan', 'Execute', 'Ship', 'CreatePR'].includes(operation.name)).length);
     cohort.historyEntries.push(cell.runtime?.snapshots?.after?.history?.length ?? null);
     cohort.loadedBodyTokens.push(cell.runtime?.loadedBodyTokens ?? null);
-    const native = cell.runtime?.nativeFullCycleUsage?.total;
+    const native = cell.runtime?.nativeFullCycleUsage?.coverage === 'complete'
+      ? cell.runtime.nativeFullCycleUsage.total : null;
     cohort.nativeInput.push(native?.input ?? null);
     cohort.nativeCache.push(native?.cache ?? null);
     cohort.nativeCacheWrite.push(native?.cacheWrite ?? null);
@@ -295,14 +296,18 @@ function pairedReport(cells) {
     loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
       ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
     nativeFullCycleTokenDelta: pairedDelta(group.candidate, group.baseline),
-    noKnowledgeNativeOverhead: pairedDelta(group['no-knowledge'], group.baseline),
+    noKnowledgeNativeOverhead: pairedDelta(group.candidate, group['no-knowledge']),
+    baselineNativeOverhead: pairedDelta(group.baseline, group['no-knowledge']),
     candidateVsNoKnowledge: group.candidate?.judged?.recalled === true && group['no-knowledge']?.judged?.recalled === false,
   }));
 }
 
 function pairedDelta(left, right) {
-  const leftValue = nativeUsageTokenTotal(left?.host, left?.runtime?.nativeFullCycleUsage?.total);
-  const rightValue = nativeUsageTokenTotal(right?.host, right?.runtime?.nativeFullCycleUsage?.total);
+  const leftUsage = left?.runtime?.nativeFullCycleUsage;
+  const rightUsage = right?.runtime?.nativeFullCycleUsage;
+  if (leftUsage?.coverage !== 'complete' || rightUsage?.coverage !== 'complete') return null;
+  const leftValue = nativeUsageTokenTotal(left?.host, leftUsage.total);
+  const rightValue = nativeUsageTokenTotal(right?.host, rightUsage.total);
   return Number.isFinite(leftValue) && Number.isFinite(rightValue) ? leftValue - rightValue : null;
 }
 
@@ -400,6 +405,7 @@ function nativeFullCycleUsage(runs) {
   }
   return {
     source: runs.every((run) => run.usage?.fullCycle?.total) ? 'inclusive-model-totals' : 'primary-turn-totals',
+    coverage: runs.every((run) => run.usage?.fullCycle?.total) ? 'complete' : 'unknown',
     sessions: runs.length,
     total,
   };
@@ -425,19 +431,38 @@ function traceWithOperationCrosscheck(trace, toolOperations) {
     : { availability: 'unavailable', reason: `trace lacks native ${missing.join(', ')} event evidence`, events: trace.events };
 }
 
-function traceRuntimeFacts(trace, hostResult) {
-  const sum = (events) => events.length > 0 && events.every((event) => Number.isFinite(event.responseTokens) || Number.isFinite(event.loadedTokens))
-    ? events.reduce((total, event) => total + (event.responseTokens ?? event.loadedTokens), 0)
-    : null;
+export function traceRuntimeFacts(trace, hostResult = {}) {
   const events = trace.availability === 'available' ? trace.events : [];
-  const previews = events.filter((event) => event.subtype === 'history-preview');
-  const loaded = events.filter((event) => event.type === 'load' || event.subtype === 'history-body' || event.type === 'resource-read');
+  const sum = (selected, field) => {
+    if (trace.availability !== 'available') return null;
+    if (selected.length === 0) return 0;
+    return selected.every((event) => Number.isFinite(event[field]))
+      ? selected.reduce((total, event) => total + event[field], 0) : null;
+  };
+  const previews = events.filter((event) => event.type === 'search' || event.subtype === 'history-preview');
+  const bodies = events.filter((event) => event.type === 'load' || event.subtype === 'history-body');
+  const resources = events.filter((event) => event.type === 'resource-read');
+  const duplicates = bodies.filter((event, index) => bodies.some((prior, priorIndex) =>
+    priorIndex < index && prior.id === event.id && prior.revisionToken === event.revisionToken && prior.contextHash === event.contextHash
+  ));
+  const injectedTokens = Number.isFinite(hostResult.sessionStartMeasurement?.injectedTokens)
+    ? hostResult.sessionStartMeasurement.injectedTokens : null;
+  const previewTokens = sum(previews, 'responseTokens');
+  const loadedBodyTokens = sum(bodies, 'loadedTokens');
+  const resourceTokens = sum(resources, 'loadedTokens');
+  const totalTokens = [injectedTokens, previewTokens, loadedBodyTokens, resourceTokens].every(Number.isFinite)
+    ? injectedTokens + previewTokens + loadedBodyTokens + resourceTokens : null;
   return {
-    injectedTokens: sum(events.filter((event) => event.type === 'search')),
-    previewTokens: sum(previews),
-    loadedBodyTokens: sum(loaded),
-    redundantTokens: null,
-    totalTokens: null,
+    injectedTokens,
+    injectedBytes: Number.isFinite(hostResult.sessionStartMeasurement?.injectedBytes) ? hostResult.sessionStartMeasurement.injectedBytes : null,
+    previewTokens,
+    previewBytes: sum(previews, 'responseBytes'),
+    loadedBodyTokens,
+    loadedBodyBytes: sum(bodies, 'loadedBytes'),
+    resourceTokens,
+    resourceBytes: sum(resources, 'loadedBytes'),
+    redundantTokens: sum(duplicates, 'loadedTokens'),
+    totalTokens,
     nativePrimaryUsage: hostResult.usage?.primary ?? null,
     nativeFullCycleUsage: hostResult.usage?.fullCycle ?? null,
   };
@@ -510,10 +535,11 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         deliverablePath,
         deliverable: deliverableEvidence(staged.projectDir, deliverablePath),
         snapshots: { before: snapshotBefore, after: snapshotAfter },
+        sessionStartMeasurement: staged.sessionStartMeasurement ?? null,
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
         trace,
-        ...traceRuntimeFacts(trace, hostResult),
+        ...traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: staged.sessionStartMeasurement }),
         bypass: [
           ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
           ...trace.events.filter((event) => event.type === 'bypass'),
