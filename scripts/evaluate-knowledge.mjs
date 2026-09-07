@@ -20,6 +20,7 @@ const NATIVE_PIPELINE_INPUTS = [
   new URL('./knowledge-host-probe-hook.mjs', import.meta.url),
   new URL('./verify-knowledge-hosts.mjs', import.meta.url),
   new URL('../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs', import.meta.url),
+  new URL('../plugins/spectre/hooks/scripts/knowledge/payload.mjs', import.meta.url),
 ];
 const ACCEPTANCE_THRESHOLDS = Object.freeze({
   requiredRecall: 1,

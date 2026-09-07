@@ -47,6 +47,26 @@ test('freeze binds configuration and candidate content, while missing oracle jud
   });
 });
 
+test('freeze invalidates native cache inputs when the canonical payload estimator changes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-payload-hash-'));
+  const fixtures = path.join(root, 'fixtures'); fs.mkdirSync(fixtures);
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({
+    artifactPath: 'artifacts/decision.md', cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` })),
+  }));
+  const oracle = path.join(root, 'oracle.json');
+  fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, {}]))));
+  const payloadPath = path.resolve('plugins/spectre/hooks/scripts/knowledge/payload.mjs');
+  const original = fs.readFileSync(payloadPath);
+  try {
+    const before = freeze(fixtures, oracle, path.join(root, 'before.json'));
+    fs.writeFileSync(payloadPath, `${original}\n// evaluation payload hash regression\n`);
+    const after = freeze(fixtures, oracle, path.join(root, 'after.json'));
+    assert.notEqual(after.hashes.nativePipelineInputs, before.hashes.nativePipelineInputs);
+  } finally {
+    fs.writeFileSync(payloadPath, original);
+  }
+});
+
 test('runCells honors total and per-host concurrency limits', async () => {
   const cells = [
     { id: 'a', caseId: 'a', host: 'claude' }, { id: 'b', caseId: 'b', host: 'claude' },
