@@ -476,7 +476,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
-      freshStore: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: gh.environment,
+      freshStore: true, isolatedGitWorkflow: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: gh.environment,
       claudeHome, codexHome, claudePluginDir: null, codexPlugin: null,
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
@@ -518,7 +518,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const sessionStartObservationPath = installSessionStartObservation({ host: cell.host, pluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), root });
   return {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
-    freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
+    freshStore: true, isolatedGitWorkflow: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
     ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
     claudeHome, codexHome, claudePluginDir, codexPlugin,
     provenance: { condition: cell.condition, ...provenance }, repository, probe,

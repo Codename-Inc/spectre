@@ -195,6 +195,7 @@ test('stages one concrete pending factual delivery task for every condition', as
     const tasks = JSON.parse(fs.readFileSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json'), 'utf8'));
 
     assert.equal(branch.stdout.trim(), 'evaluation/knowledge-cell');
+    assert.equal(staged.isolatedGitWorkflow, true);
     assert.equal(base.status, 0, base.stderr);
     assert.equal(base.stdout.trim(), head.stdout.trim(), 'Execute must have the required change still to make');
     assert.equal(fs.existsSync(path.join(staged.repository.originDir, 'HEAD')), true);
