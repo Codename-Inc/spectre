@@ -92,6 +92,17 @@ test('a frozen cell result resumes only when its freeze hash matches', async () 
   assert.equal(calls, 2);
 });
 
+test('manual semantic adjudication remains pending rather than an invalid host run', async () => {
+  const result = await runCells({
+    cells: [{ id: 'case:candidate:claude:1', caseId: 'case', condition: 'candidate', host: 'claude' }],
+    concurrency: { total: 1, perHost: 1 }, oracle: { case: { requiredRecordHashes: [], manualRubric: 'review' } },
+  }, fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-pending-')), async () => ({
+    status: 'completed', deliverablePath: 'artifact.md', deliverable: { exists: true, bytes: 1 },
+    toolOperations: [{ name: 'Write', status: 'completed', eventOrdinal: 1, input: { file_path: 'artifact.md' } }], trace: { availability: 'available', events: [] }, bypass: [],
+  }));
+  assert.equal(result.cells[0].status, 'pending');
+});
+
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
   const recordId = 'payments-dual-settlement';
   const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;

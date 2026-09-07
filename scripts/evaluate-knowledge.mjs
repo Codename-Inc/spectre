@@ -102,6 +102,7 @@ function freeze(fixtures, oracle, output, options = {}) {
       longitudinal: Boolean(entry.longitudinal),
       cohort: entry.longitudinal ? 'longitudinal' : entry.cohort ?? 'workflow',
       critical: entry.critical === true,
+      fixtureHash: hash(JSON.stringify(entry)),
     })))
   ));
   const result = {
@@ -241,18 +242,25 @@ export function judgeCell(cell, runtime, oracle) {
   return { valid: true, recalled: true, reason: null };
 }
 
+function cellStatus(runtime, judged) {
+  if (runtime?.status !== 'completed') return runtime?.status ?? 'invalid';
+  if (judged.valid) return 'completed';
+  return judged.structuralValid === true && judged.recalled === null ? 'pending' : 'invalid';
+}
+
 export async function runCells(freezeManifest, outputDir, invoke) {
   const oracle = freezeManifest.oraclePath ? readJson(freezeManifest.oraclePath) : freezeManifest.oracle;
   fs.mkdirSync(outputDir, { recursive: true });
-  const freezeKey = freezeManifest.hashes ? hash(JSON.stringify({
-    fixtures: freezeManifest.hashes.fixtures,
+  const cacheKeyFor = (cell) => hash(JSON.stringify({
+    fixture: cell.fixtureHash ?? freezeManifest.hashes?.fixtures,
     configuration: freezeManifest.hashes.configuration,
     candidate: freezeManifest.hashes.candidate,
     nativePipelineInputs: freezeManifest.hashes.nativePipelineInputs,
     baseline: freezeManifest.baseline,
-  })) : null;
+  }));
+  const resumeEnabled = Boolean(freezeManifest.hashes);
   const cacheDirectory = path.join(outputDir, '.knowledge-evaluation-cells');
-  if (freezeKey) fs.mkdirSync(cacheDirectory, { recursive: true });
+  if (resumeEnabled) fs.mkdirSync(cacheDirectory, { recursive: true });
   const results = [];
   const pending = [...freezeManifest.cells];
   const activeByHost = new Map(HOSTS.map(host => [host, 0]));
@@ -265,6 +273,7 @@ export async function runCells(freezeManifest, outputDir, invoke) {
       const cell = pending.splice(index, 1)[0];
       activeByHost.set(cell.host, activeByHost.get(cell.host) + 1);
       try {
+        const freezeKey = resumeEnabled ? cacheKeyFor(cell) : null;
         const cachePath = freezeKey ? path.join(cacheDirectory, `${hash(cell.id).slice('sha256:'.length)}.json`) : null;
         if (cachePath && fs.existsSync(cachePath)) {
           try {
@@ -273,8 +282,7 @@ export async function runCells(freezeManifest, outputDir, invoke) {
               const judged = judgeCell(cell, cached.cell.runtime, oracle);
               results.push({
                 ...cached.cell,
-                status: cached.cell.runtime?.status === 'completed' && judged.valid ? 'completed'
-                  : cached.cell.runtime?.status === 'completed' ? 'invalid' : cached.cell.runtime?.status ?? 'invalid',
+                status: cellStatus(cached.cell.runtime, judged),
                 judged,
               });
               continue;
@@ -288,7 +296,7 @@ export async function runCells(freezeManifest, outputDir, invoke) {
         const judged = judgeCell(cell, runtime, oracle);
         const result = {
           ...cell,
-          status: runtime?.status === 'completed' && judged.valid ? 'completed' : runtime?.status === 'completed' ? 'invalid' : runtime?.status ?? 'invalid',
+          status: cellStatus(runtime, judged),
           runtime: {
             ...runtime,
             usage: { ...(runtime?.usage ?? {}), primary: normalizeUsage(runtime?.usage?.primary ?? runtime?.usage) },
@@ -316,12 +324,13 @@ function cohortReport(cells) {
   for (const cell of cells) {
     const key = `${cell.condition}:${cell.host}:${cell.cohort ?? 'workflow'}`;
     const cohort = cohorts[key] ?? {
-      samples: 0, completed: 0, invalid: 0, recalled: 0, manualPending: 0,
+      samples: 0, completed: 0, pending: 0, invalid: 0, recalled: 0, manualPending: 0,
       sessions: [], messages: [], workflowOperations: [], historyEntries: [], loadedBodyTokens: [],
       nativeInput: [], nativeCache: [], nativeCacheWrite: [], nativeOutput: [], nativeReasoning: [], nativeTotal: [],
     };
     cohort.samples += 1;
     if (cell.status === 'completed') cohort.completed += 1;
+    if (cell.status === 'pending') cohort.pending += 1;
     if (cell.status === 'invalid') cohort.invalid += 1;
     if (cell.judged?.recalled === true) cohort.recalled += 1;
     if (cell.judged?.structuralValid === true) cohort.manualPending += 1;
