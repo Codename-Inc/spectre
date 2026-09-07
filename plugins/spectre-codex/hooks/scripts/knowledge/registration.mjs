@@ -21,6 +21,7 @@ import {
   resolveProjectStore,
   withStoreLock,
 } from './store.mjs';
+import { assertWorkRecordAssociations } from './work.mjs';
 
 const RETIRED_NATIVE_RECORD_IDS = new Set(['spectre-recall', 'spectre-find']);
 
@@ -369,6 +370,7 @@ export async function registerCanonicalKnowledge(options) {
         const stagedRecordDir = path.join(stageRoot, path.basename(sourceDir));
         copyDirectory(sourceDir, stagedRecordDir);
         const parsed = validateStagedRecord(stagedRecordDir);
+        assertWorkRecordAssociations(storePath, parsed.record);
         const destinationPath = path.join(storePath, 'knowledge', parsed.record.id);
         const indexPath = path.join(storePath, 'index.json');
         const outcome = resolveRegistrationOutcome({

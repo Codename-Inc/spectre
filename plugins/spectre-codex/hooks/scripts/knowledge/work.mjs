@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { parseKnowledgeRecord, readVerifiedIndexedRecord, refreshKnowledgeIndex } from './records.mjs';
 import { atomicWriteJson, resolveProjectStore, withStoreLock } from './store.mjs';
 
 const WORK_ASSOCIATION_FILE_NAME = 'work-associations.json';
@@ -111,6 +112,91 @@ function readAssociationIndex(storePath) {
   return validateAssociationIndex(parsed, indexPath);
 }
 
+function emptyAssociationView() {
+  return {
+    sourceRuns: new Map(),
+    pullRequests: new Map(),
+    candidates: new Map(),
+    verifiedWorkIds: new Set(),
+    verifiedWorkRecords: new Map(),
+    unverifiedWorkIds: new Set(),
+    unverifiedAssociations: {
+      sourceRuns: new Map(),
+      pullRequests: new Map(),
+      candidates: new Map(),
+    },
+  };
+}
+
+function addAssociation(view, type, key, workId, target = view) {
+  const values = target[type].get(key) || new Set();
+  values.add(workId);
+  target[type].set(key, values);
+}
+
+function recordPathForEntry(storePath, entry) {
+  const absoluteStore = path.resolve(storePath);
+  const recordPath = path.resolve(absoluteStore, entry.recordPath || '');
+  if (!recordPath.startsWith(`${absoluteStore}${path.sep}`)) return null;
+  try {
+    const canonicalStore = fs.realpathSync.native(absoluteStore);
+    const canonicalRecord = fs.realpathSync.native(recordPath);
+    return canonicalRecord.startsWith(`${canonicalStore}${path.sep}`) ? canonicalRecord : null;
+  } catch {
+    return null;
+  }
+}
+
+function addRecordAssociations(view, record, target = view) {
+  if (record.kind !== 'work') return;
+  for (const sourceRunId of record.work.associations.sourceRunIds) {
+    addAssociation(view, 'sourceRuns', sourceRunId, record.id, target);
+  }
+  for (const pullRequestId of record.work.associations.pullRequestIds) {
+    addAssociation(view, 'pullRequests', pullRequestId, record.id, target);
+  }
+  for (const candidate of record.work.associations.candidates) {
+    addAssociation(view, 'candidates', candidateAssociationKey(candidate), record.id, target);
+  }
+}
+
+/**
+ * Typed work packages are the durable association authority. The small sidecar remains
+ * only for an allocation made before its record exists, so a successful registration
+ * cannot be invisible to a fresh resolver.
+ */
+function associationView(storePath) {
+  const view = emptyAssociationView();
+  const pending = readAssociationIndex(storePath);
+  for (const type of ['sourceRuns', 'pullRequests', 'candidates']) {
+    for (const [key, workId] of Object.entries(pending[type])) {
+      addAssociation(view, type, key, workId);
+    }
+  }
+
+  const { index } = refreshKnowledgeIndex(storePath, { persist: false });
+  for (const entry of index.records.filter((candidate) => candidate.kind === 'work')) {
+    const verified = readVerifiedIndexedRecord(storePath, entry);
+    if (verified?.record.kind === 'work') {
+      view.verifiedWorkIds.add(verified.record.id);
+      view.verifiedWorkRecords.set(verified.record.id, verified.record);
+      addRecordAssociations(view, verified.record);
+      continue;
+    }
+
+    view.unverifiedWorkIds.add(entry.id);
+    const recordPath = recordPathForEntry(storePath, entry);
+    if (!recordPath) continue;
+    try {
+      const parsed = parseKnowledgeRecord(recordPath);
+      if (parsed.record.kind === 'work') addRecordAssociations(view, parsed.record, view.unverifiedAssociations);
+    } catch {
+      // An unreadable package cannot safely establish an exact association.
+    }
+  }
+  return { view, pending };
+}
+
 function sortedAssociationIndex(index) {
   return {
     schemaVersion: WORK_ASSOCIATION_SCHEMA_VERSION,
@@ -120,14 +206,34 @@ function sortedAssociationIndex(index) {
   };
 }
 
-function resolveFromIndex(index, options) {
+function requestedWorkIds(view, associations) {
+  const workIds = new Set();
+  const unverified = new Set();
+  for (const [type, key] of associations) {
+    for (const workId of view[type].get(key) || []) workIds.add(workId);
+    for (const workId of view.unverifiedAssociations[type].get(key) || []) unverified.add(workId);
+  }
+  if (unverified.size > 0) {
+    throw codedError(
+      'WORK_IDENTITY_UNVERIFIED',
+      'An exact association points to a work package whose bytes no longer match the persisted revision.',
+      { workIds: [...unverified].sort() },
+    );
+  }
+  return workIds;
+}
+
+function resolveFromIndex(view, options) {
   const associations = requestedAssociations(options);
   const suppliedWorkId = options.workId === undefined ? null : validateWorkId(options.workId);
-  const resolvedIds = new Set(
-    associations
-      .map(([type, key]) => index[type][key])
-      .filter(Boolean),
-  );
+  if (suppliedWorkId !== null && view.unverifiedWorkIds.has(suppliedWorkId)) {
+    throw codedError(
+      'WORK_IDENTITY_UNVERIFIED',
+      `Work record ${suppliedWorkId} no longer matches its persisted revision.`,
+      { workIds: [suppliedWorkId] },
+    );
+  }
+  const resolvedIds = requestedWorkIds(view, associations);
   if (suppliedWorkId !== null) {
     const conflicts = [...resolvedIds].filter((workId) => workId !== suppliedWorkId);
     if (conflicts.length > 0) {
@@ -137,7 +243,11 @@ function resolveFromIndex(index, options) {
         { workId: suppliedWorkId, conflictingWorkIds: conflicts },
       );
     }
-    return { status: resolvedIds.size === 0 ? 'unresolved' : 'resolved', workId: suppliedWorkId, associations };
+    return {
+      status: resolvedIds.size === 0 && !view.verifiedWorkIds.has(suppliedWorkId) ? 'unresolved' : 'resolved',
+      workId: suppliedWorkId,
+      associations,
+    };
   }
   if (resolvedIds.size > 1) {
     throw codedError(
@@ -166,7 +276,7 @@ export async function resolveWorkIdentity(options) {
   const resolved = await resolveStore(options, true);
   if (!resolved.storePath) return { status: 'unresolved', workId: null };
   return withStoreLock(resolved.storePath, 'resolve-work-identity', async () => {
-    const identity = resolveFromIndex(readAssociationIndex(resolved.storePath), options);
+    const identity = resolveFromIndex(associationView(resolved.storePath).view, options);
     return { status: identity.status, workId: identity.workId };
   }, options.lockOptions);
 }
@@ -178,25 +288,26 @@ export async function resolveWorkIdentity(options) {
 export async function resolveOrAllocateWorkIdentity(options) {
   const resolved = await resolveStore(options, false);
   return withStoreLock(resolved.storePath, 'resolve-work-identity', async () => {
-    const index = readAssociationIndex(resolved.storePath);
-    const identity = resolveFromIndex(index, options);
+    const { view, pending } = associationView(resolved.storePath);
+    const identity = resolveFromIndex(view, options);
     const workId = identity.workId || `work-${crypto.randomUUID()}`;
     let changed = false;
     for (const [type, key] of identity.associations) {
-      const current = index[type][key];
-      if (current && current !== workId) {
+      const existing = view[type].get(key) || new Set();
+      const conflicts = [...existing].filter((current) => current !== workId);
+      if (conflicts.length > 0) {
         throw codedError(
           'WORK_IDENTITY_CONFLICT',
-          `Exact ${type} association is already assigned to ${current}.`,
-          { workId, conflictingWorkIds: [current] },
+          `Exact ${type} association is already assigned to ${conflicts.join(', ')}.`,
+          { workId, conflictingWorkIds: conflicts },
         );
       }
-      if (!current) {
-        index[type][key] = workId;
+      if (!pending[type][key] && existing.size === 0) {
+        pending[type][key] = workId;
         changed = true;
       }
     }
-    if (changed) atomicWriteJson(workAssociationPath(resolved.storePath), sortedAssociationIndex(index));
+    if (changed) atomicWriteJson(workAssociationPath(resolved.storePath), sortedAssociationIndex(pending));
     return {
       ok: true,
       status: identity.status === 'resolved' && !changed ? 'noop' : identity.status === 'resolved' ? 'updated' : 'created',
@@ -205,6 +316,58 @@ export async function resolveOrAllocateWorkIdentity(options) {
       associationPath: workAssociationPath(resolved.storePath),
     };
   }, options.lockOptions);
+}
+
+/** Reject a registration that would split an exact association across verified work IDs. */
+export function assertWorkRecordAssociations(storePath, record) {
+  if (record.kind !== 'work') return;
+  const { view } = associationView(storePath);
+  const prior = view.verifiedWorkRecords.get(record.id);
+  if (prior) {
+    const next = record.work.associations;
+    const priorCandidateKeys = new Set(prior.work.associations.candidates.map(candidateAssociationKey));
+    const nextCandidateKeys = new Set(next.candidates.map(candidateAssociationKey));
+    const missing = [
+      ...prior.work.associations.sourceRunIds
+        .filter((value) => !next.sourceRunIds.includes(value))
+        .map((value) => `source run ${value}`),
+      ...prior.work.associations.pullRequestIds
+        .filter((value) => !next.pullRequestIds.includes(value))
+        .map((value) => `pull request ${value}`),
+      ...[...priorCandidateKeys]
+        .filter((value) => !nextCandidateKeys.has(value))
+        .map(() => 'candidate'),
+    ];
+    if (missing.length > 0) {
+      throw codedError(
+        'WORK_IDENTITY_ASSOCIATION_REMOVED',
+        `Work record ${record.id} must retain established exact associations: ${missing.join(', ')}.`,
+        { workId: record.id },
+      );
+    }
+  }
+  const requested = emptyAssociationView();
+  addRecordAssociations(requested, record);
+  for (const type of ['sourceRuns', 'pullRequests', 'candidates']) {
+    for (const [key] of requested[type]) {
+      const unverified = view.unverifiedAssociations[type].get(key);
+      if (unverified?.size) {
+        throw codedError(
+          'WORK_IDENTITY_UNVERIFIED',
+          'An exact association points to a work package whose bytes no longer match the persisted revision.',
+          { workIds: [...unverified].sort() },
+        );
+      }
+      const conflicts = [...(view[type].get(key) || [])].filter((workId) => workId !== record.id);
+      if (conflicts.length > 0) {
+        throw codedError(
+          'WORK_IDENTITY_CONFLICT',
+          `Exact ${type} association is already assigned to ${conflicts.join(', ')}.`,
+          { workId: record.id, conflictingWorkIds: conflicts },
+        );
+      }
+    }
+  }
 }
 
 export { WORK_ASSOCIATION_FILE_NAME, WORK_ASSOCIATION_SCHEMA_VERSION };
