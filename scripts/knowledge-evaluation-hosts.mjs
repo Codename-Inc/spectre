@@ -752,7 +752,10 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     if (host === 'claude' && preparedFixture.claudeRefreshBootstrapped !== true) {
       const readOauthCredentials = dependencies.readClaudeOauthCredentials ?? (dependencies.spawn ? null : readClaudeOauthCredentials);
       const oauthCredentials = readOauthCredentials?.();
-      if (oauthCredentials?.refreshToken && oauthCredentials.scopes?.length) {
+      if (typeof oauthCredentials?.accessToken === 'string' && oauthCredentials.accessToken) {
+        environment.CLAUDE_CODE_OAUTH_TOKEN = oauthCredentials.accessToken;
+        claudeOauthStaged = true;
+      } else if (oauthCredentials?.refreshToken && oauthCredentials.scopes?.length) {
         environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN = oauthCredentials.refreshToken;
         environment.CLAUDE_CODE_OAUTH_SCOPES = oauthCredentials.scopes.join(' ');
         claudeOauthStaged = true;

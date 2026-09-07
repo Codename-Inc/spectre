@@ -572,7 +572,7 @@ test('Claude refresh credentials are staged ephemerally instead of a possibly ex
       preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
     }, {
       readClaudeOauthCredentials: () => ({
-        accessToken: 'fixture-expired-access-token',
+        accessToken: null,
         refreshToken,
         scopes: ['user:inference', 'user:profile'],
       }),
@@ -636,6 +636,23 @@ test('a staged Claude cell refreshes once and reuses its cell-local credential',
     await fs.rm(setup.root, { recursive: true, force: true });
     await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });
   }
+});
+
+test('a usable Claude access credential avoids refresh login and preserves the source refresh', async () => {
+  const setup = await fixture('claude');
+  const calls = [];
+  try {
+    const result = await invokeKnowledgeHost({ host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task', preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory }, {
+      readClaudeOauthCredentials: () => ({ accessToken: 'fixture-current-access-token', refreshToken: 'fixture-refresh-token', scopes: ['user:inference'] }),
+      spawn: (_command, args, options) => { calls.push({ args, environment: options.env }); return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
+    });
+    assert.equal(result.status, 'completed');
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].args.includes('-p'));
+    assert.equal(calls[0].args.includes('auth'), false);
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_TOKEN, 'fixture-current-access-token');
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, undefined);
+  } finally { await fs.rm(setup.root, { recursive: true, force: true }); await fs.rm(setup.rawLogDirectory, { recursive: true, force: true }); }
 });
 
 test('Codex never receives Claude OAuth refresh credentials or a Claude auth preflight', async () => {
