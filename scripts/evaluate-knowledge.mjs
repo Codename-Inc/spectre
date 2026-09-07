@@ -96,12 +96,16 @@ function percentile(values, fraction) {
 }
 
 export function aggregate(cells = []) {
-  const required = cells.filter(cell => cell.judged?.required === true);
+  const required = cells.filter(cell => cell.judged != null);
   const metric = name => cells.map(cell => cell.runtime?.[name]);
   const summary = values => ({ known: values.filter(Number.isFinite).length, missing: values.filter(value => !Number.isFinite(value)).length, median: percentile(values, .5), p95: percentile(values, .95) });
   return {
     runtime: Object.fromEntries(['injectedTokens', 'previewTokens', 'loadedBodyTokens', 'redundantTokens', 'totalTokens'].map(name => [name, summary(metric(name))])),
-    judged: { requiredRecall: required.length === 0 || required.some(cell => cell.judged?.recalled !== true) ? 'unknown' : true, irrelevantLoadedTokens: cells.some(cell => !Number.isFinite(cell.judged?.irrelevantLoadedTokens)) ? 'unknown' : cells.reduce((sum, cell) => sum + cell.judged.irrelevantLoadedTokens, 0) },
+    judged: {
+      requiredRecall: required.some(cell => cell.judged?.recalled === false) ? false
+        : required.length > 0 && required.every(cell => cell.judged?.recalled === true) ? true : 'unknown',
+      irrelevantLoadedTokens: cells.some(cell => !Number.isFinite(cell.judged?.irrelevantLoadedTokens)) ? 'unknown' : cells.reduce((sum, cell) => sum + cell.judged.irrelevantLoadedTokens, 0),
+    },
     samples: cells.length,
   };
 }
@@ -113,9 +117,24 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.status !== 'completed') return { valid: false, recalled: false, reason: `host status is ${runtime?.status ?? 'missing'}` };
   if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   if (Array.isArray(expected.requiredRecordHashes)) {
-    const actual = new Set((runtime.artifact?.recordIds ?? []).map((id) => hash(id)));
-    if (!expected.requiredRecordHashes.every((value) => actual.has(value))) {
-      return { valid: false, recalled: false, reason: 'structured artifact lacks required record evidence' };
+    const expectedHashes = new Set(expected.requiredRecordHashes);
+    const matchedResults = (runtime.toolResults ?? []).filter((result) =>
+      typeof result.content === 'string' && [...result.content.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)]
+        .some((match) => expectedHashes.has(hash(match[0])))
+    );
+    const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
+      (operation.name === 'Write' || operation.name === 'exec') &&
+      JSON.stringify(operation.input ?? '').includes('evaluation-result.json')
+    );
+    const orderedLoad = matchedResults.some((result) =>
+      Number.isInteger(result.eventOrdinal) &&
+      (!Number.isInteger(artifactWrite?.eventOrdinal) || result.eventOrdinal < artifactWrite.eventOrdinal)
+    );
+    const tracedLoad = runtime.trace?.events?.some((event) =>
+      event.type === 'load' && expectedHashes.has(hash(event.id ?? ''))
+    );
+    if (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad)) {
+      return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
     }
     if (expected.requiresCapture === true && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
       return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
@@ -127,7 +146,9 @@ export function judgeCell(cell, runtime, oracle) {
     if (expected.requiresPrView === true && !ghCommands.some((command) => /^pr view\b/.test(command))) {
       return { valid: false, recalled: false, reason: 'repeat/noop PR evidence is missing' };
     }
-    return { valid: true, recalled: true, reason: null, manualRubric: expected.manualRubric ?? null };
+    return expected.manualRubric
+      ? { valid: false, recalled: null, reason: 'manual semantic adjudication pending', structuralValid: true, manualRubric: expected.manualRubric }
+      : { valid: true, recalled: true, reason: null };
   }
   const answer = (runtime.textFinalAnswers ?? []).join('\n').toLocaleLowerCase();
   const required = Array.isArray(expected.requiredPhrases) ? expected.requiredPhrases : [];
