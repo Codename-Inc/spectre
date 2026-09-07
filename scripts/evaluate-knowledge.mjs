@@ -81,9 +81,24 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     entry.task,
     entry.workflow ?? 'Use the installed Spectre workflow to complete the task.',
   ].join('\n')];
-  return prompts.map((prompt, index) => (index === prompts.length - 1
+  return prompts.map((prompt, index) => {
+    let resolved = (index === prompts.length - 1
     ? `${prompt}\nWrite the decision artifact to ${artifactPath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
-    : prompt).replaceAll('{EXECUTE_COMMAND}', commands.EXECUTE_COMMAND).replaceAll('{SHIP_COMMAND}', commands.SHIP_COMMAND));
+    : prompt).replaceAll('{EXECUTE_COMMAND}', commands.EXECUTE_COMMAND).replaceAll('{SHIP_COMMAND}', commands.SHIP_COMMAND);
+    if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 0) {
+      resolved = `${commands.EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*? for the staged feature\.\s*/, '')}`;
+    }
+    if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 2) {
+      resolved = `${commands.SHIP_COMMAND}\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*?:\s*/, '')}`;
+    }
+    return resolved;
+  });
+}
+
+export function evaluationActorContext(cell, sessionOrdinal) {
+  const opaque = hash(JSON.stringify({ host: cell.host, condition: cell.condition, repeat: cell.repeat, sessionOrdinal }));
+  const suffix = opaque.slice('sha256:'.length);
+  return { actorId: `evaluation-${suffix.slice(0, 24)}`, contextId: `evaluation-${suffix.slice(24, 48)}` };
 }
 
 export function selectFrozenCells(freezeManifest, cellIds = []) {
@@ -221,7 +236,8 @@ export function judgeCell(cell, runtime, oracle) {
   if (Array.isArray(expected.requiredRecordHashes)) {
     const commandActions = classifyKnowledgeCommands(runtime.toolOperations);
     const expectedHashes = new Set(expected.requiredRecordHashes);
-    const readCommand = expected.requiredReadCommand === 'inspect' ? 'inspect' : 'load';
+    const readCommand = cell.condition === 'baseline' && expected.requiredReadCommand === 'inspect' ? 'load'
+      : expected.requiredReadCommand === 'inspect' ? 'inspect' : 'load';
     const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
       const command = operation?.input?.command ?? '';
       return commandActions.get(operation)?.has(readCommand) && new RegExp(`${readCommand}\\s+['\"]?([a-z0-9]+(?:-[a-z0-9]+)*)`).test(command) &&
@@ -269,11 +285,27 @@ export function judgeCell(cell, runtime, oracle) {
       if (expected.requiredStates.some((state) => /noop/.test(state)) && !unchangedSession) {
         return { valid: false, recalled: false, reason: 'required unchanged capture evidence is missing' };
       }
+      if (expected.requiredStates.some((state) => /noop/.test(state)) &&
+        !captureOutcomes.some((outcome) => outcome === 'noop' || outcome === 'unchanged')) {
+        return { valid: false, recalled: false, reason: 'explicit no-op capture result is missing' };
+      }
       if (expected.requiredStates.includes('save-failure') && !captureOutcomes.includes('failed')) {
         if (runtime.lifecycleEvidence?.registrationFault && runtime.lifecycleEvidence.registrationFault !== 'armed') {
           return { valid: false, recalled: false, reason: 'lifecycle registration-fault setup was unavailable' };
         }
         return { valid: false, recalled: false, reason: 'required knowledge save-failure evidence is missing' };
+      }
+    }
+    if (cell.condition === 'candidate' && expected.requiresExecuteAutoCapture === true) {
+      const executeSession = runtime.sessionSnapshots?.[0];
+      const automaticCapture = (runtime.trace?.events ?? []).some((event) => event.type === 'capture' &&
+        event.contextHash === executeSession?.contextHash && (event.outcome === 'created' || event.outcome === 'updated'));
+      const explicitCaptureDuringExecute = (runtime.toolOperations ?? []).some((operation) =>
+        (operation.sessionOrdinal ?? 0) === 0 && (operation.name === 'Learn' ||
+          operation.name === 'Skill' && /(?:spectre[-:]learn|\blearn\b)/i.test(JSON.stringify(operation.input ?? {})))
+      );
+      if (!automaticCapture || explicitCaptureDuringExecute) {
+        return { valid: false, recalled: false, reason: 'automatic Execute capture evidence is missing' };
       }
     }
     if (cell.condition === 'candidate' && expected.requiresFreshExtractedReuse === true) {
@@ -322,6 +354,12 @@ export function judgeCell(cell, runtime, oracle) {
     }
     if (expected.requiresPrView === true && !ghCommands.some((command) => /^pr view\b/.test(command))) {
       return { valid: false, recalled: false, reason: 'repeat/noop PR evidence is missing' };
+    }
+    if (expected.requiresPrView === true) {
+      const drafts = runtime.workflowEvidence?.ghState?.pullRequests ?? [];
+      if (drafts.length !== 1 || drafts[0].state !== 'OPEN' || drafts[0].isDraft !== true || !drafts[0].url) {
+        return { valid: false, recalled: false, reason: 'existing draft survival evidence is missing' };
+      }
     }
     return expected.manualRubric
       ? { valid: false, recalled: null, reason: 'manual semantic adjudication pending', structuralValid: true, manualRubric: expected.manualRubric }
@@ -514,7 +552,6 @@ function pairedReport(cells, oracle = {}, primaryJudgments = []) {
     const baselineSemantic = semanticOutcome(manual.get(group.baseline?.id));
     const noKnowledgeSemantic = semanticOutcome(manual.get(group['no-knowledge']?.id));
     const eitherControlCorrect = baselineSemantic === true || noKnowledgeSemantic === true;
-    const controlsCorrect = baselineSemantic === true && noKnowledgeSemantic === true;
     const structural = group.candidate?.judged?.structuralValid === true;
     return {
       id,
@@ -526,9 +563,9 @@ function pairedReport(cells, oracle = {}, primaryJudgments = []) {
       knowledgeBenefit: knowledgeBenefitCase(oracle[group.candidate?.caseId ?? group.baseline?.caseId ?? group['no-knowledge']?.caseId] ?? {}),
       semantic: { candidate: candidateSemantic, baseline: baselineSemantic, noKnowledge: noKnowledgeSemantic },
       correctnessVsBothControls: candidateSemantic === false && eitherControlCorrect ? 'regression'
-        : candidateSemantic === true && controlsCorrect ? 'no-regression'
+        : candidateSemantic === true ? 'no-regression'
           : candidateSemantic === null || baselineSemantic === null || noKnowledgeSemantic === null ? 'unknown' : 'not-comparable',
-      qualityGate: structural && candidateSemantic === true && controlsCorrect,
+      qualityGate: structural && candidateSemantic === true && baselineSemantic !== null && noKnowledgeSemantic !== null,
       loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
         ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
       nativeFullCycleTokenDelta: pairedDelta(group.candidate, group.baseline),
@@ -582,10 +619,14 @@ export function primaryJudgmentReport(cells, primaryJudgments = []) {
       justifiedExpansions: Array.isArray(judgment.justifiedExpansions) ? judgment.justifiedExpansions.length : null,
     };
   });
-  const failed = reviewed.some((judgment) => !judgment.artifactHashMatches || judgment.correct === false || judgment.relevant === false || judgment.requiredRecallBeforeDecision === false);
+  const invalid = reviewed.some((judgment) => !judgment.artifactHashMatches);
   const pending = cells.some((cell) => !judgments.has(cell.id)) ||
     reviewed.some((judgment) => judgment.correct === null || judgment.relevant === null || judgment.requiredRecallBeforeDecision === null);
-  return { reviewed, status: failed ? 'fail' : pending ? 'pending' : 'reviewed' };
+  return {
+    reviewed,
+    semanticFailures: reviewed.filter((judgment) => judgment.correct === false || judgment.relevant === false || judgment.requiredRecallBeforeDecision === false).map((judgment) => judgment.cellId),
+    status: invalid ? 'invalid' : pending ? 'pending' : 'reviewed',
+  };
 }
 
 export function evaluationQualityReport(cells, primaryJudgments = []) {
@@ -612,7 +653,7 @@ export function evaluationQualityReport(cells, primaryJudgments = []) {
       ...(condition === 'no-knowledge' ? { sessionStart: { verifiedNone: verifiedNoKnowledgeHook, unavailable: samples.length - verifiedNoKnowledgeHook } } : {}),
     }];
   }));
-  const structuralFailures = cells.filter((cell) => cell.judged?.recalled === false).length;
+  const candidateStructuralFailures = cells.filter((cell) => cell.condition === 'candidate' && cell.judged?.recalled === false).length;
   const expected = 12 * CONDITIONS.length * HOSTS.length * 2;
   return {
     expectedSamples: expected,
@@ -620,7 +661,8 @@ export function evaluationQualityReport(cells, primaryJudgments = []) {
     missingSamples: Math.max(0, expected - cells.length),
     controls: byCondition,
     manual,
-    status: structuralFailures > 0 || manual.status === 'fail' ? 'fail'
+    candidateStructuralFailures,
+    status: candidateStructuralFailures > 0 || manual.status === 'invalid' ? 'fail'
       : cells.length === expected && manual.status === 'reviewed' ? 'reviewed' : 'pending',
     note: 'Unknown native usage, unavailable trace, unavailable baseline payload metrics, and unreviewed artifacts remain explicit gaps and cannot establish a pass.',
   };
@@ -683,6 +725,11 @@ function thresholdStatus(values) {
 function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
   const manual = primaryJudgmentReport(cells, primaryJudgments);
   const manualByCell = new Map(manual.reviewed.map((judgment) => [judgment.cellId, judgment]));
+  const candidateCells = cells.filter((cell) => cell.condition === 'candidate');
+  const candidateStructural = candidateCells.length > 0 && candidateCells.every((cell) => cell.judged?.structuralValid === true) ? 'pass'
+    : candidateCells.some((cell) => cell.judged?.recalled === false) ? 'fail' : 'unknown';
+  const candidateSemantic = candidateCells.length > 0 && candidateCells.every((cell) => semanticOutcome(manualByCell.get(cell.id)) === true) ? 'pass'
+    : candidateCells.some((cell) => semanticOutcome(manualByCell.get(cell.id)) === false) ? 'fail' : 'unknown';
   const required = cells.filter((cell) => cell.condition === 'candidate' && cell.critical === true);
   const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.structuralValid === true && semanticOutcome(manualByCell.get(cell.id)) === true)
     ? 'pass' : required.some((cell) => cell.judged?.recalled === false || semanticOutcome(manualByCell.get(cell.id)) === false) ? 'fail' : 'unknown';
@@ -699,6 +746,7 @@ function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
   const correctnessStatus = regressions > 0 ? 'fail' : unknownComparisons > 0 ? 'unknown' : 'pass';
   return {
     thresholds: ACCEPTANCE_THRESHOLDS,
+    allCandidateDelivery: { structural: candidateStructural, semantic: candidateSemantic },
     requiredRecall,
     correctnessVsBothControls: { regressions, unknown: unknownComparisons, status: correctnessStatus },
     efficiency,
@@ -715,6 +763,7 @@ function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
     manual,
     status: cells.length < 144 || manual.status !== 'reviewed' ? 'pending' : thresholdStatus([
       requiredRecall, correctnessStatus, historyStatus, redundantStatus,
+      candidateStructural, candidateSemantic,
       efficiency.startupTokens.status, efficiency.searchPreviewTokens.status, efficiency.initialLoadTokens.status,
       efficiency.expansions.status, efficiency.routineIrrelevantLoadedBodyRateStatus,
     ]),
@@ -792,23 +841,23 @@ function compactSnapshot(snapshot, relevantIds, previous = null) {
 
 function workflowEvidence(staged) {
   try {
-    return { ghCommands: fs.readFileSync(staged.ghLogPath, 'utf8').split(/\r?\n/).filter(Boolean) };
+    return { ghCommands: fs.readFileSync(staged.ghLogPath, 'utf8').split(/\r?\n/).filter(Boolean), ghState: readGhState(staged) };
   } catch {
-    return { ghCommands: [] };
+    return { ghCommands: [], ghState: null };
   }
 }
 
-function configureLifecycleMock(staged, fixtureCase) {
-  if (fixtureCase.id !== 'lifecycle-identity') return;
-  const mockBin = staged.environment?.PATH?.split(path.delimiter)[0];
-  if (!mockBin) throw new Error('lifecycle fixture is missing its local gh mock');
-  fs.writeFileSync(path.join(mockBin, 'gh'), [
-    '#!/bin/sh',
-    'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"',
-    'if [ "$1 $2" = "pr create" ]; then echo "https://example.invalid/evaluation/pr/1"; exit 0; fi',
-    'echo "{}"',
-  ].join('\n'));
-  fs.chmodSync(path.join(mockBin, 'gh'), 0o755);
+function readGhState(staged) {
+  try {
+    const state = readJson(staged.ghStatePath);
+    return {
+      nextNumber: Number.isInteger(state.nextNumber) ? state.nextNumber : null,
+      pullRequests: Array.isArray(state.pullRequests) ? state.pullRequests.map(({ number, url, state: status, isDraft, headRefName, baseRefName }) =>
+        ({ number, url, state: status, isDraft, headRefName, baseRefName })) : [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 function hostConfiguration(configuration, host) {
@@ -941,6 +990,14 @@ export function traceRuntimeFacts(trace, hostResult = {}) {
   };
 }
 
+export function attachNativeUsage(runtimeFacts = {}, hostResult = {}) {
+  return {
+    ...runtimeFacts,
+    nativePrimaryUsage: runtimeFacts.nativePrimaryUsage ?? hostResult.usage?.primary ?? null,
+    nativeFullCycleUsage: runtimeFacts.nativeFullCycleUsage ?? hostResult.usage?.fullCycle ?? null,
+  };
+}
+
 export function noKnowledgeRuntimeFacts(hostResult = {}, verifiedAbsence = false) {
   const measurement = hostResult.usage?.sessionStartMeasurement;
   const zero = verifiedAbsence === true;
@@ -985,7 +1042,6 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
     });
     try {
       const fixtureCase = cases.get(cell.caseId);
-      configureLifecycleMock(staged, fixtureCase);
       const hostSettings = hostConfiguration(options.configuration, cell.host);
       const relevantIds = (fixtureCase.initialFacts ?? []).map((fact) => fact.id);
       const retainedIds = new Set(relevantIds);
@@ -1004,9 +1060,10 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       let lifecycleEvidence = fixtureCase.id === 'lifecycle-identity' ? { registrationFault: 'not-reached', error: null } : null;
       try {
         for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
-          const contextId = `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`;
+          const { actorId, contextId } = evaluationActorContext(cell, sessionOrdinal + 1);
           const rawBeforeSession = snapshotKnowledgeCell(staged);
           const beforeSession = compact(rawBeforeSession, rawSnapshotBefore);
+          const ghBeforeSession = readGhState(staged);
           const run = await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
@@ -1014,15 +1071,15 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           environment: {
             ...staged.environment,
             ...(staged.tracePath ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: staged.tracePath } : {}),
-            SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: `${cell.id}:session:${sessionOrdinal + 1}`,
+            SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: actorId,
             SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: contextId,
           },
           limits: options.limits,
           });
           runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
           const rawAfterSession = snapshotKnowledgeCell(staged);
-          sessionSnapshots.push({ before: beforeSession, after: compact(rawAfterSession, rawBeforeSession), contextHash: hash(contextId) });
-          if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 1 && runs.at(-1)?.status === 'completed') {
+          sessionSnapshots.push({ before: beforeSession, after: compact(rawAfterSession, rawBeforeSession), gh: { before: ghBeforeSession, after: readGhState(staged) }, contextHash: hash(contextId) });
+          if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 3 && runs.at(-1)?.status === 'completed') {
             try {
               registrationFault = blockKnowledgeRegistration(staged);
               lifecycleEvidence = { registrationFault: 'armed', error: null };
@@ -1059,7 +1116,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         workflowEvidence: workflowEvidence(staged),
         lifecycleEvidence,
         trace,
-        ...measuredRuntime,
+        ...attachNativeUsage(measuredRuntime, hostResult),
         bypass: [
           ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
           ...trace.events.filter((event) => event.type === 'bypass'),

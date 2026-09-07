@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, cohortReport, compactSnapshot, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -107,10 +107,22 @@ test('a thrown cell is persisted as failed while other frozen cells continue', a
 });
 
 test('lifecycle prompts use user transport only where the plugin exists', () => {
-  const entry = { longitudinalSteps: ['Run {EXECUTE_COMMAND}.', 'Run {SHIP_COMMAND}.'] };
-  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[1], /\/spectre:spectre-ship/);
-  assert.match(promptContract(entry, 'artifacts/decision.md', 'codex', 'candidate')[1], /spectre-ship/);
-  assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'no-knowledge')[1], /spectre:|spectre-ship/);
+  const entry = { id: 'lifecycle-identity', longitudinalSteps: [
+    'Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature. Do work.',
+    'Learn the work.',
+    'Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh the work.',
+  ] };
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /^\/spectre:spectre-execute /);
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'codex', 'candidate')[2], /^spectre-ship\n/);
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /--finalization-owner parent/);
+  assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'no-knowledge')[2], /spectre:|spectre-ship/);
+});
+
+test('native actor and context inputs are opaque to fixture labels', () => {
+  const values = evaluationActorContext({ caseId: 'critical-old-constraint', host: 'claude', condition: 'candidate', repeat: 1 }, 2);
+  assert.match(values.actorId, /^evaluation-[a-f0-9]+$/);
+  assert.match(values.contextId, /^evaluation-[a-f0-9]+$/);
+  assert.doesNotMatch(`${values.actorId}:${values.contextId}`, /critical|constraint|candidate|claude/);
 });
 
 test('manual semantic adjudication remains pending rather than an invalid host run', async () => {
@@ -131,7 +143,7 @@ test('primary judgments bind a reviewed conclusion to the persisted artifact has
     correct: true, relevant: true, requiredRecallBeforeDecision: true, irrelevantTokens: 0, unnecessaryHistoryLoads: 0, justifiedExpansions: [],
   }]);
   assert.equal(accepted.status, 'reviewed');
-  assert.equal(primaryJudgmentReport(cells, [{ ...accepted.reviewed[0], cellId: cells[0].id, artifactHash: 'sha256:wrong', artifactEvidence: 'sha256:wrong' }]).status, 'fail');
+  assert.equal(primaryJudgmentReport(cells, [{ ...accepted.reviewed[0], cellId: cells[0].id, artifactHash: 'sha256:wrong', artifactEvidence: 'sha256:wrong' }]).status, 'invalid');
 });
 
 test('quality report keeps incomplete controls and unreviewed artifacts pending', () => {
@@ -156,6 +168,13 @@ test('a proven no-knowledge isolation reports zero knowledge delivery without ze
   }, { injectedTokens: 0, previewTokens: 0, loadedBodyTokens: 0, resourceTokens: 0, redundantTokens: 0, totalTokens: 0 });
   assert.deepEqual(result.nativeFullCycleUsage, { coverage: 'complete', total: { input: 8, output: 3 } });
   assert.equal(noKnowledgeRuntimeFacts({}, false).loadedBodyTokens, null);
+});
+
+test('post-hoc baseline facts retain native usage reported by the host', () => {
+  const usage = { primary: { input: 10 }, fullCycle: { coverage: 'complete', total: { input: 10, output: 2 } } };
+  assert.deepEqual(attachNativeUsage({ loadedBodyTokens: 7, nativePrimaryUsage: null, nativeFullCycleUsage: null }, { usage }), {
+    loadedBodyTokens: 7, nativePrimaryUsage: usage.primary, nativeFullCycleUsage: usage.fullCycle,
+  });
 });
 
 test('thresholds use hash-bound manual outcomes, bounded trace metrics, and quality-gated benefit pairs', () => {
@@ -206,6 +225,11 @@ test('paired reporting flags a regression against either control and never selec
   assert.equal(report.correctnessVsBothControls.status, 'fail');
   assert.equal(report.pairedEfficiency.failedQualityPairs, 1);
   assert.equal(report.pairedEfficiency.hypothesis, 'unknown');
+  const improvedJudgments = judgments.map((judgment) => ({ ...judgment, correct: judgment.cellId.includes(':candidate:') || judgment.cellId.includes(':baseline:') }));
+  const improvedPairs = pairedReport(cells, oracle, improvedJudgments);
+  assert.equal(primaryJudgmentReport(cells, improvedJudgments).status, 'reviewed');
+  assert.equal(improvedPairs[0].qualityGate, true);
+  assert.equal(improvedPairs[0].correctnessVsBothControls, 'no-regression');
   const incomplete = thresholdReport(cells, paired, oracle, judgments.map((judgment) => ({ ...judgment, irrelevantTokens: undefined })));
   assert.equal(incomplete.efficiency.routineIrrelevantLoadedBodyRate, 'unknown');
 });
@@ -281,6 +305,12 @@ test('judging requires an exact successful load and a later persisted decision a
     ...runtime, toolOperations: [runtime.toolOperations[1]], toolResults: [], trace: { availability: 'unavailable', events: [] },
   }, oracle);
   assert.equal(control.recalled, null);
+  const baselineInspect = judgeCell({ ...cell, condition: 'baseline' }, {
+    ...runtime, toolOperations: [
+      { ...runtime.toolOperations[0], input: { command: `node knowledge-cli.mjs load ${recordId}` } }, runtime.toolOperations[1],
+    ], trace: { availability: 'unavailable', events: [] },
+  }, { case: { ...oracle.case, requiredReadCommand: 'inspect' } });
+  assert.equal(baselineInspect.structuralValid, true);
   assert.equal(judgeCell(cell, runtime, { case: { requiredRecordHashes: [], allowedLoads: 0, manualRubric: 'manual review' } }).recalled, false);
 });
 
@@ -328,6 +358,20 @@ test('unarmed lifecycle registration fault becomes cell evidence instead of a lo
     trace: { availability: 'available', events: [] }, lifecycleEvidence: { registrationFault: 'not-armed', error: 'ENOENT' },
   }, { lifecycle: { requiredRecordHashes: [], requiredStates: ['save-failure'] } });
   assert.equal(result.reason, 'lifecycle registration-fault setup was unavailable');
+});
+
+test('lifecycle requires Execute capture before a later explicit work summary', () => {
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [{ name: 'Write', status: 'completed', sessionOrdinal: 1, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } }],
+    trace: { availability: 'available', events: [{ type: 'capture', contextHash: 'execute', outcome: 'created' }] },
+    sessionSnapshots: [{ contextHash: 'execute' }],
+  };
+  const oracle = { lifecycle: { requiredRecordHashes: [], requiresExecuteAutoCapture: true } };
+  assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, runtime, oracle).valid, true);
+  assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, {
+    ...runtime, toolOperations: [{ name: 'Learn', sessionOrdinal: 0, eventOrdinal: 1, input: {} }, ...runtime.toolOperations],
+  }, oracle).reason, 'automatic Execute capture evidence is missing');
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {

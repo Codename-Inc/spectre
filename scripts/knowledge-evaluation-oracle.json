@@ -86,8 +86,10 @@
   },
   "lifecycle-identity": {
     "requiredRecordHashes": [],
-    "minimumPrCreates": 2,
+    "minimumPrCreates": 1,
     "requiresSameWorkId": true,
+    "requiresPrView": true,
+    "requiresExecuteAutoCapture": true,
     "requiredStates": [
       "capture",
       "refresh",

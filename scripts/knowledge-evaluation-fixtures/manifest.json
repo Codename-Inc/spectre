@@ -170,9 +170,11 @@
       "workflow": "Use Learn summarize this work, Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
       "initialFacts": [],
       "longitudinalSteps": [
-        "Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} for the staged feature. Use Learn with explicit work-summary intent to capture its templated work record, including unknown or pending fields truthfully.",
+        "Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature. Do not add an explicit work-summary capture in this session.",
+        "Start a fresh session. Use Learn with explicit work-summary intent to capture the Execute-created templated work record, including unknown or pending fields truthfully.",
         "Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh that same work before opening the local gh draft, then repair verification and retain the draft URL.",
-        "Start a fresh session. Repeat the unchanged work capture as a no-op. If the registration-failure fixture was armed, report its failure and recovery input; otherwise report that fault setup was unavailable without claiming a save failure. In either case, open the direct CreatePR fallback draft and write evaluation-result.json with the required decision artifact."
+        "Start a fresh session. Repeat the unchanged work capture and record its explicit no-op outcome. Do not attempt a forced registration failure in this session.",
+        "Start a fresh session. If the registration-failure fixture was armed, report its failure and recovery input; otherwise report that fault setup was unavailable without claiming a save failure. In either case, use the direct CreatePR fallback to refresh or reuse the existing local draft, then write evaluation-result.json with the required decision artifact."
       ],
       "cohort": "workflow"
     },
