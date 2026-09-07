@@ -250,6 +250,24 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   };
 }
 
+/** Make only record registration fail while existing search/load activity remains available. */
+export function blockKnowledgeRegistration(staged) {
+  const knowledgePath = path.join(staged?.storePath || '', 'knowledge');
+  if (!staged?.storePath || !fs.statSync(knowledgePath).isDirectory()) {
+    throw new Error('staged cell must have a canonical knowledge directory');
+  }
+  const originalMode = fs.statSync(knowledgePath).mode & 0o777;
+  fs.chmodSync(knowledgePath, originalMode & 0o555);
+  let restored = false;
+  return {
+    knowledgePath,
+    restore() {
+      if (!restored) fs.chmodSync(knowledgePath, originalMode);
+      restored = true;
+    },
+  };
+}
+
 /** Snapshot bounded record, revision, lifecycle, and operational facts before cleanup. */
 export function snapshotKnowledgeCell(staged) {
   if (!staged?.storePath || !fs.existsSync(staged.storePath)) return { records: [], history: [], activity: null };

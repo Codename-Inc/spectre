@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { blockKnowledgeRegistration, snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -127,5 +127,29 @@ test('stages the same feature branch, base ref, and Execute fixture for every co
     assert.equal(fs.existsSync(path.join(staged.repository.originDir, 'HEAD')), true);
     assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md')), true);
     assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json')), true);
+  }
+});
+
+test('can force an actual registration failure without blocking existing reads', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+  const proposal = path.join(staged.root, 'write-failure-probe');
+  fs.mkdirSync(proposal);
+  const record = JSON.parse(fs.readFileSync(staged.knownPaths[0], 'utf8'));
+  record.id = 'write-failure-probe';
+  record.title = 'write-failure-probe';
+  fs.writeFileSync(path.join(proposal, 'record.json'), `${JSON.stringify(record, null, 2)}\n`);
+  const fault = blockKnowledgeRegistration(staged);
+  try {
+    const environment = { ...process.env, SPECTRE_HOME: staged.storeDir };
+    const failedSave = spawnSync(process.execPath, [staged.cliPath, 'register', '--record', proposal, '--project-dir', staged.projectDir, '--json'], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+    const readExisting = spawnSync(process.execPath, [staged.cliPath, 'load', 'staged-fact', '--project-dir', staged.projectDir, '--json'], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+
+    assert.notEqual(failedSave.status, 0);
+    assert.match(JSON.parse(failedSave.stdout).code, /^(?:EACCES|EPERM|KNOWLEDGE_REGISTRATION_FAILED)$/);
+    assert.equal(readExisting.status, 0, readExisting.stderr);
+    assert.equal(JSON.parse(readExisting.stdout).record.id, 'staged-fact');
+  } finally {
+    fault.restore();
   }
 });
