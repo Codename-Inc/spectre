@@ -36,6 +36,36 @@ function freeze(fixtures, oracle, output) {
   return result;
 }
 
+export function normalizeUsage(raw = {}) {
+  const pick = key => Number.isFinite(raw[key]) ? raw[key] : 'unknown';
+  return { input: pick('input'), cache: pick('cache'), output: pick('output'), reasoning: pick('reasoning') };
+}
+
+function percentile(values, fraction) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return 'unknown';
+  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
+}
+
+export function aggregate(cells = []) {
+  const metric = name => cells.map(cell => cell.runtime?.[name]).filter(Number.isFinite);
+  return {
+    runtime: Object.fromEntries(['injectedTokens', 'previewTokens', 'loadedBodyTokens', 'redundantTokens', 'totalTokens'].map(name => [name, { median: percentile(metric(name), .5), p95: percentile(metric(name), .95) }])),
+    judged: { requiredRecall: cells.filter(cell => cell.judged?.required).every(cell => cell.judged.recalled === true), irrelevantLoadedTokens: cells.reduce((sum, cell) => sum + (cell.judged?.irrelevantLoadedTokens || 0), 0) },
+    samples: cells.length,
+  };
+}
+
+export async function runCells(freezeManifest, outputDir, invoke) {
+  const results = [];
+  for (const cell of freezeManifest.cells) {
+    const cellDir = fs.mkdtempSync(path.join(outputDir, `${cell.host}-${cell.condition}-`));
+    const runtime = await invoke({ ...cell, cellDir });
+    results.push({ ...cell, runtime: { ...runtime, usage: normalizeUsage(runtime?.usage) } });
+  }
+  return { schemaVersion: 1, baseline: BASELINE, cells: results, aggregate: aggregate(results) };
+}
+
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   const [, , command] = process.argv;
   if (command !== 'freeze') throw new Error(usage());

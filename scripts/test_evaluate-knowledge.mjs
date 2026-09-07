@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { freeze } from './evaluate-knowledge.mjs';
+import { aggregate, freeze, normalizeUsage } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -17,4 +17,11 @@ test('knowledge evaluation freezes twelve hidden-oracle cases and matched host c
   assert.deepEqual(frozen.concurrency, { total: 4, perHost: 2 });
   fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases, leaked: 'gold-label' }));
   assert.throws(() => freeze(fixtures, oracle, output), /leaked/);
+});
+
+test('usage normalization preserves missing native fields as unknown and aggregates runtime separately', () => {
+  assert.deepEqual(normalizeUsage({ input: 4, output: 3 }), { input: 4, cache: 'unknown', output: 3, reasoning: 'unknown' });
+  const report = aggregate([{ runtime: { injectedTokens: 3, previewTokens: 4, loadedBodyTokens: 5, redundantTokens: 0, totalTokens: 12 }, judged: { required: true, recalled: true } }]);
+  assert.equal(report.runtime.totalTokens.median, 12);
+  assert.equal(report.judged.requiredRecall, true);
 });
