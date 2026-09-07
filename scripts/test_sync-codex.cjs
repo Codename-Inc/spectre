@@ -1546,8 +1546,8 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(scope, /\| ▶️ \*\*Proposed next step\*\* \|/);
     assert.match(scope, /Pause: .*spectre-handoff/);
 
-    assert.match(ux, /Material visual\/interaction assumptions remain/);
-    assert.match(ux, /unified tier\/research\/review\/task router/);
+    assert.match(ux, /interaction, layout, visual validation, or stakeholder review materially matters/);
+    assert.match(ux, /otherwise Plan when Scope \+ flows suffice/);
     assert.doesNotMatch(ux, /spectre-create_plan.*spectre-create_tasks.*spectre-tdd/);
 
     for (const mode of ['explore', 'flows-only ux', 'post-ux', 'post-scope', 'standalone']) {
@@ -1582,6 +1582,23 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(ship, /Skill\(spectre-rebase\)/);
     assert.match(ship, /Skill\(spectre-create_pr\)/);
     assert.match(ship, /\| ▶️ \*\*Proposed next step\*\* \|/);
+  }
+});
+
+test('UX carries explicit flow approval and a selected continuation through Stage 2', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const ux = fs.readFileSync(path.join(
+      repoRoot, 'plugins', rootName, 'skills', 'spectre-ux', 'SKILL.md',
+    ), 'utf8');
+
+    assert.match(ux, /every initial or feedback-revised flow presentation ends with the compact handoff table/i);
+    assert.match(ux, /Flows approved[\s\S]*complete \{OUT_DIR\}\/ux\.md[\s\S]*Prototype[\s\S]*Plan/i);
+    assert.match(ux, /interaction, layout, visual validation, or stakeholder review materially matters[\s\S]*Prototype[\s\S]*otherwise[\s\S]*Plan/i);
+    assert.match(ux, /explicit flow approval \+ selected continuation[\s\S]*same run[\s\S]*no second gate/i);
+    assert.match(ux, /feedback without approval[\s\S]*revise and re-present/i);
+    assert.match(ux, /ambiguous approval or missing route authority[\s\S]*only the unresolved choice/i);
+    assert.match(ux, /Never write `\{OUT_DIR\}\/ux\.md` before explicit flow approval \+ selected continuation/i);
   }
 });
 

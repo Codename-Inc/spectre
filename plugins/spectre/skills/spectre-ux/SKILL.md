@@ -1,18 +1,18 @@
 ---
 name: "spectre-ux"
-description: "Define exactly how a feature behaves — user flows, screens, components, states, copy, and accessibility — producing a definitive ux.md spec for implementation. Two stages: align on user flows, then write the detailed spec. Trigger after scope/PRD when a feature needs a behavioral/UX spec before planning or building UI. Do NOT trigger for pure backend/non-UI work, for setting scope boundaries (spectre-scope), or for technical architecture (spectre-plan)."
+description: "Define user flows, screens, states, copy, and accessibility in ux.md. Two stages: align flows, then specify. Use after scope/PRD for behavioral UX; not backend, scope, or architecture."
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # ux
 
-Transform product requirements into a definitive behavioral spec — **clear on WHAT the user sees/does and how the system responds**, silent on visual taste (trust the implementer for pixels). Two stages with a hard gate between them: (1) align on user flows, then (2) write the detailed `ux.md`.
+Turn requirements into a behavioral spec — **what users see/do and the system response**, not visual taste. Align flows, then write `ux.md`.
 
 ## Inputs
 
 - `$ARGUMENTS` — explicit feature name/root or descendant requirements artifact.
-- Requirements doc — first that exists, read FULLY (no offset/limit):
+- Requirements — first present, read fully:
   1. `{OUT_DIR}/concepts/scope.md` (canonical, preferred)
   2. `{OUT_DIR}/specs/prd.md`
   3. `{OUT_DIR}/task_summary.md`
@@ -23,23 +23,31 @@ Transform product requirements into a definitive behavioral spec — **clear on 
 - Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 - Repair stale feature/root metadata in artifacts this workflow touches.
 - `OUT_DIR = FEATURE_ROOT`.
-- Existing UI: one `@spectre:patterns` dispatch (Stage 1) for similar screens/components, conventions, design tokens — return ≤~2K in-thread, no files.
+- Existing UI: one Stage-1 `@spectre:patterns` dispatch for similar screens/tokens — ≤~2K in-thread, no files.
 
 ## Method / guardrails
 
 **Stage 1 — Flow discovery & alignment (align before specifying).**
-- Identify **user segments** — flows diverge across these and missing them is the #1 cause of UX rework: first-time vs returning, anon vs signed-in, free vs paid, role-based.
-- Identify journeys: user goals, entry points, completion states.
-- Write each flow as a narrative: Goal · Entry point · Steps (**User sees → User does → System responds**) · Decision points + branches · Success state · open Questions. Call out where flows diverge per segment.
-- Present flows, propose a specific take (N flows × M segments + key segmentation calls), and ask for pushback. **GATE: write no detailed spec until the user replies "Flows approved." On feedback → revise and re-present.**
+- Identify **user segments**: first-time/returning, anon/signed-in, free/paid, role-based.
+- Identify goals, entry points, and completion states.
+- Narrate each flow: Goal · Entry · **User sees → User does → System responds** · branches · success · Questions; call out segment divergence.
+- Present a take and ask for pushback. Every initial or feedback-revised flow presentation ends with the compact handoff table:
 
-**Stage 2 — Detailed spec (only after the flow gate clears).**
-- Review approved flows for gaps (component behaviors, edge cases, state defs, segment variants); if significant, ask 3–5 targeted questions via `AskUserQuestion` (empty states, errors, loading, limits, segment differences) — no clarification files.
-- Write `{OUT_DIR}/ux.md` with every required section + the domain specifics below.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Flow approval. |
+| 📦 **What was just done** | Initial or revised flows. |
+| ▶️ **Proposed next step** | Render one copy-ready prompt: `Flows approved — complete {OUT_DIR}/ux.md, then continue with {CONTINUATION}.` |
+
+- `CONTINUATION`: Prototype when interaction, layout, visual validation, or stakeholder review materially matters; otherwise Plan when Scope + flows suffice. Render `/spectre:prototype {FEATURE_ROOT} FROM_UX=true` or `/spectre:plan {FEATURE_ROOT}`; at most one explicit conditional alternative.
+- **GATE:** Never write `{OUT_DIR}/ux.md` before explicit flow approval + selected continuation. Feedback without approval → revise and re-present. Ambiguous approval or missing route authority → ask only the unresolved choice.
+
+**Stage 2 — Detailed spec (only after explicit flow approval + selected continuation).**
+- That reply clears Stage 1: complete `{OUT_DIR}/ux.md`, then invoke the selected workflow in the same run with no second gate. Resolve from approved flows; ask only for missing irreversible authority.
 
 ## Outputs + DONE
 
-Write `{FEATURE_ROOT}/ux.md` with **all 11 sections**. Immediately below the title, `ux.md` records:
+Write `{FEATURE_ROOT}/ux.md` with **all 11 sections**. Below its title:
 
 ```text
 Feature: <feature-name>
@@ -48,25 +56,22 @@ Feature Root: .spectre/features/<feature-name>
 
 Derive both values from the physical feature directory.
 
-1. **Overview** — what it is, problem solved, primary user goal (1 para)
-2. **User Segments** — each segment served + what's different about their UX
-3. **Screens** — every screen: name, 1-line purpose, navigation relationships
-4. **Flows** — formalized from Stage 1 with alternate paths (validation fail, cancel, network error) + per-segment branches
-5. **Layouts** — per screen: header/main/footer structure + responsive behavior (**desktop >1024 · tablet 768–1024 · mobile <768**)
-6. **Components** — each interactive element: purpose, location, applicable states (from the State Vocabulary)
+1. **Overview** — problem and primary goal (1 para)
+2. **User Segments** — served segments and UX differences
+3. **Screens** — name, purpose, navigation
+4. **Flows** — Stage 1 plus validation-fail, cancel, network-error, and segment branches
+5. **Layouts** — header/main/footer and responsive behavior (**desktop >1024 · tablet 768–1024 · mobile <768**)
+6. **Components** — interactive purpose, location, applicable State Vocabulary
 7. **Interactions** — table: **Element | Action | Result** (exhaustive)
 8. **States** — table: **State | Trigger | Appearance | Available Actions**
-9. **Content** — exact copy: page titles, buttons, empty states, error messages, confirmation dialogs
-10. **Edge Cases** — limits/boundaries, null/long data, permissions, offline/network failures, segment-specific
-11. **Accessibility** — tab order, keyboard actions (Enter/Space/Escape), screen-reader announcements, focus management
+9. **Content** — exact titles, buttons, empty/error/confirmation copy
+10. **Edge Cases** — limits, data, permission, network, segments
+11. **Accessibility** — tab order, Enter/Space/Escape, announcements, focus
 
-**State Vocabulary** — pick what's relevant per component (not every component needs every state):
-- **Visual** (per interactive element): default, hover, focus, active/pressed, disabled
-- **Data** (per data view): empty, loading, partial-loaded, loaded, error, stale/refreshing
-- **Form**: pristine, dirty, touched, submitting, submitted-success, submitted-error, per-field validation-error
-- **Selection**: none, single, multi, partial-selection, all-selected
-- **Sync** (collaborative/async): optimistic, pending, conflict, resolved
-- **Network** (where relevant): online, offline, reconnecting
+**State Vocabulary** — pick relevant states:
+- **Visual:** default, hover, focus, active/pressed, disabled; **Data:** empty, loading, partial-loaded, loaded, error, stale/refreshing
+- **Form:** pristine, dirty, touched, submitting, submitted-success, submitted-error, per-field validation-error; **Selection:** none, single, multi, partial-selection, all-selected
+- **Sync:** optimistic, pending, conflict, resolved; **Network:** online, offline, reconnecting
 
 **DONE when:** the Stage-1 flow gate was cleared (user approved flows); `ux.md` exists with all 11 sections; segments addressed; flows carry alternate paths; Interactions and States tables use the exact column formats above; component states are drawn from the State Vocabulary; layouts state the responsive breakpoints; accessibility and edge cases covered.
 
@@ -74,11 +79,11 @@ Derive both values from the physical feature directory.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | UX route. |
-| 📦 **What was just done** | Flows and `ux.md`. |
-| ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed UX signal}`. |
+| 🧭 **Current phase** | UX complete. |
+| 📦 **What was just done** | `ux.md` and selected continuation. |
+| ▶️ **Proposed next step** | `/spectre:{command}` — observed route. |
 
-Material visual/interaction assumptions remain, visual review, or prose-insufficient validation → Prototype; else Plan, the unified tier/research/review/task router. Apply assumptions to `ux.md`; read-only may stop/handoff.
+Prototype covers material visual/interaction validation; otherwise Plan. Read-only may stop/handoff.
 
 ## Escalate-If
 
