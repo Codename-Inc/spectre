@@ -94,6 +94,7 @@ test('judging requires an exact successful load and a later persisted decision a
     snapshots: { before: { records: [{ id: recordId, revisionToken: 'rev-1' }] } }, bypass: [],
   };
   assert.equal(judgeCell(cell, { ...runtime, deliverable: { exists: false, bytes: null } }, oracle).recalled, false);
+  assert.equal(judgeCell(cell, { ...runtime, toolOperations: [runtime.toolOperations[0]] }, oracle).recalled, false);
   const pending = judgeCell(cell, runtime, oracle);
   assert.deepEqual(pending, { valid: false, recalled: null, reason: 'manual semantic adjudication pending', structuralValid: true, manualRubric: 'manual review' });
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [

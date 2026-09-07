@@ -156,6 +156,7 @@ export function judgeCell(cell, runtime, oracle) {
       JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath) &&
       (operation.status === null || operation.status === 'completed')
     );
+    if (!artifactWrite) return { valid: false, recalled: false, reason: 'native decision-artifact write evidence is missing' };
     const orderedLoad = matchedResults.some((result) =>
       Number.isInteger(result.eventOrdinal) &&
       Number.isInteger(artifactWrite?.eventOrdinal) && result.eventOrdinal < artifactWrite.eventOrdinal
