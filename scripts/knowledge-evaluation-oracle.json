@@ -75,9 +75,7 @@
     "manualRubric": "The recommendation does not promote an observation to a decision."
   },
   "blocker-resolution": {
-    "requiredRecordHashes": [
-      "sha256:18cecbfd43ebb20144e52f295f4f07c64a82e86470dd0d593805824d1193b5c6"
-    ],
+    "requiredRecordHashes": [],
     "requiresCapture": true,
     "requiredStates": [
       "blocker-resolution-capture"

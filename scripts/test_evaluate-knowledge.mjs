@@ -377,6 +377,24 @@ test('historical inspection accepts a successful inspect-historical load and ign
   assert.equal(traceWithOperationCrosscheck(runtime.trace, runtime.toolOperations, runtime.toolResults).availability, 'available');
 });
 
+test('verified capture cases require a successful persisted capture without a pre-session load', () => {
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [{ name: 'Write', status: 'completed', eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } }],
+    trace: { availability: 'available', events: [{ type: 'capture', id: 'document-export-resolution', outcome: 'created' }] },
+    snapshots: { before: { records: [] }, after: { records: [{ id: 'document-export-resolution', revisionToken: 'captured-revision', recordHash: 'sha256:record' }] } },
+  };
+  const oracle = { blocker: { requiredRecordHashes: [], requiresCapture: true, requiredStates: ['blocker-resolution-capture'], manualRubric: 'review' } };
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, runtime, oracle).structuralValid, true);
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, { ...runtime, trace: { availability: 'available', events: [] } }, oracle).reason, 'successful capture trace evidence is missing');
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, {
+    ...runtime, trace: { availability: 'available', events: [{ type: 'capture', id: 'document-export-resolution', outcome: 'failed' }] },
+  }, oracle).reason, 'successful capture trace evidence is missing');
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, {
+    ...runtime, snapshots: { before: { records: [] }, after: { records: [] } },
+  }, oracle).reason, 'successful capture was not persisted in snapshot evidence');
+});
+
 test('cached native evidence reruns only stale derived trace checks and preserves real trace failures', () => {
   const runtime = {
     trace: { availability: 'unavailable', reason: 'trace lacks native load event evidence', events: [{ type: 'load', id: 'record', loadedTokens: 3, loadedBytes: 12 }] },

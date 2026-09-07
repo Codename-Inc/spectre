@@ -235,6 +235,16 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.status !== 'completed') return { valid: false, recalled: false, reason: `host status is ${runtime?.status ?? 'missing'}` };
   if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   if (runtime?.deliverable?.exists !== true) return { valid: false, recalled: false, reason: 'decision artifact was not persisted' };
+  if (cell.condition === 'candidate' && expected.requiresCapture === true) {
+    const captures = (runtime.trace?.events ?? []).filter((event) => event.type === 'capture' &&
+      (event.outcome === 'created' || event.outcome === 'updated') && typeof event.id === 'string');
+    if (captures.length === 0) return { valid: false, recalled: false, reason: 'successful capture trace evidence is missing' };
+    const snapshots = [runtime.snapshots?.after, ...(runtime.sessionSnapshots ?? []).map((session) => session.after)].filter(Boolean);
+    const persisted = captures.some((capture) => snapshots.some((snapshot) => (snapshot.records ?? []).some((record) =>
+      record.id === capture.id && Boolean(record.revisionToken ?? record.sourceFingerprint ?? record.recordHash)
+    )));
+    if (!persisted) return { valid: false, recalled: false, reason: 'successful capture was not persisted in snapshot evidence' };
+  }
   if (Array.isArray(expected.requiredRecordHashes)) {
     const commandActions = classifyKnowledgeCommands(runtime.toolOperations);
     const expectedHashes = new Set(expected.requiredRecordHashes);
@@ -272,9 +282,6 @@ export function judgeCell(cell, runtime, oracle) {
     });
     if (cell.condition !== 'no-knowledge' && expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
-    }
-    if (expected.requiresCapture === true && cell.condition === 'candidate' && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
-      return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
     }
     if (cell.condition === 'candidate' && Array.isArray(expected.requiredStates)) {
       const captureOutcomes = (runtime.trace?.events ?? []).filter((event) => event.type === 'capture').map((event) => event.outcome);
