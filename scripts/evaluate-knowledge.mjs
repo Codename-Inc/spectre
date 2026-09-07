@@ -71,14 +71,19 @@ function argumentsNamed(argv, name) {
   return argv.flatMap((value, index) => value === name && typeof argv[index + 1] === 'string' ? [argv[index + 1]] : []);
 }
 
-function promptContract(entry, artifactPath) {
+function promptContract(entry, artifactPath, host = 'claude', condition = 'candidate') {
+  const commands = condition === 'no-knowledge'
+    ? { EXECUTE_COMMAND: 'the Execute workflow step', SHIP_COMMAND: 'the Ship workflow step' }
+    : host === 'claude'
+    ? { EXECUTE_COMMAND: '/spectre:spectre-execute', SHIP_COMMAND: '/spectre:spectre-ship' }
+    : { EXECUTE_COMMAND: 'spectre-execute', SHIP_COMMAND: 'spectre-ship' };
   const prompts = entry.longitudinalSteps ?? [[
     entry.task,
     entry.workflow ?? 'Use the installed Spectre workflow to complete the task.',
   ].join('\n')];
-  return prompts.map((prompt, index) => index === prompts.length - 1
+  return prompts.map((prompt, index) => (index === prompts.length - 1
     ? `${prompt}\nWrite the decision artifact to ${artifactPath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
-    : prompt);
+    : prompt).replaceAll('{EXECUTE_COMMAND}', commands.EXECUTE_COMMAND).replaceAll('{SHIP_COMMAND}', commands.SHIP_COMMAND));
 }
 
 export function selectFrozenCells(freezeManifest, cellIds = []) {
@@ -116,7 +121,7 @@ function freeze(fixtures, oracle, output, options = {}) {
       cohort: entry.longitudinal ? 'longitudinal' : entry.cohort ?? 'workflow',
       critical: entry.critical === true,
       artifactPath,
-      promptHash: hash(JSON.stringify(promptContract(entry, artifactPath))),
+      promptHash: hash(JSON.stringify(promptContract(entry, artifactPath, host, condition))),
       fixtureHash: hash(JSON.stringify({ entry, artifactPath })),
     })))
   ));
@@ -265,6 +270,9 @@ export function judgeCell(cell, runtime, oracle) {
         return { valid: false, recalled: false, reason: 'required unchanged capture evidence is missing' };
       }
       if (expected.requiredStates.includes('save-failure') && !captureOutcomes.includes('failed')) {
+        if (runtime.lifecycleEvidence?.registrationFault && runtime.lifecycleEvidence.registrationFault !== 'armed') {
+          return { valid: false, recalled: false, reason: 'lifecycle registration-fault setup was unavailable' };
+        }
         return { valid: false, recalled: false, reason: 'required knowledge save-failure evidence is missing' };
       }
     }
@@ -378,7 +386,18 @@ export async function runCells(freezeManifest, outputDir, invoke) {
           }
         }
         const cellDir = fs.mkdtempSync(path.join(outputDir, `${cell.host}-${cell.condition}-`));
-        const runtime = await invoke({ ...cell, cellDir });
+        let runtime;
+        try {
+          runtime = await invoke({ ...cell, cellDir });
+        } catch (error) {
+          runtime = {
+            status: 'launch_failed',
+            exit: { exitCode: null, signal: null, timedOut: false, outputLimited: false, error: error instanceof Error ? error.message : String(error) },
+            toolOperations: [], toolResults: [], textFinalAnswers: [],
+            trace: { availability: 'unavailable', reason: 'cell invocation threw before native evidence was complete', events: [] },
+            cellError: error instanceof Error ? error.message : String(error),
+          };
+        }
         const judged = judgeCell(cell, runtime, oracle);
         const result = {
           ...cell,
@@ -969,18 +988,25 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       configureLifecycleMock(staged, fixtureCase);
       const hostSettings = hostConfiguration(options.configuration, cell.host);
       const relevantIds = (fixtureCase.initialFacts ?? []).map((fact) => fact.id);
+      const retainedIds = new Set(relevantIds);
+      const compact = (snapshot, previous = null) => {
+        const compacted = compactSnapshot(snapshot, [...retainedIds], previous);
+        for (const record of [...compacted.records, ...compacted.history, ...compacted.workRecords]) retainedIds.add(record.id);
+        return compacted;
+      };
       const rawSnapshotBefore = snapshotKnowledgeCell(staged);
-      const snapshotBefore = compactSnapshot(rawSnapshotBefore, relevantIds);
+      const snapshotBefore = compact(rawSnapshotBefore);
       const deliverablePath = cell.artifactPath;
-      const preparedPrompts = promptContract(fixtureCase, deliverablePath);
+      const preparedPrompts = promptContract(fixtureCase, deliverablePath, cell.host, cell.condition);
       const runs = [];
       const sessionSnapshots = [];
       let registrationFault = null;
+      let lifecycleEvidence = fixtureCase.id === 'lifecycle-identity' ? { registrationFault: 'not-reached', error: null } : null;
       try {
         for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
           const contextId = `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`;
           const rawBeforeSession = snapshotKnowledgeCell(staged);
-          const beforeSession = compactSnapshot(rawBeforeSession, relevantIds, rawSnapshotBefore);
+          const beforeSession = compact(rawBeforeSession, rawSnapshotBefore);
           const run = await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
@@ -995,16 +1021,21 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           });
           runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
           const rawAfterSession = snapshotKnowledgeCell(staged);
-          sessionSnapshots.push({ before: beforeSession, after: compactSnapshot(rawAfterSession, relevantIds, rawBeforeSession), contextHash: hash(contextId) });
+          sessionSnapshots.push({ before: beforeSession, after: compact(rawAfterSession, rawBeforeSession), contextHash: hash(contextId) });
           if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 1 && runs.at(-1)?.status === 'completed') {
-            registrationFault = blockKnowledgeRegistration(staged);
+            try {
+              registrationFault = blockKnowledgeRegistration(staged);
+              lifecycleEvidence = { registrationFault: 'armed', error: null };
+            } catch (error) {
+              lifecycleEvidence = { registrationFault: 'not-armed', error: error instanceof Error ? error.message : String(error) };
+            }
           }
         }
       } finally {
         registrationFault?.restore();
       }
       const hostResult = mergeHostRuns(runs);
-      const snapshotAfter = compactSnapshot(snapshotKnowledgeCell(staged), relevantIds, rawSnapshotBefore);
+      const snapshotAfter = compact(snapshotKnowledgeCell(staged), rawSnapshotBefore);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
@@ -1026,6 +1057,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
+        lifecycleEvidence,
         trace,
         ...measuredRuntime,
         bypass: [
@@ -1084,4 +1116,4 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   }
 }
 
-export { BASELINE, CONDITIONS, HOSTS, cohortReport, freeze, pairedReport, thresholdReport };
+export { BASELINE, CONDITIONS, HOSTS, cohortReport, compactSnapshot, freeze, pairedReport, promptContract, thresholdReport };

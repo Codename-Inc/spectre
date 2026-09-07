@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, cohortReport, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, cohortReport, compactSnapshot, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -92,6 +92,25 @@ test('a frozen cell result resumes only when its freeze hash matches', async () 
   await runCells({ ...manifest, cells: [{ ...manifest.cells[0], promptHash: 'changed-prompt' }] }, output, invoke);
   await runCells({ ...manifest, hashes: { fixtures: 'changed', oracle: 'oracle-hash' } }, output, invoke);
   assert.equal(calls, 3);
+});
+
+test('a thrown cell is persisted as failed while other frozen cells continue', async () => {
+  const result = await runCells({
+    cells: [{ id: 'first', caseId: 'case', host: 'claude' }, { id: 'second', caseId: 'case', host: 'codex' }],
+    concurrency: { total: 2, perHost: 1 }, oracle: { case: { requiredPhrases: [] } },
+  }, fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-cell-error-')), async (cell) => {
+    if (cell.id === 'first') throw new Error('fixture setup unavailable');
+    return { status: 'completed', textFinalAnswers: [], deliverable: { exists: true, bytes: 1 } };
+  });
+  assert.equal(result.cells.find((cell) => cell.id === 'first').runtime.status, 'launch_failed');
+  assert.equal(result.cells.find((cell) => cell.id === 'second').status, 'completed');
+});
+
+test('lifecycle prompts use user transport only where the plugin exists', () => {
+  const entry = { longitudinalSteps: ['Run {EXECUTE_COMMAND}.', 'Run {SHIP_COMMAND}.'] };
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[1], /\/spectre:spectre-ship/);
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'codex', 'candidate')[1], /spectre-ship/);
+  assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'no-knowledge')[1], /spectre:|spectre-ship/);
 });
 
 test('manual semantic adjudication remains pending rather than an invalid host run', async () => {
@@ -208,6 +227,16 @@ test('cohorts retain measured retrieval totals alongside native full-cycle dimen
   assert.equal(cohort.nativePrimaryPlusWorkerTokens.total.median, 10);
 });
 
+test('longitudinal snapshots retain captured records and history after an unchanged fresh session', () => {
+  const original = { records: [{ id: 'retry-ceiling-evidence', revisionToken: 'source' }], history: [], workRecords: [] };
+  const captured = { records: [...original.records, { id: 'retry-ceiling', revisionToken: 'v1' }], history: [{ id: 'retry-ceiling', revisionToken: 'v1' }], workRecords: [] };
+  const firstAfter = compactSnapshot(captured, ['retry-ceiling-evidence'], original);
+  const laterAfter = compactSnapshot(captured, ['retry-ceiling-evidence', ...firstAfter.records.map((record) => record.id)], captured);
+  assert.deepEqual(firstAfter.records.map((record) => record.id), ['retry-ceiling-evidence', 'retry-ceiling']);
+  assert.deepEqual(laterAfter.records.map((record) => record.id), ['retry-ceiling-evidence', 'retry-ceiling']);
+  assert.deepEqual(laterAfter.history.map((entry) => entry.id), ['retry-ceiling']);
+});
+
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
   const recordId = 'payments-dual-settlement';
   const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;
@@ -290,6 +319,15 @@ test('imported work requires a captured extraction and a fresh reuse without rel
     toolOperations: [...runtime.toolOperations, { id: 'reload-import', name: 'exec', status: 'completed', sessionOrdinal: 1, eventOrdinal: 3, input: { command: `node knowledge-cli.mjs load ${importedId}` } }],
   };
   assert.equal(judgeCell({ caseId: 'imported', condition: 'candidate' }, reloadedImport, oracle).reason, 'fresh extracted-import reuse evidence is missing');
+});
+
+test('unarmed lifecycle registration fault becomes cell evidence instead of a lost run', () => {
+  const result = judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [{ name: 'Write', status: 'completed', eventOrdinal: 1, input: { file_path: 'artifacts/decision.md' } }],
+    trace: { availability: 'available', events: [] }, lifecycleEvidence: { registrationFault: 'not-armed', error: 'ENOENT' },
+  }, { lifecycle: { requiredRecordHashes: [], requiredStates: ['save-failure'] } });
+  assert.equal(result.reason, 'lifecycle registration-fault setup was unavailable');
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {
