@@ -1,28 +1,46 @@
-const metrics = ['injectedTokens', 'previewTokens', 'loadedBodyTokens', 'redundantTokens', 'totalTokens'];
-const percentile = (values, p) => { const sorted = values.filter(Number.isFinite).sort((a,b) => a-b); return sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)] : 'unknown'; };
-const summary = values => ({ known: values.filter(Number.isFinite).length, missing: values.filter(value => !Number.isFinite(value)).length, median: percentile(values, .5), p95: percentile(values, .95) });
+const cohorts = new Set(['chat', 'workflow', 'history', 'longitudinal']);
+const numbers = values => values.filter(Number.isFinite).sort((a, b) => a - b);
+const percentile = (values, p) => { const known = numbers(values); return known.length ? known[Math.min(known.length - 1, Math.ceil(known.length * p) - 1)] : 'unknown'; };
+const stats = values => ({ known: numbers(values).length, missing: values.length - numbers(values).length, median: percentile(values, .5), p95: percentile(values, .95) });
 
-/** Pure report: unknown telemetry or missing primary adjudication remains pending. */
+function events(cell) { return cell.runtime?.trace?.events; }
+function traceFacts(cell) {
+  const list = events(cell);
+  if (!Array.isArray(list)) return null;
+  return { history: list.filter(event => event.type === 'history-read').length, redundant: list.filter(event => event.type === 'load' && event.redundant === true).length, caps: list.every(event => (event.type !== 'session-start' || event.responseTokens <= 300) && (event.type !== 'preview' || event.responseTokens <= 500) && (event.type !== 'load' || event.allowanceTokens === undefined || event.allowanceTokens <= 1500 || event.expansion === true)) };
+}
+
+/** Missing telemetry, trace, or artifact-backed adjudication remains pending; it can never pass. */
 export function buildKnowledgeEvaluationReport({ cells = [], oracle = {}, primaryJudgments = [] } = {}) {
-  const judgment = new Map(primaryJudgments.map(item => [item.cellId, item]));
-  const groups = {};
+  const manual = new Map(primaryJudgments.map(value => [value.cellId, value]));
+  const grouped = {};
   for (const cell of cells) {
-    const key = [cell.host, cell.condition, cell.cohort || 'chat'].join(':');
-    const bucket = groups[key] ||= [];
-    bucket.push(cell);
+    const cohort = cohorts.has(cell.cohort) ? cell.cohort : 'unknown';
+    (grouped[`${cell.host}:${cell.condition}:${cohort}`] ||= []).push(cell);
   }
-  const runtime = Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, Object.fromEntries(metrics.map(metric => [metric, summary(group.map(cell => cell.runtime?.[metric]))]))]));
-  const candidateCritical = cells.filter(cell => cell.condition === 'candidate' && cell.critical);
-  const manual = candidateCritical.map(cell => judgment.get(cell.id));
-  const pending = manual.some(value => !value?.artifactEvidence || value.correct !== true || value.relevant !== true);
-  const criticalTraceFailure = candidateCritical.some(cell => cell.trace?.historyLoads > 0 || cell.trace?.redundantLoads > 0 || cell.trace?.requiredBeforeDecision !== true);
-  const routine = cells.filter(cell => cell.condition === 'candidate' && !cell.critical);
-  const routineBody = routine.reduce((sum, cell) => sum + (Number.isFinite(cell.runtime?.loadedBodyTokens) ? cell.runtime.loadedBodyTokens : 0), 0);
-  const irrelevant = routine.reduce((sum, cell) => sum + (judgment.get(cell.id)?.irrelevantTokens ?? 0), 0);
-  const relevance = routine.length && routineBody ? irrelevant / routineBody <= .05 : 'unknown';
-  const quality = { status: pending || relevance === 'unknown' ? 'pending' : !criticalTraceFailure && relevance ? 'pass' : 'fail', criticalRecallBeforeDecision: pending ? 'unknown' : !criticalTraceFailure, routineIrrelevantTokenRatio: routineBody ? irrelevant / routineBody : 'unknown', pendingReason: pending ? 'primary artifact-backed correctness/relevance judgment is missing or negative' : null };
-  const benefit = cells.filter(cell => cell.cohort === 'knowledge-benefit');
-  const median = condition => percentile(benefit.filter(cell => cell.condition === condition).map(cell => cell.runtime?.totalTokens), .5);
-  const paired = { candidateMedian: median('candidate'), baselineMedian: median('baseline'), noKnowledgeMedian: median('no-knowledge'), efficiency: quality.status === 'pass' && Number.isFinite(median('candidate')) && Number.isFinite(median('baseline')) && median('candidate') < median('baseline') ? 'supported' : 'failed-hypothesis', candidateMinusNoKnowledge: Number.isFinite(median('candidate')) && Number.isFinite(median('no-knowledge')) ? median('candidate') - median('no-knowledge') : 'unknown' };
-  return { runtime, quality, paired, samples: { total: cells.length, groups: Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.length])) } };
+  const runtime = Object.fromEntries(Object.entries(grouped).map(([key, group]) => [key, {
+    injected: stats(group.map(c => c.runtime?.injectedTokens)), preview: stats(group.map(c => c.runtime?.previewTokens)), body: stats(group.map(c => c.runtime?.loadedBodyTokens)), redundant: stats(group.map(c => c.runtime?.redundantTokens)), nativeFullCycle: stats(group.map(c => c.runtime?.nativeFullCycleUsage?.coverage === 'complete' ? c.runtime.nativeFullCycleUsage.total : undefined)),
+  }]));
+  const candidate = cells.filter(c => c.condition === 'candidate');
+  const critical = candidate.filter(c => c.critical);
+  const required = critical.map(c => ({ cell: c, oracle: oracle[c.caseId] || {}, judgment: manual.get(c.id), trace: traceFacts(c) }));
+  const incomplete = required.some(({ judgment, trace }) => !judgment?.artifactEvidence || judgment.correct === undefined || judgment.relevant === undefined || trace === null);
+  const criticalFailure = required.some(({ judgment, trace, oracle: rule }) => judgment?.correct === false || judgment?.relevant === false || trace?.redundant > 0 || (rule.allowedHistoryLoads === 0 && trace?.history > 0) || trace?.caps === false);
+  const routine = candidate.filter(c => !c.critical && Number.isFinite(c.runtime?.loadedBodyTokens));
+  const routineJudged = routine.map(c => manual.get(c.id));
+  const relevanceUnknown = routineJudged.some(j => !Number.isFinite(j?.irrelevantTokens));
+  const body = routine.reduce((sum, c) => sum + c.runtime.loadedBodyTokens, 0);
+  const irrelevant = relevanceUnknown ? 'unknown' : routineJudged.reduce((sum, j) => sum + j.irrelevantTokens, 0);
+  const quality = { status: incomplete || relevanceUnknown ? 'pending' : criticalFailure || (body > 0 && irrelevant / body > .05) ? 'fail' : 'pass', criticalRecallBeforeDecision: incomplete ? 'unknown' : !criticalFailure, routineIrrelevantTokenRatio: irrelevant === 'unknown' ? 'unknown' : body === 0 ? 0 : irrelevant / body };
+  const pairs = new Map();
+  for (const cell of cells) {
+    const key = `${cell.caseId}:${cell.host}:${cell.repeat}`;
+    (pairs.get(key) || pairs.set(key, []).get(key)).push(cell);
+  }
+  const deltas = [...pairs.values()].flatMap(group => {
+    const a = group.find(c => c.condition === 'candidate')?.runtime?.nativeFullCycleUsage;
+    const b = group.find(c => c.condition === 'baseline')?.runtime?.nativeFullCycleUsage;
+    return a?.coverage === 'complete' && b?.coverage === 'complete' && Number.isFinite(a.total) && Number.isFinite(b.total) ? [a.total - b.total] : [];
+  });
+  return { runtime, quality, paired: { pairs: deltas.length, medianDelta: percentile(deltas, .5), efficiency: quality.status === 'pass' && deltas.length && percentile(deltas, .5) < 0 ? 'supported' : 'failed-hypothesis' }, samples: { total: cells.length, instability: cells.length ? Object.values(grouped).filter(group => group.length < 2).length : 'unknown' } };
 }
