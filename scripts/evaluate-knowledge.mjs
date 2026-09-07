@@ -43,12 +43,26 @@ function strings(value) {
 }
 
 function usage() {
-  return 'Usage: evaluate-knowledge.mjs freeze --fixtures <dir> --oracle <file> --output <file> [--config <file> --candidate <dir>]\n       evaluate-knowledge.mjs run --freeze <file> --fixtures <dir> --config <file> --baseline-plugin <dir> --candidate-plugin <dir> --output <dir> --report <file> --allow-native\n';
+  return 'Usage: evaluate-knowledge.mjs freeze --fixtures <dir> --oracle <file> --output <file> [--config <file> --candidate <dir>]\n       evaluate-knowledge.mjs run --freeze <file> --fixtures <dir> --config <file> --baseline-plugin <dir> --candidate-plugin <dir> --output <dir> --report <file> --allow-native [--cell <frozen-cell-id>]\n';
 }
 
 function argument(argv, name) {
   const index = argv.indexOf(name);
   return index === -1 ? null : argv[index + 1];
+}
+
+function argumentsNamed(argv, name) {
+  return argv.flatMap((value, index) => value === name && typeof argv[index + 1] === 'string' ? [argv[index + 1]] : []);
+}
+
+export function selectFrozenCells(freezeManifest, cellIds = []) {
+  if (!Array.isArray(cellIds) || cellIds.length === 0) return freezeManifest;
+  const selected = freezeManifest.cells.filter((cell) => cellIds.includes(cell.id));
+  if (selected.length !== cellIds.length) {
+    const found = new Set(selected.map((cell) => cell.id));
+    throw new Error(`unknown frozen cell: ${cellIds.find((id) => !found.has(id))}`);
+  }
+  return { ...freezeManifest, cells: selected };
 }
 
 function freeze(fixtures, oracle, output, options = {}) {
@@ -484,7 +498,8 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
   const cases = new Map(fixtureManifest.cases.map((entry) => [entry.id, entry]));
   const rawLogRoot = path.resolve(options.rawLogRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-logs-')));
   const invoke = options.invokeHost ?? invokeKnowledgeHost;
-  const result = await runCells(freezeManifest, options.outputDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-results-')), async (cell) => {
+  const selectedFreeze = selectFrozenCells(freezeManifest, options.cellIds);
+  const result = await runCells(selectedFreeze, options.outputDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-results-')), async (cell) => {
     const staged = await stagePreparedKnowledgeCell(cell, cases.get(cell.caseId), {
       repositoryRoot: options.repositoryRoot ?? process.cwd(),
       temporaryRoot: options.temporaryRoot,
@@ -578,7 +593,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const report = await evaluateKnowledge(readJson(path.resolve(freezePath)), {
       allowNative: true, fixtureRoot: path.resolve(fixtures), outputDir: path.resolve(output), reportPath: path.resolve(reportPath),
       configuration: readJson(path.resolve(configurationPath)), baselinePluginRoot: path.resolve(baselinePluginRoot), candidatePluginRoot: path.resolve(candidatePluginRoot),
-      rawLogRoot: argument(process.argv, '--raw-logs') ?? undefined,
+      rawLogRoot: argument(process.argv, '--raw-logs') ?? undefined, cellIds: argumentsNamed(process.argv, '--cell'),
     });
     process.stdout.write(`${JSON.stringify({ status: 'completed', report: path.resolve(reportPath), samples: report.cells.length })}\n`);
   } else {

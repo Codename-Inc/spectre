@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -70,6 +70,12 @@ test('deterministic freeze gates native calls', async () => {
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [] }]))));
   const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'));
   await assert.rejects(() => evaluateKnowledge(frozen, { fixtureRoot: fixtures }), /allowNative/);
+});
+
+test('native qualification selects only named frozen cells', () => {
+  const frozen = { cells: [{ id: 'critical:candidate:claude:1' }, { id: 'critical:candidate:codex:1' }] };
+  assert.deepEqual(selectFrozenCells(frozen, ['critical:candidate:codex:1']).cells, [{ id: 'critical:candidate:codex:1' }]);
+  assert.throws(() => selectFrozenCells(frozen, ['not-frozen']), /unknown frozen cell/);
 });
 
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
