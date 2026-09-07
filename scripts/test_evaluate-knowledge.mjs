@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, cohortReport, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -164,6 +164,23 @@ test('thresholds use hash-bound manual outcomes, bounded trace metrics, and qual
   assert.equal(report.pairedEfficiency.qualityEligiblePairs, 1);
   assert.equal(report.correctnessVsBothControls.status, 'pass');
   assert.equal(report.status, 'pending');
+});
+
+test('cohorts retain measured retrieval totals alongside native full-cycle dimensions', () => {
+  const cells = [10, 20].map((injectedTokens, index) => ({
+    id: `case:candidate:claude:${index + 1}`, caseId: 'case', condition: 'candidate', host: 'claude', cohort: 'chat', status: 'pending',
+    runtime: {
+      sessions: [{ status: 'completed' }], textFinalAnswers: ['answer'], snapshots: { after: { history: [] } },
+      injectedTokens, previewTokens: injectedTokens + 1, loadedBodyTokens: injectedTokens + 2, redundantTokens: 0, totalTokens: injectedTokens + 3,
+      nativeFullCycleUsage: { coverage: 'complete', total: { input: 1, cache: 2, cacheWrite: 3, output: 4, reasoning: null } },
+    }, judged: { structuralValid: true, recalled: null },
+  }));
+  const cohort = cohortReport(cells)['candidate:claude:chat'];
+  assert.equal(cohort.injectedTokens.median, 10);
+  assert.equal(cohort.previewTokens.p95, 21);
+  assert.equal(cohort.redundantTokens.median, 0);
+  assert.equal(cohort.totalTokens.median, 13);
+  assert.equal(cohort.nativePrimaryPlusWorkerTokens.total.median, 10);
 });
 
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
