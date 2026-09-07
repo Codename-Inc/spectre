@@ -63,6 +63,16 @@
         {
           "id": "database-retention-policy",
           "content": "Warehouse snapshots are retained for ninety days."
+        },
+        {
+          "id": "account-menu-keyboard-observation",
+          "seedKnowledge": false,
+          "content": "Keyboard navigation reaches every account-menu action and activation succeeds."
+        },
+        {
+          "id": "account-menu-focus-observation",
+          "seedKnowledge": false,
+          "content": "After closing the account menu, focus does not return to its trigger; this needs a fix before release."
         }
       ],
       "cohort": "chat",

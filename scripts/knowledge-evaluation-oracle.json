@@ -24,7 +24,7 @@
     "requiredRecordHashes": [],
     "allowedLoads": 0,
     "allowedHistoryLoads": 0,
-    "manualRubric": "The answer does not apply warehouse retention to accessibility."
+    "manualRubric": "The summary accurately reports keyboard access passing and the focus-return failure needing a fix, without applying warehouse retention policy."
   },
   "deliberate-history": {
     "requiredRecordHashes": [
