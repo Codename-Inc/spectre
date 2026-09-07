@@ -355,7 +355,7 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   assert.deepEqual(JSON.parse(empty.stdout), []);
 
   const bodyPath = path.join(staged.root, 'draft-body.md');
-  fs.writeFileSync(bodyPath, 'Draft body from file.');
+  fs.writeFileSync(bodyPath, 'Opening note.\n\nTesting: pending.\n');
   const created = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Fixture draft', '--body-file', bodyPath]);
   assert.equal(created.status, 0, created.stderr);
   assert.match(created.stdout.trim(), /^https:\/\/github\.com\/evaluation-fixture\/knowledge-evaluation\/pull\/1$/);
@@ -363,6 +363,16 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   const viewedUrl = execute(['pr', 'view', '--json', 'url', '--jq', '.url']);
   assert.equal(viewedUrl.status, 0, viewedUrl.stderr);
   assert.equal(viewedUrl.stdout, created.stdout);
+  const createdBody = execute(['pr', 'view', '--json', 'body', '--jq', '.body']);
+  assert.equal(createdBody.status, 0, createdBody.stderr);
+  assert.equal(createdBody.stdout, 'Opening note.\n\nTesting: pending.\n\n');
+  const editedBodyPath = path.join(staged.root, 'edited-draft-body.md');
+  fs.writeFileSync(editedBodyPath, 'Opening note.\n\nTesting:\n- focused checks passed\n');
+  const edited = execute(['pr', 'edit', '--body-file', editedBodyPath]);
+  assert.equal(edited.status, 0, edited.stderr);
+  const editedBody = execute(['pr', 'view', '--json', 'body', '--jq', '.body']);
+  assert.equal(editedBody.status, 0, editedBody.stderr);
+  assert.equal(editedBody.stdout, 'Opening note.\n\nTesting:\n- focused checks passed\n\n');
   const viewed = execute(['pr', 'view', '--json', 'url,state,isDraft,headRefName,baseRefName']);
   assert.equal(viewed.status, 0, viewed.stderr);
   assert.deepEqual(JSON.parse(viewed.stdout), {
@@ -372,7 +382,7 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   const listed = execute(['pr', 'list', '--json', 'url,state,isDraft,headRefName,baseRefName']);
   assert.equal(listed.status, 0, listed.stderr);
   assert.deepEqual(JSON.parse(listed.stdout), [JSON.parse(viewed.stdout)]);
-  assert.equal(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests[0].body, 'Draft body from file.');
+  assert.equal(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests[0].body, 'Opening note.\n\nTesting:\n- focused checks passed\n');
 
   const duplicate = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Duplicate', '--body', 'Duplicate']);
   assert.equal(duplicate.status, 1);

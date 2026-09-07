@@ -314,6 +314,7 @@ function pullPayload(pull) {
     headRefName: pull.headRefName,
     baseRefName: pull.baseRefName,
     title: pull.title,
+    body: pull.body,
   };
 }
 function print(value) {
