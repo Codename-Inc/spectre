@@ -267,6 +267,12 @@ if (!statePath || !logPath) {
 }
 fs.appendFileSync(logPath, args.join(' ') + '\\n');
 
+if (args.includes('--help') || args.includes('-h')) {
+  const command = args.filter(value => !value.startsWith('-')).join(' ') || 'gh';
+  process.stdout.write('Usage: gh ' + command + ' [flags]\\n');
+  process.exit(0);
+}
+
 function fail(message) {
   process.stderr.write(message + '\\n');
   process.exit(1);

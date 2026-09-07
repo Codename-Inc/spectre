@@ -369,6 +369,11 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   assert.equal(version.status, 0, version.stderr);
   assert.match(version.stdout, /^gh version .*evaluation fixture/m);
 
+  const createHelp = execute(['pr', 'create', '--help']);
+  assert.equal(createHelp.status, 0, createHelp.stderr);
+  assert.match(createHelp.stdout, /Usage: gh pr create/i);
+  assert.deepEqual(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests, []);
+
   const repository = execute(['repo', 'view', '--json', 'owner,name,defaultBranchRef']);
   assert.equal(repository.status, 0, repository.stderr);
   assert.deepEqual(JSON.parse(repository.stdout), {
