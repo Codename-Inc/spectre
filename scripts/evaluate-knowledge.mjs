@@ -87,7 +87,7 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     let resolved = (index === prompts.length - 1
     ? `${prompt}\nWrite the decision artifact to ${artifactPath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
     : prompt).replaceAll('{EXECUTE_COMMAND}', commands.EXECUTE_COMMAND).replaceAll('{SHIP_COMMAND}', commands.SHIP_COMMAND);
-    if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 0) {
+    if (Number.isInteger(entry.workflowCommandSession) && condition !== 'no-knowledge' && index === entry.workflowCommandSession) {
       resolved = `${commands.EXECUTE_COMMAND} ${executeSource} --orchestrated --finalization-owner parent --review-profile final-only\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*? for the staged feature\.\s*/, '')}`;
     }
     if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 2) {

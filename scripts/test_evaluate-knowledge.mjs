@@ -107,7 +107,7 @@ test('a thrown cell is persisted as failed while other frozen cells continue', a
 });
 
 test('lifecycle prompts use user transport only where the plugin exists', () => {
-  const entry = { id: 'lifecycle-identity', longitudinalSteps: [
+  const entry = { id: 'lifecycle-identity', workflowCommandSession: 0, longitudinalSteps: [
     'Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature. Do work.',
     'Learn the work.',
     'Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh the work.',
@@ -117,6 +117,10 @@ test('lifecycle prompts use user transport only where the plugin exists', () => 
   assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /--finalization-owner parent/);
   assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[2], /\nspectre-ship:/);
   assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'no-knowledge')[2], /spectre:|spectre-ship/);
+  const accepted = { id: 'accepted-decision', workflowCommandSession: 1, longitudinalSteps: ['Learn without evidence.', 'Review accepted evidence.'] };
+  const verified = { id: 'verified-gotcha', workflowCommandSession: 0, longitudinalSteps: ['Review verified evidence.'] };
+  assert.match(promptContract(accepted, 'artifacts/decision.md', 'claude', 'candidate')[1], /^\/spectre:spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
+  assert.match(promptContract(verified, 'artifacts/decision.md', 'codex', 'candidate')[0], /^spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
 });
 
 test('native actor and context inputs are opaque to fixture labels', () => {

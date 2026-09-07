@@ -117,22 +117,27 @@
     },
     {
       "id": "accepted-decision",
-      "task": "Review the acceptance evidence and deliver the API review artifact through Plan, Execute, Ship, and CreatePR.",
+      "task": "Review the acceptance evidence and prepare the factual API review decision artifact.",
       "workflow": "Accepted review evidence: search pagination must use a stable cursor; offset pagination was rejected. Treat this as a new accepted decision in the normal workflow.",
       "initialFacts": [],
       "cohort": "workflow",
       "longitudinal": true,
+      "workflowCommandSession": 1,
       "longitudinalSteps": [
         "Start a fresh session for the API review. Invoke Learn without any accepted decision, verified evidence, or work-summary material. Record the no-op outcome; do not manufacture knowledge.",
-        "Start a fresh session. Review the accepted API evidence: search pagination must use a stable cursor and offset pagination was rejected. Complete the Plan, Execute, Ship, and CreatePR workflow. Capture this consequential accepted decision through the normal workflow, then write the evaluation artifact."
+        "Start a fresh session. Review the accepted API evidence: search pagination must use a stable cursor and offset pagination was rejected. Complete the bounded staged change and capture this consequential accepted decision through the normal workflow, then write the evaluation artifact."
       ]
     },
     {
       "id": "verified-gotcha",
-      "task": "Review the verified operator evidence and deliver the cache-rotation procedure through Plan, Execute, Ship, and CreatePR.",
+      "task": "Review the verified operator evidence and prepare the factual cache-rotation procedure artifact.",
       "workflow": "Verified test evidence: preview workers must drain before key rotation or queued previews are lost. Treat this as a new verified operational gotcha in the normal workflow.",
       "initialFacts": [],
-      "cohort": "workflow"
+      "cohort": "workflow",
+      "workflowCommandSession": 0,
+      "longitudinalSteps": [
+        "Start a fresh session. Review the verified operator evidence: preview workers must drain before key rotation or queued previews are lost. Complete the bounded staged change and capture this verified operational gotcha through the normal workflow, then write the evaluation artifact."
+      ]
     },
     {
       "id": "pattern-speculation",
@@ -169,8 +174,9 @@
       "task": "Execute the feature on the staged feature branch so it writes its templated work record. Ship must refresh that exact work before the first draft. Repair verification and add the draft URL while retaining the same work ID; repeat an unchanged capture as a no-op. The fixture then makes knowledge registration fail: report the failure and recovery input, but still open the local gh draft through the direct CreatePR fallback.",
       "workflow": "Use Learn summarize this work, Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
       "initialFacts": [],
+      "workflowCommandSession": 0,
       "longitudinalSteps": [
-        "Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature. Do not add an explicit work-summary capture in this session.",
+        "Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature.",
         "Start a fresh session. Use Learn with explicit work-summary intent to capture the Execute-created templated work record, including unknown or pending fields truthfully.",
         "Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh that same work before opening the local gh draft, then repair verification and retain the draft URL.",
         "Start a fresh session. Repeat the unchanged work capture and record its explicit no-op outcome. Do not attempt a forced registration failure in this session.",
