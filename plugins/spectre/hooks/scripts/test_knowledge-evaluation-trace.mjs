@@ -6,6 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { estimatePayloadTokens } from './knowledge/payload.mjs';
 import { refreshKnowledgeIndex, revisionDirectoryName, revisionTokenFor } from './knowledge/records.mjs';
 import { createEvaluationTrace, detectTraceBypass } from './knowledge/evaluation-trace.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
@@ -44,8 +45,8 @@ async function fixture(t) {
   return { root, projectDir, spectreHome, storePath, id, revisionToken };
 }
 
-function run(value, tracePath, args) {
-  return spawnSync(process.execPath, [KNOWLEDGE_CLI, ...args, '--project-dir', value.projectDir, '--json'], {
+function run(value, tracePath, args, { json = true } = {}) {
+  return spawnSync(process.execPath, [KNOWLEDGE_CLI, ...args, '--project-dir', value.projectDir, ...(json ? ['--json'] : [])], {
     cwd: value.projectDir,
     env: { ...process.env, SPECTRE_HOME: value.spectreHome, SPECTRE_KNOWLEDGE_EVALUATION_TRACE: tracePath, SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: 'trace-context' },
     encoding: 'utf8',
@@ -108,6 +109,47 @@ test('runtime trace is opt-in and records actual public operations without query
   assert.equal(serialized.includes('secret query text'), false);
   assert.equal(serialized.includes('SPECTRE_TRACE_RECORD_BODY'), false);
   assert.equal(serialized.includes('SPECTRE_CAPTURE_BODY'), false);
+});
+
+test('response measurements match the exact human or JSON wire payload including framing', async (t) => {
+  const value = await fixture(t);
+  const tracePath = path.join(value.root, 'wire.jsonl');
+  const calls = [
+    { args: ['search', 'secret query text'], json: false },
+    { args: ['search', 'secret query text'], json: true },
+    { args: ['load', value.id], json: false },
+    { args: ['history', value.id], json: false },
+    { args: ['inspect', value.id, '--revision', value.revisionToken], json: true },
+  ];
+  const outputs = calls.map(({ args, json }) => {
+    const result = run(value, tracePath, args, { json });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  });
+  const events = traceEvents(tracePath);
+  for (const [index, event] of events.entries()) {
+    assert.equal(event.responseBytes, Buffer.byteLength(outputs[index], 'utf8'));
+    assert.equal(event.responseTokens, estimatePayloadTokens(outputs[index]));
+  }
+});
+
+test('a valid partial trace keeps prior evidence when append becomes unavailable', async (t) => {
+  const value = await fixture(t);
+  const tracePath = path.join(value.root, 'partial.jsonl');
+  const preservedPath = path.join(value.root, 'partial-preserved.jsonl');
+  fs.writeFileSync(tracePath, '{\"schemaVersion\":1,\"type\":\"search\"}\n');
+  const trace = createEvaluationTrace({ enabled: true, filePath: tracePath });
+  fs.renameSync(tracePath, preservedPath);
+  fs.symlinkSync('/dev/full', tracePath);
+  trace.record({ type: 'search', query: 'secret' });
+  assert.equal(trace.status().availability, 'unavailable');
+  assert.equal(fs.readFileSync(preservedPath, 'utf8'), '{\"schemaVersion\":1,\"type\":\"search\"}\n');
+
+  const unavailablePath = path.join(value.root, 'trace-directory');
+  fs.mkdirSync(unavailablePath);
+  const result = run(value, unavailablePath, ['search', 'secret query text']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /SPECTRE_EVALUATION_TRACE_UNAVAILABLE reason=unreadable/);
 });
 
 test('parallel writers preserve every event and corrupt or unwritable artifacts become unavailable', async (t) => {

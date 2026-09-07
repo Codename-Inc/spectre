@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { resolveKnowledgeProjectDir } from './knowledge/cli-arguments.mjs';
 import { runtimeEvaluationTrace } from './knowledge/evaluation-trace.mjs';
+import { estimatePayloadTokens } from './knowledge/payload.mjs';
 import { inspectKnowledgeRevision, listKnowledgeHistory } from './knowledge/history.mjs';
 import { formatKnowledgeLoadHuman, loadKnowledgeById, ROUTINE_LOAD_ALLOWANCE_TOKENS, serializeKnowledgeLoadError } from './knowledge/loader.mjs';
 import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
@@ -81,9 +82,24 @@ function usage() {
   ].join('\n');
 }
 
+function renderResult(result, flags, human) {
+  return flags.has('--json') ? `${JSON.stringify(result)}\n` : human ? human(result) : `${JSON.stringify(result)}\n`;
+}
+
 function writeResult(result, flags, human) {
-  if (flags.has('--json')) process.stdout.write(`${JSON.stringify(result)}\n`);
-  else process.stdout.write(human ? human(result) : `${JSON.stringify(result)}\n`);
+  process.stdout.write(renderResult(result, flags, human));
+}
+
+function responseMetrics(output) {
+  return { responseBytes: Buffer.byteLength(output, 'utf8'), responseTokens: estimatePayloadTokens(output) };
+}
+
+function recordTrace(trace, event) {
+  trace.record(event);
+  const status = trace.status();
+  if (status.availability === 'unavailable') {
+    process.stderr.write(`SPECTRE_EVALUATION_TRACE_UNAVAILABLE reason=${status.reason || 'unknown'}\n`);
+  }
 }
 
 async function runTagOperation(operation, flags) {
@@ -121,9 +137,12 @@ export async function main(argv = process.argv.slice(2)) {
         limit: numericFlag(flags, '--limit'), cursor: flags.get('--cursor'),
       });
       const output = { ok: true, query, ...result };
-      trace.record({ type: 'search', query, results: result.results, responseBytes: Buffer.byteLength(JSON.stringify(output), 'utf8') });
-      if (flags.has('--json')) process.stdout.write(`${JSON.stringify(output)}\n`);
-      else { process.stdout.write(formatKnowledgeSearchHuman(result, query)); process.stderr.write(formatKnowledgeSearchWarningsHuman(result.warnings)); }
+      const selectedOutput = flags.has('--json')
+        ? `${JSON.stringify(output)}\n`
+        : formatKnowledgeSearchHuman(result, query);
+      recordTrace(trace, { type: 'search', query, results: result.results, ...responseMetrics(selectedOutput) });
+      process.stdout.write(selectedOutput);
+      if (!flags.has('--json')) process.stderr.write(formatKnowledgeSearchWarningsHuman(result.warnings));
     } catch (error) { throw codedError('KNOWLEDGE_SEARCH_FAILED', error instanceof Error ? error.message : String(error)); }
     return;
   }
@@ -149,11 +168,11 @@ export async function main(argv = process.argv.slice(2)) {
         workId: flags.get('--work-id'), runId: flags.get('--run-id'), allowanceTokens,
         inspectHistorical: flags.has('--inspect-historical'),
       });
-      trace.record(result.status === 'expansion-needed'
-        ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, requiredTokens: result.estimatedTokens, loadedTokens: 0, allowanceTokens, expansionRequested: true, deliveredOverAllowance: false }
-        : { type: result.historical ? 'history-read' : 'load', subtype: result.historical ? 'history-body' : undefined, id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens, allowanceTokens, expanded: allowanceTokens > ROUTINE_LOAD_ALLOWANCE_TOKENS });
-      if (flags.has('--json')) process.stdout.write(`${JSON.stringify(result)}\n`);
-      else process.stdout.write(formatKnowledgeLoadHuman(result));
+      const selectedOutput = renderResult(result, flags, formatKnowledgeLoadHuman);
+      recordTrace(trace, result.status === 'expansion-needed'
+        ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, requiredTokens: result.estimatedTokens, loadedTokens: 0, allowanceTokens, expansionRequested: true, deliveredOverAllowance: false, ...responseMetrics(selectedOutput) }
+        : { type: result.historical ? 'history-read' : 'load', subtype: result.historical ? 'history-body' : undefined, id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens, allowanceTokens, expanded: allowanceTokens > ROUTINE_LOAD_ALLOWANCE_TOKENS, ...responseMetrics(selectedOutput) });
+      process.stdout.write(selectedOutput);
     } catch (error) { const payload = serializeKnowledgeLoadError(error); throw codedError(payload.code, payload.message); }
     return;
   }
@@ -162,10 +181,11 @@ export async function main(argv = process.argv.slice(2)) {
       const result = command === 'history'
         ? await listKnowledgeHistory({ projectDir: projectDir(flags), id: subcommand, cursor: flags.get('--cursor'), lockOptions: lockOptions(flags) })
         : await inspectKnowledgeRevision({ projectDir: projectDir(flags), id: subcommand, revisionToken: flags.get('--revision'), lockOptions: lockOptions(flags) });
-      trace.record(command === 'history'
-        ? { type: 'history-read', subtype: 'history-preview', id: result.id, results: result.entries, responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') }
-        : { type: 'history-read', subtype: 'history-body', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') });
-      writeResult(result, flags);
+      const selectedOutput = renderResult(result, flags);
+      recordTrace(trace, command === 'history'
+        ? { type: 'history-read', subtype: 'history-preview', id: result.id, results: result.entries, ...responseMetrics(selectedOutput) }
+        : { type: 'history-read', subtype: 'history-body', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), ...responseMetrics(selectedOutput) });
+      process.stdout.write(selectedOutput);
     } catch (error) { throw codedError(error?.code || 'KNOWLEDGE_HISTORY_FAILED', error instanceof Error ? error.message : String(error)); }
     return;
   }
@@ -187,9 +207,9 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'register') {
     try {
       const result = await registerCanonicalKnowledge({ projectDir: projectDir(flags), recordPath: flags.get('--record'), expectedRevision: flags.get('--expected-revision'), lockOptions: lockOptions(flags) });
-      trace.record({ type: 'capture', id: result.id, revisionToken: result.revisionToken, outcome: result.status });
+      recordTrace(trace, { type: 'capture', id: result.id, revisionToken: result.revisionToken, outcome: result.status });
       writeResult(result, flags, (value) => `Registered knowledge record ${value.id}\n`);
-    } catch (error) { trace.record({ type: 'capture', outcome: 'failed' }); const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message, payload); }
+    } catch (error) { recordTrace(trace, { type: 'capture', outcome: 'failed' }); const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message, payload); }
     return;
   }
   if (command === 'migrate') {
