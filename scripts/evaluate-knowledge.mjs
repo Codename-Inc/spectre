@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
-import { stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs';
 
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
@@ -141,6 +141,12 @@ export function judgeCell(cell, runtime, oracle) {
     const ghCommands = runtime.workflowEvidence?.ghCommands ?? [];
     if (Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
       return { valid: false, recalled: false, reason: 'direct PR fallback evidence is missing' };
+    }
+    if (expected.requiresSameWorkId === true) {
+      const workRecords = runtime.snapshots?.after?.workRecords ?? [];
+      if (workRecords.length !== 1 || !workRecords[0].id || !workRecords[0].revisionToken) {
+        return { valid: false, recalled: false, reason: 'same work identity evidence is missing' };
+      }
     }
     if (expected.requiresPrView === true && !ghCommands.some((command) => /^pr view\b/.test(command))) {
       return { valid: false, recalled: false, reason: 'repeat/noop PR evidence is missing' };
@@ -342,6 +348,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const fixtureCase = cases.get(cell.caseId);
       configureLifecycleMock(staged, fixtureCase);
       const hostSettings = hostConfiguration(options.configuration, cell.host);
+      const snapshotBefore = snapshotKnowledgeCell(staged);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
         fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
@@ -363,11 +370,13 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         }));
       }
       const hostResult = mergeHostRuns(runs);
+      const snapshotAfter = snapshotKnowledgeCell(staged);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
       return {
         ...hostResult,
+        snapshots: { before: snapshotBefore, after: snapshotAfter },
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
         trace,
