@@ -1081,6 +1081,31 @@ export function noKnowledgeRuntimeFacts(hostResult = {}, verifiedAbsence = false
   };
 }
 
+/** Retain canonical targets seen during staging or capture so cached native evidence can be rechecked. */
+export function knowledgeBypassEvidence(staged = {}, snapshots = []) {
+  const knownPaths = new Set((staged.knownPaths ?? []).filter((entry) => typeof entry === 'string' && entry));
+  const canonicalRoots = [];
+  if (typeof staged.storePath === 'string' && staged.storePath) {
+    const knowledgeRoot = path.join(staged.storePath, 'knowledge');
+    const historyRoot = path.join(staged.storePath, 'knowledge-history');
+    canonicalRoots.push(knowledgeRoot, historyRoot);
+    for (const snapshot of snapshots.filter(Boolean)) {
+      for (const record of snapshot.records ?? []) {
+        if (typeof record?.id !== 'string' || !record.id) continue;
+        knownPaths.add(path.join(knowledgeRoot, record.id, record.source ? 'SKILL.md' : 'record.json'));
+      }
+      for (const entry of snapshot.history ?? []) {
+        if (typeof entry?.id === 'string' && entry.id) knownPaths.add(path.join(historyRoot, entry.id));
+      }
+    }
+  }
+  return {
+    workingDir: staged.projectDir,
+    knownPaths: [...knownPaths].sort(),
+    canonicalRoots: [...new Set(canonicalRoots)].sort(),
+  };
+}
+
 /** Recompute derivable evidence from a cached native transcript without invoking a host. */
 export function replayCachedRuntime(cell, runtime = {}) {
   const measurement = runtime.sessionStartMeasurement ?? runtime.usage?.sessionStartMeasurement ?? null;
@@ -1097,9 +1122,13 @@ export function replayCachedRuntime(cell, runtime = {}) {
     : cell.condition === 'no-knowledge'
       ? noKnowledgeRuntimeFacts(runtime, runtime.knowledgeAbsence === 'verified')
       : traceRuntimeFacts(trace ?? { availability: 'unavailable', events: [] }, { ...runtime, sessionStartMeasurement: measurement });
+  const bypass = runtime.bypassEvidence
+    ? detectTraceBypass(runtime.toolOperations, runtime.bypassEvidence)
+    : runtime.bypass;
   return {
     ...runtime,
     trace,
+    bypass,
     sessionStartMeasurement: measurement,
     ...attachNativeUsage(measured, runtime),
   };
@@ -1142,6 +1171,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         return compacted;
       };
       const rawSnapshotBefore = snapshotKnowledgeCell(staged);
+      const rawSnapshots = [rawSnapshotBefore];
       const snapshotBefore = compact(rawSnapshotBefore);
       const deliverablePath = cell.artifactPath;
       const preparedPrompts = promptContract(fixtureCase, deliverablePath, cell.host, cell.condition);
@@ -1156,6 +1186,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
           const { actorId, contextId } = evaluationActorContext(cell, sessionOrdinal + 1);
           const rawBeforeSession = snapshotKnowledgeCell(staged);
+          rawSnapshots.push(rawBeforeSession);
           const beforeSession = compact(rawBeforeSession, rawSnapshotBefore);
           const ghBeforeSession = readGhState(staged);
           const run = await invoke({
@@ -1172,6 +1203,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           });
           runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
           const rawAfterSession = snapshotKnowledgeCell(staged);
+          rawSnapshots.push(rawAfterSession);
           sessionSnapshots.push({ before: beforeSession, after: compact(rawAfterSession, rawBeforeSession), gh: { before: ghBeforeSession, after: readGhState(staged) }, contextHash: hash(contextId) });
           if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 3 && runs.at(-1)?.status === 'completed') {
             lifecycleEvidence = { ...lifecycleEvidence, ...closeLifecycleDraft(staged) };
@@ -1187,7 +1219,10 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         registrationFault?.restore();
       }
       const hostResult = mergeHostRuns(runs);
-      const snapshotAfter = compact(snapshotKnowledgeCell(staged), rawSnapshotBefore);
+      const rawSnapshotAfter = snapshotKnowledgeCell(staged);
+      rawSnapshots.push(rawSnapshotAfter);
+      const snapshotAfter = compact(rawSnapshotAfter, rawSnapshotBefore);
+      const bypassEvidence = knowledgeBypassEvidence(staged, rawSnapshots);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations, hostResult.toolResults);
@@ -1195,7 +1230,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         ? baselineRuntimeFacts({
           toolOperations: hostResult.toolOperations, toolResults: hostResult.toolResults,
           sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
-          workingDir: staged.projectDir, knownKnowledgePaths: staged.knownPaths,
+          workingDir: staged.projectDir, knownKnowledgePaths: bypassEvidence.knownPaths,
         })
         : cell.condition === 'no-knowledge' ? noKnowledgeRuntimeFacts(hostResult, staged.noKnowledge === true && !staged.storeDir && !staged.pluginDir)
           : traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement });
@@ -1212,9 +1247,10 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         workflowEvidence: workflowEvidence(staged),
         lifecycleEvidence,
         trace,
+        bypassEvidence,
         ...attachNativeUsage(measuredRuntime, hostResult),
         bypass: [
-          ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
+          ...detectTraceBypass(hostResult.toolOperations, bypassEvidence),
           ...trace.events.filter((event) => event.type === 'bypass'),
         ],
       };

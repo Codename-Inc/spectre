@@ -222,6 +222,25 @@ test('bypass detection resolves relative fixture reads and reports opaque knowle
   assert.equal(JSON.stringify(events).includes(knownPath), false);
 });
 
+test('bypass detection rejects direct canonical mutations while permitting external proposals and native CLI calls', () => {
+  const storePath = '/isolated/store';
+  const knownPath = `${storePath}/knowledge/captured-work/record.json`;
+  const events = detectTraceBypass([
+    { name: 'exec', input: { command: `cp /tmp/proposal.json '${knownPath}'` } },
+    { name: 'Write', input: { file_path: knownPath } },
+    { name: 'Edit', input: { file_path: knownPath } },
+    { name: 'exec', input: { command: `python3 -c \"open('${knownPath}', 'w').write('replacement')\"` } },
+    { name: 'Write', input: { file_path: '/tmp/proposal/record.json' } },
+    { name: 'exec', input: { command: 'node knowledge-cli.mjs load captured-work' } },
+  ], { knownPaths: [knownPath], canonicalRoots: [`${storePath}/knowledge`], workingDir: '/isolated/project' });
+  assert.deepEqual(events.map(({ reason, evidence }) => ({ reason, evidence })), [
+    { reason: 'shell-write', evidence: 'detected' },
+    { reason: 'direct-write', evidence: 'detected' },
+    { reason: 'direct-write', evidence: 'detected' },
+    { reason: 'shell-write', evidence: 'detected' },
+  ]);
+});
+
 test('expansion traces distinguish required size from delivered over-allowance loads', async (t) => {
   const value = await fixture(t);
   const large = record('large-trace-record', 'x '.repeat(4_000));

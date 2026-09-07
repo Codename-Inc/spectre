@@ -212,6 +212,10 @@ function knownPaths(paths) {
   return (paths || []).filter((candidate) => typeof candidate === 'string' && candidate).map((candidate) => path.resolve(candidate));
 }
 
+function canonicalRoots(roots) {
+  return (roots || []).filter((candidate) => typeof candidate === 'string' && candidate).map((candidate) => path.resolve(candidate));
+}
+
 function knownPath(value, paths, workingDir) {
   if (typeof value !== 'string' || !value) return null;
   const resolved = path.resolve(workingDir || process.cwd(), value);
@@ -223,9 +227,33 @@ function relativeKnowledgePath(value, paths) {
   return paths.find((candidate) => value.includes(path.relative(path.dirname(path.dirname(path.dirname(candidate))), candidate))) ?? null;
 }
 
+function canonicalRootPath(value, roots, workingDir) {
+  if (typeof value !== 'string' || !value) return null;
+  const resolved = path.resolve(workingDir || process.cwd(), value);
+  const directlyMatched = roots.find((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+  if (directlyMatched) return directlyMatched;
+  return roots.find((root) => value.includes(`${root}${path.sep}`)) ?? null;
+}
+
 function directShellRead(command) {
   return /(?:^|\s)(?:cat|sed|less|head|tail|awk|grep)\b/.test(command)
     || /\b(?:readFileSync|readFile|createReadStream|open)\s*\(/.test(command);
+}
+
+function directShellWrite(command) {
+  return /(?:^|\s)(?:cp|mv|rm|install|tee)\b/.test(command)
+    || /(?:^|[;&|])\s*[^;&|]*\s>>?\s*[^;&|]+/.test(command)
+    || /\b(?:writeFileSync|writeFile|appendFile|createWriteStream)\s*\(/.test(command)
+    || /\bopen\s*\([^)]*,\s*['\"](?:w|a|x|\+|r\+)['\"]/.test(command)
+    || /\b(?:sed|perl)\s+-[^\s]*i\b/.test(command);
+}
+
+function fileTarget(operation) {
+  return operation?.input?.file_path ?? operation?.input?.filePath ?? operation?.input?.path ?? operation?.path ?? null;
+}
+
+function isDirectWrite(operation) {
+  return ['Write', 'Edit', 'apply_patch', 'file_change'].includes(operation?.name ?? operation?.type);
 }
 
 function commandTarget(command, paths, workingDir) {
@@ -240,6 +268,7 @@ function commandTarget(command, paths, workingDir) {
 /** Classifies only normalized host operations against evaluator-supplied fixture paths. */
 export function detectTraceBypass(toolOperations = [], options = {}) {
   const paths = knownPaths(options.knownPaths);
+  const roots = canonicalRoots(options.canonicalRoots);
   const workingDir = options.workingDir;
   const findings = [];
   for (const operation of toolOperations) {
@@ -247,8 +276,8 @@ export function detectTraceBypass(toolOperations = [], options = {}) {
     const command = operation?.input?.command ?? operation?.command;
     const isShell = operation?.name === 'Bash' || operation?.name === 'exec' || typeof command === 'string';
     if (isRead) {
-      const suppliedPath = operation?.input?.file_path ?? operation?.input?.filePath ?? operation?.input?.path ?? operation?.path;
-      const target = knownPath(suppliedPath, paths, workingDir) || relativeKnowledgePath(suppliedPath, paths);
+      const suppliedPath = fileTarget(operation);
+      const target = knownPath(suppliedPath, paths, workingDir) || relativeKnowledgePath(suppliedPath, paths) || canonicalRootPath(suppliedPath, roots, workingDir);
       if (target || suppliedPath == null || /(?:^|\/)knowledge\//.test(suppliedPath || '')) {
         findings.push({
           type: 'bypass', reason: 'direct-read', evidence: target ? 'detected' : 'suspected',
@@ -257,13 +286,23 @@ export function detectTraceBypass(toolOperations = [], options = {}) {
       }
       continue;
     }
+    if (isDirectWrite(operation)) {
+      const suppliedPath = fileTarget(operation);
+      const target = knownPath(suppliedPath, paths, workingDir) || relativeKnowledgePath(suppliedPath, paths) || canonicalRootPath(suppliedPath, roots, workingDir);
+      if (target) findings.push({ type: 'bypass', reason: 'direct-write', evidence: 'detected', targetHash: hash(target) });
+      continue;
+    }
     if (!isShell) continue;
     if (typeof command !== 'string') {
       findings.push({ type: 'bypass', reason: 'shell-read', evidence: 'suspected' });
       continue;
     }
-    const target = commandTarget(command, paths, workingDir);
+    const target = commandTarget(command, paths, workingDir) || canonicalRootPath(command, roots, workingDir);
     if (!target) continue;
+    if (directShellWrite(command)) {
+      findings.push({ type: 'bypass', reason: 'shell-write', evidence: 'detected', targetHash: hash(target) });
+      continue;
+    }
     findings.push({
       type: 'bypass', reason: 'shell-read', evidence: directShellRead(command) ? 'detected' : 'suspected', targetHash: hash(target),
     });

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, limitsForFixture, mergeHostRuns, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, replayCachedRuntime, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
+import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, knowledgeBypassEvidence, limitsForFixture, mergeHostRuns, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, replayCachedRuntime, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -432,6 +432,42 @@ test('cached native evidence reruns only stale derived trace checks and preserve
   assert.equal(refusedLoad.trace.availability, 'available');
   assert.equal(refusedLoad.previewTokens, 7);
   assert.equal(refusedLoad.loadedBodyTokens, 0);
+});
+
+test('dynamic canonical records make direct reads and mutations invalid in fresh and replayed evidence', () => {
+  const storePath = '/isolated/lifecycle-store';
+  const recordPath = `${storePath}/knowledge/captured-work/record.json`;
+  const evidence = knowledgeBypassEvidence({
+    projectDir: '/isolated/project', storePath, knownPaths: [],
+  }, [
+    { records: [], history: [] },
+    { records: [{ id: 'captured-work', revisionToken: 'captured-revision', record: { id: 'captured-work' } }], history: [] },
+  ]);
+  assert.ok(evidence.knownPaths.includes(recordPath));
+  assert.ok(evidence.canonicalRoots.includes(`${storePath}/knowledge`));
+
+  const runtime = {
+    status: 'completed', trace: { availability: 'available', events: [] },
+    deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 },
+    snapshots: { before: { records: [] }, after: { records: [{ id: 'captured-work', revisionToken: 'captured-revision' }] } },
+    bypassEvidence: evidence,
+    toolOperations: [
+      { name: 'exec', input: { command: `cat '${recordPath}'` } },
+      { name: 'exec', input: { command: `cp /tmp/proposal.json '${recordPath}'` } },
+      { name: 'Write', input: { file_path: recordPath } },
+      { name: 'Edit', input: { file_path: recordPath } },
+      { name: 'exec', input: { command: `python3 -c \"open('${recordPath}', 'w').write('replacement')\"` } },
+      { name: 'Write', input: { file_path: '/tmp/proposal/record.json' } },
+      { name: 'exec', input: { command: 'node knowledge-cli.mjs load captured-work' } },
+    ],
+  };
+  const replayed = replayCachedRuntime({ condition: 'candidate' }, runtime);
+  assert.deepEqual(replayed.bypass.map((entry) => entry.reason), [
+    'shell-read', 'shell-write', 'direct-write', 'direct-write', 'shell-write',
+  ]);
+  assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, replayed, {
+    lifecycle: { requiredRecordHashes: [] },
+  }).reason, 'direct knowledge-store bypass detected');
 });
 
 test('imported work requires a captured extraction and a fresh reuse without reloading the import', () => {
