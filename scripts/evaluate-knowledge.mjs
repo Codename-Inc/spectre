@@ -71,6 +71,16 @@ function argumentsNamed(argv, name) {
   return argv.flatMap((value, index) => value === name && typeof argv[index + 1] === 'string' ? [argv[index + 1]] : []);
 }
 
+function promptContract(entry, artifactPath) {
+  const prompts = entry.longitudinalSteps ?? [[
+    entry.task,
+    entry.workflow ?? 'Use the installed Spectre workflow to complete the task.',
+  ].join('\n')];
+  return prompts.map((prompt, index) => index === prompts.length - 1
+    ? `${prompt}\nWrite the decision artifact to ${artifactPath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
+    : prompt);
+}
+
 export function selectFrozenCells(freezeManifest, cellIds = []) {
   if (!Array.isArray(cellIds) || cellIds.length === 0) return freezeManifest;
   const selected = freezeManifest.cells.filter((cell) => cellIds.includes(cell.id));
@@ -84,6 +94,8 @@ export function selectFrozenCells(freezeManifest, cellIds = []) {
 function freeze(fixtures, oracle, output, options = {}) {
   const manifest = readJson(path.join(fixtures, 'manifest.json'));
   if (!Array.isArray(manifest.cases) || manifest.cases.length !== 12) throw new Error('fixture manifest must contain exactly 12 cases');
+  const artifactPath = manifest.artifactPath;
+  if (typeof artifactPath !== 'string' || !/^artifacts\/[a-z0-9-]+\.md$/.test(artifactPath)) throw new Error('fixture manifest must provide a neutral relative artifactPath');
   const fixtureBytes = fs.readFileSync(path.join(fixtures, 'manifest.json'));
   const oracleBytes = fs.readFileSync(oracle);
   for (const value of goldStrings(readJson(oracle))) {
@@ -103,7 +115,9 @@ function freeze(fixtures, oracle, output, options = {}) {
       longitudinal: Boolean(entry.longitudinal),
       cohort: entry.longitudinal ? 'longitudinal' : entry.cohort ?? 'workflow',
       critical: entry.critical === true,
-      fixtureHash: hash(JSON.stringify(entry)),
+      artifactPath,
+      promptHash: hash(JSON.stringify(promptContract(entry, artifactPath))),
+      fixtureHash: hash(JSON.stringify({ entry, artifactPath })),
     })))
   ));
   const result = {
@@ -323,6 +337,8 @@ export async function runCells(freezeManifest, outputDir, invoke) {
   fs.mkdirSync(outputDir, { recursive: true });
   const cacheKeyFor = (cell) => hash(JSON.stringify({
     fixture: cell.fixtureHash ?? freezeManifest.hashes?.fixtures,
+    prompt: cell.promptHash ?? null,
+    artifactPath: cell.artifactPath ?? null,
     configuration: freezeManifest.hashes.configuration,
     candidate: freezeManifest.hashes.candidate,
     nativePipelineInputs: freezeManifest.hashes.nativePipelineInputs,
@@ -395,7 +411,8 @@ function cohortReport(cells) {
     const key = `${cell.condition}:${cell.host}:${cell.cohort ?? 'workflow'}`;
     const cohort = cohorts[key] ?? {
       samples: 0, completed: 0, pending: 0, invalid: 0, recalled: 0, manualPending: 0,
-      sessions: [], messages: [], workflowOperations: [], historyEntries: [], loadedBodyTokens: [],
+      sessions: [], messages: [], workflowOperations: [], historyEntries: [],
+      injectedTokens: [], previewTokens: [], loadedBodyTokens: [], redundantTokens: [], totalTokens: [],
       nativeInput: [], nativeCache: [], nativeCacheWrite: [], nativeOutput: [], nativeReasoning: [], nativeTotal: [],
     };
     cohort.samples += 1;
@@ -408,7 +425,11 @@ function cohortReport(cells) {
     cohort.messages.push(cell.runtime?.textFinalAnswers?.length ?? 0);
     cohort.workflowOperations.push((cell.runtime?.toolOperations ?? []).filter((operation) => ['Skill', 'Task', 'Plan', 'Execute', 'Ship', 'CreatePR'].includes(operation.name)).length);
     cohort.historyEntries.push(cell.runtime?.snapshots?.after?.history?.length ?? null);
+    cohort.injectedTokens.push(cell.runtime?.injectedTokens ?? null);
+    cohort.previewTokens.push(cell.runtime?.previewTokens ?? null);
     cohort.loadedBodyTokens.push(cell.runtime?.loadedBodyTokens ?? null);
+    cohort.redundantTokens.push(cell.runtime?.redundantTokens ?? null);
+    cohort.totalTokens.push(cell.runtime?.totalTokens ?? null);
     const native = cell.runtime?.nativeFullCycleUsage?.coverage === 'complete'
       ? cell.runtime.nativeFullCycleUsage.total : null;
     cohort.nativeInput.push(native?.input ?? null);
@@ -425,7 +446,11 @@ function cohortReport(cells) {
     messages: metricSummary(cohort.messages),
     workflowOperations: metricSummary(cohort.workflowOperations),
     historyEntries: metricSummary(cohort.historyEntries),
+    injectedTokens: metricSummary(cohort.injectedTokens),
+    previewTokens: metricSummary(cohort.previewTokens),
     loadedBodyTokens: metricSummary(cohort.loadedBodyTokens),
+    redundantTokens: metricSummary(cohort.redundantTokens),
+    totalTokens: metricSummary(cohort.totalTokens),
     nativePrimaryPlusWorkerTokens: {
       input: metricSummary(cohort.nativeInput), cache: metricSummary(cohort.nativeCache), cacheWrite: metricSummary(cohort.nativeCacheWrite),
       output: metricSummary(cohort.nativeOutput), reasoning: metricSummary(cohort.nativeReasoning), total: metricSummary(cohort.nativeTotal),
@@ -445,7 +470,19 @@ function nativeUsageTokenTotal(host, value) {
     ? value.input + value.cache + value.cacheWrite + value.output : null;
 }
 
-function pairedReport(cells) {
+function semanticOutcome(judgment) {
+  if (!judgment?.artifactHashMatches) return null;
+  const values = [judgment.correct, judgment.relevant, judgment.requiredRecallBeforeDecision];
+  return values.some((value) => value === false) ? false : values.every((value) => value === true) ? true : null;
+}
+
+function knowledgeBenefitCase(expected = {}) {
+  return (expected.requiredRecordHashes?.length ?? 0) > 0 || expected.requiresCapture === true ||
+    expected.requiredReadCommand === 'inspect' || expected.requiresFreshExtractedReuse === true;
+}
+
+function pairedReport(cells, oracle = {}, primaryJudgments = []) {
+  const manual = new Map(primaryJudgmentReport(cells, primaryJudgments).reviewed.map((judgment) => [judgment.cellId, judgment]));
   const grouped = new Map();
   for (const cell of cells) {
     const key = `${cell.caseId}:${cell.host}:${cell.repeat}`;
@@ -453,19 +490,51 @@ function pairedReport(cells) {
     group[cell.condition] = cell;
     grouped.set(key, group);
   }
-  return [...grouped.entries()].map(([id, group]) => ({
-    id,
-    baseline: group.baseline?.judged?.recalled ?? null,
-    candidate: group.candidate?.judged?.recalled ?? null,
-    noKnowledge: group['no-knowledge']?.judged?.recalled ?? null,
-    comparable: Boolean(group.baseline && group.candidate && group['no-knowledge']),
-    loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
-      ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
-    nativeFullCycleTokenDelta: pairedDelta(group.candidate, group.baseline),
-    noKnowledgeNativeOverhead: pairedDelta(group.candidate, group['no-knowledge']),
-    baselineNativeOverhead: pairedDelta(group.baseline, group['no-knowledge']),
-    candidateVsNoKnowledge: group.candidate?.judged?.recalled === true && group['no-knowledge']?.judged?.recalled === false,
-  }));
+  return [...grouped.entries()].map(([id, group]) => {
+    const candidateSemantic = semanticOutcome(manual.get(group.candidate?.id));
+    const baselineSemantic = semanticOutcome(manual.get(group.baseline?.id));
+    const noKnowledgeSemantic = semanticOutcome(manual.get(group['no-knowledge']?.id));
+    const controlsCorrect = baselineSemantic === true && noKnowledgeSemantic === true;
+    const structural = group.candidate?.judged?.structuralValid === true;
+    return {
+      id,
+      caseId: group.candidate?.caseId ?? group.baseline?.caseId ?? group['no-knowledge']?.caseId ?? null,
+      baseline: group.baseline?.judged?.recalled ?? null,
+      candidate: group.candidate?.judged?.recalled ?? null,
+      noKnowledge: group['no-knowledge']?.judged?.recalled ?? null,
+      comparable: Boolean(group.baseline && group.candidate && group['no-knowledge']),
+      knowledgeBenefit: knowledgeBenefitCase(oracle[group.candidate?.caseId ?? group.baseline?.caseId ?? group['no-knowledge']?.caseId] ?? {}),
+      semantic: { candidate: candidateSemantic, baseline: baselineSemantic, noKnowledge: noKnowledgeSemantic },
+      correctnessVsBothControls: candidateSemantic === false && controlsCorrect ? 'regression'
+        : candidateSemantic === true && controlsCorrect ? 'no-regression'
+          : candidateSemantic === null || baselineSemantic === null || noKnowledgeSemantic === null ? 'unknown' : 'not-comparable',
+      qualityGate: structural && candidateSemantic === true && controlsCorrect,
+      loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
+        ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
+      nativeFullCycleTokenDelta: pairedDelta(group.candidate, group.baseline),
+      noKnowledgeNativeOverhead: pairedDelta(group.candidate, group['no-knowledge']),
+      baselineNativeOverhead: pairedDelta(group.baseline, group['no-knowledge']),
+    };
+  });
+}
+
+function repeatInstabilityReport(cells) {
+  const groups = new Map();
+  for (const cell of cells) {
+    const key = `${cell.caseId}:${cell.condition}:${cell.host}`;
+    const group = groups.get(key) ?? [];
+    group.push(cell);
+    groups.set(key, group);
+  }
+  return [...groups.entries()].map(([id, group]) => {
+    const values = group.map((cell) => nativeUsageTokenTotal(cell.host, cell.runtime?.nativeFullCycleUsage?.coverage === 'complete' ? cell.runtime.nativeFullCycleUsage.total : null));
+    const known = values.filter(Number.isFinite);
+    return {
+      id, repeats: group.length,
+      nativeFullCycleTokenRange: known.length === group.length && known.length > 0 ? Math.max(...known) - Math.min(...known) : null,
+      structuralOutcomes: group.map((cell) => cell.judged?.structuralValid === true ? 'valid' : cell.judged?.recalled === false ? 'invalid' : 'unknown'),
+    };
+  });
 }
 
 function pairedDelta(left, right) {
@@ -494,7 +563,7 @@ export function primaryJudgmentReport(cells, primaryJudgments = []) {
     };
   });
   const failed = reviewed.some((judgment) => !judgment.artifactHashMatches || judgment.correct === false || judgment.relevant === false || judgment.requiredRecallBeforeDecision === false);
-  const pending = cells.some((cell) => cell.condition === 'candidate' && cell.critical === true && !judgments.has(cell.id)) ||
+  const pending = cells.some((cell) => !judgments.has(cell.id)) ||
     reviewed.some((judgment) => judgment.correct === null || judgment.relevant === null || judgment.requiredRecallBeforeDecision === null);
   return { reviewed, status: failed ? 'fail' : pending ? 'pending' : 'reviewed' };
 }
@@ -537,21 +606,95 @@ export function evaluationQualityReport(cells, primaryJudgments = []) {
   };
 }
 
-function thresholdReport(cells, paired, primaryJudgments = []) {
-  const required = cells.filter((cell) => cell.critical === true);
-  const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.recalled === true)
-    ? 'pass' : required.some((cell) => cell.judged?.recalled === false) ? 'fail' : 'unknown';
-  const pairedCosts = paired.map((pair) => pair.nativeFullCycleTokenDelta).filter(Number.isFinite);
+function cappedMeasurements(values, limit) {
+  const known = values.filter(Number.isFinite);
+  return {
+    limit, known: known.length, missing: values.length - known.length,
+    max: known.length > 0 ? Math.max(...known) : 'unknown',
+    status: values.length === 0 || known.length !== values.length ? 'unknown' : known.every((value) => value <= limit) ? 'pass' : 'fail',
+  };
+}
+
+function knowledgeEfficiencyReport(cells, oracle) {
+  const candidates = cells.filter((cell) => cell.condition === 'candidate');
+  const candidateEvents = candidates.map((cell) => ({ cell, events: cell.runtime?.trace?.availability === 'available' ? cell.runtime.trace.events ?? [] : null }));
+  const sessionStart = candidates.flatMap((cell) => {
+    const sessions = cell.runtime?.usage?.sessions ?? [];
+    const measured = sessions.map((session) => session.sessionStartMeasurement?.availability === 'available' ? session.sessionStartMeasurement.injectedTokens : null);
+    if (measured.length === 1 && measured[0] === null && cell.runtime?.sessionStartMeasurement?.availability === 'available') {
+      return [cell.runtime.sessionStartMeasurement.injectedTokens];
+    }
+    return measured;
+  });
+  const searchResponses = candidateEvents.flatMap(({ events }) => events === null ? [null] : events.filter((event) => event.type === 'search').map((event) => event.responseTokens));
+  const initialBodies = candidateEvents.flatMap(({ events }) => events === null ? [null] : events.filter((event) => event.type === 'load' && event.expanded !== true).map((event) => event.loadedTokens));
+  const expansions = candidateEvents.flatMap(({ events }) => events === null ? [{ known: false }] : events.filter((event) => event.type === 'expansion'));
+  const routine = candidates.filter((cell) => oracle[cell.caseId]?.allowedLoads === 0);
+  const completeRoutine = routine.every((cell) => Number.isFinite(cell.runtime?.loadedBodyTokens));
+  const completeCandidateBodies = candidates.every((cell) => Number.isFinite(cell.runtime?.loadedBodyTokens));
+  const routineLoaded = completeRoutine ? routine.reduce((total, cell) => total + cell.runtime.loadedBodyTokens, 0) : null;
+  const totalLoaded = completeCandidateBodies ? candidates.reduce((total, cell) => total + cell.runtime.loadedBodyTokens, 0) : null;
+  const critical = candidates.filter((cell) => cell.critical === true);
+  const criticalHistory = critical.map((cell) => cell.runtime?.trace?.availability === 'available'
+    ? cell.runtime.trace.events.filter((event) => event.type === 'history-read').length : null);
+  const criticalRedundant = critical.map((cell) => cell.runtime?.redundantTokens);
+  return {
+    startupTokens: cappedMeasurements(sessionStart, 300),
+    searchPreviewTokens: cappedMeasurements(searchResponses, 500),
+    initialLoadTokens: cappedMeasurements(initialBodies, 1500),
+    expansions: {
+      observed: expansions.length,
+      unknown: expansions.filter((event) => event.known === false).length,
+      overAllowance: expansions.filter((event) => event.deliveredOverAllowance === true).length,
+      status: expansions.some((event) => event.known === false) ? 'unknown' : expansions.some((event) => event.deliveredOverAllowance === true) ? 'fail' : 'pass',
+    },
+    routineIrrelevantLoadedBodyRate: routineLoaded === null || totalLoaded === null ? 'unknown'
+      : totalLoaded === 0 ? 0 : routineLoaded / totalLoaded,
+    routineIrrelevantLoadedBodyRateStatus: routineLoaded === null || totalLoaded === null ? 'unknown'
+      : totalLoaded === 0 || routineLoaded / totalLoaded <= ACCEPTANCE_THRESHOLDS.routineIrrelevantLoadedBodyRate ? 'pass' : 'fail',
+    criticalHistoryLoads: completeCandidateBodies && criticalHistory.every(Number.isFinite) ? criticalHistory.reduce((total, value) => total + value, 0) : 'unknown',
+    criticalRedundantTokens: criticalRedundant.every(Number.isFinite) ? criticalRedundant.reduce((total, value) => total + value, 0) : 'unknown',
+  };
+}
+
+function thresholdStatus(values) {
+  return values.includes('fail') ? 'fail' : values.every((value) => value === 'pass') ? 'pass' : 'pending';
+}
+
+function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
   const manual = primaryJudgmentReport(cells, primaryJudgments);
+  const manualByCell = new Map(manual.reviewed.map((judgment) => [judgment.cellId, judgment]));
+  const required = cells.filter((cell) => cell.condition === 'candidate' && cell.critical === true);
+  const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.structuralValid === true && semanticOutcome(manualByCell.get(cell.id)) === true)
+    ? 'pass' : required.some((cell) => cell.judged?.recalled === false || semanticOutcome(manualByCell.get(cell.id)) === false) ? 'fail' : 'unknown';
+  const efficiency = knowledgeEfficiencyReport(cells, oracle);
+  const eligible = paired.filter((pair) => pair.knowledgeBenefit && pair.qualityGate === true);
+  const pairedCosts = eligible.map((pair) => pair.nativeFullCycleTokenDelta).filter(Number.isFinite);
+  const regressions = paired.filter((pair) => pair.correctnessVsBothControls === 'regression').length;
+  const unknownComparisons = paired.filter((pair) => pair.knowledgeBenefit && pair.correctnessVsBothControls === 'unknown').length;
+  const historyStatus = efficiency.criticalHistoryLoads === 'unknown' ? 'unknown' : efficiency.criticalHistoryLoads === 0 ? 'pass' : 'fail';
+  const redundantStatus = efficiency.criticalRedundantTokens === 'unknown' ? 'unknown' : efficiency.criticalRedundantTokens === 0 ? 'pass' : 'fail';
+  const correctnessStatus = regressions > 0 ? 'fail' : unknownComparisons > 0 ? 'unknown' : 'pass';
   return {
     thresholds: ACCEPTANCE_THRESHOLDS,
     requiredRecall,
-    pairedEfficiency: pairedCosts.length > 0
-      ? { medianDelta: percentile(pairedCosts, .5), hypothesis: percentile(pairedCosts, .5) < 0 ? 'supported-pending-correctness' : 'not-supported' }
-      : { medianDelta: 'unknown', hypothesis: 'unknown' },
+    correctnessVsBothControls: { regressions, unknown: unknownComparisons, status: correctnessStatus },
+    efficiency,
+    pairedEfficiency: {
+      knowledgeBenefitPairs: paired.filter((pair) => pair.knowledgeBenefit).length,
+      qualityEligiblePairs: eligible.length,
+      knownCostPairs: pairedCosts.length,
+      medianDelta: pairedCosts.length > 0 ? percentile(pairedCosts, .5) : 'unknown',
+      hypothesis: eligible.length === 0 || pairedCosts.length !== eligible.length ? 'unknown'
+        : percentile(pairedCosts, .5) < 0 ? 'supported' : 'not-supported',
+    },
     manual,
-    status: cells.length < 144 || manual.status !== 'reviewed' ? 'pending' : manual.status,
-    note: 'Semantic correctness and relevance remain pending manual adjudication; unknown telemetry cannot satisfy a threshold.',
+    status: cells.length < 144 || manual.status !== 'reviewed' ? 'pending' : thresholdStatus([
+      requiredRecall, correctnessStatus, historyStatus, redundantStatus,
+      efficiency.startupTokens.status, efficiency.searchPreviewTokens.status, efficiency.initialLoadTokens.status,
+      efficiency.expansions.status, efficiency.routineIrrelevantLoadedBodyRateStatus,
+    ]),
+    note: 'A pass requires complete native samples, hash-bound manual correctness and relevance for every artifact, and complete metric evidence.',
   };
 }
 
@@ -674,7 +817,7 @@ function mergeHostRuns(runs) {
       workers: runs.at(-1)?.usage?.workers ?? null,
       fullCycle: nativeFullCycleUsage(runs),
       sessionStartMeasurement: sessionStartMeasurement(runs),
-      sessions: runs.map((run) => run.usage ?? null),
+      sessions: runs.map((run) => ({ ...(run.usage ?? {}), sessionStartMeasurement: run.sessionStartMeasurement ?? null })),
     },
     toolOperations: runs.flatMap((run, sessionOrdinal) =>
       (run.toolOperations ?? []).map((operation) => ({ ...operation, sessionOrdinal }))
@@ -774,13 +917,17 @@ export function traceRuntimeFacts(trace, hostResult = {}) {
   };
 }
 
-function noKnowledgeRuntimeFacts(hostResult = {}) {
+export function noKnowledgeRuntimeFacts(hostResult = {}, verifiedAbsence = false) {
   const measurement = hostResult.usage?.sessionStartMeasurement;
+  const zero = verifiedAbsence === true;
   return {
-    injectedTokens: measurement?.availability === 'none' ? 0 : null,
-    injectedBytes: measurement?.availability === 'none' ? 0 : null,
-    previewTokens: null, previewBytes: null, loadedBodyTokens: null, loadedBodyBytes: null,
-    resourceTokens: null, resourceBytes: null, redundantTokens: null, totalTokens: null,
+    injectedTokens: zero && measurement?.availability === 'none' ? 0 : null,
+    injectedBytes: zero && measurement?.availability === 'none' ? 0 : null,
+    previewTokens: zero ? 0 : null, previewBytes: zero ? 0 : null,
+    loadedBodyTokens: zero ? 0 : null, loadedBodyBytes: zero ? 0 : null,
+    resourceTokens: zero ? 0 : null, resourceBytes: zero ? 0 : null,
+    redundantTokens: zero ? 0 : null, totalTokens: zero ? 0 : null,
+    knowledgeAbsence: zero ? 'verified' : 'unknown',
     nativePrimaryUsage: hostResult.usage?.primary ?? null,
     nativeFullCycleUsage: hostResult.usage?.fullCycle ?? null,
   };
@@ -819,14 +966,8 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const relevantIds = (fixtureCase.initialFacts ?? []).map((fact) => fact.id);
       const rawSnapshotBefore = snapshotKnowledgeCell(staged);
       const snapshotBefore = compactSnapshot(rawSnapshotBefore, relevantIds);
-      const deliverablePath = path.join('artifacts', `${cell.caseId}.md`);
-      const prompts = fixtureCase.longitudinalSteps ?? [[
-        fixtureCase.task,
-        fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
-      ].join('\n')];
-      const preparedPrompts = prompts.map((prompt, index) => index === prompts.length - 1
-        ? `${prompt}\nWrite the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
-        : prompt);
+      const deliverablePath = cell.artifactPath;
+      const preparedPrompts = promptContract(fixtureCase, deliverablePath);
       const runs = [];
       const sessionSnapshots = [];
       let registrationFault = null;
@@ -868,7 +1009,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
           workingDir: staged.projectDir, knownKnowledgePaths: staged.knownPaths,
         })
-        : cell.condition === 'no-knowledge' ? noKnowledgeRuntimeFacts(hostResult)
+        : cell.condition === 'no-knowledge' ? noKnowledgeRuntimeFacts(hostResult, staged.noKnowledge === true && !staged.storeDir && !staged.pluginDir)
           : traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement });
       return {
         ...hostResult,
@@ -891,13 +1032,15 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       fs.rmSync(staged.root, { recursive: true, force: true });
     }
   });
-  const paired = pairedReport(result.cells);
   const primaryJudgments = Array.isArray(options.primaryJudgments) ? options.primaryJudgments : [];
+  const oracle = freezeManifest.oraclePath ? readJson(freezeManifest.oraclePath) : freezeManifest.oracle ?? {};
+  const paired = pairedReport(result.cells, oracle, primaryJudgments);
   const report = {
     ...result, freeze: { hashes: freezeManifest.hashes, baseline: freezeManifest.baseline },
     cohorts: cohortReport(result.cells), paired, primaryJudgments: primaryJudgmentReport(result.cells, primaryJudgments),
     quality: evaluationQualityReport(result.cells, primaryJudgments),
-    thresholds: thresholdReport(result.cells, paired, primaryJudgments),
+    thresholds: thresholdReport(result.cells, paired, oracle, primaryJudgments),
+    repeatInstability: repeatInstabilityReport(result.cells),
   };
   if (options.reportPath) fs.writeFileSync(options.reportPath, `${JSON.stringify(report, null, 2)}\n`);
   return report;
@@ -936,4 +1079,4 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   }
 }
 
-export { BASELINE, CONDITIONS, HOSTS, freeze };
+export { BASELINE, CONDITIONS, HOSTS, cohortReport, freeze, pairedReport, thresholdReport };

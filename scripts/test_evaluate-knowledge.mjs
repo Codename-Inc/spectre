@@ -4,19 +4,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, normalizeUsage, primaryJudgmentReport, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
   const fixtures = path.join(root, 'fixtures'); fs.mkdirSync(fixtures);
   const cases = Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` }));
-  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases }));
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ artifactPath: 'artifacts/decision.md', cases }));
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify({ 'case-0': 'gold-label' }));
   const output = path.join(root, 'freeze.json');
   const frozen = freeze(fixtures, oracle, output);
   assert.equal(frozen.cells.length, 12 * 3 * 2 * 2);
+  assert.ok(frozen.cells.every((cell) => cell.artifactPath === 'artifacts/decision.md' && !cell.artifactPath.includes(cell.caseId)));
   assert.deepEqual(frozen.concurrency, { total: 4, perHost: 2 });
-  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases, leaked: 'gold-label' }));
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ artifactPath: 'artifacts/decision.md', cases, leaked: 'gold-label' }));
   assert.throws(() => freeze(fixtures, oracle, output), /leaked/);
 });
 
@@ -31,7 +32,7 @@ test('freeze binds configuration and candidate content, while missing oracle jud
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-freeze-'));
   const fixtures = path.join(root, 'fixtures'); const candidate = path.join(root, 'candidate');
   fs.mkdirSync(fixtures); fs.mkdirSync(candidate);
-  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}`, task: `Task ${index}` })) }));
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ artifactPath: 'artifacts/decision.md', cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}`, task: `Task ${index}` })) }));
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [`answer-${index}`] }]))));
   const configuration = path.join(root, 'config.json'); fs.writeFileSync(configuration, JSON.stringify({ model: 'test-model', effort: 'medium' }));
   fs.writeFileSync(path.join(candidate, 'plugin.txt'), 'candidate-v1');
@@ -66,7 +67,7 @@ test('runCells honors total and per-host concurrency limits', async () => {
 test('deterministic freeze gates native calls', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-stage-'));
   const fixtures = path.join(root, 'fixtures'); fs.mkdirSync(fixtures);
-  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` })) }));
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ artifactPath: 'artifacts/decision.md', cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` })) }));
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [] }]))));
   const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'));
   await assert.rejects(() => evaluateKnowledge(frozen, { fixtureRoot: fixtures }), /allowNative/);
@@ -88,8 +89,9 @@ test('a frozen cell result resumes only when its freeze hash matches', async () 
   const invoke = async () => { calls += 1; return { status: 'completed', textFinalAnswers: ['answer'], deliverable: { exists: true, bytes: 1 } }; };
   await runCells(manifest, output, invoke);
   await runCells(manifest, output, invoke);
+  await runCells({ ...manifest, cells: [{ ...manifest.cells[0], promptHash: 'changed-prompt' }] }, output, invoke);
   await runCells({ ...manifest, hashes: { fixtures: 'changed', oracle: 'oracle-hash' } }, output, invoke);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });
 
 test('manual semantic adjudication remains pending rather than an invalid host run', async () => {
@@ -125,6 +127,43 @@ test('quality report keeps incomplete controls and unreviewed artifacts pending'
   assert.equal(quality.controls.candidate.nativeFullCycleUsage.known, 1);
   assert.equal(quality.controls.candidate.trace.available, 1);
   assert.equal(quality.controls.baseline.postHocPayloadMetrics.available, 0);
+});
+
+test('a proven no-knowledge isolation reports zero knowledge delivery without zeroing native task usage', () => {
+  const result = noKnowledgeRuntimeFacts({ usage: { primary: { input: 8 }, fullCycle: { coverage: 'complete', total: { input: 8, output: 3 } }, sessionStartMeasurement: { availability: 'none' } } }, true);
+  assert.deepEqual({
+    injectedTokens: result.injectedTokens, previewTokens: result.previewTokens, loadedBodyTokens: result.loadedBodyTokens,
+    resourceTokens: result.resourceTokens, redundantTokens: result.redundantTokens, totalTokens: result.totalTokens,
+  }, { injectedTokens: 0, previewTokens: 0, loadedBodyTokens: 0, resourceTokens: 0, redundantTokens: 0, totalTokens: 0 });
+  assert.deepEqual(result.nativeFullCycleUsage, { coverage: 'complete', total: { input: 8, output: 3 } });
+  assert.equal(noKnowledgeRuntimeFacts({}, false).loadedBodyTokens, null);
+});
+
+test('thresholds use hash-bound manual outcomes, bounded trace metrics, and quality-gated benefit pairs', () => {
+  const usage = { coverage: 'complete', total: { input: 10, cache: 0, cacheWrite: 0, output: 5, reasoning: null } };
+  const runtime = (condition, hash) => ({
+    nativeFullCycleUsage: usage, deliverable: { hash }, loadedBodyTokens: condition === 'candidate' ? 100 : 0,
+    redundantTokens: 0, sessionStartMeasurement: condition === 'no-knowledge' ? { availability: 'none' } : { availability: 'available' },
+    usage: { sessions: [{ sessionStartMeasurement: { availability: 'available', injectedTokens: 200 } }] },
+    trace: condition === 'candidate' ? { availability: 'available', events: [
+      { type: 'search', responseTokens: 300 }, { type: 'load', loadedTokens: 100 },
+    ] } : { availability: 'unavailable', events: [] },
+  });
+  const cells = ['baseline', 'candidate', 'no-knowledge'].map((condition) => ({
+    id: `case:${condition}:claude:1`, caseId: 'case', condition, host: 'claude', repeat: 1, critical: condition === 'candidate',
+    runtime: runtime(condition, `sha256:${condition}`), judged: { structuralValid: true, recalled: null },
+  }));
+  const judgments = cells.map((cell) => ({ cellId: cell.id, artifactHash: cell.runtime.deliverable.hash, artifactEvidence: cell.runtime.deliverable.hash,
+    correct: true, relevant: true, requiredRecallBeforeDecision: true }));
+  const oracle = { case: { requiredRecordHashes: ['sha256:record'] } };
+  const paired = pairedReport(cells, oracle, judgments);
+  const report = thresholdReport(cells, paired, oracle, judgments);
+  assert.equal(report.requiredRecall, 'pass');
+  assert.equal(report.efficiency.startupTokens.status, 'pass');
+  assert.equal(report.efficiency.searchPreviewTokens.status, 'pass');
+  assert.equal(report.pairedEfficiency.qualityEligiblePairs, 1);
+  assert.equal(report.correctnessVsBothControls.status, 'pass');
+  assert.equal(report.status, 'pending');
 });
 
 test('judging requires an exact successful load and a later persisted decision artifact', () => {

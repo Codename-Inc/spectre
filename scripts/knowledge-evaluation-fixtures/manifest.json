@@ -1,5 +1,6 @@
 {
   "schemaVersion": 2,
+  "artifactPath": "artifacts/decision.md",
   "cases": [
     {
       "id": "critical-old-constraint",
