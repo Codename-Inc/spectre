@@ -1602,6 +1602,50 @@ test('UX carries explicit flow approval and a selected continuation through Stag
   }
 });
 
+test('Execute self-owned handoff links proof without contaminating parent delivery', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const execute = fs.readFileSync(path.join(
+      repoRoot, 'plugins', rootName, 'skills', 'spectre-execute', 'SKILL.md',
+    ), 'utf8');
+    const handoff = handoffSection(execute);
+
+    assert.match(
+      execute,
+      /Only after self-owned authoritative terminal state[\s\S]*render[\s\S]*table/i,
+    );
+    assert.match(
+      execute,
+      /parent[\s\S]*`IMPLEMENTATION_READY`[\s\S]*`ACCEPTANCE_PENDING`[\s\S]*no user-facing table or next step/i,
+    );
+    assert.match(handoff, /Execute completed or reached recovery/i);
+    assert.match(
+      handoff,
+      /delivered product experience or technical capability[\s\S]*user impact/i,
+    );
+    assert.match(handoff, /\{FEATURE_ROOT\}\/proof\/proof\.html/);
+    assert.match(handoff, /🔎 \*\*Review proof\*\*/);
+    assert.doesNotMatch(handoff, /Counts, proof, findings, `RUN_ID`/);
+    assert.match(
+      execute,
+      /In Subspace[\s\S]*companion opening is available[\s\S]*proof\.html[\s\S]*beside the conversation/i,
+    );
+    assert.match(
+      execute,
+      /Outside Subspace[\s\S]*same link[\s\S]*without failure/i,
+    );
+    assert.match(execute, /Never publish or share(?: the)? proof/i);
+    assert.match(
+      handoff,
+      /fix high findings, test a concrete coverage gap, else `\/?spectre[-:]ship`/i,
+    );
+    assert.match(
+      handoff,
+      /blocked or failed[\s\S]*same table[\s\S]*exact copy-ready recovery prompt/i,
+    );
+  }
+});
+
 test('user-facing handoffs use the compact table contract without changing internal protocols', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const requiredRows = [
