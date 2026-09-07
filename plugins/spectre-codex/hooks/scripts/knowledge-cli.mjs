@@ -40,9 +40,10 @@ export function parseArgs(argv) {
   };
 }
 
-function codedError(code, message) {
+function codedError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code;
+  Object.assign(error, details);
   return error;
 }
 
@@ -155,7 +156,7 @@ export async function main(argv = process.argv.slice(2)) {
     try {
       const result = await registerCanonicalKnowledge({ projectDir: projectDir(flags), recordPath: flags.get('--record'), expectedRevision: flags.get('--expected-revision'), lockOptions: lockOptions(flags) });
       writeResult(result, flags, (value) => `Registered knowledge record ${value.id}\n`);
-    } catch (error) { const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message); }
+    } catch (error) { const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message, payload); }
     return;
   }
   if (command === 'migrate') {
@@ -170,7 +171,13 @@ export async function main(argv = process.argv.slice(2)) {
 
 export function writeCliError(error, argv = process.argv.slice(2)) {
   const message = error instanceof Error ? error.message : String(error);
-  if (argv.includes('--json') && error?.code) process.stdout.write(`${JSON.stringify({ ok: false, code: error.code, message })}\n`);
+  if (argv.includes('--json') && error?.code) {
+    const payload = { ok: false, code: error.code, message };
+    for (const field of ['status', 'expectedRevision', 'currentRevision']) {
+      if (error[field] !== undefined) payload[field] = error[field];
+    }
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  }
   else process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 }
