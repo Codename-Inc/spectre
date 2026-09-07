@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {"id":"critical-old-constraint"},{"id":"alias-tag-reuse"},{"id":"imported-work"},{"id":"irrelevant-task"},{"id":"deliberate-history"},{"id":"worktree-applicability"},{"id":"accepted-decision"},{"id":"verified-gotcha"},{"id":"pattern-speculation"},{"id":"blocker-resolution"},{"id":"lifecycle-identity"},{"id":"longitudinal-correction","longitudinal":true}
+  ]
+}

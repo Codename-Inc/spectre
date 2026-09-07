@@ -1,0 +1,14 @@
+{
+  "critical-old-constraint": "essential: legacy-payment-constraint",
+  "alias-tag-reuse": "essential: auth-retry-guidance",
+  "imported-work": "essential: imported-work-constraint",
+  "irrelevant-task": "essential: none",
+  "deliberate-history": "essential: historical-revision",
+  "worktree-applicability": "essential: matching-work-only",
+  "accepted-decision": "essential: capture-decision",
+  "verified-gotcha": "essential: capture-gotcha",
+  "pattern-speculation": "essential: no-speculative-capture",
+  "blocker-resolution": "essential: blocker-resolution",
+  "lifecycle-identity": "essential: stable-work-id",
+  "longitudinal-correction": "essential: corrected-revision"
+}
