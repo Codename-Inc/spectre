@@ -155,3 +155,15 @@ test('rejects raw host logs inside the checkout before launching a host', async 
   }, { spawn: () => { launched = true; return childFor({}); } }), /outside the checkout/);
   assert.equal(launched, false);
 });
+
+test('no-knowledge invocation omits plugin and store arguments while retaining the isolated project', async () => {
+  const setup = await fixture('codex');
+  let launched;
+  await invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: { projectDir: setup.value.projectDir, codexHome: setup.value.codexHome, freshStore: true, noKnowledge: true },
+    rawLogDirectory: setup.rawLogDirectory,
+  }, { spawn: (command, args) => { launched = { command, args }; return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) }); } });
+  assert.equal(launched.args.includes('--add-dir'), false);
+  assert.equal(launched.args.includes(setup.value.storeDir), false);
+});

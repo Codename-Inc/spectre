@@ -21,6 +21,10 @@ function absoluteDirectory(value, label) {
   return path.resolve(value);
 }
 
+function optionalDirectory(value, label) {
+  return value == null ? null : absoluteDirectory(value, label);
+}
+
 async function exists(filePath) {
   try {
     await access(filePath);
@@ -219,8 +223,8 @@ function hostCommand({ host, model, effort, prompt, preparedFixture, command, ex
     return {
       command: binary,
       args: [
-        '--plugin-dir', preparedFixture.pluginDir,
-        '--setting-sources', 'project', '--allowedTools', (allowedTools ?? ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'Skill', 'Task']).join(','),
+        ...(preparedFixture.pluginDir ? ['--plugin-dir', preparedFixture.pluginDir, '--setting-sources', 'project'] : []),
+        '--allowedTools', (allowedTools ?? ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'Skill', 'Task']).join(','),
         '--permission-mode', 'dontAsk', '--no-session-persistence',
         '--output-format', 'stream-json', '--include-hook-events', '--verbose',
         ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : []),
@@ -233,7 +237,7 @@ function hostCommand({ host, model, effort, prompt, preparedFixture, command, ex
     args: [
       'exec', '--json', '--ephemeral', '--skip-git-repo-check',
       '--dangerously-bypass-hook-trust', '--sandbox', 'workspace-write',
-      '--add-dir', preparedFixture.storeDir, '-c', 'approval_policy="never"',
+      ...(preparedFixture.storeDir ? ['--add-dir', preparedFixture.storeDir] : []), '-c', 'approval_policy="never"',
       '-C', preparedFixture.projectDir,
       ...(model ? ['-m', model] : []),
       ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []),
@@ -317,16 +321,18 @@ function validateInputs({ host, model, effort, prompt, preparedFixture, rawLogDi
   if (typeof effort !== 'string' || !effort) throw new Error('effort is required');
   if (typeof prompt !== 'string' || !prompt) throw new Error('prompt is required');
   const projectDir = absoluteDirectory(preparedFixture?.projectDir, 'preparedFixture.projectDir');
-  const storeDir = absoluteDirectory(preparedFixture?.storeDir ?? preparedFixture?.spectreHome, 'preparedFixture.storeDir');
-  const pluginDir = absoluteDirectory(preparedFixture?.pluginDir, 'preparedFixture.pluginDir');
+  const noKnowledge = preparedFixture?.noKnowledge === true;
+  const storeDir = noKnowledge ? optionalDirectory(preparedFixture?.storeDir ?? preparedFixture?.spectreHome, 'preparedFixture.storeDir') : absoluteDirectory(preparedFixture?.storeDir ?? preparedFixture?.spectreHome, 'preparedFixture.storeDir');
+  const pluginDir = noKnowledge ? optionalDirectory(preparedFixture?.pluginDir, 'preparedFixture.pluginDir') : absoluteDirectory(preparedFixture?.pluginDir, 'preparedFixture.pluginDir');
   const rawDirectory = absoluteDirectory(rawLogDirectory, 'rawLogDirectory');
   const root = path.resolve(repositoryRoot ?? process.cwd());
   if (isWithin(root, rawDirectory)) throw new Error('rawLogDirectory must be outside the checkout');
-  if ([projectDir, storeDir, pluginDir].some((directory) => isWithin(root, directory))) {
+  if ([projectDir, storeDir, pluginDir].filter(Boolean).some((directory) => isWithin(root, directory))) {
     throw new Error('prepared fixture directories must be isolated outside the checkout');
   }
-  if (new Set([projectDir, storeDir, pluginDir]).size !== 3) throw new Error('prepared fixture directories must be distinct');
-  return { projectDir, storeDir, pluginDir, rawDirectory, repositoryRoot: root };
+  const directories = [projectDir, storeDir, pluginDir].filter(Boolean);
+  if (new Set(directories).size !== directories.length) throw new Error('prepared fixture directories must be distinct');
+  return { projectDir, storeDir, pluginDir, noKnowledge, rawDirectory, repositoryRoot: root };
 }
 
 /**
@@ -344,16 +350,14 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   if (host === 'codex') fixture.codexHome = absoluteDirectory(preparedFixture.codexHome, 'preparedFixture.codexHome');
   if (host === 'claude') fixture.claudeHome = absoluteDirectory(preparedFixture.claudeHome ?? path.join(paths.projectDir, '.claude-runtime'), 'preparedFixture.claudeHome');
   await mkdir(paths.rawDirectory, { recursive: true, mode: 0o700 });
-  await Promise.all([mkdir(paths.projectDir, { recursive: true }), mkdir(paths.storeDir, { recursive: true }), mkdir(paths.pluginDir, { recursive: true })]);
+  await Promise.all([mkdir(paths.projectDir, { recursive: true }), ...[paths.storeDir, paths.pluginDir].filter(Boolean).map((directory) => mkdir(directory, { recursive: true }))]);
   if (host === 'codex') await mkdir(fixture.codexHome, { recursive: true, mode: 0o700 });
   else await mkdir(fixture.claudeHome, { recursive: true, mode: 0o700 });
 
   const environment = {
     ...cleanEnvironment(dependencies.baseEnvironment), ...(request.environment ?? {}),
-    SPECTRE_HOME: paths.storeDir,
-    CLAUDE_PROJECT_DIR: paths.projectDir,
-    CLAUDE_PLUGIN_ROOT: paths.pluginDir,
-    PLUGIN_ROOT: paths.pluginDir,
+    ...(paths.storeDir ? { SPECTRE_HOME: paths.storeDir } : {}),
+    ...(paths.pluginDir ? { CLAUDE_PROJECT_DIR: paths.projectDir, CLAUDE_PLUGIN_ROOT: paths.pluginDir, PLUGIN_ROOT: paths.pluginDir } : {}),
   };
   if (host === 'claude') {
     environment.CLAUDE_CONFIG_DIR = fixture.claudeHome;
