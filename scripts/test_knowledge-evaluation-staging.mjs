@@ -163,6 +163,7 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   assert.equal(staged.codexPlugin, null);
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins')), false);
   const config = fs.readFileSync(staged.codexConfigPath, 'utf8');
+  assert.match(config, /^web_search\s*=\s*"disabled"$/m);
   assert.match(config, /\[features\][\s\S]*\bapps\s*=\s*false/);
   assert.match(config, /\[features\][\s\S]*\benable_mcp_apps\s*=\s*false/);
   assert.match(config, /\[features\][\s\S]*\bweb_search_request\s*=\s*false/);
