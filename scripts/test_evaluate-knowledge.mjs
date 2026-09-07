@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
+import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, replayCachedRuntime, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -358,6 +358,21 @@ test('historical inspection accepts a successful inspect-historical load and ign
   const oracle = { history: { requiredRecordHashes: [recordHash], requiredReadCommand: 'inspect', manualRubric: 'review' } };
   assert.equal(judgeCell({ caseId: 'history', condition: 'candidate' }, runtime, oracle).structuralValid, true);
   assert.equal(traceWithOperationCrosscheck(runtime.trace, runtime.toolOperations, runtime.toolResults).availability, 'available');
+});
+
+test('cached native evidence reruns only stale derived trace checks and preserves real trace failures', () => {
+  const runtime = {
+    trace: { availability: 'unavailable', reason: 'trace lacks native load event evidence', events: [{ type: 'load', id: 'record', loadedTokens: 3, loadedBytes: 12 }] },
+    toolOperations: [{ id: 'load', status: 'completed', input: { command: 'node knowledge-cli.mjs load record' } }],
+    toolResults: [{ toolUseId: 'load', isError: false, content: JSON.stringify({ id: 'record' }) }],
+    sessionStartMeasurement: { availability: 'available', injectedTokens: 2, injectedBytes: 8 },
+    usage: { primary: { input: 3 }, fullCycle: { coverage: 'complete', total: { input: 3, output: 1 } } },
+  };
+  const replayed = replayCachedRuntime({ condition: 'candidate' }, runtime);
+  assert.equal(replayed.trace.availability, 'available');
+  assert.equal(replayed.loadedBodyTokens, 3);
+  assert.deepEqual(replayed.nativeFullCycleUsage, runtime.usage.fullCycle);
+  assert.equal(replayCachedRuntime({ condition: 'candidate' }, { ...runtime, traceUnavailable: true }).trace.availability, 'unavailable');
 });
 
 test('imported work requires a captured extraction and a fresh reuse without reloading the import', () => {

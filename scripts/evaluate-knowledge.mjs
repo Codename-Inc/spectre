@@ -422,12 +422,18 @@ export async function runCells(freezeManifest, outputDir, invoke) {
           try {
             const cached = readJson(cachePath);
             if (cached.freezeKey === freezeKey && cached.cell?.id === cell.id) {
-              const judged = judgeCell(cell, cached.cell.runtime, oracle);
-              results.push({
+              const runtime = replayCachedRuntime(cell, cached.cell.runtime);
+              const judged = judgeCell(cell, runtime, oracle);
+              const result = {
                 ...cached.cell,
-                status: cellStatus(cached.cell.runtime, judged),
+                status: cellStatus(runtime, judged),
+                runtime,
                 judged,
-              });
+              };
+              const temporary = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+              fs.writeFileSync(temporary, `${JSON.stringify({ freezeKey, cell: result }, null, 2)}\n`);
+              fs.renameSync(temporary, cachePath);
+              results.push(result);
               continue;
             }
           } catch {
@@ -1025,6 +1031,30 @@ export function noKnowledgeRuntimeFacts(hostResult = {}, verifiedAbsence = false
     knowledgeAbsence: zero ? 'verified' : 'unknown',
     nativePrimaryUsage: hostResult.usage?.primary ?? null,
     nativeFullCycleUsage: hostResult.usage?.fullCycle ?? null,
+  };
+}
+
+/** Recompute derivable evidence from a cached native transcript without invoking a host. */
+export function replayCachedRuntime(cell, runtime = {}) {
+  const measurement = runtime.sessionStartMeasurement ?? runtime.usage?.sessionStartMeasurement ?? null;
+  const staleCrosscheck = runtime.trace?.availability === 'unavailable' && /^trace lacks native /.test(runtime.trace.reason ?? '');
+  const canReplayTrace = runtime.traceUnavailable !== true && (runtime.trace?.availability === 'available' || staleCrosscheck) && Array.isArray(runtime.trace?.events);
+  const trace = canReplayTrace
+    ? traceWithOperationCrosscheck({ availability: 'available', events: runtime.trace.events }, runtime.toolOperations, runtime.toolResults)
+    : runtime.trace;
+  const measured = cell.condition === 'baseline'
+    ? baselineRuntimeFacts({
+      toolOperations: runtime.toolOperations, toolResults: runtime.toolResults,
+      sessionStartMeasurement: measurement,
+    })
+    : cell.condition === 'no-knowledge'
+      ? noKnowledgeRuntimeFacts(runtime, runtime.knowledgeAbsence === 'verified')
+      : traceRuntimeFacts(trace ?? { availability: 'unavailable', events: [] }, { ...runtime, sessionStartMeasurement: measurement });
+  return {
+    ...runtime,
+    trace,
+    sessionStartMeasurement: measurement,
+    ...attachNativeUsage(measured, runtime),
   };
 }
 
