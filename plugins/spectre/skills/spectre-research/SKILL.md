@@ -42,7 +42,7 @@ Write one research doc to `{FEATURE_ROOT}/research/{topic}_{MMDDYY}.md`; the res
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Follow-ups update the same doc (metadata + timestamped section); close with one next-step pointer: Plan with resolved research document path or further research.
 

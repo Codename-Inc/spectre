@@ -65,7 +65,7 @@ Parent: machine `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PEN
 |---|---|
 | 🧭 **Current phase** | Complete/recovery. |
 | 📦 **What was just done** | Delivery/impact. |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 | 🔎 **Review proof** | Render Markdown [Review proof](/absolute/resolved-feature-root/proof/proof.html); substitute absolute FEATURE_ROOT. |
 
 High → Fix; coverage → Test; else `spectre-ship`; blocked/failed → same table/exact resolved recovery action.

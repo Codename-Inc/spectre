@@ -37,7 +37,7 @@ Turn requirements into a behavioral spec — **what users see/do and the system 
 |---|---|
 | 🧭 **Current phase** | Flow approval. |
 | 📦 **What was just done** | Initial or revised flows. |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 - `CONTINUATION`: Prototype when interaction, layout, visual validation, or stakeholder review materially matters; otherwise Plan when Scope + flows suffice. Render `/spectre:prototype {FEATURE_ROOT} FROM_UX=true` or `/spectre:plan {FEATURE_ROOT}`; at most one explicit conditional alternative.
 - Flows approved: complete {OUT_DIR}/ux.md, then Prototype or Plan with resolved values.
@@ -84,7 +84,7 @@ Derive both values from the physical feature directory.
 | 📦 **What was just done** | Result |
 | ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Confirm UX/doc path. Material visual/interaction/stakeholder/prose-limit → Prototype (apply assumptions to `ux.md`); otherwise Plan. One route/conditional; read-only may stop/Handoff.
+Confirm UX/doc path. Material visual/interaction/stakeholder/prose-limit → Prototype (apply assumptions to `ux.md`); otherwise confirmed repository-changing work → `/spectre:plan`. One route/conditional; read-only may stop/Handoff.
 
 ## Escalate-If
 

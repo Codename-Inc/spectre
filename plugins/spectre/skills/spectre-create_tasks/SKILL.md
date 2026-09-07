@@ -54,7 +54,7 @@ DONE when files satisfy these contracts; `tasks.json` reparses/self-locates; eve
 - `--tasks-only`: write/reparse only `tasks.json`; semantic review follows comprehensive orchestration.
 - `--finalize-index`: require finalized `tasks.json`; project only `meta`, phase ids/titles, parent ids/titles, subtask ids, `predecessor`, `unblocks`, and `risk`; leave JSON byte-for-byte unchanged; derive counts/index/topological waves into `execute.md` once.
 
-Primary writes selected canonical artifacts only; never delegate authorship/revision or emit `tasks.md`, fallbacks, converters, compilers, or persistent projections.
+Primary directly writes only the selected canonical artifacts; never delegate authorship/revision or emit `tasks.md`, fallbacks, converters, compilers, or persistent projections.
 
 ## Handoff
 
@@ -64,7 +64,7 @@ Report mode/paths/graph; finalized index adds waves. `--orchestrated` returns wi
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX or Prototype, regenerate; comprehensive tasks-only → Task Review; else Execute resolved absolute execute index + `--origin plan`; pause → Handoff.
 

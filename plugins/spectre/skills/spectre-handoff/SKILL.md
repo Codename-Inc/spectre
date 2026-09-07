@@ -87,7 +87,7 @@ DONE when paths/numbering follow the selected-history rule; current `summary`, `
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 First: path/first-session notice; continuation: path/session/continuity counts. Output only applicable table.
 

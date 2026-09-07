@@ -41,7 +41,7 @@ Return URL/body or `PR_CANDIDATE_STALE`; `--orchestrated`: no user step.
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: review the PR.
 

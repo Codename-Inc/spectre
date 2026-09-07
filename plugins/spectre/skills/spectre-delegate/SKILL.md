@@ -48,7 +48,7 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Return scope/evidence/review/proof/tuple/rebase/limits/PR. Next: review proof and draft PR.
 

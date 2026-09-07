@@ -48,7 +48,7 @@ Report tiers/tests/lint/commits; `--orchestrated` or supplied risk plan: no step
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: unproven work → Prove; uncommitted hygiene → Sweep; clean proven/deferred → Rebase; passing tests alone never jumps to Rebase.
 

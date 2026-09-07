@@ -59,9 +59,9 @@ Return runtime/fallback/findings/dispositions/report/tasks/parse/validation/scop
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
-Standalone unresolved Blocker/High stays remediation; resolved review → Execute resolved absolute index + `--origin plan`.
+Standalone unresolved Blocker/High stays remediation; resolved review → Execute resolved absolute execute index + `--origin plan`.
 
 ## Escalate-If
 

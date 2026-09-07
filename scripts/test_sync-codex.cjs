@@ -819,10 +819,10 @@ test('autonomous plan execution instruction envelope stays token-neutral', () =>
     ),
   };
 
-  assert.ok(totals.spectre <= 12_394, `canonical envelope exceeded: ${totals.spectre} > 12,394`);
+  assert.ok(totals.spectre <= 12_384, `canonical envelope exceeded: ${totals.spectre} > 12,384`);
   assert.ok(
-    totals['spectre-codex'] <= 12_481,
-    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,481`,
+    totals['spectre-codex'] <= 12_471,
+    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,471`,
   );
 });
 
@@ -1702,7 +1702,7 @@ test('user-facing handoffs use the compact table contract without changing inter
       );
       assert.match(
         proposed,
-        /(?:resolve before rendering one action; never placeholders|render (?:one )?resolved action; no placeholders)/i,
+        /(?:resolve before rendering one action; never placeholders|render (?:one )?resolved action(?:; no placeholders)?)/i,
         `${rootName}/${skillName} must require a fully resolved copy-ready action`,
       );
     }
@@ -1750,7 +1750,7 @@ test('compact handoff tables retain the pre-table routing contracts', () => {
   const retainedRoutes = {
     'spectre-plan_review': /orchestrated.*return[\s\S]*standalone.*spectre[:-]create_tasks[\s\S]*direct.*spectre[:-]execute/i,
     'spectre-create_tasks': /report mode[\s\S]*graph[\s\S]*waves[\s\S]*UX[\s\S]*Prototype[\s\S]*tasks-only[\s\S]*Task Review[\s\S]*origin plan/i,
-    'spectre-clean': /NEEDS_AUTHORITY[\s\S]*ordinary failures[\s\S]*orchestrated[\s\S]*CLEANED_THROUGH_SHA[\s\S]*Standalone[\s\S]*spectre[:-]rebase[\s\S]*alternative.*spectre[:-]prove/i,
+    'spectre-clean': /NEEDS_AUTHORITY[\s\S]*ordinary (?:test\/lint\/build )?failures[\s\S]*orchestrated[\s\S]*CLEANED_THROUGH_SHA[\s\S]*Standalone[\s\S]*spectre[:-]rebase[\s\S]*alternative.*spectre[:-]prove/i,
     'spectre-code_review': /orchestrated[\s\S]*CRITICAL\/HIGH[\s\S]*no step[\s\S]*Standalone[\s\S]*blockers[\s\S]*Prove\/Test gap\/deferred Clean/i,
     'spectre-create_pr': /PR_CANDIDATE_STALE[\s\S]*orchestrated[\s\S]*no user step[\s\S]*Standalone[\s\S]*review the PR/i,
     'spectre-create_test_guide': /orchestrated[\s\S]*coverage[\s\S]*observable.*Prove[\s\S]*automation gap.*Test[\s\S]*deferred proof.*Clean/i,
@@ -1898,17 +1898,20 @@ test('Ship uses the fixed measurement surface without primary bookkeeping', () =
     assert.match(ship, /one exact parallel-group total[\s\S]*unavailable measurement never blocks Ship/i);
   }
 
-  const canonicalTokens = skillNames.reduce(
-    (total, name) => total + repositoryTokenCount(
-      repoRoot,
-      `plugins/spectre/skills/${name}/SKILL.md`,
-    ),
-    0,
-  );
-  assert.ok(
-    canonicalTokens <= 10_780,
-    `canonical Ship/Clean/Prune/Test/Sweep/Create PR/Execute token budget exceeded: ${canonicalTokens} > 10,780`,
-  );
+  // Structured-handoff tokens are reallocated inside the fixed 28-skill aggregate ceiling.
+  for (const [rootName, ceiling] of [['spectre', 10_895], ['spectre-codex', 10_890]]) {
+    const tokens = skillNames.reduce(
+      (total, name) => total + repositoryTokenCount(
+        repoRoot,
+        `plugins/${rootName}/skills/${name}/SKILL.md`,
+      ),
+      0,
+    );
+    assert.ok(
+      tokens <= ceiling,
+      `${rootName} Ship/Clean/Prune/Test/Sweep/Create PR/Execute token budget exceeded: ${tokens} > ${ceiling}`,
+    );
+  }
 });
 
 test('ship composes focused skills without a proof prerequisite', () => {

@@ -48,7 +48,7 @@ Report analyzed/removed/excluded counts, lint/test, manual review; `--orchestrat
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone concrete coverage risk → `spectre-test`; otherwise `spectre-sweep`; one result-tied route.
 

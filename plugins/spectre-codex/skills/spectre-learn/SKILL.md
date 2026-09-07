@@ -86,7 +86,7 @@ Capture durable project knowledge as a canonical user-level record. When invoked
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Return path/action/category/confidence/version/resources; correct records via search/proposal/stage/registration/verification.
 

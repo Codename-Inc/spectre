@@ -47,7 +47,7 @@ DONE when schema validation passes; scope/tuple are unchanged; every requirement
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: verdict/runtime/fallback/report + numbered CRITICAL/HIGH; blockers → Fix, else Prove/Test gap/deferred Clean.
 

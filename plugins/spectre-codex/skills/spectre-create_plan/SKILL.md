@@ -56,9 +56,9 @@ DONE when every planned mechanism maps to a current requirement, constraint, pre
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
-Standalone awaits approval: Approved direct → `spectre-execute`; Approved XS structured → `spectre-create_tasks --depth xs`; Approved light structured → `spectre-create_tasks`; Approved standard/comprehensive → `spectre-plan_review`; unresolved behavior → UX/Prototype. One primary/conditional/pause.
+Standalone awaits approval: Approved direct → `spectre-execute`; Approved XS structured override → `spectre-create_tasks --depth xs`; Approved light structured → `spectre-create_tasks`; Approved standard/comprehensive → `spectre-plan_review`; unresolved behavior → UX/Prototype. One primary/conditional/pause.
 
 ## Escalate-If
 

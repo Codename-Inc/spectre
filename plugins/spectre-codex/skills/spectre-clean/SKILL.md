@@ -47,13 +47,13 @@ Guardrails:
 
 ## Handoff
 
-`NEEDS_AUTHORITY`: phase/impasse/manual review; ordinary failures repair. `--orchestrated`: result + `CLEANED_THROUGH_SHA`, no step.
+`NEEDS_AUTHORITY`: phase/impasse/manual review. Ordinary test/lint/build failures never produce it; repair them. `--orchestrated`: result + `CLEANED_THROUGH_SHA`, no step.
 
 | Handoff | Details |
 |---|---|
 | 🧭 **Current phase** |Done|
 | 📦 **What was just done** |Result|
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: `spectre-rebase`; acceptance needed: alternative `spectre-prove`.
 

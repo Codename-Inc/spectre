@@ -55,10 +55,10 @@ Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title 
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 | 🔀 **Alternative** | Pause: `/spectre:handoff` with the resolved feature when stopping. |
 
-Present boundaries/assumptions/path; unsettled → Scope; UI load-bearing and journeys, segments, states, copy, or accessibility unresolved → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → Plan. One route/conditional; edits re-route.
+Present boundaries/assumptions/path; unsettled → Scope; UI load-bearing and journeys, segments, states, copy, or accessibility unresolved → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → `/spectre:plan`. One route/conditional; edits re-route.
 
 ## Escalate-If
 

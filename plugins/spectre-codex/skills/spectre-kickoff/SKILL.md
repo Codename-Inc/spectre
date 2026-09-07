@@ -52,9 +52,9 @@ Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mk
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
-Present vision/refs/architecture/learnings/gap/MVP + 1–3 questions; wait/research/fold clarifications into doc. Resolved: Scope resolved path + `FROM_KICKOFF=true` + `SKIP_EXPLORATION=true`; authorized skip → Plan context.
+Present vision/refs/architecture/learnings/gap/MVP + 1–3 questions; wait/research/fold clarifications into doc. Resolved: Scope resolved kickoff document path + `FROM_KICKOFF=true` + `SKIP_EXPLORATION=true`; authorized skip → Plan context.
 
 ## Escalate-If
 - No project context supplied and none inferable → ask the user before researching.

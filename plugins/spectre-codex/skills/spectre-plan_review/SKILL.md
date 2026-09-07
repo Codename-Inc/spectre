@@ -49,7 +49,7 @@ DONE when both stages complete; research ran once at most; every mechanism trace
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Return routes/correctness/deletions/exceptions/delta/dispositions/reports/withheld scope/plan (≤1K). `--orchestrated`: return; standalone → `spectre-create_tasks` or direct `spectre-execute` resolved plan + `--origin plan`.
 

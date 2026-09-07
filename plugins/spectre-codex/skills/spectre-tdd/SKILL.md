@@ -46,7 +46,7 @@ Return completion report + exact pass/fail commands; `--orchestrated`: no step.
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: observable → Prove; concrete coverage gap → Test; deferred proof → Clean; one observed route.
 

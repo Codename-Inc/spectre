@@ -42,7 +42,7 @@ One or more conventional commits covering the changes. Sweep is the sole pre-reb
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone: unproven work → Prove; merge-prep → Rebase; only current target → Create PR.
 

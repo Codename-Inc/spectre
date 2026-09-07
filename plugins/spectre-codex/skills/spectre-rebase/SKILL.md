@@ -45,7 +45,7 @@ Return compressed Rebase Summary; `--orchestrated`: no step; parent verification
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Standalone success → `spectre-create_pr`; incomplete → exact recovery only.
 

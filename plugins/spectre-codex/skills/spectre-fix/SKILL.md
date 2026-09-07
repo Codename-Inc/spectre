@@ -36,7 +36,7 @@ The core's full diagnosis and experience contract rendered in-thread, mirrored i
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Return approved diagnosis/contract + one Execute route; closeout commits report, never repair. Render Execute with resolved absolute plan path + `--origin fix`.
 

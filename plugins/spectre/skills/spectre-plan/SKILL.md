@@ -43,7 +43,7 @@ DONE when initial and observed routing decisions are recorded; the observed reco
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
 Execute owns assessment/review/tasks/gates/resume. Never generate a goal prompt. Render Execute: resolved absolute plan path, `--origin plan`, resolved preflight depth.
 

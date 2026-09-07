@@ -88,9 +88,9 @@ DONE means the one prompt passes the contract and quality checks, references aut
 |---|---|
 | 🧭 **Current phase** | Done |
 | 📦 **What was just done** | Result |
-| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+| ▶️ **Proposed next step** | Render resolved action. |
 
-Standalone: run `/goal` from resolved goal-file path; pause → Handoff.
+Standalone: run `/goal` from resolved goal file path; pause → Handoff.
 
 ## Escalate-If
 
