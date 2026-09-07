@@ -541,3 +541,35 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   assert.equal(unsupported.status, 1);
   assert.match(unsupported.stderr, /unsupported local gh fixture command/i);
 });
+
+test('infers the local draft head under the default-deny host boundary', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'no-knowledge', host: 'claude' }, value.fixture, value.options);
+  const rawLogDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-host-raw-'));
+  t.after(() => fs.rmSync(rawLogDirectory, { recursive: true, force: true }));
+  const environment = {
+    ...process.env, ...staged.environment,
+    CODEX_HOME: staged.codexHome, CLAUDE_CONFIG_DIR: staged.claudeHome,
+  };
+  const sandbox = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...staged, rawDirectory: rawLogDirectory }, command: '/bin/zsh', environment,
+  });
+  const branch = spawnSync(sandbox.command, [
+    ...sandbox.args, '-lc', `${JSON.stringify(process.execPath)} -e ${JSON.stringify("const result = require('node:child_process').spawnSync('git', ['branch', '--show-current'], { encoding: 'utf8' }); process.stdout.write(JSON.stringify({ status: result.status, stdout: result.stdout, error: result.error?.message ?? null }));")}`,
+  ], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+  assert.equal(branch.status, 0, branch.stderr);
+  assert.deepEqual(JSON.parse(branch.stdout), {
+    status: 0, stdout: 'evaluation/knowledge-cell\n', error: null,
+  });
+  const created = spawnSync(sandbox.command, [
+    ...sandbox.args, '-lc', 'gh pr create --draft --base main --title fixture --body fixture',
+  ], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+
+  assert.equal(created.status, 0, created.stderr);
+  assert.match(created.stdout, /\/pull\/1\s*$/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests, [{
+    number: 1, url: 'https://github.com/evaluation-fixture/knowledge-evaluation/pull/1',
+    state: 'OPEN', isDraft: true, headRefName: 'evaluation/knowledge-cell', baseRefName: 'main',
+    title: 'fixture', body: 'fixture',
+  }]);
+});

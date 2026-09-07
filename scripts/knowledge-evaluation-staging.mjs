@@ -497,6 +497,7 @@ function writeIsolatedEnvironment(root, gh) {
   for (const directory of [home, shellHome, ghConfig, xdgConfig, xdgData, xdgCache, temporaryDirectory]) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
+  fs.symlinkSync('/usr/bin/git', path.join(gh.bin, 'git'));
   fs.writeFileSync(gitConfig, '# isolated evaluation Git config\n', { mode: 0o600 });
   const environment = {
     ...gh.environment,
