@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -332,6 +332,28 @@ test('judging requires an exact successful load and a later persisted decision a
   }, { case: { ...oracle.case, requiredReadCommand: 'inspect' } });
   assert.equal(baselineInspect.structuralValid, true);
   assert.equal(judgeCell(cell, runtime, { case: { requiredRecordHashes: [], allowedLoads: 0, manualRubric: 'manual review' } }).recalled, false);
+});
+
+test('historical inspection accepts a successful inspect-historical load and ignores an earlier refused load', () => {
+  const recordId = 'notification-batch-history';
+  const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [
+      { id: 'refused', name: 'exec', status: 'failed', eventOrdinal: 1, input: { command: `node knowledge-cli.mjs load ${recordId}` } },
+      { id: 'historical', name: 'exec', status: 'completed', eventOrdinal: 3, input: { command: `node knowledge-cli.mjs load ${recordId} --inspect-historical --json` } },
+      { id: 'artifact', name: 'Write', status: 'completed', eventOrdinal: 5, input: { file_path: 'artifacts/decision.md' } },
+    ],
+    toolResults: [
+      { toolUseId: 'refused', eventOrdinal: 2, isError: true, content: 'Knowledge record is not active' },
+      { toolUseId: 'historical', eventOrdinal: 4, isError: false, content: JSON.stringify({ id: recordId, revisionToken: 'historic-revision' }) },
+    ],
+    snapshots: { before: { records: [{ id: recordId, revisionToken: 'historic-revision' }] } },
+    trace: { availability: 'available', events: [{ type: 'history-read', subtype: 'history-body', id: recordId, revisionToken: 'historic-revision' }] },
+  };
+  const oracle = { history: { requiredRecordHashes: [recordHash], requiredReadCommand: 'inspect', manualRubric: 'review' } };
+  assert.equal(judgeCell({ caseId: 'history', condition: 'candidate' }, runtime, oracle).structuralValid, true);
+  assert.equal(traceWithOperationCrosscheck(runtime.trace, runtime.toolOperations, runtime.toolResults).availability, 'available');
 });
 
 test('imported work requires a captured extraction and a fresh reuse without reloading the import', () => {

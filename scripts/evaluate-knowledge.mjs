@@ -242,7 +242,8 @@ export function judgeCell(cell, runtime, oracle) {
       : expected.requiredReadCommand === 'inspect' ? 'inspect' : 'load';
     const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
       const command = operation?.input?.command ?? '';
-      return commandActions.get(operation)?.has(readCommand) && new RegExp(`${readCommand}\\s+['\"]?([a-z0-9]+(?:-[a-z0-9]+)*)`).test(command) &&
+      const historicalLoad = readCommand === 'inspect' && commandActions.get(operation)?.has('load') && /--inspect-historical\b/.test(command);
+      return (commandActions.get(operation)?.has(readCommand) || historicalLoad) &&
         [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => expectedHashes.has(hash(match[0]))) &&
         (operation.status === null || operation.status === 'completed');
     });
@@ -943,15 +944,18 @@ function nativeFullCycleUsage(runs) {
   };
 }
 
-function traceWithOperationCrosscheck(trace, toolOperations) {
+export function traceWithOperationCrosscheck(trace, toolOperations, toolResults = []) {
   if (trace.availability !== 'available') return trace;
   const actions = classifyKnowledgeCommands(toolOperations);
   const expected = new Map();
   const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
+    const delivered = toolResults.filter((result) => result?.toolUseId === operation.id &&
+      (result.sessionOrdinal ?? 0) === (operation.sessionOrdinal ?? 0));
+    if (!delivered.some((result) => result.isError !== true)) continue;
     const found = actions.get(operation);
     if (found?.has('search')) expect('search');
-    if (found?.has('load')) expect('load');
+    if (found?.has('load')) expect(/--inspect-historical\b/.test(operation.input?.command ?? '') ? 'history-read' : 'load');
     if (found?.has('resource')) expect('resource-read');
     if (['register', 'capture', 'learn'].some((action) => found?.has(action))) expect('capture');
   }
@@ -1105,7 +1109,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const snapshotAfter = compact(snapshotKnowledgeCell(staged), rawSnapshotBefore);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
-        : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
+        : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations, hostResult.toolResults);
       const measuredRuntime = cell.condition === 'baseline'
         ? baselineRuntimeFacts({
           toolOperations: hostResult.toolOperations, toolResults: hostResult.toolResults,
