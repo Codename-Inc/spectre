@@ -132,7 +132,7 @@ export function judgeCell(cell, runtime, oracle) {
     const tracedLoad = runtime.trace?.events?.some((event) =>
       event.type === 'load' && expectedHashes.has(hash(event.id ?? ''))
     );
-    if (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad)) {
+    if (expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
     }
     if (expected.requiresCapture === true && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
@@ -258,6 +258,14 @@ function configureLifecycleMock(staged, fixtureCase) {
   staged.environment.SPECTRE_EVALUATION_PR_STATE = statePath;
 }
 
+function hostConfiguration(configuration, host) {
+  const selected = configuration?.hosts?.[host] ?? configuration;
+  if (typeof selected?.model !== 'string' || typeof selected?.effort !== 'string') {
+    throw new Error(`configuration must provide model and effort for ${host}`);
+  }
+  return selected;
+}
+
 function mergeHostRuns(runs) {
   const completed = runs.every((run) => run.status === 'completed');
   return {
@@ -277,17 +285,19 @@ function mergeHostRuns(runs) {
 
 function traceWithOperationCrosscheck(trace, toolOperations) {
   if (trace.availability !== 'available') return trace;
-  const expected = new Set();
+  const expected = new Map();
+  const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
     const command = operation?.input?.command;
     if (typeof command !== 'string') continue;
-    if (/knowledge-cli\.mjs\s+search\b/.test(command)) expected.add('search');
-    if (/knowledge-cli\.mjs\s+load\b/.test(command)) expected.add('load');
-    if (/knowledge-cli\.mjs\s+resource\b/.test(command)) expected.add('resource-read');
-    if (/knowledge-cli\.mjs\s+(?:capture|learn)\b/.test(command)) expected.add('capture');
+    if (/knowledge-cli\.mjs\s+search\b/.test(command)) expect('search');
+    if (/knowledge-cli\.mjs\s+load\b/.test(command)) expect('load');
+    if (/knowledge-cli\.mjs\s+resource\b/.test(command)) expect('resource-read');
+    if (/knowledge-cli\.mjs\s+(?:capture|learn)\b/.test(command)) expect('capture');
   }
-  const emitted = new Set(trace.events.map((event) => event.type));
-  const missing = [...expected].filter((type) => !emitted.has(type));
+  const missing = [...expected].flatMap(([type, count]) =>
+    Array.from({ length: Math.max(0, count - trace.events.filter((event) => event.type === type).length) }, () => type)
+  );
   return missing.length === 0
     ? trace
     : { availability: 'unavailable', reason: `trace lacks native ${missing.join(', ')} event evidence`, events: trace.events };
@@ -338,6 +348,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
     try {
       const fixtureCase = cases.get(cell.caseId);
       configureLifecycleMock(staged, fixtureCase);
+      const hostSettings = hostConfiguration(options.configuration, cell.host);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
         fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
@@ -346,10 +357,15 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const runs = [];
       for (const [sessionOrdinal, prompt] of prompts.entries()) {
         runs.push(await invoke({
-          host: cell.host, model: options.configuration?.model, effort: options.configuration?.effort,
+          host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
           preparedFixture: staged, rawLogDirectory: path.join(rawLogRoot, cell.id, `session-${sessionOrdinal + 1}`),
-          environment: { ...staged.environment, SPECTRE_KNOWLEDGE_EVALUATION_TRACE: staged.tracePath },
+          environment: {
+            ...staged.environment,
+            ...(staged.tracePath ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: staged.tracePath } : {}),
+            SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: `${cell.id}:session:${sessionOrdinal + 1}`,
+            SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `${cell.caseId}:${cell.condition}:${cell.repeat}`,
+          },
           limits: options.limits,
         }));
       }
@@ -364,7 +380,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         trace,
         ...traceRuntimeFacts(trace, hostResult),
         bypass: [
-          ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths }),
+          ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
           ...trace.events.filter((event) => event.type === 'bypass'),
         ],
       };
