@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, stageKnowledgeCell } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -62,16 +62,8 @@ test('runCells honors total and per-host concurrency limits', async () => {
   assert.equal(maximumClaude, 1);
 });
 
-test('staging gives baseline and candidate the same fresh facts, keeps no-knowledge empty, and gates native calls', async () => {
+test('deterministic freeze gates native calls', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-stage-'));
-  const plugin = path.join(root, 'plugin'); fs.mkdirSync(plugin);
-  const fixtureCase = { task: 'Answer the staged task.', initialFacts: [{ id: 'stable-fact', content: 'A fixture fact.' }] };
-  const staged = await stageKnowledgeCell({ host: 'claude', condition: 'candidate' }, fixtureCase, { candidatePluginRoot: plugin, baselinePluginRoot: plugin });
-  const none = await stageKnowledgeCell({ host: 'codex', condition: 'no-knowledge' }, fixtureCase, { candidatePluginRoot: plugin, baselinePluginRoot: plugin });
-  assert.equal(staged.freshStore, true);
-  assert.equal(staged.knownPaths.length, 1);
-  assert.equal(none.knownPaths.length, 0);
-  fs.rmSync(staged.root, { recursive: true, force: true }); fs.rmSync(none.root, { recursive: true, force: true });
   const fixtures = path.join(root, 'fixtures'); fs.mkdirSync(fixtures);
   fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` })) }));
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [] }]))));

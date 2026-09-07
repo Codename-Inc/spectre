@@ -6,9 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
+import { stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs';
-import { refreshKnowledgeIndex } from '../plugins/spectre/hooks/scripts/knowledge/records.mjs';
-import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 const CONDITIONS = ['no-knowledge', 'baseline', 'candidate'];
@@ -191,87 +190,6 @@ export async function runCells(freezeManifest, outputDir, invoke) {
   return { schemaVersion: 2, baseline: BASELINE, cells: results, aggregate: aggregate(results) };
 }
 
-function recordContent(record) {
-  return {
-    schemaVersion: 1,
-    id: record.id,
-    kind: 'knowledge',
-    title: record.id,
-    summary: record.content,
-    tags: [record.id],
-    applicability: { scope: 'project' },
-    provenance: { origin: 'evaluation-fixture', capturedAt: '2026-09-06T00:00:00.000Z' },
-    relatedRecordIds: [],
-    category: 'evaluation',
-    useWhen: record.id,
-    content: record.content,
-    evidence: 'Synthetic evaluator fixture.',
-    status: 'active',
-  };
-}
-
-function recordsFor(cell, fixtureCase) {
-  if (cell.condition === 'no-knowledge') return [];
-  return fixtureCase.initialFacts ?? [];
-}
-
-/** Create a fresh project, store, and plugin copy for one evaluator cell. */
-export async function stageKnowledgeCell(cell, fixtureCase, options) {
-  const root = fs.mkdtempSync(path.join(options.temporaryRoot ?? os.tmpdir(), 'spectre-knowledge-evaluation-cell-'));
-  const projectDir = path.join(root, 'project');
-  const storeDir = path.join(root, 'spectre-home');
-  const pluginDir = path.join(root, 'plugin');
-  const hostHome = path.join(root, cell.host === 'codex' ? 'codex-home' : 'claude-home');
-  const pluginSource = cell.condition === 'baseline'
-    ? options.baselinePluginRoot
-    : options.candidatePluginRoot;
-  if (!pluginSource || !path.isAbsolute(pluginSource)) throw new Error('an absolute plugin root is required for each evaluator condition');
-  fs.mkdirSync(projectDir, { recursive: true });
-  fs.mkdirSync(storeDir, { recursive: true });
-  fs.mkdirSync(hostHome, { recursive: true });
-  const mockBin = path.join(root, 'bin');
-  const ghLogPath = path.join(root, 'gh.log');
-  const ghStatePath = path.join(root, 'gh-state');
-  fs.mkdirSync(mockBin, { recursive: true });
-  fs.writeFileSync(path.join(mockBin, 'gh'), [
-    '#!/bin/sh',
-    'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"',
-    'if [ "$1 $2" = "pr create" ]; then',
-    '  count=0; [ -f "$SPECTRE_EVALUATION_GH_STATE" ] && count=$(cat "$SPECTRE_EVALUATION_GH_STATE")',
-    '  count=$((count + 1)); printf "%s" "$count" > "$SPECTRE_EVALUATION_GH_STATE"',
-    '  if [ "$count" -eq 1 ]; then echo "simulated CreatePR save failure" >&2; exit 1; fi',
-    '  if [ "$count" -gt 2 ]; then echo "existing PR: https://example.invalid/evaluation/pr/1"; exit 0; fi',
-    '  echo "https://example.invalid/evaluation/pr/1"; exit 0',
-    'fi',
-    'if [ "$1 $2" = "pr view" ]; then echo "https://example.invalid/evaluation/pr/1"; exit 0; fi',
-    'echo "{}"',
-  ].join('\n'));
-  fs.chmodSync(path.join(mockBin, 'gh'), 0o755);
-  fs.cpSync(pluginSource, pluginDir, { recursive: true });
-  fs.writeFileSync(path.join(projectDir, 'TASK.md'), `${fixtureCase.task}\n`);
-  const resolved = await resolveProjectStore(projectDir, { spectreHome: storeDir });
-  const knownPaths = [];
-  for (const record of recordsFor(cell, fixtureCase)) {
-    const directory = path.join(resolved.storePath, 'knowledge', record.id);
-    const recordPath = path.join(directory, 'record.json');
-    fs.mkdirSync(directory, { recursive: true });
-    fs.writeFileSync(recordPath, `${JSON.stringify(recordContent(record), null, 2)}\n`);
-    knownPaths.push(recordPath);
-  }
-  refreshKnowledgeIndex(resolved.storePath);
-  const tracePath = path.join(root, 'trace.jsonl');
-  return {
-    root, projectDir, storeDir, pluginDir, freshStore: true, knownPaths, tracePath,
-    ghLogPath,
-    environment: {
-      PATH: `${mockBin}${path.delimiter}${process.env.PATH ?? ''}`,
-      SPECTRE_EVALUATION_GH_LOG: ghLogPath,
-      SPECTRE_EVALUATION_GH_STATE: ghStatePath,
-    },
-    ...(cell.host === 'codex' ? { codexHome: hostHome } : { claudeHome: hostHome }),
-  };
-}
-
 function cohortReport(cells) {
   const cohorts = {};
   for (const cell of cells) {
@@ -318,6 +236,26 @@ function workflowEvidence(staged) {
   } catch {
     return { ghCommands: [] };
   }
+}
+
+function configureLifecycleMock(staged, fixtureCase) {
+  if (fixtureCase.id !== 'lifecycle-identity') return;
+  const mockBin = staged.environment?.PATH?.split(path.delimiter)[0];
+  if (!mockBin) throw new Error('lifecycle fixture is missing its local gh mock');
+  const statePath = path.join(staged.root, 'lifecycle-pr-state');
+  fs.writeFileSync(path.join(mockBin, 'gh'), [
+    '#!/bin/sh',
+    'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"',
+    'if [ "$1 $2" = "pr create" ]; then',
+    '  count=0; [ -f "$SPECTRE_EVALUATION_PR_STATE" ] && count=$(cat "$SPECTRE_EVALUATION_PR_STATE")',
+    '  count=$((count + 1)); printf "%s" "$count" > "$SPECTRE_EVALUATION_PR_STATE"',
+    '  if [ "$count" -eq 1 ]; then echo "simulated save failure" >&2; exit 1; fi',
+    '  if [ "$count" -gt 2 ]; then echo "existing PR: https://example.invalid/evaluation/pr/1"; exit 0; fi',
+    '  echo "https://example.invalid/evaluation/pr/1"; exit 0',
+    'fi', 'echo "{}"',
+  ].join('\n'));
+  fs.chmodSync(path.join(mockBin, 'gh'), 0o755);
+  staged.environment.SPECTRE_EVALUATION_PR_STATE = statePath;
 }
 
 function mergeHostRuns(runs) {
@@ -389,9 +327,17 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
   const rawLogRoot = path.resolve(options.rawLogRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-logs-')));
   const invoke = options.invokeHost ?? invokeKnowledgeHost;
   const result = await runCells(freezeManifest, options.outputDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-results-')), async (cell) => {
-    const staged = await stageKnowledgeCell(cell, cases.get(cell.caseId), options);
+    const staged = await stagePreparedKnowledgeCell(cell, cases.get(cell.caseId), {
+      repositoryRoot: options.repositoryRoot ?? process.cwd(),
+      temporaryRoot: options.temporaryRoot,
+      baselineRef: freezeManifest.baseline,
+      baselinePluginRoot: options.baselinePluginRoot,
+      candidatePluginRoot: options.candidatePluginRoot,
+      candidatePluginRoots: options.candidatePluginRoots,
+    });
     try {
       const fixtureCase = cases.get(cell.caseId);
+      configureLifecycleMock(staged, fixtureCase);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
         fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
@@ -408,7 +354,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         }));
       }
       const hostResult = mergeHostRuns(runs);
-      const trace = hostResult.traceUnavailable === true
+      const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
       return {
