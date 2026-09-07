@@ -114,7 +114,12 @@
       "task": "Review the acceptance evidence and deliver the API review artifact through Plan, Execute, Ship, and CreatePR.",
       "workflow": "Accepted review evidence: search pagination must use a stable cursor; offset pagination was rejected. Treat this as a new accepted decision in the normal workflow.",
       "initialFacts": [],
-      "cohort": "workflow"
+      "cohort": "workflow",
+      "longitudinal": true,
+      "longitudinalSteps": [
+        "Start a fresh session for the API review. Invoke Learn without any accepted decision, verified evidence, or work-summary material. Record the no-op outcome; do not manufacture knowledge.",
+        "Start a fresh session. Review the accepted API evidence: search pagination must use a stable cursor and offset pagination was rejected. Complete the Plan, Execute, Ship, and CreatePR workflow. Capture this consequential accepted decision through the normal workflow, then write the evaluation artifact."
+      ]
     },
     {
       "id": "verified-gotcha",
@@ -133,7 +138,12 @@
           "content": "One prototype used an embedded store, but this is an observation rather than an approved architecture decision."
         }
       ],
-      "cohort": "workflow"
+      "cohort": "workflow",
+      "longitudinal": true,
+      "longitudinalSteps": [
+        "Start a fresh session. Invoke Learn without new verified evidence and record the no-op outcome.",
+        "Start a fresh session. Consider the experimental annotation observation: one prototype used an embedded store, but there is no accepted architecture decision. Plan the recommendation without capturing speculation as durable knowledge. Repeat the unchanged capture request and record its no-op outcome, then write the evaluation artifact."
+      ]
     },
     {
       "id": "blocker-resolution",
@@ -154,7 +164,7 @@
       "workflow": "Use Learn summarize this work, Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
       "initialFacts": [],
       "longitudinalSteps": [
-        "Start a fresh session. Run Execute on the staged feature and capture its templated work record.",
+        "Start a fresh session. Run Execute on the staged feature. Use Learn with explicit work-summary intent to capture its templated work record, including unknown or pending fields truthfully.",
         "Start a fresh session. Run Ship: refresh that same work before opening the local gh draft, then repair verification and retain the draft URL.",
         "Start a fresh session. Repeat the unchanged work capture as a no-op. The knowledge registration directory is now read-only: report the save failure and recovery input, then open the direct CreatePR fallback draft anyway. Write evaluation-result.json and the required decision artifact."
       ],

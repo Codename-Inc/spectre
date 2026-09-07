@@ -8,6 +8,7 @@ import path from 'node:path';
 
 import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
 import { blockKnowledgeRegistration, readSessionStartMeasurement, snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { baselineRuntimeFacts } from './knowledge-evaluation-baseline-metrics.mjs';
 import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs';
 
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
@@ -201,6 +202,22 @@ export function judgeCell(cell, runtime, oracle) {
     }
     if (expected.requiresCapture === true && cell.condition === 'candidate' && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
       return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
+    }
+    if (cell.condition === 'candidate' && Array.isArray(expected.requiredStates)) {
+      const captureOutcomes = (runtime.trace?.events ?? []).filter((event) => event.type === 'capture').map((event) => event.outcome);
+      const snapshots = runtime.sessionSnapshots ?? [];
+      const unchangedSession = snapshots.some((session) => JSON.stringify(session.before?.records ?? []) === JSON.stringify(session.after?.records ?? []) &&
+        JSON.stringify(session.before?.history ?? []) === JSON.stringify(session.after?.history ?? []));
+      if (expected.requiredStates.some((state) => /(?:accepted-decision|blocker-resolution|^capture$)/.test(state)) &&
+        !captureOutcomes.some((outcome) => outcome === 'created' || outcome === 'updated')) {
+        return { valid: false, recalled: false, reason: 'required primary capture outcome is missing' };
+      }
+      if (expected.requiredStates.some((state) => /noop/.test(state)) && !unchangedSession) {
+        return { valid: false, recalled: false, reason: 'required unchanged capture evidence is missing' };
+      }
+      if (expected.requiredStates.includes('save-failure') && !captureOutcomes.includes('failed')) {
+        return { valid: false, recalled: false, reason: 'required knowledge save-failure evidence is missing' };
+      }
     }
     const captureOperations = (runtime.toolOperations ?? []).filter((operation) =>
       operation.name === 'Learn' || /knowledge-cli\.mjs\s+(?:register|capture|learn)\b/.test(operation?.input?.command ?? '')
@@ -616,6 +633,18 @@ export function traceRuntimeFacts(trace, hostResult = {}) {
   };
 }
 
+function noKnowledgeRuntimeFacts(hostResult = {}) {
+  const measurement = hostResult.usage?.sessionStartMeasurement;
+  return {
+    injectedTokens: measurement?.availability === 'none' ? 0 : null,
+    injectedBytes: measurement?.availability === 'none' ? 0 : null,
+    previewTokens: null, previewBytes: null, loadedBodyTokens: null, loadedBodyBytes: null,
+    resourceTokens: null, resourceBytes: null, redundantTokens: null, totalTokens: null,
+    nativePrimaryUsage: hostResult.usage?.primary ?? null,
+    nativeFullCycleUsage: hostResult.usage?.fullCycle ?? null,
+  };
+}
+
 function assertFrozenInputs(freezeManifest) {
   const fixtures = freezeManifest.fixtureRoot;
   if (freezeManifest.hashes.fixtures !== filesHash(fixtures)) throw new Error('fixture content changed after freeze');
@@ -688,6 +717,13 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
+      const measuredRuntime = cell.condition === 'baseline'
+        ? baselineRuntimeFacts({
+          toolOperations: hostResult.toolOperations, toolResults: hostResult.toolResults,
+          sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
+        })
+        : cell.condition === 'no-knowledge' ? noKnowledgeRuntimeFacts(hostResult)
+          : traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement });
       return {
         ...hostResult,
         deliverablePath,
@@ -699,7 +735,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
         trace,
-        ...traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement }),
+        ...measuredRuntime,
         bypass: [
           ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
           ...trace.events.filter((event) => event.type === 'bypass'),
