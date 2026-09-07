@@ -743,6 +743,8 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   const started = performance.now();
   let stagedAuth = null;
   let claudeOauthStaged = false;
+  let claudeRefreshStaged = false;
+  let claudeAuthentication = null;
   let processResult;
   let cleanup = { stagedAuth: 'not-staged' };
   try {
@@ -754,6 +756,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
         environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN = oauthCredentials.refreshToken;
         environment.CLAUDE_CODE_OAUTH_SCOPES = oauthCredentials.scopes.join(' ');
         claudeOauthStaged = true;
+        claudeRefreshStaged = true;
       } else {
         const readOauthToken = dependencies.readClaudeOauthToken ?? (dependencies.spawn ? null : readClaudeOauthToken);
         const oauthToken = readOauthToken?.();
@@ -763,14 +766,47 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
         }
       }
     }
-    const sandbox = sandboxForInvocation({
+    let sandbox = sandboxForInvocation({
       preparedFixture: fixture,
       native,
       environment,
       sandboxExecutable: dependencies.sandboxExecutable,
     });
     fixture.filesystemBoundary = sandbox;
-    processResult = await runChild(sandbox.command, sandbox.args, {
+    if (claudeRefreshStaged) {
+      const authenticationNative = { command: native.command, args: ['auth', 'login'] };
+      const authenticationSandbox = sandboxForInvocation({
+        preparedFixture: fixture,
+        native: authenticationNative,
+        environment,
+        sandboxExecutable: dependencies.sandboxExecutable,
+      });
+      const authenticationResult = await runChild(authenticationSandbox.command, authenticationSandbox.args, {
+        cwd: paths.projectDir, env: { ...environment }, timeoutMs: limits.timeoutMs,
+        maxOutputBytes: limits.maxOutputBytes, terminationGraceMs: limits.terminationGraceMs,
+      }, dependencies.spawn ?? nativeSpawn);
+      claudeAuthentication = {
+        strategy: 'refresh-token',
+        status: authenticationResult.timedOut ? 'timed_out'
+          : authenticationResult.outputLimited ? 'output_limited'
+            : authenticationResult.error ? 'launch_failed'
+              : authenticationResult.exitCode === 0 ? 'completed' : 'failed',
+      };
+      if (claudeAuthentication.status !== 'completed') {
+        processResult = authenticationResult;
+      } else {
+        delete environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN;
+        delete environment.CLAUDE_CODE_OAUTH_SCOPES;
+        sandbox = sandboxForInvocation({
+          preparedFixture: fixture,
+          native,
+          environment,
+          sandboxExecutable: dependencies.sandboxExecutable,
+        });
+        fixture.filesystemBoundary = sandbox;
+      }
+    }
+    if (!processResult) processResult = await runChild(sandbox.command, sandbox.args, {
       cwd: paths.projectDir, env: { ...environment }, timeoutMs: limits.timeoutMs,
       maxOutputBytes: limits.maxOutputBytes, terminationGraceMs: limits.terminationGraceMs,
     }, dependencies.spawn ?? nativeSpawn);
@@ -825,6 +861,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     traceUnavailable: /SPECTRE_EVALUATION_TRACE_UNAVAILABLE\b/.test(processResult?.stderr ?? ''),
     timing: { startedAt, endedAt: new Date().toISOString(), wallDurationMs: performance.now() - started, nativeDurationMs: normalized.nativeDurationMs },
     rawLogs: { stdoutPath, stderrPath },
+    authentication: claudeAuthentication,
     cleanup,
     isolation: {
       projectDir: paths.projectDir, storeDir: paths.storeDir, pluginDir: paths.pluginDir,
