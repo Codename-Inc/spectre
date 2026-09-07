@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { estimatePayloadTokens } from '../plugins/spectre/hooks/scripts/knowledge/payload.mjs';
 
 function resultFor(operation, results) {
@@ -8,7 +10,7 @@ function resultFor(operation, results) {
 function commandKind(operation) {
   const command = operation?.input?.command;
   if (typeof command !== 'string') return null;
-  const match = command.match(/knowledge-cli\.mjs\s+(search|load|history|inspect|resource)\b/);
+  const match = command.match(/knowledge-cli\.mjs(?:['\"])?\s+(search|load|history|inspect|resource)\b/);
   return match?.[1] || null;
 }
 
@@ -51,6 +53,18 @@ function directPath(operation) {
   return null;
 }
 
+function containsPath(value, candidate) {
+  const root = path.resolve(candidate);
+  return value.includes(root) || value.includes(`${root}${path.sep}`);
+}
+
+function potentialKnowledgeAccess(value, workingDir, knownKnowledgePaths) {
+  if (typeof value !== 'string') return false;
+  if (workingDir && containsPath(value, workingDir)) return false;
+  if (knownKnowledgePaths.some(candidate => containsPath(value, candidate) || containsPath(value, path.dirname(candidate)))) return true;
+  return /(?:^|[\s/'"])(?:knowledge|spectre-home)(?:[\s/'"]|$)/.test(value);
+}
+
 function metric(entries, complete, noObservedValue = null) {
   if (!complete) return { tokens: null, bytes: null };
   if (entries.length === 0) return { tokens: noObservedValue, bytes: noObservedValue };
@@ -58,8 +72,8 @@ function metric(entries, complete, noObservedValue = null) {
 }
 
 /** Derive bounded baseline payload facts solely from ordered normalized native tool evidence. */
-export function baselineRuntimeFacts({ toolOperations = [], toolResults = [], sessionStartMeasurement = null } = {}) {
-  const operations = [...toolOperations].sort((left, right) => (left.eventOrdinal ?? 0) - (right.eventOrdinal ?? 0));
+export function baselineRuntimeFacts({ toolOperations = [], toolResults = [], sessionStartMeasurement = null, workingDir = null, knownKnowledgePaths = [] } = {}) {
+  const operations = [...toolOperations].sort((left, right) => (left.sessionOrdinal ?? 0) - (right.sessionOrdinal ?? 0) || (left.eventOrdinal ?? 0) - (right.eventOrdinal ?? 0));
   const previews = [];
   const bodies = [];
   const bodyEntries = [];
@@ -113,8 +127,10 @@ export function baselineRuntimeFacts({ toolOperations = [], toolResults = [], se
     if (!direct || !['Read', 'exec'].includes(operation?.name)) continue;
     const matchedPath = [...exposedResources].find(value => direct.includes(value));
     if (!matchedPath) {
-      unsupported += 1;
-      resourceComplete = false;
+      if (potentialKnowledgeAccess(direct, workingDir, knownKnowledgePaths)) {
+        unsupported += 1;
+        resourceComplete = false;
+      }
       continue;
     }
     recognized += 1;

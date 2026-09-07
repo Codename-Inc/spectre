@@ -68,7 +68,7 @@ test('keeps incomplete or unsupported baseline evidence unknown instead of manuf
   assert.equal(facts.resourceTokens, null);
   assert.equal(facts.redundantTokens, null);
   assert.equal(facts.totalTokens, null);
-  assert.deepEqual(facts.diagnostics, { recognized: 1, incomplete: 1, unsupported: 1 });
+  assert.deepEqual(facts.diagnostics, { recognized: 1, incomplete: 1, unsupported: 0 });
 });
 
 test('counts only same-session exact baseline revisions as redundant body loads', () => {
@@ -84,4 +84,40 @@ test('counts only same-session exact baseline revisions as redundant body loads'
 
   assert.equal(facts.loadedBodyTokens, estimatePayloadTokens(body) * 2);
   assert.equal(facts.redundantTokens, estimatePayloadTokens(body));
+});
+
+test('recognizes quoted CLI paths and ignores ordinary repository reads while preserving ambiguous knowledge reads', () => {
+  const search = JSON.stringify({ ok: true, results: [] });
+  const facts = baselineRuntimeFacts({
+    workingDir: '/fixture/project',
+    knownKnowledgePaths: ['/fixture/store/knowledge/dual-ledger/record.json'],
+    toolOperations: [
+      operation('search-1', "node '/fixture/plugin/hooks/scripts/knowledge-cli.mjs' search dual-ledger --json", 1),
+      { id: 'ordinary-read', eventOrdinal: 2, sessionOrdinal: 0, name: 'Read', type: 'tool_use', status: 'completed', input: { file_path: '/fixture/project/docs/rollout.md' } },
+      { id: 'ambiguous-read', eventOrdinal: 3, sessionOrdinal: 0, name: 'Read', type: 'tool_use', status: 'completed', input: { file_path: '/fixture/store/knowledge/dual-ledger/references/proof.txt' } },
+    ],
+    toolResults: [result('search-1', search, 1), result('ordinary-read', 'ordinary evidence', 2), result('ambiguous-read', 'unverified resource', 3)],
+  });
+
+  assert.equal(facts.previewTokens, estimatePayloadTokens(search));
+  assert.equal(facts.diagnostics.recognized, 1);
+  assert.equal(facts.diagnostics.unsupported, 1);
+  assert.equal(facts.resourceTokens, null);
+});
+
+test('orders same host evidence by session before event ordinal', () => {
+  const earlySession = JSON.stringify({ ok: true, results: [] });
+  const laterSession = JSON.stringify({ ok: true, results: [{ id: 'later' }] });
+  const facts = baselineRuntimeFacts({
+    toolOperations: [
+      { ...operation('later', 'node knowledge-cli.mjs search later --json', 1), sessionOrdinal: 1 },
+      { ...operation('early', 'node knowledge-cli.mjs search early --json', 9), sessionOrdinal: 0 },
+    ],
+    toolResults: [
+      { ...result('later', laterSession, 2), sessionOrdinal: 1 },
+      { ...result('early', earlySession, 10), sessionOrdinal: 0 },
+    ],
+  });
+
+  assert.equal(facts.previewTokens, estimatePayloadTokens(earlySession) + estimatePayloadTokens(laterSession));
 });
