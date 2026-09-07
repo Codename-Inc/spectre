@@ -34,7 +34,8 @@
     "requiredReadCommand": "inspect"
   },
   "worktree-applicability": {
-    "requiredRecordHashes": [
+    "requiredRecordHashes": [],
+    "forbiddenLoadedRecordHashes": [
       "sha256:914fe1a81c60ab561a5eee3e3cd4548413cc71b1e5271234a3b4803e29892eac"
     ],
     "manualRubric": "Desktop-only guidance is not applied to mobile."
