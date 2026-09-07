@@ -78,6 +78,20 @@ test('native qualification selects only named frozen cells', () => {
   assert.throws(() => selectFrozenCells(frozen, ['not-frozen']), /unknown frozen cell/);
 });
 
+test('a frozen cell result resumes only when its freeze hash matches', async () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-resume-'));
+  const manifest = {
+    hashes: { fixtures: 'fixture-hash', oracle: 'oracle-hash' }, cells: [{ id: 'case:baseline:claude:1', caseId: 'case', host: 'claude' }],
+    concurrency: { total: 1, perHost: 1 }, oracle: { case: { requiredPhrases: ['answer'] } },
+  };
+  let calls = 0;
+  const invoke = async () => { calls += 1; return { status: 'completed', textFinalAnswers: ['answer'], deliverable: { exists: true, bytes: 1 } }; };
+  await runCells(manifest, output, invoke);
+  await runCells(manifest, output, invoke);
+  await runCells({ ...manifest, hashes: { fixtures: 'changed', oracle: 'oracle-hash' } }, output, invoke);
+  assert.equal(calls, 2);
+});
+
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
   const recordId = 'payments-dual-settlement';
   const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;
@@ -100,6 +114,10 @@ test('judging requires an exact successful load and a later persisted decision a
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
     { ...runtime.toolOperations[0], eventOrdinal: 9 }, runtime.toolOperations[1],
   ], toolResults: [{ ...runtime.toolResults[0], eventOrdinal: 9 }] }, oracle).recalled, false);
+  const control = judgeCell({ ...cell, condition: 'no-knowledge' }, {
+    ...runtime, toolOperations: [runtime.toolOperations[1]], toolResults: [], trace: { availability: 'unavailable', events: [] },
+  }, oracle);
+  assert.equal(control.recalled, null);
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {

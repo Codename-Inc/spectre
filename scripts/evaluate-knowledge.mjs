@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +13,14 @@ import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 const CONDITIONS = ['no-knowledge', 'baseline', 'candidate'];
 const HOSTS = ['claude', 'codex'];
+const EVALUATOR_INPUTS = [
+  new URL('./evaluate-knowledge.mjs', import.meta.url),
+  new URL('./knowledge-evaluation-hosts.mjs', import.meta.url),
+  new URL('./knowledge-evaluation-staging.mjs', import.meta.url),
+  new URL('./knowledge-host-probe-hook.mjs', import.meta.url),
+  new URL('./verify-knowledge-hosts.mjs', import.meta.url),
+  new URL('../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs', import.meta.url),
+];
 const ACCEPTANCE_THRESHOLDS = Object.freeze({
   requiredRecall: 1,
   unnecessaryHistoryLoads: 0,
@@ -21,6 +30,10 @@ const ACCEPTANCE_THRESHOLDS = Object.freeze({
 
 const hash = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+function evaluatorInputsHash() {
+  return hash(JSON.stringify(EVALUATOR_INPUTS.map((url) => [url.pathname, hash(fs.readFileSync(url))])));
+}
 
 function filesHash(root) {
   const files = [];
@@ -43,7 +56,7 @@ function strings(value) {
 }
 
 function usage() {
-  return 'Usage: evaluate-knowledge.mjs freeze --fixtures <dir> --oracle <file> --output <file> [--config <file> --candidate <dir>]\n       evaluate-knowledge.mjs run --freeze <file> --fixtures <dir> --config <file> --baseline-plugin <dir> --candidate-plugin <dir> --output <dir> --report <file> --allow-native [--cell <frozen-cell-id>]\n';
+  return 'Usage: evaluate-knowledge.mjs freeze --fixtures <dir> --oracle <file> --output <file> [--config <file> --candidate <dir>]\n       evaluate-knowledge.mjs run --freeze <file> --fixtures <dir> --config <file> --baseline-plugin <dir> (--candidate-plugin <plugins-dir> | --candidate-claude-plugin <dir> --candidate-codex-plugin <dir>) --output <dir> --report <file> --allow-native [--cell <frozen-cell-id>]\n';
 }
 
 function argument(argv, name) {
@@ -95,6 +108,7 @@ function freeze(fixtures, oracle, output, options = {}) {
       fixtures: filesHash(fixtures), oracle: hash(oracleBytes),
       configuration: configurationPath ? hash(fs.readFileSync(configurationPath)) : null,
       candidate: candidatePath ? filesHash(candidatePath) : null,
+      evaluatorInputs: evaluatorInputsHash(),
     },
     fixtureRoot: path.resolve(fixtures), oraclePath: path.resolve(oracle), configurationPath, candidatePath, cells,
     concurrency: { total: 4, perHost: 2 }, freshStores: true, longitudinalSequential: true,
@@ -114,6 +128,13 @@ function percentile(values, fraction) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   if (!sorted.length) return 'unknown';
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
+}
+
+function eventPrecedes(left, right) {
+  if (!Number.isInteger(left?.eventOrdinal) || !Number.isInteger(right?.eventOrdinal)) return false;
+  const leftSession = left.sessionOrdinal ?? 0;
+  const rightSession = right.sessionOrdinal ?? 0;
+  return leftSession < rightSession || (leftSession === rightSession && left.eventOrdinal < right.eventOrdinal);
 }
 
 export function aggregate(cells = []) {
@@ -140,48 +161,50 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.deliverable?.exists !== true) return { valid: false, recalled: false, reason: 'decision artifact was not persisted' };
   if (Array.isArray(expected.requiredRecordHashes)) {
     const expectedHashes = new Set(expected.requiredRecordHashes);
+    const readCommand = expected.requiredReadCommand === 'inspect' ? 'inspect' : 'load';
     const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
       const command = operation?.input?.command ?? '';
-      return /knowledge-cli\.mjs\s+load\s+([a-z0-9]+(?:-[a-z0-9]+)*)\b/.test(command) &&
+      return new RegExp(`knowledge-cli\\.mjs\\s+${readCommand}\\s+['\"]?([a-z0-9]+(?:-[a-z0-9]+)*)`).test(command) &&
         [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => expectedHashes.has(hash(match[0]))) &&
         (operation.status === null || operation.status === 'completed');
     });
     const matchedResults = (runtime.toolResults ?? []).filter((result) =>
-      loadOperations.some((operation) => operation.id !== null && operation.id === result.toolUseId) &&
+      loadOperations.some((operation) => operation.id !== null && operation.id === result.toolUseId &&
+        (operation.sessionOrdinal ?? 0) === (result.sessionOrdinal ?? 0)) && result.isError !== true &&
       typeof result.content === 'string' && [...result.content.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)]
         .some((match) => expectedHashes.has(hash(match[0])))
     );
     const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
-      (operation.name === 'Write' || operation.name === 'exec') &&
+      (operation.name === 'Write' || operation.name === 'exec' || operation.type === 'file_change') &&
       JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath) &&
       (operation.status === null || operation.status === 'completed')
     );
     if (!artifactWrite) return { valid: false, recalled: false, reason: 'native decision-artifact write evidence is missing' };
     const orderedLoad = matchedResults.some((result) =>
-      Number.isInteger(result.eventOrdinal) &&
-      Number.isInteger(artifactWrite?.eventOrdinal) && result.eventOrdinal < artifactWrite.eventOrdinal
+      eventPrecedes(result, artifactWrite)
     );
     const stagedRevisions = new Map((runtime.snapshots?.before?.records ?? []).map((record) => [record.id, record.revisionToken]));
     const tracedLoad = runtime.trace?.events?.some((event) =>
-      event.type === 'load' && expectedHashes.has(hash(event.id ?? '')) && event.revisionToken === stagedRevisions.get(event.id)
+      (readCommand === 'inspect' ? event.type === 'history-read' && event.subtype === 'history-body' : event.type === 'load') &&
+      expectedHashes.has(hash(event.id ?? '')) && event.revisionToken === stagedRevisions.get(event.id)
     );
-    if (expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
+    if (cell.condition !== 'no-knowledge' && expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
     }
     if (expected.requiresCapture === true && cell.condition === 'candidate' && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
       return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
     }
     const captureOperations = (runtime.toolOperations ?? []).filter((operation) =>
-      operation.name === 'Learn' || /knowledge-cli\.mjs\s+(?:capture|learn)\b/.test(operation?.input?.command ?? '')
+      operation.name === 'Learn' || /knowledge-cli\.mjs\s+(?:register|capture|learn)\b/.test(operation?.input?.command ?? '')
     );
     if (expected.requiresCapture === true && captureOperations.some((operation) => operation.actorRole === 'worker')) {
       return { valid: false, recalled: false, reason: 'worker-owned knowledge capture is not primary evidence' };
     }
     const ghCommands = runtime.workflowEvidence?.ghCommands ?? [];
-    if (Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
+    if (cell.condition === 'candidate' && Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
       return { valid: false, recalled: false, reason: 'direct PR fallback evidence is missing' };
     }
-    if (expected.requiresSameWorkId === true) {
+    if (cell.condition === 'candidate' && expected.requiresSameWorkId === true) {
       const workRecords = runtime.snapshots?.after?.workRecords ?? [];
       if (workRecords.length !== 1 || !workRecords[0].id || !workRecords[0].revisionToken ||
         !workRecords[0].execution || !workRecords[0].verification || !workRecords[0].pullRequest) {
@@ -205,6 +228,9 @@ export function judgeCell(cell, runtime, oracle) {
 export async function runCells(freezeManifest, outputDir, invoke) {
   const oracle = freezeManifest.oraclePath ? readJson(freezeManifest.oraclePath) : freezeManifest.oracle;
   fs.mkdirSync(outputDir, { recursive: true });
+  const freezeKey = freezeManifest.hashes ? hash(JSON.stringify(freezeManifest.hashes)) : null;
+  const cacheDirectory = path.join(outputDir, '.knowledge-evaluation-cells');
+  if (freezeKey) fs.mkdirSync(cacheDirectory, { recursive: true });
   const results = [];
   const pending = [...freezeManifest.cells];
   const activeByHost = new Map(HOSTS.map(host => [host, 0]));
@@ -217,10 +243,22 @@ export async function runCells(freezeManifest, outputDir, invoke) {
       const cell = pending.splice(index, 1)[0];
       activeByHost.set(cell.host, activeByHost.get(cell.host) + 1);
       try {
+        const cachePath = freezeKey ? path.join(cacheDirectory, `${hash(cell.id).slice('sha256:'.length)}.json`) : null;
+        if (cachePath && fs.existsSync(cachePath)) {
+          try {
+            const cached = readJson(cachePath);
+            if (cached.freezeKey === freezeKey && cached.cell?.id === cell.id) {
+              results.push(cached.cell);
+              continue;
+            }
+          } catch {
+            // A partial cell artifact is never reused.
+          }
+        }
         const cellDir = fs.mkdtempSync(path.join(outputDir, `${cell.host}-${cell.condition}-`));
         const runtime = await invoke({ ...cell, cellDir });
         const judged = judgeCell(cell, runtime, oracle);
-        results.push({
+        const result = {
           ...cell,
           status: runtime?.status === 'completed' && judged.valid ? 'completed' : runtime?.status === 'completed' ? 'invalid' : runtime?.status ?? 'invalid',
           runtime: {
@@ -228,7 +266,13 @@ export async function runCells(freezeManifest, outputDir, invoke) {
             usage: { ...(runtime?.usage ?? {}), primary: normalizeUsage(runtime?.usage?.primary ?? runtime?.usage) },
           },
           judged,
-        });
+        };
+        if (cachePath) {
+          const temporary = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+          fs.writeFileSync(temporary, `${JSON.stringify({ freezeKey, cell: result }, null, 2)}\n`);
+          fs.renameSync(temporary, cachePath);
+        }
+        results.push(result);
       } finally {
         activeByHost.set(cell.host, activeByHost.get(cell.host) - 1);
       }
@@ -352,11 +396,36 @@ function readArtifact(projectDir) {
 
 function deliverableEvidence(projectDir, deliverablePath) {
   try {
-    const stat = fs.statSync(path.join(projectDir, deliverablePath));
-    return { exists: stat.isFile(), bytes: stat.isFile() ? stat.size : null };
+    const target = path.join(projectDir, deliverablePath);
+    const stat = fs.statSync(target);
+    if (!stat.isFile()) return { exists: false, bytes: null, hash: null, content: null, truncated: false };
+    const content = fs.readFileSync(target, 'utf8');
+    const limit = 64 * 1024;
+    return {
+      exists: true, bytes: stat.size, hash: hash(content),
+      content: content.slice(0, limit), truncated: Buffer.byteLength(content, 'utf8') > limit,
+    };
   } catch {
-    return { exists: false, bytes: null };
+    return { exists: false, bytes: null, hash: null, content: null, truncated: false };
   }
+}
+
+function changedProjectEvidence(projectDir) {
+  const result = spawnSync('git', ['status', '--porcelain'], { cwd: projectDir, encoding: 'utf8' });
+  if (result.status !== 0) return { availability: 'unavailable', changed: [] };
+  const changed = result.stdout.split(/\r?\n/).filter(Boolean).flatMap((line) => {
+    const relative = line.slice(3).trim();
+    if (!relative || path.isAbsolute(relative) || relative.includes('..')) return [];
+    const target = path.join(projectDir, relative);
+    try {
+      const content = fs.readFileSync(target, 'utf8');
+      const limit = 16 * 1024;
+      return [{ path: relative, hash: hash(content), content: content.slice(0, limit), truncated: Buffer.byteLength(content, 'utf8') > limit }];
+    } catch {
+      return [{ path: relative, hash: null, content: null, truncated: false }];
+    }
+  });
+  return { availability: 'available', changed };
 }
 
 function workflowEvidence(staged) {
@@ -386,6 +455,18 @@ function hostConfiguration(configuration, host) {
     throw new Error(`configuration must provide model and effort for ${host}`);
   }
   return selected;
+}
+
+function candidatePluginRoots(options = {}) {
+  if (options.candidatePluginRoots) return options.candidatePluginRoots;
+  const root = options.candidatePluginRoot;
+  if (!root) return undefined;
+  const claude = path.join(root, 'spectre');
+  const codex = path.join(root, 'spectre-codex');
+  if (!fs.existsSync(claude) || !fs.existsSync(codex)) {
+    throw new Error('candidate plugin root must contain both spectre and spectre-codex; pass host-specific roots otherwise');
+  }
+  return { claude, codex };
 }
 
 function mergeHostRuns(runs) {
@@ -489,6 +570,7 @@ function assertFrozenInputs(freezeManifest) {
   if (freezeManifest.hashes.oracle !== hash(fs.readFileSync(freezeManifest.oraclePath))) throw new Error('oracle content changed after freeze');
   if (freezeManifest.configurationPath && freezeManifest.hashes.configuration !== hash(fs.readFileSync(freezeManifest.configurationPath))) throw new Error('configuration changed after freeze');
   if (freezeManifest.candidatePath && freezeManifest.hashes.candidate !== filesHash(freezeManifest.candidatePath)) throw new Error('candidate content changed after freeze');
+  if (freezeManifest.hashes.evaluatorInputs && freezeManifest.hashes.evaluatorInputs !== evaluatorInputsHash()) throw new Error('evaluator input changed after freeze');
 }
 
 /** Run the frozen native evaluation only after the deterministic hash gate succeeds. */
@@ -506,8 +588,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       temporaryRoot: options.temporaryRoot,
       baselineRef: freezeManifest.baseline,
       baselinePluginRoot: options.baselinePluginRoot,
-      candidatePluginRoot: options.candidatePluginRoot,
-      candidatePluginRoots: options.candidatePluginRoots,
+      candidatePluginRoots: candidatePluginRoots(options),
     });
     try {
       const fixtureCase = cases.get(cell.caseId);
@@ -517,13 +598,15 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const deliverablePath = path.join('artifacts', `${cell.caseId}.md`);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
-          fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
-          `Write the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`,
+        fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
       ].join('\n')];
+      const preparedPrompts = prompts.map((prompt, index) => index === prompts.length - 1
+        ? `${prompt}\nWrite the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
+        : prompt);
       const runs = [];
       let registrationFault = null;
       try {
-        for (const [sessionOrdinal, prompt] of prompts.entries()) {
+        for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
           runs.push(await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
@@ -532,11 +615,13 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
             ...staged.environment,
             ...(staged.tracePath ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: staged.tracePath } : {}),
             SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: `${cell.id}:session:${sessionOrdinal + 1}`,
-            SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `${cell.caseId}:${cell.condition}:${cell.repeat}`,
+            SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`,
           },
           limits: options.limits,
           }));
-          if (fixtureCase.id === 'lifecycle-identity' && sessionOrdinal === 0) registrationFault = blockKnowledgeRegistration(staged);
+          if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 1 && runs.at(-1)?.status === 'completed') {
+            registrationFault = blockKnowledgeRegistration(staged);
+          }
         }
       } finally {
         registrationFault?.restore();
@@ -550,6 +635,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         ...hostResult,
         deliverablePath,
         deliverable: deliverableEvidence(staged.projectDir, deliverablePath),
+        projectEvidence: changedProjectEvidence(staged.projectDir),
         snapshots: { before: snapshotBefore, after: snapshotAfter },
         sessionStartMeasurement: staged.sessionStartMeasurement ?? null,
         artifact: readArtifact(staged.projectDir),
@@ -589,11 +675,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const configurationPath = argument(process.argv, '--config');
     const baselinePluginRoot = argument(process.argv, '--baseline-plugin');
     const candidatePluginRoot = argument(process.argv, '--candidate-plugin');
+    const candidateClaudePluginRoot = argument(process.argv, '--candidate-claude-plugin');
+    const candidateCodexPluginRoot = argument(process.argv, '--candidate-codex-plugin');
     const reportPath = argument(process.argv, '--report');
-    if (!freezePath || !fixtures || !configurationPath || !baselinePluginRoot || !candidatePluginRoot || !output || !reportPath || !process.argv.includes('--allow-native')) throw new Error(usage());
+    if (!freezePath || !fixtures || !configurationPath || !baselinePluginRoot || (!candidatePluginRoot && !(candidateClaudePluginRoot && candidateCodexPluginRoot)) || !output || !reportPath || !process.argv.includes('--allow-native')) throw new Error(usage());
     const report = await evaluateKnowledge(readJson(path.resolve(freezePath)), {
       allowNative: true, fixtureRoot: path.resolve(fixtures), outputDir: path.resolve(output), reportPath: path.resolve(reportPath),
-      configuration: readJson(path.resolve(configurationPath)), baselinePluginRoot: path.resolve(baselinePluginRoot), candidatePluginRoot: path.resolve(candidatePluginRoot),
+      configuration: readJson(path.resolve(configurationPath)), baselinePluginRoot: path.resolve(baselinePluginRoot),
+      ...(candidatePluginRoot ? { candidatePluginRoot: path.resolve(candidatePluginRoot) } : { candidatePluginRoots: { claude: path.resolve(candidateClaudePluginRoot), codex: path.resolve(candidateCodexPluginRoot) } }),
       rawLogRoot: argument(process.argv, '--raw-logs') ?? undefined, cellIds: argumentsNamed(process.argv, '--cell'),
     });
     process.stdout.write(`${JSON.stringify({ status: 'completed', report: path.resolve(reportPath), samples: report.cells.length })}\n`);

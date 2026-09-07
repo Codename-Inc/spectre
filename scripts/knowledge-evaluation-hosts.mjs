@@ -158,7 +158,7 @@ function codexOperation(item, event) {
     return {
       id: typeof item.id === 'string' ? item.id : null,
       host: 'codex', name: item.name ?? item.tool_name ?? type, type,
-      input: item.input ?? item.arguments ?? null, status: item.status ?? null,
+      input: item.input ?? item.arguments ?? (type === 'file_change' ? { changes: item.changes ?? null } : null), status: item.status ?? null,
       startedAt: item.started_at ?? item.startedAt ?? null,
       endedAt: item.ended_at ?? item.endedAt ?? null,
       durationMs: Number.isFinite(item.duration_ms) ? item.duration_ms : null,
@@ -198,6 +198,7 @@ function normalizeClaude(events) {
           toolResults.push({
             host: 'claude', toolUseId: block.tool_use_id ?? null, eventOrdinal,
             content: safeLog(typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? null)),
+            isError: block.is_error === true,
           });
         }
       }
