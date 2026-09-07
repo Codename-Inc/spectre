@@ -235,6 +235,25 @@ test('paired reporting flags a regression against either control and never selec
   assert.equal(incomplete.efficiency.routineIrrelevantLoadedBodyRate, 'unknown');
 });
 
+test('report gates every candidate journey while retaining incorrect controls as reviewed comparison evidence', () => {
+  const cells = ['first', 'second'].flatMap((caseId) => ['baseline', 'candidate', 'no-knowledge'].map((condition) => ({
+    id: `${caseId}:${condition}:claude:1`, caseId, condition, host: 'claude', cohort: 'workflow', critical: false,
+    runtime: { status: 'completed', deliverable: { hash: `sha256:${caseId}:${condition}` }, nativeFullCycleUsage: { coverage: 'complete', total: { input: 1, cache: 0, cacheWrite: 0, output: 1, reasoning: null } }, trace: { availability: condition === 'candidate' ? 'available' : 'unavailable', events: [] } },
+    judged: { structuralValid: !(caseId === 'second' && condition === 'candidate'), recalled: caseId === 'second' && condition === 'candidate' ? false : null },
+  })));
+  const judgments = cells.map((cell) => ({
+    cellId: cell.id, artifactHash: cell.runtime.deliverable.hash, artifactEvidence: cell.runtime.deliverable.hash,
+    correct: cell.condition === 'candidate' && cell.caseId === 'first', relevant: true, requiredRecallBeforeDecision: true,
+    irrelevantTokens: 0, unnecessaryHistoryLoads: 0,
+  }));
+  const quality = evaluationQualityReport(cells, judgments);
+  const thresholds = thresholdReport(cells, pairedReport(cells, {}, judgments), {}, judgments);
+  assert.equal(quality.manual.status, 'reviewed');
+  assert.equal(quality.status, 'fail');
+  assert.equal(thresholds.allCandidateDelivery.structural, 'fail');
+  assert.equal(thresholds.allCandidateDelivery.semantic, 'fail');
+});
+
 test('cohorts retain measured retrieval totals alongside native full-cycle dimensions', () => {
   const cells = [10, 20].map((injectedTokens, index) => ({
     id: `case:candidate:claude:${index + 1}`, caseId: 'case', condition: 'candidate', host: 'claude', cohort: 'chat', status: 'pending',
