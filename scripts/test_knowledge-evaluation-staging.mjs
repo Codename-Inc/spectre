@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -64,4 +65,67 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   assert.equal(fs.existsSync(path.join(staged.projectDir, 'TASK.md')), true);
   assert.equal(fs.existsSync(path.join(staged.root, 'plugin')), false);
   assert.equal(fs.existsSync(path.join(staged.root, 'spectre-home')), false);
+});
+
+test('restores pristine activity after preflight and snapshots bounded durable evidence', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+  const snapshot = snapshotKnowledgeCell(staged);
+
+  assert.deepEqual(snapshot.activity.records, {});
+  assert.deepEqual(snapshot.activity.search, { matches: 0, misses: 0, recordMatches: {} });
+  assert.deepEqual(snapshot.records, [{
+    id: 'staged-fact', kind: 'knowledge', revisionToken: snapshot.records[0].revisionToken,
+    status: 'active', applicability: { scope: 'project' },
+  }]);
+  assert.deepEqual(snapshot.workRecords, []);
+  assert.match(snapshot.records[0].revisionToken, /^sha256:[a-f0-9]{64}$/);
+  assert.deepEqual(snapshot.history, []);
+  assert.equal(JSON.stringify(snapshot).includes(staged.storePath), false);
+  assert.equal(JSON.stringify(snapshot).includes('Keep both ledgers'), false);
+});
+
+test('stages imported work, scoped disputed knowledge, retired status, and tag aliases as real records', async (t) => {
+  const value = fixture(t);
+  value.fixture.initialFacts = [
+    { id: 'legacy-work', kind: 'work', content: 'Historic work source.', tags: ['migration'], aliases: ['migrate'], applicability: { scope: 'work', workId: 'migration-42' } },
+    { id: 'unverified-mobile', content: 'Confirm device evidence.', status: 'disputed', tags: ['mobile'], applicability: { scope: 'work', workId: 'mobile-7' } },
+    { id: 'retired-pattern', content: 'Prior pattern was replaced.', status: 'superseded', tags: ['retired'] },
+  ];
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'codex' }, value.fixture, value.options);
+  const snapshot = snapshotKnowledgeCell(staged);
+  const byId = Object.fromEntries(snapshot.records.map(record => [record.id, record]));
+  const catalog = JSON.parse(fs.readFileSync(path.join(staged.storePath, 'tags.json'), 'utf8'));
+
+  assert.deepEqual(byId['legacy-work'].applicability, { scope: 'work', workId: 'migration-42' });
+  assert.deepEqual(byId['legacy-work'].lifecycle, {
+    execution: 'unknown', verification: 'unknown', pullRequest: 'unknown',
+    associations: { sourceRunIds: [], pullRequestIds: [], candidates: [] },
+  });
+  assert.deepEqual(snapshot.workRecords, [{
+    id: 'legacy-work', revisionToken: byId['legacy-work'].revisionToken,
+    execution: 'unknown', verification: 'unknown', pullRequest: 'unknown',
+  }]);
+  assert.equal(byId['unverified-mobile'].status, 'disputed');
+  assert.deepEqual(byId['unverified-mobile'].applicability, { scope: 'work', workId: 'mobile-7' });
+  assert.equal(byId['retired-pattern'].status, 'superseded');
+  assert.deepEqual(catalog.tags.migration.aliases, ['migrate']);
+});
+
+
+test('stages the same feature branch, base ref, and Execute fixture for every condition', async (t) => {
+  const value = fixture(t);
+  for (const condition of ['candidate', 'baseline', 'no-knowledge']) {
+    const staged = await stageKnowledgeCell({ condition, host: 'claude' }, value.fixture, value.options);
+    const branch = spawnSync('git', ['branch', '--show-current'], { cwd: staged.projectDir, encoding: 'utf8' });
+    const base = spawnSync('git', ['merge-base', 'origin/main', 'HEAD'], { cwd: staged.projectDir, encoding: 'utf8' });
+    const featureCommit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: staged.projectDir, encoding: 'utf8' });
+
+    assert.equal(branch.stdout.trim(), 'evaluation/knowledge-cell');
+    assert.equal(base.status, 0, base.stderr);
+    assert.notEqual(base.stdout.trim(), featureCommit.stdout.trim());
+    assert.equal(fs.existsSync(path.join(staged.repository.originDir, 'HEAD')), true);
+    assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md')), true);
+    assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json')), true);
+  }
 });
