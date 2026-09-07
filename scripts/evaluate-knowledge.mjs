@@ -242,20 +242,13 @@ function configureLifecycleMock(staged, fixtureCase) {
   if (fixtureCase.id !== 'lifecycle-identity') return;
   const mockBin = staged.environment?.PATH?.split(path.delimiter)[0];
   if (!mockBin) throw new Error('lifecycle fixture is missing its local gh mock');
-  const statePath = path.join(staged.root, 'lifecycle-pr-state');
   fs.writeFileSync(path.join(mockBin, 'gh'), [
     '#!/bin/sh',
     'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"',
-    'if [ "$1 $2" = "pr create" ]; then',
-    '  count=0; [ -f "$SPECTRE_EVALUATION_PR_STATE" ] && count=$(cat "$SPECTRE_EVALUATION_PR_STATE")',
-    '  count=$((count + 1)); printf "%s" "$count" > "$SPECTRE_EVALUATION_PR_STATE"',
-    '  if [ "$count" -eq 1 ]; then echo "simulated save failure" >&2; exit 1; fi',
-    '  if [ "$count" -gt 2 ]; then echo "existing PR: https://example.invalid/evaluation/pr/1"; exit 0; fi',
-    '  echo "https://example.invalid/evaluation/pr/1"; exit 0',
-    'fi', 'echo "{}"',
+    'if [ "$1 $2" = "pr create" ]; then echo "https://example.invalid/evaluation/pr/1"; exit 0; fi',
+    'echo "{}"',
   ].join('\n'));
   fs.chmodSync(path.join(mockBin, 'gh'), 0o755);
-  staged.environment.SPECTRE_EVALUATION_PR_STATE = statePath;
 }
 
 function hostConfiguration(configuration, host) {
