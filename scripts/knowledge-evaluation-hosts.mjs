@@ -392,24 +392,20 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`limits.${name} must be a positive number`);
   }
   const fixture = { ...preparedFixture, ...paths };
-  if (host === 'codex') fixture.codexHome = absoluteDirectory(preparedFixture.codexHome, 'preparedFixture.codexHome');
-  if (host === 'claude') fixture.claudeHome = absoluteDirectory(preparedFixture.claudeHome ?? path.join(paths.projectDir, '.claude-runtime'), 'preparedFixture.claudeHome');
+  fixture.codexHome = absoluteDirectory(preparedFixture.codexHome, 'preparedFixture.codexHome');
+  fixture.claudeHome = absoluteDirectory(preparedFixture.claudeHome, 'preparedFixture.claudeHome');
   await mkdir(paths.rawDirectory, { recursive: true, mode: 0o700 });
   await Promise.all([mkdir(paths.projectDir, { recursive: true }), ...[paths.storeDir, paths.pluginDir].filter(Boolean).map((directory) => mkdir(directory, { recursive: true }))]);
-  if (host === 'codex') await mkdir(fixture.codexHome, { recursive: true, mode: 0o700 });
-  else await mkdir(fixture.claudeHome, { recursive: true, mode: 0o700 });
+  await Promise.all([mkdir(fixture.codexHome, { recursive: true, mode: 0o700 }), mkdir(fixture.claudeHome, { recursive: true, mode: 0o700 })]);
 
   const environment = {
     ...cleanEnvironment(dependencies.baseEnvironment), ...(request.environment ?? {}),
     ...(paths.storeDir ? { SPECTRE_HOME: paths.storeDir } : {}),
     ...(paths.pluginDir ? { CLAUDE_PROJECT_DIR: paths.projectDir, CLAUDE_PLUGIN_ROOT: paths.pluginDir, PLUGIN_ROOT: paths.pluginDir } : {}),
   };
-  if (host === 'claude') {
-    environment.CLAUDE_CONFIG_DIR = fixture.claudeHome;
-    environment.CLAUDE_SECURESTORAGE_CONFIG_DIR = '';
-  } else {
-    environment.CODEX_HOME = fixture.codexHome;
-  }
+  environment.CLAUDE_CONFIG_DIR = fixture.claudeHome;
+  environment.CLAUDE_SECURESTORAGE_CONFIG_DIR = '';
+  environment.CODEX_HOME = fixture.codexHome;
   const native = hostCommand({ host, model, effort, prompt, preparedFixture: fixture, command: request.command, extraArgs: request.extraArgs, allowedTools: request.allowedTools });
   const startedAt = new Date().toISOString();
   const started = performance.now();
@@ -417,7 +413,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   let processResult;
   let cleanup = { stagedAuth: 'not-staged' };
   try {
-    if (host === 'codex') stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
+    stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
     processResult = await runChild(native.command, native.args, {
       cwd: paths.projectDir, env: environment, timeoutMs: limits.timeoutMs,
       maxOutputBytes: limits.maxOutputBytes, terminationGraceMs: limits.terminationGraceMs,
@@ -466,6 +462,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     cleanup,
     isolation: {
       projectDir: paths.projectDir, storeDir: paths.storeDir, pluginDir: paths.pluginDir,
+      claudeHome: fixture.claudeHome, codexHome: fixture.codexHome,
       freshStore: preparedFixture.freshStore ?? null, isolated: true,
       rawLogsOutsideCheckout: !isWithin(paths.repositoryRoot, paths.rawDirectory),
     },

@@ -30,7 +30,8 @@ async function fixture(host) {
     storeDir: path.join(root, 'store'),
     pluginDir: path.join(root, 'plugin'),
     freshStore: true,
-    ...(host === 'codex' ? { codexHome: path.join(root, 'codex') } : { claudeHome: path.join(root, 'claude') }),
+    codexHome: path.join(root, 'codex'),
+    claudeHome: path.join(root, 'claude'),
   };
   await Promise.all(Object.values(value).filter((directory) => typeof directory === 'string').map((directory) => fs.mkdir(directory, { recursive: true })));
   return { root, value, rawLogDirectory: path.join(root, 'raw-host-logs') };
@@ -192,9 +193,25 @@ test('no-knowledge invocation omits plugin and store arguments while retaining t
   let launched;
   await invokeKnowledgeHost({
     host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
-    preparedFixture: { projectDir: setup.value.projectDir, codexHome: setup.value.codexHome, freshStore: true, noKnowledge: true },
+    preparedFixture: { projectDir: setup.value.projectDir, codexHome: setup.value.codexHome, claudeHome: setup.value.claudeHome, freshStore: true, noKnowledge: true },
     rawLogDirectory: setup.rawLogDirectory,
   }, { spawn: (command, args) => { launched = { command, args }; return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) }); } });
   assert.equal(launched.args.includes('--add-dir'), false);
   assert.equal(launched.args.includes(setup.value.storeDir), false);
+});
+
+test('every host invocation receives both isolated provider homes and removes staged Codex auth', async () => {
+  const setup = await fixture('claude');
+  const authSource = path.join(setup.root, 'source-auth.json');
+  await fs.writeFile(authSource, '{}');
+  let environment;
+  const result = await invokeKnowledgeHost({
+    host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
+  }, { spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); } });
+  assert.equal(environment.CODEX_HOME, setup.value.codexHome);
+  assert.equal(environment.CLAUDE_CONFIG_DIR, setup.value.claudeHome);
+  assert.equal(environment.CLAUDE_SECURESTORAGE_CONFIG_DIR, '');
+  assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
+  assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
 });
