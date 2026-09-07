@@ -368,8 +368,15 @@ export function judgeCell(cell, runtime, oracle) {
     }
     if (expected.requiresPrView === true) {
       const drafts = runtime.workflowEvidence?.ghState?.pullRequests ?? [];
-      if (drafts.length !== 1 || drafts[0].state !== 'OPEN' || drafts[0].isDraft !== true || !drafts[0].url) {
+      const openDrafts = drafts.filter((draft) => draft.state === 'OPEN' && draft.isDraft === true && draft.url);
+      if (openDrafts.length !== 1) {
         return { valid: false, recalled: false, reason: 'existing draft survival evidence is missing' };
+      }
+      if (expected.requiresDraftReplacement === true) {
+        const closed = drafts.find((draft) => draft.state === 'CLOSED' && draft.number === runtime.lifecycleEvidence?.closedDraftNumber);
+        if (runtime.lifecycleEvidence?.draftClosure !== 'closed' || !closed || closed.headRefName !== openDrafts[0].headRefName) {
+          return { valid: false, recalled: false, reason: 'replacement draft evidence is missing' };
+        }
       }
     }
     return expected.manualRubric
@@ -864,6 +871,20 @@ function workflowEvidence(staged) {
   }
 }
 
+function closeLifecycleDraft(staged) {
+  const before = readGhState(staged);
+  const draft = before?.pullRequests?.find((pullRequest) => pullRequest.state === 'OPEN' && pullRequest.isDraft === true);
+  if (!draft?.number) return { draftClosure: 'unavailable', closedDraftNumber: null, error: 'no open local draft was available to close' };
+  const environment = { ...process.env, ...(staged.environment ?? {}) };
+  const close = spawnSync('gh', ['pr', 'close', String(draft.number)], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+  if (close.status !== 0) return { draftClosure: 'failed', closedDraftNumber: draft.number, error: 'local draft close failed' };
+  const view = spawnSync('gh', ['pr', 'view', String(draft.number), '--json', 'url', '--jq', '.url'], { cwd: staged.projectDir, env: environment, encoding: 'utf8' });
+  if (view.status !== 0) return { draftClosure: 'failed', closedDraftNumber: draft.number, error: 'closed local draft could not be queried by ID' };
+  const closed = readGhState(staged)?.pullRequests?.find((pullRequest) => pullRequest.number === draft.number && pullRequest.state === 'CLOSED');
+  return closed ? { draftClosure: 'closed', closedDraftNumber: draft.number, error: null } :
+    { draftClosure: 'failed', closedDraftNumber: draft.number, error: 'local draft state did not become closed' };
+}
+
 function readGhState(staged) {
   try {
     const state = readJson(staged.ghStatePath);
@@ -956,6 +977,7 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
   const expected = new Map();
   const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
+    if (operation.status && operation.status !== 'completed') continue;
     const delivered = toolResults.filter((result) => result?.toolUseId === operation.id &&
       (result.sessionOrdinal ?? 0) === (operation.sessionOrdinal ?? 0));
     if (!delivered.some((result) => result.isError !== true)) continue;
@@ -1124,11 +1146,12 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           const rawAfterSession = snapshotKnowledgeCell(staged);
           sessionSnapshots.push({ before: beforeSession, after: compact(rawAfterSession, rawBeforeSession), gh: { before: ghBeforeSession, after: readGhState(staged) }, contextHash: hash(contextId) });
           if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 3 && runs.at(-1)?.status === 'completed') {
+            lifecycleEvidence = { ...lifecycleEvidence, ...closeLifecycleDraft(staged) };
             try {
               registrationFault = blockKnowledgeRegistration(staged);
-              lifecycleEvidence = { registrationFault: 'armed', error: null };
+              lifecycleEvidence = { ...lifecycleEvidence, registrationFault: 'armed', error: null };
             } catch (error) {
-              lifecycleEvidence = { registrationFault: 'not-armed', error: error instanceof Error ? error.message : String(error) };
+              lifecycleEvidence = { ...lifecycleEvidence, registrationFault: 'not-armed', error: error instanceof Error ? error.message : String(error) };
             }
           }
         }

@@ -373,6 +373,18 @@ test('cached native evidence reruns only stale derived trace checks and preserve
   assert.equal(replayed.loadedBodyTokens, 3);
   assert.deepEqual(replayed.nativeFullCycleUsage, runtime.usage.fullCycle);
   assert.equal(replayCachedRuntime({ condition: 'candidate' }, { ...runtime, traceUnavailable: true }).trace.availability, 'unavailable');
+  const refusedLoad = replayCachedRuntime({ condition: 'candidate' }, {
+    ...runtime,
+    trace: { availability: 'unavailable', reason: 'trace lacks native load event evidence', events: [{ type: 'search', responseTokens: 7, responseBytes: 28 }] },
+    toolOperations: [
+      { id: 'search', status: 'completed', input: { command: 'node knowledge-cli.mjs search record' } },
+      { id: 'load', status: 'failed', input: { command: 'node knowledge-cli.mjs load record' } },
+    ],
+    toolResults: [{ toolUseId: 'search', content: 'record' }, { toolUseId: 'load', content: 'Knowledge record is not active' }],
+  });
+  assert.equal(refusedLoad.trace.availability, 'available');
+  assert.equal(refusedLoad.previewTokens, 7);
+  assert.equal(refusedLoad.loadedBodyTokens, 0);
 });
 
 test('imported work requires a captured extraction and a fresh reuse without reloading the import', () => {
@@ -433,6 +445,35 @@ test('lifecycle requires Execute capture before a later explicit work summary', 
   assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, {
     ...runtime, toolOperations: [{ name: 'Learn', sessionOrdinal: 0, eventOrdinal: 1, input: {} }, ...runtime.toolOperations],
   }, oracle).reason, 'automatic Execute capture evidence is missing');
+});
+
+test('lifecycle requires a replacement draft after the registration fault', () => {
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [
+      { name: 'Learn', sessionOrdinal: 3, eventOrdinal: 1, input: {} },
+      { name: 'Write', status: 'completed', sessionOrdinal: 4, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } },
+    ],
+    trace: { availability: 'available', events: [
+      { type: 'capture', contextHash: 'execute', outcome: 'created' }, { type: 'capture', outcome: 'failed' },
+    ] },
+    sessionSnapshots: [
+      { contextHash: 'execute', before: { records: [] }, after: { records: [] } }, {}, {},
+      { before: { records: [{ id: 'work' }], history: [] }, after: { records: [{ id: 'work' }], history: [] } },
+    ],
+    snapshots: { after: { workRecords: [{ id: 'work', revisionToken: 'rev', execution: {}, verification: {}, pullRequest: {} }] } },
+    lifecycleEvidence: { registrationFault: 'armed', draftClosure: 'closed', closedDraftNumber: 1 },
+    workflowEvidence: {
+      ghCommands: ['pr create --draft', 'pr view 1 --json url --jq .url', 'pr close 1', 'pr view 1 --json url --jq .url', 'pr create --draft'],
+      ghState: { pullRequests: [
+        { number: 1, url: 'https://example.invalid/1', state: 'CLOSED', isDraft: true, headRefName: 'evaluation/knowledge-cell' },
+        { number: 2, url: 'https://example.invalid/2', state: 'OPEN', isDraft: true, headRefName: 'evaluation/knowledge-cell' },
+      ] },
+    },
+  };
+  const oracle = { lifecycle: { requiredRecordHashes: [], minimumPrCreates: 2, requiresSameWorkId: true, requiresPrView: true, requiresDraftReplacement: true, requiresExecuteAutoCapture: true, requiredStates: ['capture', 'noop', 'save-failure'], manualRubric: 'review' } };
+  assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, runtime, oracle).structuralValid, true);
+  assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, { ...runtime, lifecycleEvidence: { ...runtime.lifecycleEvidence, draftClosure: 'failed' } }, oracle).reason, 'replacement draft evidence is missing');
 });
 
 test('an explicit bare Learn no-op may skip registration when records remain unchanged', () => {

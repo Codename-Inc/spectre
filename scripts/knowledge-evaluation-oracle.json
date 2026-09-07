@@ -86,16 +86,18 @@
   },
   "lifecycle-identity": {
     "requiredRecordHashes": [],
-    "minimumPrCreates": 1,
+    "minimumPrCreates": 2,
     "requiresSameWorkId": true,
     "requiresPrView": true,
+    "requiresDraftReplacement": true,
     "requiresExecuteAutoCapture": true,
     "requiredStates": [
       "capture",
       "refresh",
       "noop",
       "save-failure",
-      "draft"
+      "draft",
+      "replacement-draft"
     ],
     "manualRubric": "Execute creates one work identity; Ship refreshes it before the draft; repair, URL update, and unchanged capture retain that ID; a registration failure is reported while the direct draft opens."
   },
