@@ -597,7 +597,7 @@ async function stageCodexAuth(codexHome, authSourcePath) {
   return destination;
 }
 
-function readClaudeOauthToken() {
+function readClaudeOauthCredentials() {
   const result = spawnSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -605,12 +605,23 @@ function readClaudeOauthToken() {
   if (result.status !== 0) return null;
   try {
     const credentials = JSON.parse(result.stdout);
-    return typeof credentials?.claudeAiOauth?.accessToken === 'string' && credentials.claudeAiOauth.accessToken
-      ? credentials.claudeAiOauth.accessToken
+    const oauth = credentials?.claudeAiOauth;
+    if (!oauth || typeof oauth !== 'object') return null;
+    const scopes = Array.isArray(oauth.scopes) && oauth.scopes.every((scope) => typeof scope === 'string' && scope)
+      ? oauth.scopes
       : null;
+    return {
+      accessToken: typeof oauth.accessToken === 'string' && oauth.accessToken ? oauth.accessToken : null,
+      refreshToken: typeof oauth.refreshToken === 'string' && oauth.refreshToken ? oauth.refreshToken : null,
+      scopes,
+    };
   } catch {
     return null;
   }
+}
+
+function readClaudeOauthToken() {
+  return readClaudeOauthCredentials()?.accessToken ?? null;
 }
 
 function runChild(command, args, options, spawn) {
@@ -737,11 +748,19 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   try {
     stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
     {
-      const readOauthToken = dependencies.readClaudeOauthToken ?? (dependencies.spawn ? null : readClaudeOauthToken);
-      const oauthToken = readOauthToken?.();
-      if (typeof oauthToken === 'string' && oauthToken) {
-        environment.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+      const readOauthCredentials = dependencies.readClaudeOauthCredentials ?? (dependencies.spawn ? null : readClaudeOauthCredentials);
+      const oauthCredentials = readOauthCredentials?.();
+      if (oauthCredentials?.refreshToken && oauthCredentials.scopes?.length) {
+        environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN = oauthCredentials.refreshToken;
+        environment.CLAUDE_CODE_OAUTH_SCOPES = oauthCredentials.scopes.join(' ');
         claudeOauthStaged = true;
+      } else {
+        const readOauthToken = dependencies.readClaudeOauthToken ?? (dependencies.spawn ? null : readClaudeOauthToken);
+        const oauthToken = readOauthToken?.();
+        if (typeof oauthToken === 'string' && oauthToken) {
+          environment.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+          claudeOauthStaged = true;
+        }
       }
     }
     const sandbox = sandboxForInvocation({
@@ -763,6 +782,8 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   } finally {
     if (claudeOauthStaged) {
       delete environment.CLAUDE_CODE_OAUTH_TOKEN;
+      delete environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN;
+      delete environment.CLAUDE_CODE_OAUTH_SCOPES;
       cleanup = { ...cleanup, claudeOauth: 'cleared' };
     }
     if (stagedAuth) {

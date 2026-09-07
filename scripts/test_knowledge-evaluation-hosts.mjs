@@ -560,6 +560,36 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
   }
 });
 
+test('Claude refresh credentials are staged ephemerally instead of a possibly expired access token', async () => {
+  const setup = await fixture('claude');
+  const refreshToken = 'fixture-claude-oauth-refresh-token';
+  let environment;
+  try {
+    const result = await invokeKnowledgeHost({
+      host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task',
+      preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+    }, {
+      readClaudeOauthCredentials: () => ({
+        accessToken: 'fixture-expired-access-token',
+        refreshToken,
+        scopes: ['user:inference', 'user:profile'],
+      }),
+      spawn: (_command, _args, options) => {
+        environment = options.env;
+        return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) });
+      },
+    });
+    assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+    assert.equal(environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, refreshToken);
+    assert.equal(environment.CLAUDE_CODE_OAUTH_SCOPES, 'user:inference user:profile');
+    assert.equal(result.cleanup.claudeOauth, 'cleared');
+    assert.equal(JSON.stringify(result).includes(refreshToken), false);
+  } finally {
+    await fs.rm(setup.root, { recursive: true, force: true });
+    await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });
+  }
+});
+
 test('rejects non-opaque request trace identifiers before host launch', async () => {
   const setup = await fixture('codex');
   let launched = false;
