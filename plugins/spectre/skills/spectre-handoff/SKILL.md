@@ -87,7 +87,7 @@ DONE when paths/numbering follow the selected-history rule; current `summary`, `
 | --- | --- |
 | 🧭 **Current phase** | Handoff saved. |
 | 📦 **What was just done** | Session at `{path}`. |
-| ▶️ **Proposed next step** | `/spectre:handoff {feature}` — next session auto-resumes. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Output only the applicable table; do not narrate execution.
 

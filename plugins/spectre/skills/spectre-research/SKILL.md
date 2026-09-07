@@ -42,9 +42,10 @@ Write one research doc to `{FEATURE_ROOT}/research/{topic}_{MMDDYY}.md`; the res
 | --- | --- |
 | 🧭 **Current phase** | Research update. |
 | 📦 **What was just done** | Findings and document. |
-| ▶️ **Proposed next step** | `/spectre:plan {RESEARCH_DOC}` — formalize or continue. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Follow-ups update the SAME doc.
+Render Plan with the resolved research document path.
 
 ## Escalate-If
 - The question is too broad/ambiguous to scope agents → ask one clarifying question before fanning out.

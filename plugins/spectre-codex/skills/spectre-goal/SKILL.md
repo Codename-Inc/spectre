@@ -88,9 +88,10 @@ DONE means the one prompt passes the contract and quality checks, references aut
 | --- | --- |
 | 🧭 **Current phase** | Goal prepared. |
 | 📦 **What was just done** | File, runtime, validation. |
-| ▶️ **Proposed next step** | `/goal {GOAL_FILE}` — run it. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Pause → `spectre-handoff {feature}`.
+Render `/goal` with the resolved goal file path.
 
 ## Escalate-If
 

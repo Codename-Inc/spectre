@@ -36,9 +36,10 @@ The core's full diagnosis and experience contract rendered in-thread, mirrored i
 | --- | --- |
 | 🧭 **Current phase** | Repair approved. |
 | 📦 **What was just done** | Diagnosis and experience contract. |
-| ▶️ **Proposed next step** | `/spectre:execute {PLAN_FILE} --origin fix` — the approved repair route. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Closeout commits the report.
+Render Execute with resolved absolute plan path and `--origin fix`.
 
 ## Escalate-If
 - Bug report is empty or too thin to form hypotheses → ask the user for error, repro, and context.

@@ -48,7 +48,7 @@ Never use `--no-verify`, force-push over unrelated remote history, suppress fail
 | --- | --- |
 | 🧭 **Current phase** | Shipped; terminal. |
 | 📦 **What was just done** | PR. |
-| ▶️ **Proposed next step** | `/spectre:create_pr` — review; CI gate. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 

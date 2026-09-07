@@ -52,9 +52,10 @@ Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mk
 | --- | --- |
 | 🧭 **Current phase** | Kickoff scoping. |
 | 📦 **What was just done** | Vision, evidence, gap, MVP path. |
-| ▶️ **Proposed next step** | `/spectre:scope FROM_KICKOFF=true KICKOFF_DOC={path} SKIP_EXPLORATION=true` — proceed to scope. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Authorized scope skip → `/spectre:plan {KICKOFF_DOC}`. Ask 1–3 questions; research answerable ones; do not plan while ambiguous.
+Render Scope with resolved kickoff document path, `FROM_KICKOFF=true`, and `SKIP_EXPLORATION=true`.
 
 ## Escalate-If
 - No project context supplied and none inferable → ask the user before researching.

@@ -45,13 +45,11 @@ DONE when both stages complete; research ran once at most; every mechanism trace
 
 ## Handoff
 
-`--orchestrated`: review data in ≤1,000 tokens.
-
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Review completed. |
-| 📦 **What was just done** | Routes, delta, plan. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — tasks or direct Execute. |
+| 🧭 **Current phase** | Review. |
+| 📦 **What was just done** | Plan. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 

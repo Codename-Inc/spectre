@@ -47,7 +47,7 @@ DONE when schema validation passes; scope/tuple are unchanged; every requirement
 | --- | --- |
 | 🧭 **Current phase** | Review verdict. |
 | 📦 **What was just done** | Verdict, report, CRITICAL/HIGH findings. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from findings. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Blocker → Fix; else Prove, gap Test, or deferred Clean.
 

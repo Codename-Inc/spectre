@@ -48,7 +48,7 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 | --- | --- |
 | 🧭 **Current phase** | Delivery complete. |
 | 📦 **What was just done** | Proof, PR, `CI: pending`. |
-| ▶️ **Proposed next step** | `spectre-prove` — review proof and draft PR. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 

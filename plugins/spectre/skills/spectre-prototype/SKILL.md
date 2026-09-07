@@ -59,7 +59,7 @@ Use inline SVG/data URIs/CSS shapes only: no remote images, relative assets, cus
 | --- | --- |
 | 🧭 **Current phase** | Prototype route. |
 | 📦 **What was just done** | Path, screens, assumptions. |
-| ▶️ **Proposed next step** | `/spectre:{command}` — because `{mode + signal}`. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 `explore` → Scope; `flows-only ux` → UX Stage 2; `post-ux`/`post-scope` unresolved UX → UX, else Plan; `standalone` without scope → Scope, else reclassify as `post-scope`; pause → Handoff. One route.
 

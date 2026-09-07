@@ -68,7 +68,7 @@ Write `VALIDATION_REPORT`. Required sections:
 | --- | --- |
 | 🧭 **Current phase** | Validation. |
 | 📦 **What was just done** | Gaps, path. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from result. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Standalone `Needs Work`/`Significant Gaps` → `spectre-fix` then revalidate; Standalone `Complete` → `spectre-prove`. Boundary ambiguity → Scope; flow/state/copy ambiguity → UX; pause → Handoff; Test/Clean only when proof is deferred.
 

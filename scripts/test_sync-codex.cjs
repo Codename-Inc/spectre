@@ -1570,7 +1570,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(execute, /After review dispositions are recorded/);
     assert.match(execute, /Skill\(spectre-prove\)/);
     assert.match(execute, /Proof is always the last acceptance gate/);
-    assert.match(execute, /Parent-owned runs[^\n]*no user-facing table\/step/i);
+    assert.match(execute, /Parent:[^\n]*machine[^\n]*no table/i);
     assert.match(validate, /Standalone `Complete`.*spectre-prove/);
     assert.match(proof, /Standalone `PASS`.*spectre-ship/);
     assert.match(proof, /proof status alone never gates .*spectre.*ship/);
@@ -1612,36 +1612,43 @@ test('Execute self-owned handoff links proof without contaminating parent delive
 
     assert.match(
       execute,
-      /Render table only after self-owned terminal authority/i,
+      /Self terminal/i,
     );
     assert.match(
       execute,
-      /Parent-owned runs:[\s\S]*machine-facing[\s\S]*`IMPLEMENTATION_READY`[\s\S]*`ACCEPTANCE_PENDING`[\s\S]*no user-facing table\/step/i,
+      /Parent:[\s\S]*machine[\s\S]*`IMPLEMENTATION_READY`[\s\S]*`ACCEPTANCE_PENDING`[\s\S]*no table/i,
     );
-    assert.match(handoff, /Execute: completed\/recovery/i);
+    assert.match(handoff, /Complete\/recovery/i);
     assert.match(
       handoff,
-      /delivered product experience\/technical capability[\s\S]*user impact/i,
+      /Delivery\/impact/i,
     );
-    assert.match(handoff, /\{FEATURE_ROOT\}\/proof\/proof\.html/);
     assert.match(handoff, /🔎 \*\*Review proof\*\*/);
+    assert.match(
+      handoff,
+      /Render Markdown \[Review proof\]\(\/absolute\/resolved-feature-root\/proof\/proof\.html\).*substitut(?:e|ing).*absolute FEATURE_ROOT/i,
+    );
+    assert.match(
+      execute,
+      /companion.*same resolved local file.*outside.*same clickable link/i,
+    );
     assert.doesNotMatch(handoff, /Counts, proof, findings, `RUN_ID`/);
     assert.match(
       execute,
-      /Subspace companion available:[\s\S]*open proof[\s\S]*beside conversation/i,
+      /Companion opens[\s\S]*same resolved local file[\s\S]*beside conversation/i,
     );
     assert.match(
       execute,
-      /Outside Subspace[\s\S]*same link[\s\S]*no failure/i,
+      /outside[\s\S]*same clickable link[\s\S]*no failure/i,
     );
     assert.match(execute, /Never publish\/share proof/i);
     assert.match(
       handoff,
-      /Fix high\/Test coverage\/`\/?spectre[-:]ship`/i,
+      /High.*Fix[\s\S]*coverage.*Test[\s\S]*spectre[-:]ship/i,
     );
     assert.match(
       handoff,
-      /blocked\/failed[\s\S]*same table[\s\S]*exact copy-ready recovery prompt/i,
+      /blocked\/failed[\s\S]*same table[\s\S]*exact resolved recovery action/i,
     );
   }
 });
@@ -1664,10 +1671,16 @@ test('user-facing handoffs use the compact table contract without changing inter
       for (const row of requiredRows) {
         assert.ok(handoff.includes(row), `${rootName}/${skillName} is missing ${row}`);
       }
+      const proposed = handoff.match(/\| ▶️ \*\*Proposed next step\*\* \|([^\n]*)/)?.[1] || '';
+      assert.doesNotMatch(
+        proposed,
+        /\{[^}]+\}/,
+        `${rootName}/${skillName} must not render an unresolved proposed-step value`,
+      );
       assert.match(
-        handoff,
-        /\| ▶️ \*\*Proposed next step\*\* \|[^\n]*`(?:\/spectre:|spectre-|\/goal)/,
-        `${rootName}/${skillName} needs one copy-ready primary action`,
+        proposed,
+        /resolve before rendering.*never placeholders/i,
+        `${rootName}/${skillName} must require a fully resolved copy-ready action`,
       );
     }
 
@@ -1688,6 +1701,24 @@ test('user-facing handoffs use the compact table contract without changing inter
       0,
     );
     assert.ok(tokens <= ceiling, `${rootName} handoff token budget exceeded: ${tokens} > ${ceiling}`);
+  }
+
+  const routeRequirements = {
+    'spectre-plan': /resolved absolute plan path[\s\S]*--origin plan[\s\S]*resolved preflight depth/i,
+    'spectre-fix': /resolved absolute plan path[\s\S]*--origin fix/i,
+    'spectre-create_tasks': /resolved absolute execute index[\s\S]*--origin plan/i,
+    'spectre-task_review': /resolved absolute execute index[\s\S]*--origin plan/i,
+    'spectre-kickoff': /resolved kickoff document path[\s\S]*FROM_KICKOFF=true[\s\S]*SKIP_EXPLORATION=true/i,
+    'spectre-goal': /resolved goal file path/i,
+    'spectre-research': /resolved research document path/i,
+  };
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    for (const [skillName, requirement] of Object.entries(routeRequirements)) {
+      const source = fs.readFileSync(path.join(
+        repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md',
+      ), 'utf8');
+      assert.match(source, requirement, `${rootName}/${skillName} omits a required resolved argument`);
+    }
   }
 });
 

@@ -54,19 +54,19 @@ DONE when files satisfy these contracts; `tasks.json` reparses/self-locates; eve
 - `--tasks-only`: write/reparse only `tasks.json`; semantic review follows comprehensive orchestration.
 - `--finalize-index`: require finalized `tasks.json`; project only `meta`, phase ids/titles, parent ids/titles, subtask ids, `predecessor`, `unblocks`, and `risk`; leave JSON byte-for-byte unchanged; derive counts/index/topological waves into `execute.md` once.
 
-The primary directly writes only the selected canonical artifacts. Do not delegate their authorship/revision or emit `tasks.md`, fallbacks, converters, compilers, or persistent projections.
+Primary writes selected canonical artifacts only; never delegate authorship/revision or emit `tasks.md`, fallbacks, converters, compilers, or persistent projections.
 
 ## Handoff
 
-`--orchestrated` returns mode, paths, counts, and finalized waves without user-facing Next Steps.
+`--orchestrated` returns without user-facing Next Steps.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Task graph. |
-| 📦 **What was just done** | Mode, paths, counts, waves. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from graph state. |
+| 🧭 **Current phase** | Tasks. |
+| 📦 **What was just done** | Graph. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
-Standalone load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX if unresolved, else Prototype; regenerate. Comprehensive tasks-only → Task Review; otherwise Execute `{EXECUTE_INDEX} --origin plan`; pause may Handoff.
+load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX/Prototype. Tasks-only → Task Review; else Execute: resolved absolute execute index, `--origin plan`; pause → Handoff.
 
 ## Escalate-If
 
@@ -75,5 +75,3 @@ Standalone load-bearing user-facing behavior without adequate UX/prototype accep
 - Out-of-Bounds or Verification is missing -> flag it; proceed only with otherwise-clear scope.
 - A requirement cannot become an executable `test|observable|state` criterion -> surface it.
 - Any task would expand scope -> stop for confirmation.
-
-Next step: follow the mode- and state-specific handoff above.

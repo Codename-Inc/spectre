@@ -41,11 +41,11 @@ DONE when initial and observed routing decisions are recorded; the observed reco
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Plan ready. |
-| 📦 **What was just done** | Draft and depth hint for Execute. |
-| ▶️ **Proposed next step** | `/spectre:execute {PLAN_FILE} --origin plan --preflight-plan {depth}` — start delivery. |
+| 🧭 **Current phase** | Plan. |
+| 📦 **What was just done** | Draft. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
-Execute owns delivery; goal is opt-in.
+Render Execute: resolved absolute plan path, `--origin plan`, resolved preflight depth.
 
 ## Escalate-If
 

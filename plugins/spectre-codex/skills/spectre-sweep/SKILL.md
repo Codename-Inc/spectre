@@ -42,7 +42,7 @@ One or more conventional commits covering the changes. Sweep is the sole pre-reb
 | --- | --- |
 | 🧭 **Current phase** | Swept. |
 | 📦 **What was just done** | Swept. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — Prove, Rebase, or target PR. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 - A secret/credential appears in the diff — stop, surface it, do not commit until resolved.

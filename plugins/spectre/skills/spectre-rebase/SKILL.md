@@ -45,7 +45,7 @@ A rebased branch and a **Rebase Summary** returned in-thread (not written to dis
 | --- | --- |
 | 🧭 **Current phase** | Rebase/recovery. |
 | 📦 **What was just done** | Summary/checks. |
-| ▶️ **Proposed next step** | `/spectre:create_pr` — review, or exact recovery. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 - Conflicts can't be resolved by favoring the target (genuine semantic divergence) → stop, report, leave the rebase in progress for the user.

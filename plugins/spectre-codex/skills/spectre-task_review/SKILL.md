@@ -59,7 +59,9 @@ DONE when the attempt is `complete`; findings preceded edits; every finding has 
 | --- | --- |
 | 🧭 **Current phase** | Task review. |
 | 📦 **What was just done** | Findings, paths, validation. |
-| ▶️ **Proposed next step** | `spectre-execute {EXECUTE_INDEX} --origin plan` — after Blocker/High. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+
+Render Execute with resolved absolute execute index and `--origin plan`.
 
 ## Escalate-If
 

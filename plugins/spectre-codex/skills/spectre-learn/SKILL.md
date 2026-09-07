@@ -86,7 +86,7 @@ Capture durable project knowledge as a canonical user-level record. When invoked
 | --- | --- |
 | 🧭 **Current phase** | Record handled. |
 | 📦 **What was just done** | Path, action, category, confidence, version. |
-| ▶️ **Proposed next step** | `spectre-learn {correction}` — use the correction flow. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 - Category is ambiguous → ask the user which of the ten categories.

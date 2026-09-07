@@ -48,7 +48,7 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 | --- | --- |
 | 🧭 **Current phase** | Pruned. |
 | 📦 **What was just done** | Pruned. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — coverage risk → Test; else Sweep; one route. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 
 ## Escalate-If

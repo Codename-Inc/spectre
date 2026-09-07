@@ -53,7 +53,7 @@ Feature-section shape:
 | --- | --- |
 | 🧭 **Current phase** | Guide completed. |
 | 📦 **What was just done** | Coverage/path. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — Prove, gap Test, or deferred Clean. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 - Task context is too thin to identify the changed features or personas — ask before guessing.

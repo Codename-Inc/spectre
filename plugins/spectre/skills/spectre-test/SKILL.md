@@ -48,7 +48,7 @@ Add risk-weighted behavioral tests and commit standalone batches. Test boundarie
 | --- | --- |
 | 🧭 **Current phase** | Tested. |
 | 📦 **What was just done** | Tested. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — state-selected. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Gap → Prove; hygiene → Sweep; else Rebase; tests ≠ Rebase.
 

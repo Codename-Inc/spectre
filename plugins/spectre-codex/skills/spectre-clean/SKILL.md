@@ -53,7 +53,7 @@ Guardrails:
 | --- | --- |
 | 🧭 **Current phase** | Cleaned. |
 | 📦 **What was just done** | Clean. |
-| ▶️ **Proposed next step** | `spectre-rebase` — merge-ready. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 Proof → `spectre-prove`; checks ≠ `NEEDS_AUTHORITY`.
 

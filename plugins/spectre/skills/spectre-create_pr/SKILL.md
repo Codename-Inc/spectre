@@ -41,7 +41,7 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 | --- | --- |
 | 🧭 **Current phase** | PR. |
 | 📦 **What was just done** | PR. |
-| ▶️ **Proposed next step** | `/spectre:create_pr` — review/recover. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 

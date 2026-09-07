@@ -55,7 +55,7 @@ Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title 
 | --- | --- |
 | 🧭 **Current phase** | Scope boundary. |
 | 📦 **What was just done** | Boundaries and path. |
-| ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed scope signal}`. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 | 🔀 **Alternative** | Pause: `/spectre:handoff {feature}` when stopping. |
 
 Unsettled → Scope; unresolved journeys, segments, states, copy, or accessibility → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → Plan. One route.

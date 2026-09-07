@@ -46,7 +46,7 @@ Implement assigned behavior through strict RED → GREEN → REFACTOR. Outcome: 
 | --- | --- |
 | 🧭 **Current phase** | TDD done. |
 | 📦 **What was just done** | Completion report and checks. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — Prove, gap Test, or deferred Clean. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
 
 ## Escalate-If
 

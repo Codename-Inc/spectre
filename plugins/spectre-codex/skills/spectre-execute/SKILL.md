@@ -6,8 +6,6 @@ user-invocable: true
 
 # execute
 
-Preserve dependency-safe parallelism, authority, gates, repairs, finalization.
-
 ## Inputs
 
 - `$ARGUMENTS`: path; `--origin plan|fix|delegate`; `--preflight-plan <xs|light|standard|comprehensive>`; wave hints; `--orchestrated`; orchestrated-only `--finalization-owner parent`. Default owner: `self`. Callers provide origin; unknown stays `unknown` rather than inferred.
@@ -20,17 +18,15 @@ Preserve dependency-safe parallelism, authority, gates, repairs, finalization.
 ## Working Set
 
 - Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- A `--origin fix` approved bug-report source adopts its containing `BUG_ROOT` directly, before feature-root resolution.
-- Keep the invocation checkout.
+- A `--origin fix` bug-report source adopts its `BUG_ROOT` before feature-root resolution.
 - Structured detail precedence: declared `Tasks JSON` → adjacent `tasks.json` → sibling `.tasks.json`; else escalate. Read index whole and task detail by targeted slices.
 - Structured/plan-direct read `references/telemetry.md`, start/resume one local event run with origin, and follow its primary/worker authority contract. The local workflow store is the sole lifecycle/progress authority; source plans/tasks stay immutable. Summaries retain origin, shape, category, elapsed time, aggregate token measurements only. Plan-direct emits workstream events. Telemetry failure degrades observation, never delivery authority.
-- `SCOPE_DOCS`: manifest paths or scope/UX/research cited by the plan.
 - On first selected readable-plan use/resume, read `references/plan-direct.md` for preparation state. On the first verification failure, review finding, E2E gap, or proof failure, read `references/repair-policy.md`.
-- Maintain compact verification ledger by HEAD, check id, changed/dependency surface, result, attribution, disposition; controls final reruns. Never persist raw output or per-wave evidence/checkpoint/report files.
+- Maintain a compact final-rerun ledger: HEAD, check id, surface, result, attribution, disposition. Never persist raw output or per-wave files.
 
 ## Outputs + DONE
 
-- Commit implementation batches and canonical artifacts only. Task/plan definitions stay immutable; Execute evidence, markers, checkpoints, run state, plan-direct execution state stay local and uncommitted.
+- Commit implementation batches/canonical artifacts only. Definitions stay immutable; Execute evidence, markers, checkpoints, and run state stay local/uncommitted.
 - `self`: one final comprehensive review, then proof artifacts ending in aggregate `PASS`.
 - `parent`: `IMPLEMENTATION_READY` + `ACCEPTANCE_PENDING` manifest; no final review, proof, test guide, or acceptance claim. With `--review-profile final-only`, every phase records `final-only` and the parent receives `FINAL_REVIEW_PENDING`.
 - DONE: selected work/adaptations `done|skipped`; current affected verification; each completed phase routed `final-only` or reviewed once for recorded compounding risk under the selected profile; every finding dispositioned; no safe authorized work or stale/uncovered final surface; self-owned final review + end-only proof when applicable; no primary-authored planned work; and structured telemetry complete or honestly `degraded`.
@@ -50,7 +46,7 @@ Preserve dependency-safe parallelism, authority, gates, repairs, finalization.
 
 ## Finalization
 
-Compute coverage from the local ledger. Run only stale or uncovered checks; never blanket-rerun cumulative verification or a root suite. Expensive harness/performance/full qualification runs only for the final relevant candidate, unless a source task explicitly produces a prerequisite or product-consumed qualification artifact that blocks downstream work. Cache it by `candidate definition hash = relevant inputs + scenario/config + command`; permit one run per hash, and rerun only after those inputs change or a diagnosed infrastructure failure invalidates the run.
+Compute coverage from the local ledger. Run only stale or uncovered checks; never blanket-rerun cumulative verification or a root suite. Run expensive harness/performance/full qualification only for the final relevant candidate, unless a source task produces a prerequisite or product-consumed artifact. Cache by `candidate definition hash = inputs + scenario/config + command`: one run per hash; rerun only for changed inputs or diagnosed invalidating infrastructure failure.
 
 - `parent`: require wave gates/review dispositions. Return diff/base, commits/files, test roots, coverage, review route, repair ledger, requirement slices, findings, and `ACCEPTANCE_PENDING`; add `FINAL_REVIEW_PENDING` for final-only, requiring one opposite-runtime-first `Skill(spectre-code_review)` before proof.
 - `self`: invoke `Skill(spectre-code_review)` exactly once, high effort, over cumulative diff + requirements/scope without implementer rationale. Structured mode passes completed requirement/AC slices; plan-direct passes `PLAN_SOURCE` plus relevant `EXECUTION_STATE` evidence as routing only. It owns delivery/reachability, scope-creep, dead-computation, old-path, and single-source audits; never also invoke `spectre-validate`. Record its result as a review gate. Give attributable CRITICAL/HIGH one consolidated repair pass, affected verification, and honest dispositions—never a validation reviewer.
@@ -59,14 +55,16 @@ Compute coverage from the local ledger. Run only stale or uncovered checks; neve
 
 ## Handoff
 
-Parent-owned runs: unchanged machine-facing `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PENDING` if applicable); no user-facing table/step. Render table only after self-owned terminal authority. Subspace companion available: open proof beside conversation. Outside Subspace/unavailable: same link; no failure. Never publish/share proof.
+Parent: machine `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PENDING`), no table. Self terminal. Companion opens same resolved local file beside conversation; outside same clickable link/no failure; Never publish/share proof.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Execute: completed/recovery. |
-| 📦 **What was just done** | Delivered product experience/technical capability + user impact; no recap. |
-| ▶️ **Proposed next step** | Blocked/failed: same table, exact copy-ready recovery prompt; else Fix high/Test coverage/`spectre-ship`. |
-| 🔎 **Review proof** | `{FEATURE_ROOT}/proof/proof.html`. |
+| 🧭 **Current phase** | Complete/recovery. |
+| 📦 **What was just done** | Delivery/impact. |
+| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+| 🔎 **Review proof** | Render Markdown [Review proof](/absolute/resolved-feature-root/proof/proof.html); substitute absolute FEATURE_ROOT. |
+
+High → Fix; coverage → Test; else `spectre-ship`; blocked/failed → same table/exact resolved recovery action.
 
 ## Escalate-If
 
