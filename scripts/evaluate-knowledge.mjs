@@ -1235,6 +1235,18 @@ function isMetadataOnlyShellOperation(operation) {
   return shell.split(/\s*&&\s*/).every((part) => /^\s*(?:ls|stat)\b/.test(part));
 }
 
+function isDigestOnlyShellOperation(operation) {
+  if (operation?.name !== 'exec' && operation?.type !== 'command_execution') return false;
+  const command = operation.input?.command;
+  if (typeof command !== 'string') return false;
+  const wrapped = /^\/bin\/(?:zsh|bash)\s+-lc\s+(['"])([\s\S]*)\1$/.exec(command.trim());
+  const shell = (wrapped?.[2] ?? command).trim();
+  if (!shell || /[;&`]|\$\(|[<>]/.test(shell)) return false;
+  return shell.split('|').every((stage) =>
+    /^\s*shasum\s+-a\s+256(?:\s+(?:'[^']*'|"[^"]*"|[^\s'"-][^\s'"]*))*\s*$/.test(stage)
+  );
+}
+
 function equivalentPaths(value, workingDir) {
   const resolved = path.resolve(workingDir ?? process.cwd(), value);
   const equivalents = new Set([resolved]);
@@ -1259,9 +1271,9 @@ function normalizedCanonicalRead(operation, evidence, roots) {
 
 function bypassRelevantOperations(toolOperations = [], evidence = {}) {
   const roots = (evidence.canonicalRoots ?? []).flatMap((entry) => equivalentPaths(entry));
-  if (roots.length === 0) return toolOperations.filter((operation) => !isMetadataOnlyShellOperation(operation));
+  if (roots.length === 0) return toolOperations.filter((operation) => !isMetadataOnlyShellOperation(operation) && !isDigestOnlyShellOperation(operation));
   return toolOperations.flatMap((operation) => {
-    if (isMetadataOnlyShellOperation(operation)) return [];
+    if (isMetadataOnlyShellOperation(operation) || isDigestOnlyShellOperation(operation)) return [];
     if (operation?.name !== 'Read' && operation?.type !== 'Read') return [operation];
     const normalized = normalizedCanonicalRead(operation, evidence, roots);
     return normalized ? [normalized] : [];

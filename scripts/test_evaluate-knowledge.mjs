@@ -701,11 +701,14 @@ test('post-hoc bypass replay ignores outside-store Read paths but retains canoni
       { id: 'plugin-read', name: 'Read', input: { file_path: '/isolated/plugin/hooks/load-knowledge.mjs' } },
       { id: 'canonical-read', name: 'Read', input: { file_path: recordPath } },
       { id: 'metadata-only', name: 'exec', input: { command: `/bin/zsh -lc "ls -ld ${storePath}/knowledge ${recordPath} && stat -f '%Sp %N' ${storePath}/index.json"` } },
+      { id: 'digest-pipeline', name: 'exec', input: { command: `shasum -a 256 '${recordPath}' | shasum -a 256` } },
+      { id: 'digest', name: 'exec', input: { command: `shasum -a 256 '${recordPath}'` } },
+      { id: 'mixed-digest-read', name: 'exec', input: { command: `shasum -a 256 '${recordPath}' | cat` } },
       { id: 'canonical-shell-read', name: 'exec', input: { command: `cat '${recordPath}'` } },
     ],
   };
   const replayed = replayCachedRuntime({ condition: 'candidate' }, runtime);
-  assert.deepEqual(replayed.bypass.map((entry) => entry.reason), ['direct-read', 'shell-read']);
+  assert.deepEqual(replayed.bypass.map((entry) => entry.reason), ['direct-read', 'shell-read', 'shell-read']);
 
   const aliasStore = '/var/folders/evaluation-store';
   const aliasRecord = `${aliasStore}/knowledge/captured-work/record.json`;
