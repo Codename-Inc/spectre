@@ -264,3 +264,49 @@ test('keeps the relevant payment record reachable among ten thousand neutral ope
   const bytes = fs.readFileSync(path.join(staged.storePath, 'knowledge', 'telemetry-checkpoint-10000', 'record.json'), 'utf8').toLocaleLowerCase();
   assert.equal(/distractor|irrelevant|unrelated/.test(bytes), false);
 });
+
+test('stages a stateful local GitHub fixture for draft lifecycle operations', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'no-knowledge', host: 'claude' }, value.fixture, value.options);
+  const execute = (args) => spawnSync('gh', args, {
+    cwd: staged.projectDir, env: { ...process.env, ...staged.environment }, encoding: 'utf8',
+  });
+
+  const auth = execute(['auth', 'status']);
+  assert.equal(auth.status, 0, auth.stderr);
+  assert.match(auth.stdout, /evaluation-fixture/);
+
+  const repository = execute(['repo', 'view', '--json', 'owner,name,defaultBranchRef']);
+  assert.equal(repository.status, 0, repository.stderr);
+  assert.deepEqual(JSON.parse(repository.stdout), {
+    owner: { login: 'evaluation-fixture' }, name: 'knowledge-evaluation', defaultBranchRef: { name: 'main' },
+  });
+
+  const missing = execute(['pr', 'view', '--json', 'url,state,isDraft,headRefName,baseRefName']);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /no open pull request/i);
+  const empty = execute(['pr', 'list', '--json', 'url,state,isDraft,headRefName,baseRefName']);
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.deepEqual(JSON.parse(empty.stdout), []);
+
+  const created = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Fixture draft', '--body', 'Draft body']);
+  assert.equal(created.status, 0, created.stderr);
+  assert.match(created.stdout.trim(), /^https:\/\/github\.com\/evaluation-fixture\/knowledge-evaluation\/pull\/1$/);
+
+  const viewed = execute(['pr', 'view', '--json', 'url,state,isDraft,headRefName,baseRefName']);
+  assert.equal(viewed.status, 0, viewed.stderr);
+  assert.deepEqual(JSON.parse(viewed.stdout), {
+    url: created.stdout.trim(), state: 'OPEN', isDraft: true,
+    headRefName: 'evaluation/knowledge-cell', baseRefName: 'main',
+  });
+  const listed = execute(['pr', 'list', '--json', 'url,state,isDraft,headRefName,baseRefName']);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.deepEqual(JSON.parse(listed.stdout), [JSON.parse(viewed.stdout)]);
+
+  const duplicate = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Duplicate', '--body', 'Duplicate']);
+  assert.equal(duplicate.status, 1);
+  assert.match(duplicate.stderr, /already has an open pull request/i);
+  const unsupported = execute(['api', 'repos/example/example']);
+  assert.equal(unsupported.status, 1);
+  assert.match(unsupported.stderr, /unsupported local gh fixture command/i);
+});

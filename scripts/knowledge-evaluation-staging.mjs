@@ -240,11 +240,145 @@ function installCodexPlugin(codexHome, pluginDir, options = {}) {
 function writeGhMock(root) {
   const bin = path.join(root, 'bin');
   const ghLogPath = path.join(root, 'gh.log');
+  const ghStatePath = path.join(root, 'gh-state.json');
   fs.mkdirSync(bin, { recursive: true });
   const executable = path.join(bin, 'gh');
-  fs.writeFileSync(executable, ['#!/bin/sh', 'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"', 'echo "{}"'].join('\n'));
+  fs.writeFileSync(ghStatePath, `${JSON.stringify({ nextNumber: 1, pullRequests: [] })}\n`);
+  fs.writeFileSync(executable, `#!/usr/bin/env node
+const childProcess = require('node:child_process');
+const fs = require('node:fs');
+
+const args = process.argv.slice(2);
+const statePath = process.env.SPECTRE_EVALUATION_GH_STATE;
+const logPath = process.env.SPECTRE_EVALUATION_GH_LOG;
+if (!statePath || !logPath) {
+  process.stderr.write('local gh fixture is not configured\\n');
+  process.exit(2);
+}
+fs.appendFileSync(logPath, args.join(' ') + '\\n');
+
+function fail(message) {
+  process.stderr.write(message + '\\n');
+  process.exit(1);
+}
+function readState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    if (!Number.isSafeInteger(state.nextNumber) || !Array.isArray(state.pullRequests)) throw new Error('invalid');
+    return state;
+  } catch {
+    fail('local gh fixture state is unavailable');
+  }
+}
+function writeState(state) {
+  fs.writeFileSync(statePath, JSON.stringify(state) + '\\n');
+}
+function flag(name) {
+  const index = args.indexOf(name);
+  return index === -1 ? undefined : args[index + 1];
+}
+function jsonFields() {
+  const inline = args.find(value => value.startsWith('--json='));
+  const value = inline ? inline.slice('--json='.length) : flag('--json');
+  return value ? value.split(',').filter(Boolean) : null;
+}
+function select(value) {
+  const fields = jsonFields();
+  if (!fields) return value;
+  return Object.fromEntries(fields.filter(field => Object.hasOwn(value, field)).map(field => [field, value[field]]));
+}
+function currentBranch() {
+  const result = childProcess.spawnSync('git', ['branch', '--show-current'], { encoding: 'utf8' });
+  return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
+}
+function headName() {
+  const head = flag('--head') || currentBranch();
+  return head ? head.split(':').at(-1) : null;
+}
+function pullPayload(pull) {
+  return {
+    number: pull.number,
+    url: pull.url,
+    state: pull.state,
+    isDraft: pull.isDraft,
+    headRefName: pull.headRefName,
+    baseRefName: pull.baseRefName,
+    title: pull.title,
+  };
+}
+function print(value) {
+  process.stdout.write(JSON.stringify(value) + '\\n');
+}
+
+if (args[0] === 'auth' && args[1] === 'status') {
+  process.stdout.write('github.com: logged in as evaluation-fixture (local evaluation token)\\n');
+  process.exit(0);
+}
+if (args[0] === 'repo' && args[1] === 'view') {
+  const repository = { owner: { login: 'evaluation-fixture' }, name: 'knowledge-evaluation', defaultBranchRef: { name: 'main' } };
+  if (jsonFields()) print(select(repository));
+  else process.stdout.write('evaluation-fixture/knowledge-evaluation\\n');
+  process.exit(0);
+}
+if (args[0] !== 'pr') fail('unsupported local gh fixture command: ' + args.join(' '));
+
+const state = readState();
+const openPull = (head) => state.pullRequests.find(pull => pull.state === 'OPEN' && (!head || pull.headRefName === head));
+if (args[1] === 'view') {
+  const pull = openPull(headName());
+  if (!pull) fail('no open pull request for the current branch');
+  const payload = pullPayload(pull);
+  if (jsonFields()) print(select(payload));
+  else process.stdout.write(pull.url + '\\n');
+  process.exit(0);
+}
+if (args[1] === 'list') {
+  const head = flag('--head');
+  const pulls = state.pullRequests.filter(pull => pull.state === 'OPEN' && (!head || pull.headRefName === head.split(':').at(-1)));
+  if (jsonFields()) print(pulls.map(pull => select(pullPayload(pull))));
+  else process.stdout.write(pulls.map(pull => pull.url).join('\\n') + (pulls.length ? '\\n' : ''));
+  process.exit(0);
+}
+if (args[1] === 'create') {
+  const head = headName();
+  const base = flag('--base') || 'main';
+  if (!head) fail('cannot determine pull request head branch');
+  if (openPull(head)) fail('branch ' + head + ' already has an open pull request');
+  const number = state.nextNumber++;
+  const pull = {
+    number, url: 'https://github.com/evaluation-fixture/knowledge-evaluation/pull/' + number,
+    state: 'OPEN', isDraft: args.includes('--draft'), headRefName: head, baseRefName: base,
+    title: flag('--title') || '', body: flag('--body') || '',
+  };
+  state.pullRequests.push(pull);
+  writeState(state);
+  process.stdout.write(pull.url + '\\n');
+  process.exit(0);
+}
+if (args[1] === 'edit') {
+  const pull = openPull(headName());
+  if (!pull) fail('no open pull request for the current branch');
+  if (flag('--title') !== undefined) pull.title = flag('--title');
+  if (flag('--body') !== undefined) pull.body = flag('--body');
+  if (flag('--body-file') !== undefined) {
+    try { pull.body = fs.readFileSync(flag('--body-file'), 'utf8'); } catch { fail('could not read pull request body file'); }
+  }
+  writeState(state);
+  process.stdout.write(pull.url + '\\n');
+  process.exit(0);
+}
+fail('unsupported local gh fixture command: ' + args.join(' '));
+`);
   fs.chmodSync(executable, 0o755);
-  return { ghLogPath, environment: { PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`, SPECTRE_EVALUATION_GH_LOG: ghLogPath } };
+  return {
+    ghLogPath,
+    ghStatePath,
+    environment: {
+      PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`,
+      SPECTRE_EVALUATION_GH_LOG: ghLogPath,
+      SPECTRE_EVALUATION_GH_STATE: ghStatePath,
+    },
+  };
 }
 
 function probeCli(cliPath, projectDir, storeDir, fact) {
@@ -297,7 +431,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
-      freshStore: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, environment: gh.environment,
+      freshStore: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: gh.environment,
       claudeHome, codexHome, claudePluginDir: null, codexPlugin: null,
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
@@ -340,7 +474,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   return {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
     freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
-    ghLogPath: gh.ghLogPath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
+    ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
     claudeHome, codexHome, claudePluginDir, codexPlugin,
     provenance: { condition: cell.condition, ...provenance }, repository, probe,
   };
