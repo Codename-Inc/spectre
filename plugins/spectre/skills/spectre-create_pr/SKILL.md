@@ -6,14 +6,14 @@ user-invocable: true
 
 # create_pr
 
-Produce a reviewer-ready draft PR grounded in the actual change.
+Produce a grounded draft PR.
 
 ## Inputs
 
-- `$ARGUMENTS`: `TARGET_BRANCH` (default `origin/main`), feedback focus, verification, all-or-none expected tuple, or `--orchestrated`.
+- `$ARGUMENTS`: `TARGET_BRANCH` (default `origin/main`), feedback focus, verification, all-or-none `EXPECTED_BASE_SHA`/`EXPECTED_HEAD_SHA`/`EXPECTED_DIFF_SHA256`, or `--orchestrated`.
 - Orchestrated `--pr-phase pending|final-update`: pending needs complete candidate tuple, local verification `RUNNING`, and returns URL/body; final-update needs its URL/body, same tuple, and `FINAL_VERIFICATION_SUMMARY`, updating existing draft Testing only. A parent may supply work ID; otherwise shared pre-PR capture resolves exact run/PR/candidate. An unchanged candidate is a no-op, never a duplicate work record.
 - Resolve just-in-time: branch (not `main`/`master`), fetch target and derive `PR_BASE`, `BASE_SHA`, `HEAD_SHA`, canonical `git-diff-v1` `DIFF_SHA256` over binary/full-index/no-color/no-renames `{BASE_SHA}...{HEAD_SHA}`, commits, branch/commit issue ref, `gh`, and unpushed commits.
-- Expected fields are all-or-none. After fetch compare live tuple and clean candidate worktree (committed review/proof artifacts allowed; ignored lifecycle excluded). Tracked or non-ignored untracked changes return `PR_CANDIDATE_STALE` before side effects. Without `gh`, return title/body for manual draft.
+- Expected fields are all-or-none. After fetch compare live tuple and clean candidate worktree (committed review/proof artifacts allowed; ignored lifecycle excluded). Tracked or non-ignored untracked changes return `PR_CANDIDATE_STALE` before push, create, or edit. Without `gh`, return title/body for manual draft.
 
 ## Working Set
 
@@ -23,7 +23,7 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 
 - Conventional `type(scope): summary`: <70 chars, imperative, lowercase after colon, no period; grounded body scales to change. Standalone/pending only opens `gh pr create --draft`; final-update replaces Testing only.
 
-**DONE:** verified tuple; every factual claim is grounded; honest Testing; sourced/placeholder Why; no secret/credential/PII; draft only.
+**DONE:** fetched tuple is verified; every factual claim is grounded; Testing honestly reflects diff tests and supplied verification, never turns advisory non-green into pass; sourced/placeholder Why; no secret/credential/PII; only a draft is opened or updated.
 
 ## Method / guardrails
 
@@ -31,7 +31,7 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 2. **Scale:** trivial What/Why/Closes; standard Summary/Changes/Testing/Closes; complex adds visible trade-offs, breaking/rollback, UI/CLI evidence, and reviewer focus. Derive type/scope from change; add found issue links only.
 3. **Verify before side effects:** map every claim to diff/commit/issue, drop unsupported claims/secrets, verify tuple and clean candidate, then push.
 4. **Capture fallback:** without parent work, invoke `Skill(spectre-capture)` before draft; refresh stale parent candidate. Report capture failure/recovery input without blocking draft; draft is not merged.
-5. **Draft lifecycle:** pending grounds `RUNNING`, pushes, creates draft, attaches PR to work ID, and returns URL/body. Final-update rechecks tuple/clean draft; if repairs changed the tuple, refresh candidate-sensitive claims under freshness, grounding, secret gates, verify clean repaired HEAD, pushes, re-resolves/rechecks live tuple, then `gh pr edit` only Testing from `FINAL_VERIFICATION_SUMMARY`; never mark ready.
+5. **Draft lifecycle:** pending grounds `RUNNING`, pushes, creates the draft, attaches PR to work ID, and returns URL/body. Final-update rechecks its tuple/clean candidate; if repairs changed the tuple, refresh candidate-sensitive claims under freshness, grounding, secret gates, verify clean repaired HEAD, pushes, re-resolves/rechecks live tuple, then `gh pr edit` only Testing from `FINAL_VERIFICATION_SUMMARY`; never mark ready.
 
 ## Handoff
 

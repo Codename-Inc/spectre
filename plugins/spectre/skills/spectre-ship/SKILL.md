@@ -15,7 +15,7 @@ Own cleanup, rebase, one advisory suite, and draft PR through focused skills.
 
 ## Feature root
 
-- Reuse `FEATURE_ROOT` only with explicit/current-thread evidence (physical directory wins; never branch/recency/lifecycle scans). Otherwise standalone loads `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it.
+- Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `@skill-spectre:spectre-feature-root` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
 
 ## Proof independence
 
