@@ -291,6 +291,10 @@ test('default-deny boundary permits only one cell and both host runtimes without
     TMPDIR: setup.value.claudeHome,
     TMP: setup.value.claudeHome,
     TEMP: setup.value.claudeHome,
+    XDG_RUNTIME_DIR: setup.value.claudeHome,
+    BUN_TMPDIR: setup.value.claudeHome,
+    CLAUDE_CODE_TMPDIR: setup.value.claudeHome,
+    CLAUDE_TMPDIR: setup.value.claudeHome,
     CODEX_HOME: setup.value.codexHome,
     CLAUDE_CONFIG_DIR: setup.value.claudeHome,
   };
@@ -321,6 +325,13 @@ test('default-deny boundary permits only one cell and both host runtimes without
     });
     assert.equal(version.status, 0, `${provider}: ${version.stderr}`);
   }
+  const claudeStatus = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: 'claude', environment,
+  });
+  const authStatus = spawnSync(claudeStatus.command, [...claudeStatus.args, 'auth', 'status'], {
+    cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 30_000,
+  });
+  assert.doesNotMatch(authStatus.stderr, /EEXIST: file already exists, mkdir '\/tmp\/claude-/);
 });
 
 test('Codex permits git metadata writes only for an attested isolated fixture', async () => {
@@ -353,6 +364,10 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.equal(environment.CODEX_HOME, setup.value.codexHome);
     assert.equal(environment.CLAUDE_CONFIG_DIR, setup.value.claudeHome);
     assert.equal(environment.CLAUDE_SECURESTORAGE_CONFIG_DIR, '');
+    assert.equal(environment.CLAUDE_CODE_TMPDIR, setup.value.claudeHome);
+    assert.equal(environment.CLAUDE_TMPDIR, setup.value.claudeHome);
+    assert.equal(environment.XDG_RUNTIME_DIR, setup.value.claudeHome);
+    assert.equal(environment.BUN_TMPDIR, setup.value.claudeHome);
     assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, oauthToken);
     assert.equal(environment.MCP_CONFIG_PATH, undefined);
     assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });

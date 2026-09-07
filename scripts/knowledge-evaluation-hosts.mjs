@@ -14,9 +14,9 @@ const SANDBOX_EXECUTABLE = '/usr/bin/sandbox-exec';
 const SYSTEM_RUNTIME_PATHS = ['/bin', '/usr/bin', '/usr/sbin', '/sbin', '/private/var/select', '/opt/homebrew/bin'];
 const ISOLATED_ENVIRONMENT_PATHS = new Set([
   'HOME', 'ZDOTDIR', 'BASH_ENV', 'GIT_CONFIG_GLOBAL', 'GH_CONFIG_DIR',
-  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'TMPDIR', 'TMP', 'TEMP',
+  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'TMPDIR', 'TMP', 'TEMP', 'BUN_TMPDIR',
   'SPECTRE_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'CLAUDE_PROJECT_DIR',
-  'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'SPECTRE_KNOWLEDGE_EVALUATION_TRACE',
+  'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_TMPDIR', 'SPECTRE_KNOWLEDGE_EVALUATION_TRACE',
   'SPECTRE_EVALUATION_GH_LOG', 'SPECTRE_EVALUATION_GH_STATE',
 ]);
 
@@ -589,6 +589,10 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   environment.TMPDIR ??= fixture.claudeHome;
   environment.TMP ??= fixture.claudeHome;
   environment.TEMP ??= fixture.claudeHome;
+  environment.XDG_RUNTIME_DIR ??= environment.TMPDIR;
+  environment.BUN_TMPDIR ??= environment.TMPDIR;
+  environment.CLAUDE_CODE_TMPDIR ??= environment.TMPDIR;
+  environment.CLAUDE_TMPDIR ??= environment.TMPDIR;
   const native = hostCommand({ host, model, effort, prompt, preparedFixture: fixture, command: request.command, extraArgs: request.extraArgs, allowedTools: request.allowedTools });
   const startedAt = new Date().toISOString();
   const started = performance.now();
