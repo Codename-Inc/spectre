@@ -309,14 +309,25 @@ function pullPayload(pull) {
 function print(value) {
   process.stdout.write(JSON.stringify(value) + '\\n');
 }
+function emit(value) {
+  const query = flag('--jq');
+  if (query !== undefined) {
+    const match = /^\.([A-Za-z][A-Za-z0-9_]*)$/.exec(query);
+    if (!match || !Object.hasOwn(value, match[1]) || typeof value[match[1]] === 'object') fail('unsupported local gh fixture jq query: ' + query);
+    process.stdout.write(String(value[match[1]]) + '\\n');
+    return;
+  }
+  print(select(value));
+}
+if (args.includes('-q')) fail('unsupported local gh fixture query option: -q');
 
 if (args[0] === 'auth' && args[1] === 'status') {
   process.stdout.write('github.com: logged in as evaluation-fixture (local evaluation token)\\n');
   process.exit(0);
 }
 if (args[0] === 'repo' && args[1] === 'view') {
-  const repository = { owner: { login: 'evaluation-fixture' }, name: 'knowledge-evaluation', defaultBranchRef: { name: 'main' } };
-  if (jsonFields()) print(select(repository));
+  const repository = { owner: { login: 'evaluation-fixture' }, name: 'knowledge-evaluation', nameWithOwner: 'evaluation-fixture/knowledge-evaluation', defaultBranchRef: { name: 'main' } };
+  if (jsonFields()) emit(repository);
   else process.stdout.write('evaluation-fixture/knowledge-evaluation\\n');
   process.exit(0);
 }
@@ -328,13 +339,14 @@ if (args[1] === 'view') {
   const pull = openPull(headName());
   if (!pull) fail('no open pull request for the current branch');
   const payload = pullPayload(pull);
-  if (jsonFields()) print(select(payload));
+  if (jsonFields()) emit(payload);
   else process.stdout.write(pull.url + '\\n');
   process.exit(0);
 }
 if (args[1] === 'list') {
   const head = flag('--head');
   const pulls = state.pullRequests.filter(pull => pull.state === 'OPEN' && (!head || pull.headRefName === head.split(':').at(-1)));
+  if (flag('--jq') !== undefined) fail('unsupported local gh fixture jq query: ' + flag('--jq'));
   if (jsonFields()) print(pulls.map(pull => select(pullPayload(pull))));
   else process.stdout.write(pulls.map(pull => pull.url).join('\\n') + (pulls.length ? '\\n' : ''));
   process.exit(0);
@@ -345,10 +357,14 @@ if (args[1] === 'create') {
   if (!head) fail('cannot determine pull request head branch');
   if (openPull(head)) fail('branch ' + head + ' already has an open pull request');
   const number = state.nextNumber++;
+  let body = flag('--body') || '';
+  if (flag('--body-file') !== undefined) {
+    try { body = fs.readFileSync(flag('--body-file'), 'utf8'); } catch { fail('could not read pull request body file'); }
+  }
   const pull = {
     number, url: 'https://github.com/evaluation-fixture/knowledge-evaluation/pull/' + number,
     state: 'OPEN', isDraft: args.includes('--draft'), headRefName: head, baseRefName: base,
-    title: flag('--title') || '', body: flag('--body') || '',
+    title: flag('--title') || '', body,
   };
   state.pullRequests.push(pull);
   writeState(state);

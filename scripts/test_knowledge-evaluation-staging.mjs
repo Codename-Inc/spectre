@@ -281,6 +281,11 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   assert.deepEqual(JSON.parse(repository.stdout), {
     owner: { login: 'evaluation-fixture' }, name: 'knowledge-evaluation', defaultBranchRef: { name: 'main' },
   });
+  const repositoryName = execute(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']);
+  assert.equal(repositoryName.status, 0, repositoryName.stderr);
+  assert.equal(repositoryName.stdout, 'evaluation-fixture/knowledge-evaluation\n');
+  const unsupportedProjection = execute(['repo', 'view', '--json', 'name', '--jq', '.missing']);
+  assert.equal(unsupportedProjection.status, 1);
 
   const missing = execute(['pr', 'view', '--json', 'url,state,isDraft,headRefName,baseRefName']);
   assert.equal(missing.status, 1);
@@ -289,10 +294,15 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   assert.equal(empty.status, 0, empty.stderr);
   assert.deepEqual(JSON.parse(empty.stdout), []);
 
-  const created = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Fixture draft', '--body', 'Draft body']);
+  const bodyPath = path.join(staged.root, 'draft-body.md');
+  fs.writeFileSync(bodyPath, 'Draft body from file.');
+  const created = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Fixture draft', '--body-file', bodyPath]);
   assert.equal(created.status, 0, created.stderr);
   assert.match(created.stdout.trim(), /^https:\/\/github\.com\/evaluation-fixture\/knowledge-evaluation\/pull\/1$/);
 
+  const viewedUrl = execute(['pr', 'view', '--json', 'url', '--jq', '.url']);
+  assert.equal(viewedUrl.status, 0, viewedUrl.stderr);
+  assert.equal(viewedUrl.stdout, created.stdout);
   const viewed = execute(['pr', 'view', '--json', 'url,state,isDraft,headRefName,baseRefName']);
   assert.equal(viewed.status, 0, viewed.stderr);
   assert.deepEqual(JSON.parse(viewed.stdout), {
@@ -302,6 +312,7 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   const listed = execute(['pr', 'list', '--json', 'url,state,isDraft,headRefName,baseRefName']);
   assert.equal(listed.status, 0, listed.stderr);
   assert.deepEqual(JSON.parse(listed.stdout), [JSON.parse(viewed.stdout)]);
+  assert.equal(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests[0].body, 'Draft body from file.');
 
   const duplicate = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Duplicate', '--body', 'Duplicate']);
   assert.equal(duplicate.status, 1);
