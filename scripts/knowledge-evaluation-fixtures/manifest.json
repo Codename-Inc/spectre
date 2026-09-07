@@ -43,14 +43,13 @@
           "id": "acquisition-deploy-boundary",
           "kind": "work",
           "imported": true,
+          "seedKnowledge": true,
           "applicability": {
             "scope": "work",
             "workId": "acquired-deploy"
           },
           "sourceStatus": "disputed",
-          "tags": [
-            "imported"
-          ],
+          "tags": [],
           "content": "Imported deployment files remain read-only until their source ownership and rollback contact are recorded."
         }
       ],
@@ -128,12 +127,13 @@
     },
     {
       "id": "blocker-resolution",
-      "task": "Report the current state of the release blocker for document export.",
+      "task": "Resolve the document-export blocker from the supplied verification evidence and report its release status.",
       "workflow": "Recall the verified resolution and report its release status.",
       "initialFacts": [
         {
-          "id": "export-blocker-resolution",
-          "content": "The export blocker is resolved: the font subset patch was verified in the release candidate."
+          "id": "export-blocker-evidence",
+          "seedKnowledge": false,
+          "content": "The font subset patch was verified in the release candidate; publish the resulting blocker resolution."
         }
       ],
       "cohort": "workflow"
@@ -141,7 +141,7 @@
     {
       "id": "lifecycle-identity",
       "task": "Execute the feature on the staged feature branch so it writes its templated work record. Ship must refresh that exact work before the first draft. Repair verification and add the draft URL while retaining the same work ID; repeat an unchanged capture as a no-op. The fixture then makes knowledge registration fail: report the failure and recovery input, but still open the local gh draft through the direct CreatePR fallback.",
-      "workflow": "Use Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
+      "workflow": "Use Learn summarize this work, Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
       "initialFacts": [],
       "longitudinalSteps": [
         "Start a fresh session. Run Execute on the staged feature and capture its templated work record.",
@@ -157,13 +157,14 @@
       "workflow": "Use Learn for the correction, then complete the correction artifact through Plan, Execute, Ship, and CreatePR.",
       "initialFacts": [
         {
-          "id": "retry-ceiling",
+          "id": "retry-ceiling-evidence",
+          "seedKnowledge": false,
           "content": "Earlier incident guidance set the retry ceiling to five attempts."
         }
       ],
       "longitudinalSteps": [
-        "Start a fresh session. Capture the incident evidence that retry-ceiling is five and write the resulting action to evaluation-result.json.",
-        "Start a fresh session. Use the independently saved guidance in a brief plan without an explicit Recall instruction.",
+        "Start a fresh session. Use Learn to preserve the incident evidence that retry-ceiling is five and write the resulting action to evaluation-result.json.",
+        "Start a fresh session. Use the independently saved guidance in a brief plan.",
         "Start a fresh session. Use Learn to correct retry-ceiling: the current ceiling is three attempts and the earlier value is superseded.",
         "Start a fresh session. Complete the correction artifact using current project evidence, and write evaluation-result.json with loaded record IDs, revisions, and actions."
       ],

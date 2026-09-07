@@ -42,6 +42,7 @@
   "accepted-decision": {
     "requiredRecordHashes": [],
     "requiresCapture": true,
+    "requiredStates": ["bare-learn-noop", "accepted-decision-capture"],
     "manualRubric": "The newly accepted pagination decision is automatically captured and carried into the artifact."
   },
   "verified-gotcha": {
@@ -53,12 +54,16 @@
     "requiredRecordHashes": [
       "sha256:a0ccf42207fe4ac45c5f3d43a047c9187d0150ca514da33670b33c1e02eedba3"
     ],
+    "forbiddenLegacyExposure": true,
+    "requiredStates": ["bare-learn-noop", "unchanged-repeat-noop"],
     "manualRubric": "The recommendation does not promote an observation to a decision."
   },
   "blocker-resolution": {
     "requiredRecordHashes": [
       "sha256:18cecbfd43ebb20144e52f295f4f07c64a82e86470dd0d593805824d1193b5c6"
     ],
+    "requiresCapture": true,
+    "requiredStates": ["blocker-resolution-capture"],
     "manualRubric": "The report states the verified resolution accurately."
   },
   "lifecycle-identity": {
