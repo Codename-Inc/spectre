@@ -717,8 +717,13 @@ async function main(argv = process.argv.slice(2)) {
   return output;
 }
 
-const isDirect = process.argv[1]
-  && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+const isDirect = (() => {
+  try {
+    return Boolean(process.argv[1]) && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
 if (isDirect) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
@@ -732,6 +737,7 @@ export {
   RESOURCE_SENTINEL,
   SEARCH_QUERY,
   observedRegistryCounts,
+  rewriteHooks,
   prepareFixture,
   runFixture,
   validateHostRun,

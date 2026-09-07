@@ -10,7 +10,7 @@ import { parseKnowledgeRecord, refreshKnowledgeIndex, revisionTokenFromDirectory
 import { readKnowledgeActivity } from '../plugins/spectre/hooks/scripts/knowledge/activity.mjs';
 import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 import { ensureTags } from '../plugins/spectre/hooks/scripts/knowledge/tags.mjs';
-import { estimatePayloadTokens } from '../plugins/spectre/hooks/scripts/knowledge/payload.mjs';
+import { rewriteHooks } from './verify-knowledge-hosts.mjs';
 
 export const BASELINE_REF = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 
@@ -100,10 +100,12 @@ function initializeRepository(projectDir, fixtureCase) {
   return { branch: 'evaluation/knowledge-cell', baseRef: 'origin/main', originDir, featureRoot: path.dirname(featureRoot) };
 }
 
-function fixtureFacts(fixtureCase) {
+function fixtureFacts(fixtureCase, requestedScale) {
   const facts = [...(fixtureCase.initialFacts || [])];
-  const count = fixtureCase.scaleDistractors ?? 0;
-  if (!Number.isSafeInteger(count) || count < 0 || count > 10_000) throw new Error('scaleDistractors must be a safe integer from 0 through 10000');
+  const configuredScale = requestedScale ?? fixtureCase.scaleDistractors ?? 0;
+  const levels = Array.isArray(configuredScale) ? configuredScale : [configuredScale];
+  if (!levels.every(level => Number.isSafeInteger(level) && level >= 0 && level <= 10_000)) throw new Error('scaleDistractors must be a safe integer from 0 through 10000');
+  const count = Math.max(...levels);
   for (let index = 0; index < count; index += 1) {
     const suffix = String(index + 1).padStart(5, '0');
     facts.push({
@@ -248,32 +250,33 @@ function writeGhMock(root) {
 function probeCli(cliPath, projectDir, storeDir, fact) {
   const environment = { ...process.env, SPECTRE_HOME: storeDir };
   const search = run(process.execPath, [cliPath, 'search', fact.id, '--project-dir', projectDir, '--json'], { cwd: projectDir, env: environment });
-  const load = run(process.execPath, [cliPath, 'load', fact.id, '--project-dir', projectDir, '--json'], { cwd: projectDir, env: environment });
-  return { search, load };
+  const historical = fact.kind === 'work' || fact.imported === true || fact.status && fact.status !== 'active' || fact.applicability?.scope !== undefined && fact.applicability.scope !== 'project';
+  const load = run(process.execPath, [cliPath, 'load', fact.id, '--project-dir', projectDir, ...(historical ? ['--inspect-historical'] : []), '--json'], { cwd: projectDir, env: environment });
+  return { search, load, historical };
 }
 
-function measureSessionStart({ host, runtimePath, projectDir, storeDir, pluginDir, codexHome, root }) {
+function installSessionStartObservation({ host, pluginDir, runtimePath, root }) {
   const observationPath = path.join(root, 'session-start-observation.json');
-  const input = JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: projectDir, session_id: `evaluation-${host}` });
-  const result = run(process.execPath, [
-    PROBE_SCRIPT, '--runtime', runtimePath, '--host', host, '--evidence', observationPath,
-    '--expected-id', 'evaluation-omitted-id', '--core-sentinel', 'evaluation-core-sentinel', '--resource-sentinel', 'evaluation-resource-sentinel',
-  ], {
-    cwd: projectDir,
-    env: { ...process.env, SPECTRE_HOME: storeDir, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_PLUGIN_ROOT: pluginDir, PLUGIN_ROOT: pluginDir, CODEX_HOME: codexHome || '' },
-    input,
-  });
-  if (result.status !== 0 || !fs.existsSync(observationPath)) throw new Error(`SessionStart probe failed: ${result.stderr || result.stdout}`);
-  const observation = JSON.parse(fs.readFileSync(observationPath, 'utf8'));
-  const frame = JSON.parse(result.stdout);
-  const additionalContext = frame?.hookSpecificOutput?.additionalContext;
-  if (!observation.validJson || !observation.hookEventMatches || !observation.measurement?.ok || typeof additionalContext !== 'string') {
-    throw new Error('SessionStart probe did not return a bounded additionalContext frame');
+  rewriteHooks({ host, pluginRoot: pluginDir, runtimePath, observationPath });
+  return observationPath;
+}
+
+/** Read the latest actual native SessionStart hook frame without retaining its content. */
+export function readSessionStartMeasurement(staged, { consume = true } = {}) {
+  if (staged?.noKnowledge === true) return { availability: 'none', injectedTokens: 0, injectedBytes: 0 };
+  const observationPath = staged?.sessionStartObservationPath;
+  if (!observationPath || !fs.existsSync(observationPath)) return { availability: 'unavailable', injectedTokens: null, injectedBytes: null };
+  try {
+    const observation = JSON.parse(fs.readFileSync(observationPath, 'utf8'));
+    if (!observation.validJson || !observation.hookEventMatches || !observation.measurement?.ok || !Number.isFinite(observation.additionalContextBytes) || !Number.isFinite(observation.additionalContextTokens)) {
+      return { availability: 'unavailable', injectedTokens: null, injectedBytes: null };
+    }
+    return { availability: 'available', injectedTokens: observation.additionalContextTokens, injectedBytes: observation.additionalContextBytes };
+  } catch {
+    return { availability: 'unavailable', injectedTokens: null, injectedBytes: null };
+  } finally {
+    if (consume) fs.rmSync(observationPath, { force: true });
   }
-  return {
-    availability: 'available', injectedBytes: Buffer.byteLength(additionalContext, 'utf8'),
-    injectedTokens: estimatePayloadTokens(additionalContext),
-  };
 }
 
 /** Stage one condition in a fresh isolated repository without invoking a native model host. */
@@ -283,7 +286,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const repositoryRoot = requireDirectory(options.repositoryRoot || process.cwd(), 'repository root');
   const root = fs.mkdtempSync(path.join(options.temporaryRoot || os.tmpdir(), 'spectre-knowledge-evaluation-cell-'));
   const projectDir = path.join(root, 'project');
-  const facts = fixtureFacts(fixtureCase);
+  const facts = fixtureFacts(fixtureCase, cell.scaleDistractors);
   const repository = initializeRepository(projectDir, fixtureCase);
   const gh = writeGhMock(root);
   const hostHome = path.join(root, cell.host === 'codex' ? 'codex-home' : 'claude-home');
@@ -309,21 +312,23 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   }
   const codexPlugin = cell.host === 'codex' ? installCodexPlugin(hostHome, sourcePluginDir, options) : null;
   const pluginDir = codexPlugin?.installedPath || sourcePluginDir;
+  const seededFacts = facts.filter(fact => fact.seedKnowledge !== false);
   const seeded = cell.condition === 'baseline'
-    ? await seedBaseline(projectDir, storeDir, facts)
-    : await seedCandidate(projectDir, storeDir, facts);
+    ? await seedBaseline(projectDir, storeDir, seededFacts)
+    : await seedCandidate(projectDir, storeDir, seededFacts);
   if (cell.host !== 'codex') fs.mkdirSync(hostHome, { recursive: true });
   const cliPath = path.join(pluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs');
   const activityPath = path.join(seeded.storePath, 'activity.json');
   const activityBeforeProbe = fs.existsSync(activityPath) ? fs.readFileSync(activityPath) : null;
-  const probe = facts.length > 0 ? probeCli(cliPath, projectDir, storeDir, facts[0]) : null;
+  const probe = seededFacts.length > 0 ? probeCli(cliPath, projectDir, storeDir, seededFacts[0]) : null;
   if (activityBeforeProbe === null) fs.rmSync(activityPath, { force: true });
   else fs.writeFileSync(activityPath, activityBeforeProbe);
-  if (probe && (probe.search.status !== 0 || probe.load.status !== 0)) throw new Error(`Staged ${cell.condition} CLI probe failed: ${probe.search.stderr || probe.load.stderr}`);
-  const sessionStartMeasurement = measureSessionStart({ host: cell.host, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), projectDir, storeDir, pluginDir, codexHome: cell.host === 'codex' ? hostHome : null, root });
+  const baselineHistoricalProbe = cell.condition === 'baseline' && probe?.historical === true;
+  if (probe && !baselineHistoricalProbe && (probe.search.status !== 0 || probe.load.status !== 0)) throw new Error(`Staged ${cell.condition} CLI probe failed: ${probe.search.stderr || probe.load.stderr || probe.search.stdout || probe.load.stdout}`);
+  const sessionStartObservationPath = installSessionStartObservation({ host: cell.host, pluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), root });
   return {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
-    freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartMeasurement,
+    freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
     ghLogPath: gh.ghLogPath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
     ...(cell.host === 'codex' ? { codexHome: hostHome, codexPlugin } : { claudeHome: hostHome }),
     provenance: { condition: cell.condition, ...provenance }, repository, probe,

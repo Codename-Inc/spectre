@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { blockKnowledgeRegistration, snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { blockKnowledgeRegistration, readSessionStartMeasurement, snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -23,14 +23,24 @@ function fixture(t) {
   };
 }
 
+function runObservedSessionStart(staged) {
+  const hooks = JSON.parse(fs.readFileSync(path.join(staged.pluginDir, 'hooks', 'hooks.json'), 'utf8'));
+  const command = hooks.hooks.SessionStart.flatMap(group => group.hooks).map(hook => hook.command).find(value => value.includes('knowledge-host-probe-hook.mjs'));
+  assert.ok(command, 'staged hook must use the observation wrapper');
+  return spawnSync('/bin/sh', ['-lc', command], {
+    cwd: staged.projectDir,
+    env: { ...process.env, SPECTRE_HOME: staged.storeDir, CLAUDE_PROJECT_DIR: staged.projectDir, CLAUDE_PLUGIN_ROOT: staged.pluginDir, PLUGIN_ROOT: staged.pluginDir, CODEX_HOME: staged.codexHome || '' },
+    input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: staged.projectDir, session_id: 'staging-test' }),
+    encoding: 'utf8',
+  });
+}
+
 test('stages valid candidate records through the real CLI and native host surfaces', async (t) => {
   const value = fixture(t);
   for (const host of ['claude', 'codex']) {
     const staged = await stageKnowledgeCell({ condition: 'candidate', host }, value.fixture, value.options);
     assert.equal(staged.freshStore, true);
-    assert.equal(staged.sessionStartMeasurement.availability, 'available');
-    assert.ok(staged.sessionStartMeasurement.injectedBytes > 0);
-    assert.ok(staged.sessionStartMeasurement.injectedTokens > 0);
+    assert.deepEqual(readSessionStartMeasurement(staged), { availability: 'unavailable', injectedTokens: null, injectedBytes: null });
     assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
     assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
     assert.equal(staged.probe.search.result.results[0].id, 'staged-fact');
@@ -38,6 +48,11 @@ test('stages valid candidate records through the real CLI and native host surfac
     assert.equal(staged.knownPaths.some((entry) => entry.endsWith('/knowledge/staged-fact/record.json')), true);
     assert.equal(fs.existsSync(path.join(staged.projectDir, '.git')), true);
     assert.equal(fs.existsSync(path.join(staged.pluginDir, 'hooks', 'hooks.json')), true);
+    const sessionStart = runObservedSessionStart(staged);
+    assert.equal(sessionStart.status, 0, sessionStart.stderr);
+    assert.ok(JSON.parse(sessionStart.stdout).hookSpecificOutput.additionalContext);
+    assert.equal(readSessionStartMeasurement(staged).availability, 'available');
+    assert.equal(readSessionStartMeasurement(staged).availability, 'unavailable');
     if (host === 'codex') {
       assert.equal(staged.pluginDir, staged.codexPlugin.installedPath);
       assert.notEqual(staged.pluginDir, staged.sourcePluginDir);
@@ -66,7 +81,7 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   const value = fixture(t);
   const staged = await stageKnowledgeCell({ condition: 'no-knowledge', host: 'codex' }, value.fixture, value.options);
   assert.equal(staged.pluginDir, null);
-  assert.deepEqual(staged.sessionStartMeasurement, { availability: 'none', injectedTokens: 0, injectedBytes: 0 });
+  assert.deepEqual(readSessionStartMeasurement(staged), { availability: 'none', injectedTokens: 0, injectedBytes: 0 });
   assert.equal(staged.storeDir, null);
   assert.equal(staged.knownPaths.length, 0);
   assert.equal(fs.existsSync(path.join(staged.projectDir, '.git')), true);
@@ -169,14 +184,14 @@ test('can force an actual registration failure without blocking existing reads',
 
 test('adds deterministic real distractors without publishing a repository catalog', async (t) => {
   const value = fixture(t);
-  value.fixture.scaleDistractors = 10;
+  value.fixture.scaleDistractors = [10, 100];
   const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
   const snapshot = snapshotKnowledgeCell(staged);
   const neutralEvidence = fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8');
 
-  assert.equal(snapshot.records.length, 11);
+  assert.equal(snapshot.records.length, 101);
   assert.equal(snapshot.records.at(-1).id, 'staged-fact');
-  assert.equal(snapshot.records.some(record => record.id === 'scale-distractor-00010'), true);
+  assert.equal(snapshot.records.some(record => record.id === 'scale-distractor-00100'), true);
   assert.equal(neutralEvidence.includes('scale-distractor'), false);
 });
 
@@ -189,7 +204,28 @@ test('installs the frozen Codex baseline through its isolated marketplace', asyn
   assert.equal(staged.pluginDir, staged.codexPlugin.installedPath);
   assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
   assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
-  assert.equal(staged.sessionStartMeasurement.availability, 'available');
-  assert.ok(staged.sessionStartMeasurement.injectedBytes > 0);
+  assert.deepEqual(readSessionStartMeasurement(staged), { availability: 'unavailable', injectedTokens: null, injectedBytes: null });
   assert.equal(fs.existsSync(path.join(staged.pluginDir, 'skills', 'spectre-execute', 'SKILL.md')), true);
+});
+
+
+test('stages a frozen historical baseline even when its retired discovery cannot inspect it', async (t) => {
+  const value = fixture(t);
+  value.fixture.initialFacts[0].status = 'archived';
+  const staged = await stageKnowledgeCell({ condition: 'baseline', host: 'claude' }, value.fixture, value.options);
+
+  assert.equal(staged.probe.historical, true);
+  assert.equal(staged.probe.search.status, 0);
+  assert.notEqual(staged.probe.load.status, 0);
+});
+
+
+test('keeps neutral facts outside the knowledge store when seedKnowledge is false', async (t) => {
+  const value = fixture(t);
+  value.fixture.initialFacts[0].seedKnowledge = false;
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+
+  assert.equal(staged.probe, null);
+  assert.deepEqual(snapshotKnowledgeCell(staged).records, []);
+  assert.match(fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8'), /Keep both ledgers/);
 });
