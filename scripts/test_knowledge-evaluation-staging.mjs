@@ -28,6 +28,9 @@ test('stages valid candidate records through the real CLI and native host surfac
   for (const host of ['claude', 'codex']) {
     const staged = await stageKnowledgeCell({ condition: 'candidate', host }, value.fixture, value.options);
     assert.equal(staged.freshStore, true);
+    assert.equal(staged.sessionStartMeasurement.availability, 'available');
+    assert.ok(staged.sessionStartMeasurement.injectedBytes > 0);
+    assert.ok(staged.sessionStartMeasurement.injectedTokens > 0);
     assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
     assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
     assert.equal(staged.probe.search.result.results[0].id, 'staged-fact');
@@ -36,8 +39,12 @@ test('stages valid candidate records through the real CLI and native host surfac
     assert.equal(fs.existsSync(path.join(staged.projectDir, '.git')), true);
     assert.equal(fs.existsSync(path.join(staged.pluginDir, 'hooks', 'hooks.json')), true);
     if (host === 'codex') {
-      assert.equal(fs.existsSync(path.join(staged.codexHome, 'hooks.json')), true);
-      assert.match(fs.readFileSync(path.join(staged.codexHome, 'config.toml'), 'utf8'), /hooks = true/);
+      assert.equal(staged.pluginDir, staged.codexPlugin.installedPath);
+      assert.notEqual(staged.pluginDir, staged.sourcePluginDir);
+      assert.equal(staged.codexPlugin.listing.installed[0].pluginId, 'spectre@evaluation');
+      assert.match(fs.readFileSync(staged.codexPlugin.configPath, 'utf8'), /\[plugins\."spectre@evaluation"\]/);
+      assert.equal(fs.existsSync(path.join(staged.codexHome, 'hooks.json')), false);
+      assert.equal(fs.existsSync(path.join(staged.pluginDir, 'skills', 'spectre-capture', 'SKILL.md')), true);
     }
   }
 });
@@ -59,12 +66,14 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   const value = fixture(t);
   const staged = await stageKnowledgeCell({ condition: 'no-knowledge', host: 'codex' }, value.fixture, value.options);
   assert.equal(staged.pluginDir, null);
+  assert.deepEqual(staged.sessionStartMeasurement, { availability: 'none', injectedTokens: 0, injectedBytes: 0 });
   assert.equal(staged.storeDir, null);
   assert.equal(staged.knownPaths.length, 0);
   assert.equal(fs.existsSync(path.join(staged.projectDir, '.git')), true);
   assert.equal(fs.existsSync(path.join(staged.projectDir, 'TASK.md')), true);
   assert.equal(fs.existsSync(path.join(staged.root, 'plugin')), false);
   assert.equal(fs.existsSync(path.join(staged.root, 'spectre-home')), false);
+  assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins')), false);
 });
 
 test('restores pristine activity after preflight and snapshots bounded durable evidence', async (t) => {
@@ -127,6 +136,9 @@ test('stages the same feature branch, base ref, and Execute fixture for every co
     assert.equal(fs.existsSync(path.join(staged.repository.originDir, 'HEAD')), true);
     assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md')), true);
     assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json')), true);
+    const neutralEvidence = fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8');
+    assert.match(neutralEvidence, /Keep both ledgers until reconciliation passes/);
+    assert.equal(neutralEvidence.includes('knowledge/'), false);
   }
 });
 
@@ -152,4 +164,32 @@ test('can force an actual registration failure without blocking existing reads',
   } finally {
     fault.restore();
   }
+});
+
+
+test('adds deterministic real distractors without publishing a repository catalog', async (t) => {
+  const value = fixture(t);
+  value.fixture.scaleDistractors = 10;
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+  const snapshot = snapshotKnowledgeCell(staged);
+  const neutralEvidence = fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8');
+
+  assert.equal(snapshot.records.length, 11);
+  assert.equal(snapshot.records.at(-1).id, 'staged-fact');
+  assert.equal(snapshot.records.some(record => record.id === 'scale-distractor-00010'), true);
+  assert.equal(neutralEvidence.includes('scale-distractor'), false);
+});
+
+
+test('installs the frozen Codex baseline through its isolated marketplace', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'baseline', host: 'codex' }, value.fixture, value.options);
+
+  assert.equal(staged.codexPlugin.listing.installed[0].pluginId, 'spectre@evaluation');
+  assert.equal(staged.pluginDir, staged.codexPlugin.installedPath);
+  assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
+  assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
+  assert.equal(staged.sessionStartMeasurement.availability, 'available');
+  assert.ok(staged.sessionStartMeasurement.injectedBytes > 0);
+  assert.equal(fs.existsSync(path.join(staged.pluginDir, 'skills', 'spectre-execute', 'SKILL.md')), true);
 });

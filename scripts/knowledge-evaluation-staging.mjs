@@ -3,14 +3,18 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { registerCanonicalKnowledge } from '../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
 import { parseKnowledgeRecord, refreshKnowledgeIndex, revisionTokenFromDirectoryName } from '../plugins/spectre/hooks/scripts/knowledge/records.mjs';
 import { readKnowledgeActivity } from '../plugins/spectre/hooks/scripts/knowledge/activity.mjs';
 import { resolveProjectStore } from '../plugins/spectre/hooks/scripts/knowledge/store.mjs';
 import { ensureTags } from '../plugins/spectre/hooks/scripts/knowledge/tags.mjs';
+import { estimatePayloadTokens } from '../plugins/spectre/hooks/scripts/knowledge/payload.mjs';
 
 export const BASELINE_REF = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
+
+const PROBE_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'knowledge-host-probe-hook.mjs');
 
 const hash = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
@@ -54,7 +58,12 @@ function archiveBaselinePlugin(repositoryRoot, host, destination, baselineRef) {
 function initializeRepository(projectDir, fixtureCase) {
   fs.mkdirSync(projectDir, { recursive: true });
   fs.writeFileSync(path.join(projectDir, 'TASK.md'), `${fixtureCase.task}\n`);
-  fs.writeFileSync(path.join(projectDir, 'EVIDENCE.md'), `${fixtureCase.workflow || 'Use the supplied facts.'}\n`);
+  const neutralFacts = (fixtureCase.initialFacts || []).map(fact => `- ${fact.content}`).join('\n') || '- No prior project fact is supplied.';
+  fs.mkdirSync(path.join(projectDir, 'docs'), { recursive: true });
+  fs.mkdirSync(path.join(projectDir, 'test'), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, 'EVIDENCE.md'), `# Neutral project evidence\n\n${neutralFacts}\n`);
+  fs.writeFileSync(path.join(projectDir, 'docs', 'task-context.md'), `# Task context\n\n${fixtureCase.task}\n\n## Observed facts\n${neutralFacts}\n`);
+  fs.writeFileSync(path.join(projectDir, 'test', 'evaluation-facts.txt'), `${neutralFacts}\n`);
   const featureRoot = path.join(projectDir, '.spectre', 'features', 'evaluation-cell', 'specs');
   fs.mkdirSync(featureRoot, { recursive: true });
   fs.writeFileSync(path.join(featureRoot, 'execute.md'), [
@@ -71,7 +80,7 @@ function initializeRepository(projectDir, fixtureCase) {
   if (initialize.status !== 0) throw new Error(`Could not initialize isolated fixture repository: ${initialize.stderr}`);
   const commands = [
     ['config', 'user.email', 'evaluation@example.invalid'], ['config', 'user.name', 'Knowledge Evaluation'],
-    ['add', 'TASK.md', 'EVIDENCE.md', '.spectre'], ['commit', '-m', 'evaluation base fixture'],
+    ['add', 'TASK.md', 'EVIDENCE.md', 'docs', 'test', '.spectre'], ['commit', '-m', 'evaluation base fixture'],
   ];
   for (const args of commands) {
     const result = run('git', args, { cwd: projectDir });
@@ -89,6 +98,21 @@ function initializeRepository(projectDir, fixtureCase) {
   const finalize = commit.status === 0 && run('git', ['commit', '-m', 'evaluation feature fixture'], { cwd: projectDir });
   if (commit.status !== 0 || finalize.status !== 0) throw new Error(`Could not create isolated fixture feature change: ${commit.stderr || finalize.stderr}`);
   return { branch: 'evaluation/knowledge-cell', baseRef: 'origin/main', originDir, featureRoot: path.dirname(featureRoot) };
+}
+
+function fixtureFacts(fixtureCase) {
+  const facts = [...(fixtureCase.initialFacts || [])];
+  const count = fixtureCase.scaleDistractors ?? 0;
+  if (!Number.isSafeInteger(count) || count < 0 || count > 10_000) throw new Error('scaleDistractors must be a safe integer from 0 through 10000');
+  for (let index = 0; index < count; index += 1) {
+    const suffix = String(index + 1).padStart(5, '0');
+    facts.push({
+      id: `scale-distractor-${suffix}`,
+      content: `Unrelated deterministic scale evidence ${suffix}.`,
+      tags: ['evaluation-distractor'],
+    });
+  }
+  return facts;
 }
 
 function workTemplate() {
@@ -173,12 +197,35 @@ async function seedBaseline(projectDir, storeDir, facts) {
   return { storePath: resolved.storePath, knownPaths };
 }
 
-function writeCodexNativeConfig(codexHome, projectDir, pluginDir) {
+function installCodexPlugin(codexHome, pluginDir, options = {}) {
+  const marketplaceRoot = path.join(path.dirname(pluginDir), 'codex-marketplace');
+  const marketplacePlugin = path.join(marketplaceRoot, 'plugins', 'spectre-codex');
+  fs.mkdirSync(path.join(marketplaceRoot, '.agents', 'plugins'), { recursive: true });
+  fs.mkdirSync(path.join(marketplaceRoot, 'plugins'), { recursive: true });
+  fs.cpSync(pluginDir, marketplacePlugin, { recursive: true });
+  fs.writeFileSync(path.join(marketplaceRoot, '.agents', 'plugins', 'marketplace.json'), `${JSON.stringify({
+    name: 'evaluation', version: '7.3.0', owner: { name: 'Spectre evaluation' },
+    plugins: [{ name: 'spectre', source: './plugins/spectre-codex', version: '7.3.0' }],
+  }, null, 2)}\n`);
   fs.mkdirSync(codexHome, { recursive: true });
-  fs.writeFileSync(path.join(codexHome, 'config.toml'), [
-    '[features]', 'hooks = true', '', `[projects.${JSON.stringify(projectDir)}]`, 'trust_level = "trusted"', '',
-  ].join('\n'));
-  fs.copyFileSync(path.join(pluginDir, 'hooks', 'hooks.json'), path.join(codexHome, 'hooks.json'));
+  const environment = { ...process.env, CODEX_HOME: codexHome };
+  const binary = options.codexCommand || process.env.CODEX_BIN || 'codex';
+  const marketplace = run(binary, ['plugin', 'marketplace', 'add', marketplaceRoot, '--json'], { env: environment });
+  if (marketplace.status !== 0) throw new Error(`Could not add isolated Codex marketplace: ${marketplace.stderr}`);
+  const installed = run(binary, ['plugin', 'add', 'spectre@evaluation', '--json'], { env: environment });
+  if (installed.status !== 0 || typeof installed.result?.installedPath !== 'string') throw new Error(`Could not install isolated Codex plugin: ${installed.stderr}`);
+  const listed = run(binary, ['plugin', 'list', '--json'], { env: environment });
+  const plugin = listed.result?.installed?.find(entry => entry.pluginId === 'spectre@evaluation' && entry.enabled === true);
+  if (listed.status !== 0 || !plugin || plugin.source?.source !== 'local') throw new Error(`Isolated Codex plugin install was not discoverable: ${listed.stderr}`);
+  const installedPath = path.resolve(installed.result.installedPath);
+  if (!fs.existsSync(path.join(installedPath, 'skills', 'spectre-execute', 'SKILL.md')) || !fs.existsSync(path.join(installedPath, 'hooks', 'hooks.json'))) {
+    throw new Error('Isolated Codex plugin cache is missing required workflow skills or hooks');
+  }
+  const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+  if (!config.includes('[plugins."spectre@evaluation"]') || fs.existsSync(path.join(codexHome, 'hooks.json'))) {
+    throw new Error('Isolated Codex plugin configuration is incomplete or manually hooked');
+  }
+  return { marketplaceRoot, marketplacePlugin, installedPath, listing: listed.result, configPath: path.join(codexHome, 'config.toml') };
 }
 
 function writeGhMock(root) {
@@ -198,6 +245,30 @@ function probeCli(cliPath, projectDir, storeDir, fact) {
   return { search, load };
 }
 
+function measureSessionStart({ host, runtimePath, projectDir, storeDir, pluginDir, codexHome, root }) {
+  const observationPath = path.join(root, 'session-start-observation.json');
+  const input = JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: projectDir, session_id: `evaluation-${host}` });
+  const result = run(process.execPath, [
+    PROBE_SCRIPT, '--runtime', runtimePath, '--host', host, '--evidence', observationPath,
+    '--expected-id', 'evaluation-omitted-id', '--core-sentinel', 'evaluation-core-sentinel', '--resource-sentinel', 'evaluation-resource-sentinel',
+  ], {
+    cwd: projectDir,
+    env: { ...process.env, SPECTRE_HOME: storeDir, CLAUDE_PROJECT_DIR: projectDir, CLAUDE_PLUGIN_ROOT: pluginDir, PLUGIN_ROOT: pluginDir, CODEX_HOME: codexHome || '' },
+    input,
+  });
+  if (result.status !== 0 || !fs.existsSync(observationPath)) throw new Error(`SessionStart probe failed: ${result.stderr || result.stdout}`);
+  const observation = JSON.parse(fs.readFileSync(observationPath, 'utf8'));
+  const frame = JSON.parse(result.stdout);
+  const additionalContext = frame?.hookSpecificOutput?.additionalContext;
+  if (!observation.validJson || !observation.hookEventMatches || !observation.measurement?.ok || typeof additionalContext !== 'string') {
+    throw new Error('SessionStart probe did not return a bounded additionalContext frame');
+  }
+  return {
+    availability: 'available', injectedBytes: Buffer.byteLength(additionalContext, 'utf8'),
+    injectedTokens: estimatePayloadTokens(additionalContext),
+  };
+}
+
 /** Stage one condition in a fresh isolated repository without invoking a native model host. */
 export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (!['candidate', 'baseline', 'no-knowledge'].includes(cell?.condition)) throw new Error('condition must be candidate, baseline, or no-knowledge');
@@ -205,7 +276,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const repositoryRoot = requireDirectory(options.repositoryRoot || process.cwd(), 'repository root');
   const root = fs.mkdtempSync(path.join(options.temporaryRoot || os.tmpdir(), 'spectre-knowledge-evaluation-cell-'));
   const projectDir = path.join(root, 'project');
-  const facts = fixtureCase.initialFacts || [];
+  const facts = fixtureFacts(fixtureCase);
   const repository = initializeRepository(projectDir, fixtureCase);
   const gh = writeGhMock(root);
   const hostHome = path.join(root, cell.host === 'codex' ? 'codex-home' : 'claude-home');
@@ -213,27 +284,28 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
-      freshStore: true, knownPaths: [], tracePath: null, ghLogPath: gh.ghLogPath, environment: gh.environment,
+      freshStore: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, environment: gh.environment,
       ...(cell.host === 'codex' ? { codexHome: hostHome } : { claudeHome: hostHome }),
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
   }
 
   const storeDir = path.join(root, 'spectre-home');
-  const pluginDir = path.join(root, 'plugin');
+  const sourcePluginDir = path.join(root, 'plugin');
   let provenance;
   if (cell.condition === 'baseline') {
-    provenance = archiveBaselinePlugin(repositoryRoot, cell.host, pluginDir, options.baselineRef || BASELINE_REF);
+    provenance = archiveBaselinePlugin(repositoryRoot, cell.host, sourcePluginDir, options.baselineRef || BASELINE_REF);
   } else {
     const source = hostPluginSource(repositoryRoot, cell.host, options);
-    fs.cpSync(source, pluginDir, { recursive: true });
-    provenance = { candidateSource: source, sourceHash: hash(fs.readFileSync(path.join(pluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs'))) };
+    fs.cpSync(source, sourcePluginDir, { recursive: true });
+    provenance = { candidateSource: source, sourceHash: hash(fs.readFileSync(path.join(sourcePluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs'))) };
   }
+  const codexPlugin = cell.host === 'codex' ? installCodexPlugin(hostHome, sourcePluginDir, options) : null;
+  const pluginDir = codexPlugin?.installedPath || sourcePluginDir;
   const seeded = cell.condition === 'baseline'
     ? await seedBaseline(projectDir, storeDir, facts)
     : await seedCandidate(projectDir, storeDir, facts);
-  if (cell.host === 'codex') writeCodexNativeConfig(hostHome, projectDir, pluginDir);
-  else fs.mkdirSync(hostHome, { recursive: true });
+  if (cell.host !== 'codex') fs.mkdirSync(hostHome, { recursive: true });
   const cliPath = path.join(pluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs');
   const activityPath = path.join(seeded.storePath, 'activity.json');
   const activityBeforeProbe = fs.existsSync(activityPath) ? fs.readFileSync(activityPath) : null;
@@ -241,11 +313,12 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (activityBeforeProbe === null) fs.rmSync(activityPath, { force: true });
   else fs.writeFileSync(activityPath, activityBeforeProbe);
   if (probe && (probe.search.status !== 0 || probe.load.status !== 0)) throw new Error(`Staged ${cell.condition} CLI probe failed: ${probe.search.stderr || probe.load.stderr}`);
+  const sessionStartMeasurement = measureSessionStart({ host: cell.host, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), projectDir, storeDir, pluginDir, codexHome: cell.host === 'codex' ? hostHome : null, root });
   return {
-    root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
-    freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null,
+    root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
+    freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartMeasurement,
     ghLogPath: gh.ghLogPath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
-    ...(cell.host === 'codex' ? { codexHome: hostHome } : { claudeHome: hostHome }),
+    ...(cell.host === 'codex' ? { codexHome: hostHome, codexPlugin } : { claudeHome: hostHome }),
     provenance: { condition: cell.condition, ...provenance }, repository, probe,
   };
 }
