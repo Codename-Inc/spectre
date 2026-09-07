@@ -132,6 +132,14 @@ test('judging requires an exact successful load and a later persisted decision a
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
     { ...runtime.toolOperations[0], input: { command: `"$CLI" load '${recordId}'` } }, runtime.toolOperations[1],
   ] }, oracle).recalled, false);
+  const codexCounterexample = judgeCell(cell, {
+    ...runtime,
+    toolOperations: [
+      { ...runtime.toolOperations[0], name: 'exec', input: { command: `node knowledge-cli.mjs load ${recordId} && rg --files -g '!artifacts/case.md'` } },
+      { id: 'change-1', type: 'file_change', name: 'file_change', status: 'completed', eventOrdinal: 8, input: { changes: [{ path: 'artifacts/case.md' }] } },
+    ],
+  }, oracle);
+  assert.equal(codexCounterexample.recalled, null);
   assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
     { ...runtime.toolOperations[0], eventOrdinal: 9 }, runtime.toolOperations[1],
   ], toolResults: [{ ...runtime.toolResults[0], eventOrdinal: 9 }] }, oracle).recalled, false);

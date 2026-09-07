@@ -141,6 +141,17 @@ function eventPrecedes(left, right) {
   return leftSession < rightSession || (leftSession === rightSession && left.eventOrdinal < right.eventOrdinal);
 }
 
+function isArtifactWrite(operation, deliverablePath) {
+  const input = operation?.input ?? {};
+  const serialized = JSON.stringify(input);
+  if ((operation.name === 'Write' || operation.name === 'Edit' || operation.type === 'file_change') && serialized.includes(deliverablePath)) return true;
+  if (operation.name !== 'exec') return false;
+  const command = input.command;
+  if (typeof command !== 'string' || !command.includes(deliverablePath)) return false;
+  const escaped = deliverablePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:>|>>)\\s*['\"]?${escaped}|\\btee(?:\\s+[^|;&]+)*\\s+['\"]?${escaped}|\\bapply_patch\b`).test(command);
+}
+
 function classifyKnowledgeCommands(toolOperations = []) {
   const actions = new Map();
   const variables = new Map();
@@ -206,9 +217,7 @@ export function judgeCell(cell, runtime, oracle) {
       )
     );
     const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
-      (operation.name === 'Write' || operation.name === 'exec' || operation.type === 'file_change') &&
-      JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath) &&
-      (operation.status === null || operation.status === 'completed')
+      isArtifactWrite(operation, runtime.deliverablePath) && (operation.status === null || operation.status === 'completed')
     );
     if (!artifactWrite) return { valid: false, recalled: false, reason: 'native decision-artifact write evidence is missing' };
     const orderedLoad = matchedResults.some(({ result }) =>
@@ -507,6 +516,29 @@ function changedProjectEvidence(projectDir) {
   return { availability: 'available', changed };
 }
 
+function compactSnapshot(snapshot, relevantIds, previous = null) {
+  const before = new Map((previous?.records ?? []).map((record) => [record.id, record.revisionToken ?? record.sourceFingerprint ?? null]));
+  const retain = new Set(relevantIds);
+  for (const record of snapshot.records ?? []) {
+    const token = record.revisionToken ?? record.sourceFingerprint ?? null;
+    if (!before.has(record.id) || before.get(record.id) !== token) retain.add(record.id);
+  }
+  const records = (snapshot.records ?? []).filter((record) => retain.has(record.id));
+  const history = (snapshot.history ?? []).filter((entry) => retain.has(entry.id));
+  const activity = snapshot.activity ? {
+    ...snapshot.activity,
+    records: Object.fromEntries(Object.entries(snapshot.activity.records ?? {}).filter(([id]) => retain.has(id))),
+    search: {
+      ...snapshot.activity.search,
+      recordMatches: Object.fromEntries(Object.entries(snapshot.activity.search?.recordMatches ?? {}).filter(([id]) => retain.has(id))),
+    },
+  } : null;
+  return {
+    records, history, activity,
+    workRecords: (snapshot.workRecords ?? []).filter((record) => retain.has(record.id)),
+  };
+}
+
 function workflowEvidence(staged) {
   try {
     return { ghCommands: fs.readFileSync(staged.ghLogPath, 'utf8').split(/\r?\n/).filter(Boolean) };
@@ -700,7 +732,9 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const fixtureCase = cases.get(cell.caseId);
       configureLifecycleMock(staged, fixtureCase);
       const hostSettings = hostConfiguration(options.configuration, cell.host);
-      const snapshotBefore = snapshotKnowledgeCell(staged);
+      const relevantIds = (fixtureCase.initialFacts ?? []).map((fact) => fact.id);
+      const rawSnapshotBefore = snapshotKnowledgeCell(staged);
+      const snapshotBefore = compactSnapshot(rawSnapshotBefore, relevantIds);
       const deliverablePath = path.join('artifacts', `${cell.caseId}.md`);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
@@ -715,7 +749,8 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       try {
         for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
           const contextId = `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`;
-          const beforeSession = snapshotKnowledgeCell(staged);
+          const rawBeforeSession = snapshotKnowledgeCell(staged);
+          const beforeSession = compactSnapshot(rawBeforeSession, relevantIds, rawSnapshotBefore);
           const run = await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
@@ -729,7 +764,8 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           limits: options.limits,
           });
           runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
-          sessionSnapshots.push({ before: beforeSession, after: snapshotKnowledgeCell(staged), contextHash: hash(contextId) });
+          const rawAfterSession = snapshotKnowledgeCell(staged);
+          sessionSnapshots.push({ before: beforeSession, after: compactSnapshot(rawAfterSession, relevantIds, rawBeforeSession), contextHash: hash(contextId) });
           if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 1 && runs.at(-1)?.status === 'completed') {
             registrationFault = blockKnowledgeRegistration(staged);
           }
@@ -738,7 +774,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         registrationFault?.restore();
       }
       const hostResult = mergeHostRuns(runs);
-      const snapshotAfter = snapshotKnowledgeCell(staged);
+      const snapshotAfter = compactSnapshot(snapshotKnowledgeCell(staged), relevantIds, rawSnapshotBefore);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
