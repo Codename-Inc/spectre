@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { blockKnowledgeRegistration, readSessionStartMeasurement, snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { compactSnapshot } from './evaluate-knowledge.mjs';
+import { registerCanonicalKnowledge } from '../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -76,6 +78,9 @@ test('stages the pinned baseline as SKILL.md and verifies its own archived runti
   assert.match(staged.provenance.sourceHash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(fs.existsSync(skillPath), true);
   assert.equal(fs.existsSync(path.join(path.dirname(skillPath), 'record.json')), false);
+  const snapshot = snapshotKnowledgeCell(staged);
+  assert.equal(snapshot.records[0].source, fs.readFileSync(skillPath, 'utf8'));
+  assert.match(snapshot.records[0].sourceFingerprint, /^sha256:[a-f0-9]{64}$/);
   assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
   assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
   assert.equal(staged.probe.load.result.record?.id ?? staged.probe.load.result.id, 'staged-fact');
@@ -106,15 +111,48 @@ test('restores pristine activity after preflight and snapshots bounded durable e
 
   assert.deepEqual(snapshot.activity.records, {});
   assert.deepEqual(snapshot.activity.search, { matches: 0, misses: 0, recordMatches: {} });
-  assert.deepEqual(snapshot.records, [{
+  const [{ record, recordHash, ...recordMetadata }] = snapshot.records;
+  assert.deepEqual(recordMetadata, {
     id: 'staged-fact', kind: 'knowledge', revisionToken: snapshot.records[0].revisionToken,
     status: 'active', applicability: { scope: 'project' },
-  }]);
+  });
+  assert.equal(record.content, 'Keep both ledgers until reconciliation passes.');
+  assert.match(recordHash, /^sha256:[a-f0-9]{64}$/);
   assert.deepEqual(snapshot.workRecords, []);
   assert.match(snapshot.records[0].revisionToken, /^sha256:[a-f0-9]{64}$/);
   assert.deepEqual(snapshot.history, []);
   assert.equal(JSON.stringify(snapshot).includes(staged.storePath), false);
-  assert.equal(JSON.stringify(snapshot).includes('Keep both ledgers'), false);
+  assert.equal(JSON.stringify(snapshot).includes('Keep both ledgers'), true);
+});
+
+test('retains captured canonical record evidence after compaction and fixture cleanup', async (t) => {
+  const value = fixture(t);
+  value.fixture.scaleDistractors = 10;
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+  const before = snapshotKnowledgeCell(staged);
+  const source = JSON.parse(fs.readFileSync(staged.knownPaths.find(entry => entry.endsWith('/staged-fact/record.json')), 'utf8'));
+  source.id = 'captured-delivery-note';
+  source.title = 'Captured delivery note';
+  source.summary = 'Captured factual delivery evidence.';
+  source.useWhen = 'Use when reviewing the completed staged delivery.';
+  source.content = 'SPECTRE_CAPTURED_DELIVERY_NOTE_BODY';
+  const proposal = path.join(staged.root, 'captured-delivery-note');
+  fs.mkdirSync(proposal);
+  fs.writeFileSync(path.join(proposal, 'record.json'), `${JSON.stringify(source, null, 2)}\n`);
+  const registered = await registerCanonicalKnowledge({
+    projectDir: staged.projectDir, spectreHome: staged.storeDir, recordPath: proposal,
+  });
+  assert.equal(registered.status, 'created');
+
+  const compact = compactSnapshot(snapshotKnowledgeCell(staged), ['staged-fact'], before);
+  const captured = compact.records.find(record => record.id === 'captured-delivery-note');
+  assert.equal(captured.record.content, 'SPECTRE_CAPTURED_DELIVERY_NOTE_BODY');
+  assert.match(captured.recordHash, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(compact.records.some(record => record.id === 'telemetry-checkpoint-00001'), false);
+
+  fs.rmSync(staged.root, { recursive: true, force: true });
+  assert.equal(captured.record.content, 'SPECTRE_CAPTURED_DELIVERY_NOTE_BODY');
+  assert.match(captured.recordHash, /^sha256:[a-f0-9]{64}$/);
 });
 
 test('stages imported work, scoped disputed knowledge, retired status, and tag aliases as real records', async (t) => {

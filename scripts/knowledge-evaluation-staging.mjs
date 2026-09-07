@@ -553,10 +553,13 @@ export function snapshotKnowledgeCell(staged) {
     const directory = path.join(recordRoot, entry.name);
     const recordPath = path.join(directory, 'record.json');
     if (fs.existsSync(recordPath)) {
+      const recordBytes = fs.readFileSync(recordPath, 'utf8');
       const parsed = parseKnowledgeRecord(recordPath);
       const record = parsed.record;
       records.push({
         id: record.id, kind: record.kind, revisionToken: parsed.revisionToken, status: record.status ?? record.importedSource?.status ?? 'historical', applicability: record.applicability,
+        record,
+        recordHash: hash(recordBytes),
         ...(record.work ? { lifecycle: { execution: record.work.execution.state, verification: record.work.verificationState.state, pullRequest: record.work.pullRequest.state, associations: record.work.associations } } : {}),
       });
       continue;
@@ -564,7 +567,7 @@ export function snapshotKnowledgeCell(staged) {
     const skillPath = path.join(directory, 'SKILL.md');
     if (fs.existsSync(skillPath)) {
       const source = fs.readFileSync(skillPath, 'utf8');
-      records.push({ id: entry.name, kind: 'knowledge', sourceFingerprint: hash(source), status: source.match(/spectre-status:\s*(\S+)/)?.[1] || 'unknown', applicability: { scope: 'project' } });
+      records.push({ id: entry.name, kind: 'knowledge', source, sourceFingerprint: hash(source), status: source.match(/spectre-status:\s*(\S+)/)?.[1] || 'unknown', applicability: { scope: 'project' } });
     }
   }
   const history = [];
