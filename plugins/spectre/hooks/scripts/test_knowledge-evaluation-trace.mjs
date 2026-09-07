@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { refreshKnowledgeIndex } from './knowledge/records.mjs';
-import { detectTraceBypass } from './knowledge/evaluation-trace.mjs';
+import { refreshKnowledgeIndex, revisionDirectoryName, revisionTokenFor } from './knowledge/records.mjs';
+import { createEvaluationTrace, detectTraceBypass } from './knowledge/evaluation-trace.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const KNOWLEDGE_CLI = path.join(SCRIPT_DIR, 'knowledge-cli.mjs');
+const TRACE_MODULE_URL = pathToFileURL(path.join(SCRIPT_DIR, 'knowledge', 'evaluation-trace.mjs')).href;
 
 function record(id, content = 'SPECTRE_TRACE_RECORD_BODY') {
   return {
@@ -31,11 +32,16 @@ async function fixture(t) {
   fs.mkdirSync(projectDir, { recursive: true });
   const { storePath } = await resolveProjectStore(projectDir, { spectreHome });
   const id = 'trace-record';
+  const value = record(id);
   const recordPath = path.join(storePath, 'knowledge', id, 'record.json');
   fs.mkdirSync(path.dirname(recordPath), { recursive: true });
-  fs.writeFileSync(recordPath, `${JSON.stringify(record(id), null, 2)}\n`);
+  fs.writeFileSync(recordPath, `${JSON.stringify(value, null, 2)}\n`);
+  const revisionToken = revisionTokenFor(value);
+  const historicalDirectory = path.join(storePath, 'knowledge-history', id, revisionDirectoryName(revisionToken));
+  fs.mkdirSync(historicalDirectory, { recursive: true });
+  fs.writeFileSync(path.join(historicalDirectory, 'record.json'), `${JSON.stringify(value, null, 2)}\n`);
   refreshKnowledgeIndex(storePath);
-  return { root, projectDir, spectreHome, storePath, id };
+  return { root, projectDir, spectreHome, storePath, id, revisionToken };
 }
 
 function run(value, tracePath, args) {
@@ -46,17 +52,32 @@ function run(value, tracePath, args) {
   });
 }
 
-test('runtime trace is opt-in and records actual public search, load, and capture results without query or body text', async (t) => {
+function traceEvents(tracePath) {
+  const raw = fs.readFileSync(tracePath, 'utf8').trim();
+  assert.equal(raw.startsWith('{"schemaVersion":1,"type":'), true, 'trace must append one compact JSONL event per write');
+  return raw.split('\n').map((line) => JSON.parse(line));
+}
+
+function runTraceWriter(tracePath, contextId) {
+  const code = `import { createEvaluationTrace } from ${JSON.stringify(TRACE_MODULE_URL)}; createEvaluationTrace({ enabled: true, filePath: process.argv[1] }).record({ type: 'search', query: process.argv[2], contextId: process.argv[2] });`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', code, tracePath, contextId], { stdio: 'ignore' });
+    child.once('error', reject);
+    child.once('close', (status) => status === 0 ? resolve() : reject(new Error(`writer exited ${status}`)));
+  });
+}
+
+test('runtime trace is opt-in and records actual public operations without query or body text', async (t) => {
   const value = await fixture(t);
-  const disabledPath = path.join(value.root, 'disabled.json');
   const disabled = run(value, '', ['search', 'secret query text']);
   assert.equal(disabled.status, 0, disabled.stderr);
-  assert.equal(fs.existsSync(disabledPath), false);
 
-  const tracePath = path.join(value.root, 'trace.json');
+  const tracePath = path.join(value.root, 'trace.jsonl');
   for (const args of [
     ['search', 'secret query text'],
     ['load', value.id],
+    ['history', value.id],
+    ['inspect', value.id, '--revision', value.revisionToken],
   ]) {
     const result = run(value, tracePath, args);
     assert.equal(result.status, 0, result.stderr);
@@ -67,9 +88,8 @@ test('runtime trace is opt-in and records actual public search, load, and captur
   const registered = run(value, tracePath, ['register', '--record', proposal]);
   assert.equal(registered.status, 0, registered.stderr);
 
-  const trace = JSON.parse(fs.readFileSync(tracePath, 'utf8'));
-  assert.deepEqual(trace.events.map(({ type }) => type), ['search', 'load', 'capture']);
-  const [search, load, capture] = trace.events;
+  const [search, load, historyPreview, historyBody, capture] = traceEvents(tracePath);
+  assert.deepEqual([search, load, historyPreview, historyBody, capture].map(({ type }) => type), ['search', 'load', 'history-read', 'history-read', 'capture']);
   assert.match(search.queryHash, /^sha256:[a-f0-9]{64}$/);
   assert.match(search.contextHash, /^sha256:[a-f0-9]{64}$/);
   assert.deepEqual(search.results.map(({ id }) => id), [value.id]);
@@ -78,27 +98,85 @@ test('runtime trace is opt-in and records actual public search, load, and captur
   assert.equal(load.id, value.id);
   assert.match(load.revisionToken, /^sha256:[a-f0-9]{64}$/);
   assert.equal(Number.isSafeInteger(load.loadedBytes), true);
-  assert.deepEqual(capture, { ...capture, type: 'capture', id: 'trace-created', outcome: 'created' });
-  const serialized = JSON.stringify(trace);
+  assert.equal(historyPreview.subtype, 'history-preview');
+  assert.equal(historyPreview.loadedBytes, undefined);
+  assert.equal(historyBody.subtype, 'history-body');
+  assert.equal(Number.isSafeInteger(historyBody.loadedBytes), true);
+  assert.equal(capture.id, 'trace-created');
+  assert.equal(capture.outcome, 'created');
+  const serialized = fs.readFileSync(tracePath, 'utf8');
   assert.equal(serialized.includes('secret query text'), false);
   assert.equal(serialized.includes('SPECTRE_TRACE_RECORD_BODY'), false);
   assert.equal(serialized.includes('SPECTRE_CAPTURE_BODY'), false);
 });
 
-test('bypass detection scopes direct and shell reads to known knowledge fixtures and reports uncertainty', () => {
-  const knownPath = '/isolated/store/knowledge/trace-record/record.json';
+test('parallel writers preserve every event and corrupt or unwritable artifacts become unavailable', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-evaluation-trace-write-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const tracePath = path.join(root, 'trace.jsonl');
+  await Promise.all(Array.from({ length: 8 }, (_, index) => runTraceWriter(tracePath, `writer-${index}`)));
+  assert.equal(traceEvents(tracePath).length, 8);
+
+  const corruptPath = path.join(root, 'corrupt.jsonl');
+  fs.writeFileSync(corruptPath, '{not-json}\n');
+  const corrupt = createEvaluationTrace({ enabled: true, filePath: corruptPath });
+  corrupt.record({ type: 'search', query: 'secret' });
+  assert.equal(corrupt.status().availability, 'unavailable');
+  assert.equal(fs.readFileSync(corruptPath, 'utf8'), '{not-json}\n');
+
+  const blockedPath = path.join(root, 'blocked', 'trace.jsonl');
+  fs.writeFileSync(path.dirname(blockedPath), 'not a directory');
+  const blocked = createEvaluationTrace({ enabled: true, filePath: blockedPath });
+  blocked.record({ type: 'search', query: 'secret' });
+  assert.equal(blocked.status().availability, 'unavailable');
+});
+
+test('bypass detection resolves relative fixture reads and reports opaque knowledge reads as suspected', () => {
+  const storePath = '/isolated/store';
+  const knownPath = `${storePath}/knowledge/trace-record/record.json`;
   const events = detectTraceBypass([
-    { name: 'Read', input: { file_path: knownPath } },
+    { name: 'Read', input: { file_path: 'knowledge/trace-record/record.json' } },
+    { name: 'exec', input: { command: 'cd knowledge/trace-record && cat record.json' } },
     { name: 'exec', input: { command: `node -e "require('node:fs').readFileSync('${knownPath}')"` } },
     { name: 'exec', input: { command: `python3 -c "open('${knownPath}')"` } },
-    { name: 'exec', input: { command: 'cat README.md' } },
+    { name: 'exec', input: { command: 'node report.mjs knowledge/trace-record/record.json' } },
+    { name: 'Read', input: { file_path: 'knowledge/trace-record/record.json' } },
+    { name: 'Read', input: { file_path: 'README.md' } },
     { name: 'Read', input: {} },
-  ], { knownPaths: [knownPath] });
+  ], { knownPaths: [knownPath], workingDir: storePath });
   assert.deepEqual(events.map(({ reason, evidence }) => ({ reason, evidence })), [
     { reason: 'direct-read', evidence: 'detected' },
     { reason: 'shell-read', evidence: 'detected' },
     { reason: 'shell-read', evidence: 'detected' },
+    { reason: 'shell-read', evidence: 'detected' },
+    { reason: 'shell-read', evidence: 'suspected' },
+    { reason: 'direct-read', evidence: 'detected' },
     { reason: 'direct-read', evidence: 'suspected' },
   ]);
   assert.equal(JSON.stringify(events).includes(knownPath), false);
+});
+
+test('expansion traces distinguish required size from delivered over-allowance loads', async (t) => {
+  const value = await fixture(t);
+  const large = record('large-trace-record', 'x '.repeat(4_000));
+  const recordPath = path.join(value.storePath, 'knowledge', large.id, 'record.json');
+  fs.mkdirSync(path.dirname(recordPath), { recursive: true });
+  fs.writeFileSync(recordPath, `${JSON.stringify(large, null, 2)}\n`);
+  refreshKnowledgeIndex(value.storePath);
+  const tracePath = path.join(value.root, 'expansion.jsonl');
+  const initial = run(value, tracePath, ['load', large.id]);
+  assert.equal(initial.status, 0, initial.stderr);
+  const [expansion] = traceEvents(tracePath);
+  assert.equal(expansion.type, 'expansion');
+  assert.equal(expansion.loadedTokens, 0);
+  assert.equal(Number.isSafeInteger(expansion.requiredTokens), true);
+  assert.equal(expansion.expansionRequested, true);
+  assert.equal(expansion.deliveredOverAllowance, false);
+
+  const loaded = run(value, tracePath, ['load', large.id, '--allowance-tokens', String(expansion.requiredTokens + 1)]);
+  assert.equal(loaded.status, 0, loaded.stderr);
+  const [, delivered] = traceEvents(tracePath);
+  assert.equal(delivered.type, 'load');
+  assert.equal(delivered.expanded, true);
+  assert.equal(delivered.allowanceTokens, expansion.requiredTokens + 1);
 });

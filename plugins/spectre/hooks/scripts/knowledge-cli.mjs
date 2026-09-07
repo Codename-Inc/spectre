@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveKnowledgeProjectDir } from './knowledge/cli-arguments.mjs';
 import { runtimeEvaluationTrace } from './knowledge/evaluation-trace.mjs';
 import { inspectKnowledgeRevision, listKnowledgeHistory } from './knowledge/history.mjs';
-import { formatKnowledgeLoadHuman, loadKnowledgeById, serializeKnowledgeLoadError } from './knowledge/loader.mjs';
+import { formatKnowledgeLoadHuman, loadKnowledgeById, ROUTINE_LOAD_ALLOWANCE_TOKENS, serializeKnowledgeLoadError } from './knowledge/loader.mjs';
 import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
 import { previewKnowledgeRegistry } from './knowledge/preview.mjs';
 import { registerCanonicalKnowledge, serializeKnowledgeError } from './knowledge/registration.mjs';
@@ -143,14 +143,15 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (command === 'load') {
     try {
+      const allowanceTokens = numericFlag(flags, '--allowance-tokens') ?? ROUTINE_LOAD_ALLOWANCE_TOKENS;
       const result = await loadKnowledgeById({
         projectDir: projectDir(flags), id: subcommand, lockOptions: lockOptions(flags),
-        workId: flags.get('--work-id'), runId: flags.get('--run-id'), allowanceTokens: numericFlag(flags, '--allowance-tokens'),
+        workId: flags.get('--work-id'), runId: flags.get('--run-id'), allowanceTokens,
         inspectHistorical: flags.has('--inspect-historical'),
       });
       trace.record(result.status === 'expansion-needed'
-        ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, loadedTokens: result.estimatedTokens }
-        : { type: result.historical ? 'history-read' : 'load', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens });
+        ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, requiredTokens: result.estimatedTokens, loadedTokens: 0, allowanceTokens, expansionRequested: true, deliveredOverAllowance: false }
+        : { type: result.historical ? 'history-read' : 'load', subtype: result.historical ? 'history-body' : undefined, id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens, allowanceTokens, expanded: allowanceTokens > ROUTINE_LOAD_ALLOWANCE_TOKENS });
       if (flags.has('--json')) process.stdout.write(`${JSON.stringify(result)}\n`);
       else process.stdout.write(formatKnowledgeLoadHuman(result));
     } catch (error) { const payload = serializeKnowledgeLoadError(error); throw codedError(payload.code, payload.message); }
@@ -161,7 +162,9 @@ export async function main(argv = process.argv.slice(2)) {
       const result = command === 'history'
         ? await listKnowledgeHistory({ projectDir: projectDir(flags), id: subcommand, cursor: flags.get('--cursor'), lockOptions: lockOptions(flags) })
         : await inspectKnowledgeRevision({ projectDir: projectDir(flags), id: subcommand, revisionToken: flags.get('--revision'), lockOptions: lockOptions(flags) });
-      trace.record({ type: 'history-read', id: result.id, revisionToken: result.revisionToken, results: result.entries, responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') });
+      trace.record(command === 'history'
+        ? { type: 'history-read', subtype: 'history-preview', id: result.id, results: result.entries, responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') }
+        : { type: 'history-read', subtype: 'history-body', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') });
       writeResult(result, flags);
     } catch (error) { throw codedError(error?.code || 'KNOWLEDGE_HISTORY_FAILED', error instanceof Error ? error.message : String(error)); }
     return;

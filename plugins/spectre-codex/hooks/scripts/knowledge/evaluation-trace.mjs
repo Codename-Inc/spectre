@@ -7,6 +7,7 @@ const EVENT_TYPES = new Set(['search', 'load', 'resource-read', 'history-read', 
 const RECORD_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const REVISION_TOKEN = /^sha256:[a-f0-9]{64}$/;
 const OUTCOMES = new Set(['created', 'updated', 'noop', 'merged', 'loaded', 'failed', 'unknown']);
+const HISTORY_SUBTYPES = new Set(['history-preview', 'history-body']);
 
 function hash(value) {
   return `sha256:${createHash('sha256').update(String(value)).digest('hex')}`;
@@ -32,10 +33,9 @@ function safeResults(results) {
 function safeEvent(event, defaults = {}) {
   if (!EVENT_TYPES.has(event?.type)) throw new Error(`Unsupported evaluation trace event: ${event?.type}`);
   const result = { type: event.type, at: new Date(event.at || Date.now()).toISOString() };
-  const query = event.query;
   const actorId = event.actorId ?? defaults.actorId;
   const contextId = event.contextId ?? defaults.contextId;
-  if (query !== undefined) result.queryHash = hash(query);
+  if (event.query !== undefined) result.queryHash = hash(event.query);
   if (actorId !== undefined) result.actorHash = hash(actorId);
   if (contextId !== undefined) result.contextHash = hash(contextId);
 
@@ -43,11 +43,15 @@ function safeEvent(event, defaults = {}) {
   if (record) Object.assign(result, record);
   const results = safeResults(event.results);
   if (results.length > 0) result.results = results;
-  for (const field of ['responseBytes', 'loadedBytes', 'responseTokens', 'loadedTokens']) {
+  for (const field of ['responseBytes', 'loadedBytes', 'responseTokens', 'loadedTokens', 'requiredTokens', 'allowanceTokens']) {
     const value = safeInteger(event[field]);
     if (value !== undefined) result[field] = value;
   }
   if (OUTCOMES.has(event.outcome)) result.outcome = event.outcome;
+  if (HISTORY_SUBTYPES.has(event.subtype)) result.subtype = event.subtype;
+  for (const field of ['expansionRequested', 'deliveredOverAllowance', 'expanded']) {
+    if (typeof event[field] === 'boolean') result[field] = event[field];
+  }
   if (event.type === 'bypass') {
     result.reason = event.reason === 'shell-read' ? 'shell-read' : 'direct-read';
     result.evidence = event.evidence === 'detected' ? 'detected' : 'suspected';
@@ -56,21 +60,31 @@ function safeEvent(event, defaults = {}) {
   return result;
 }
 
-function readTrace(filePath) {
+/** Reads append-only trace evidence without converting malformed input into an empty trace. */
+export function readEvaluationTrace(filePath) {
+  let raw;
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (parsed?.schemaVersion === SCHEMA_VERSION && Array.isArray(parsed.events)) return parsed.events;
+    raw = fs.readFileSync(filePath, 'utf8');
   } catch (error) {
-    if (error?.code === 'ENOENT') return [];
+    return { availability: 'unavailable', reason: error?.code === 'ENOENT' ? 'missing' : 'unreadable', events: [] };
   }
-  return [];
+  if (!raw.trim()) return { availability: 'unavailable', reason: 'empty', events: [] };
+  const events = [];
+  for (const line of raw.trimEnd().split('\n')) {
+    try {
+      const event = JSON.parse(line);
+      if (event?.schemaVersion !== SCHEMA_VERSION || !EVENT_TYPES.has(event.type)) throw new Error('invalid event');
+      events.push(event);
+    } catch {
+      return { availability: 'unavailable', reason: 'corrupt', events: [] };
+    }
+  }
+  return { availability: 'available', events };
 }
 
-function writeTrace(filePath, events) {
+function appendTrace(filePath, event) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const temporaryPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, events }, null, 2)}\n`);
-  fs.renameSync(temporaryPath, filePath);
+  fs.appendFileSync(filePath, `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...event })}\n`, 'utf8');
 }
 
 /** Opt-in evaluator-only trace. It deliberately never stores task text or record bodies. */
@@ -80,21 +94,31 @@ export function createEvaluationTrace(options = {}) {
     ? path.resolve(options.filePath)
     : null;
   const events = [];
+  let status = filePath
+    ? readEvaluationTrace(filePath)
+    : { availability: enabled ? 'available' : 'disabled', events: [] };
+  if (status.reason === 'missing') status = { availability: 'available', events: [] };
   return {
     record(event) {
-      if (!enabled) return null;
+      if (!enabled || status.availability !== 'available') return null;
       const safe = safeEvent(event, options);
       events.push(safe);
       if (filePath) {
-        try { writeTrace(filePath, [...readTrace(filePath), safe]); } catch { /* Trace collection must not change runtime behavior. */ }
+        try { appendTrace(filePath, safe); } catch { status = { availability: 'unavailable', reason: 'unwritable', events: [] }; }
       }
       return safe;
     },
     events() { return events.map((event) => ({ ...event, results: event.results?.map((result) => ({ ...result })) })); },
+    status() { return { availability: status.availability, ...(status.reason ? { reason: status.reason } : {}) }; },
     write(destination = filePath) {
-      if (!enabled || !destination) return false;
-      writeTrace(path.resolve(destination), this.events());
-      return true;
+      if (!enabled || !destination || status.availability !== 'available') return false;
+      try {
+        for (const event of this.events()) appendTrace(path.resolve(destination), event);
+        return true;
+      } catch {
+        status = { availability: 'unavailable', reason: 'unwritable', events: [] };
+        return false;
+      }
     },
   };
 }
@@ -109,14 +133,19 @@ export function runtimeEvaluationTrace() {
   });
 }
 
-function operationPath(operation) {
-  const input = operation?.input;
-  return input?.file_path ?? input?.filePath ?? input?.path ?? operation?.path ?? null;
+function knownPaths(paths) {
+  return (paths || []).filter((candidate) => typeof candidate === 'string' && candidate).map((candidate) => path.resolve(candidate));
 }
 
-function knownPath(value, paths) {
+function knownPath(value, paths, workingDir) {
+  if (typeof value !== 'string' || !value) return null;
+  const resolved = path.resolve(workingDir || process.cwd(), value);
+  return paths.find((candidate) => candidate === resolved || value.includes(candidate)) ?? null;
+}
+
+function relativeKnowledgePath(value, paths) {
   if (typeof value !== 'string') return null;
-  return paths.find((candidate) => value === candidate || value.includes(candidate)) ?? null;
+  return paths.find((candidate) => value.includes(path.relative(path.dirname(path.dirname(path.dirname(candidate))), candidate))) ?? null;
 }
 
 function directShellRead(command) {
@@ -124,17 +153,28 @@ function directShellRead(command) {
     || /\b(?:readFileSync|readFile|createReadStream|open)\s*\(/.test(command);
 }
 
+function commandTarget(command, paths, workingDir) {
+  const direct = knownPath(command, paths, workingDir) || relativeKnowledgePath(command, paths);
+  if (direct) return direct;
+  const changeDirectory = command.match(/(?:^|&&|;)\s*cd\s+(['"]?)([^'";&\s]+)\1/);
+  if (!changeDirectory) return null;
+  const directory = path.resolve(workingDir || process.cwd(), changeDirectory[2]);
+  return paths.find((candidate) => command.includes(path.relative(directory, candidate))) ?? null;
+}
+
 /** Classifies only normalized host operations against evaluator-supplied fixture paths. */
 export function detectTraceBypass(toolOperations = [], options = {}) {
-  const knownPaths = (options.knownPaths || []).filter((candidate) => typeof candidate === 'string' && candidate);
+  const paths = knownPaths(options.knownPaths);
+  const workingDir = options.workingDir;
   const findings = [];
   for (const operation of toolOperations) {
     const isRead = operation?.name === 'Read' || operation?.type === 'Read';
     const command = operation?.input?.command ?? operation?.command;
     const isShell = operation?.name === 'Bash' || operation?.name === 'exec' || typeof command === 'string';
     if (isRead) {
-      const target = knownPath(operationPath(operation), knownPaths);
-      if (target || operationPath(operation) == null) {
+      const suppliedPath = operation?.input?.file_path ?? operation?.input?.filePath ?? operation?.input?.path ?? operation?.path;
+      const target = knownPath(suppliedPath, paths, workingDir) || relativeKnowledgePath(suppliedPath, paths);
+      if (target || suppliedPath == null || /(?:^|\/)knowledge\//.test(suppliedPath || '')) {
         findings.push({
           type: 'bypass', reason: 'direct-read', evidence: target ? 'detected' : 'suspected',
           ...(target ? { targetHash: hash(target) } : {}),
@@ -147,7 +187,7 @@ export function detectTraceBypass(toolOperations = [], options = {}) {
       findings.push({ type: 'bypass', reason: 'shell-read', evidence: 'suspected' });
       continue;
     }
-    const target = knownPath(command, knownPaths);
+    const target = commandTarget(command, paths, workingDir);
     if (!target) continue;
     findings.push({
       type: 'bypass', reason: 'shell-read', evidence: directShellRead(command) ? 'detected' : 'suspected', targetHash: hash(target),
