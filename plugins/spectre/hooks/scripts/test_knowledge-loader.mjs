@@ -290,6 +290,30 @@ describe('verified exact-ID typed knowledge loader', () => {
     assert.equal(readActivity(storePath), null);
   });
 
+  it('keeps project and matching-work work records historical evidence', async (t) => {
+    const { projectDir, spectreHome, storePath } = await fixture(t);
+    const projectId = 'project-work-account';
+    const matchingId = 'matching-work-account';
+    writeRecord(storePath, projectId, {
+      ...workRecord(projectId),
+      applicability: { scope: 'project' },
+    });
+    writeRecord(storePath, matchingId, workRecord(matchingId));
+    const { loadKnowledgeById } = await loadModules();
+
+    const [projectWork, matchingWork] = await Promise.all([
+      loadKnowledgeById({ projectDir, spectreHome, id: projectId }),
+      loadKnowledgeById({ projectDir, spectreHome, id: matchingId, workId: matchingId }),
+    ]);
+
+    for (const result of [projectWork, matchingWork]) {
+      assert.equal(result.historical, true);
+      assert.equal(result.activation, 'historical');
+      assert.match(result.rendered, /Historical work record: historical evidence only/);
+    }
+    assert.equal(readActivity(storePath), null);
+  });
+
   it('increments the exact record activity exactly once per invocation', async (t) => {
     const { projectDir, spectreHome, storePath } = await fixture(t);
     const id = 'repeat-load-record';

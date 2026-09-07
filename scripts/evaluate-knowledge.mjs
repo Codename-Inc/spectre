@@ -1074,6 +1074,33 @@ function returnedRevision(result) {
   return result.content.match(/(?:materialized at revision:|--- current revision ---\s*)(sha256:[a-f0-9]+)/i)?.[1] ?? null;
 }
 
+function commandFlag(command, flag) {
+  if (typeof command !== 'string') return null;
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = command.match(new RegExp(`${escaped}\\s+(?:'([^']+)'|\"([^\"]+)\"|([^\\s]+))`));
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
+}
+
+function legacyCurrentHumanWork(loadResults, commandId, session, operation) {
+  if (!commandId || typeof session?.contextHash !== 'string') return [];
+  const command = operation.input?.command ?? '';
+  const records = [session.before, session.after].flatMap((snapshot) => snapshot?.records ?? []);
+  const candidates = new Map(records
+    .filter((record) => record?.id === commandId && record.kind === 'work' && typeof record.revisionToken === 'string')
+    .filter((record) => record.applicability?.scope === 'project'
+      || (record.applicability?.scope === 'work'
+        && (record.applicability.workId === commandFlag(command, '--work-id')
+          || record.applicability.runIds?.includes(commandFlag(command, '--run-id')))))
+    .map((record) => [record.revisionToken, record]));
+  if (candidates.size === 0) return [];
+  return loadResults.flatMap((result) => typeof result.content === 'string'
+    && jsonPayloads(result.content).length === 0
+    && result.content.includes(`- ID: ${commandId}`)
+    && /Historical work record: historical evidence only/.test(result.content)
+    ? [{ id: commandId, revisionTokens: [...candidates.keys()], responseBytes: Buffer.byteLength(result.content, 'utf8') }]
+    : []);
+}
+
 export function traceWithOperationCrosscheck(trace, toolOperations, toolResults = [], sessionSnapshots = []) {
   if (trace.availability !== 'available') return trace;
   const actions = classifyKnowledgeCommands(toolOperations);
@@ -1100,13 +1127,26 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
         payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === false &&
           payload.activation === 'current-guidance' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : []
       ));
-      const commandId = (operation.input?.command ?? '').match(/\bload\s+([a-z0-9]+(?:-[a-z0-9]+)+)\b/i)?.[1] ?? null;
+      const commandId = (operation.input?.command ?? '').match(/\bload\s+['"]?([a-z0-9]+(?:-[a-z0-9]+)+)['"]?/i)?.[1] ?? null;
       const session = sessionSnapshots[operation.sessionOrdinal ?? 0];
       if (currentWork.length > 0) {
         for (const payload of currentWork) {
           const matchingIndex = trace.events.findIndex((event, index) => !matchedLoadEvents.has(index) &&
             event.type === 'load' && event.contextHash === session?.contextHash &&
             event.id === payload.id && event.revisionToken === payload.revisionToken
+          );
+          if (matchingIndex === -1) missingHistoricalEvents.push('load');
+          else matchedLoadEvents.add(matchingIndex);
+        }
+        continue;
+      }
+      const currentHumanWork = legacyCurrentHumanWork(loadResults, commandId, session, operation);
+      if (currentHumanWork.length > 0) {
+        for (const payload of currentHumanWork) {
+          const matchingIndex = trace.events.findIndex((event, index) => !matchedLoadEvents.has(index) &&
+            event.type === 'load' && event.contextHash === session?.contextHash &&
+            event.id === payload.id && payload.revisionTokens.includes(event.revisionToken) &&
+            event.responseBytes === payload.responseBytes
           );
           if (matchingIndex === -1) missingHistoricalEvents.push('load');
           else matchedLoadEvents.add(matchingIndex);

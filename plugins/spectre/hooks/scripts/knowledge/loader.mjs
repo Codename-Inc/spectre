@@ -190,6 +190,9 @@ function estimateLoadTokens(rendered) {
 }
 
 function activationFor(record, options) {
+  if (record.kind === 'work') {
+    return { historical: true, activation: 'historical' };
+  }
   if (record.kind === 'knowledge' && record.status !== 'active') {
     return { historical: true, activation: 'historical' };
   }

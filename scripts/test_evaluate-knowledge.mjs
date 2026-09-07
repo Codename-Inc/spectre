@@ -663,7 +663,7 @@ test('post-hoc crosscheck ignores quoted Node prose, but requires an exact histo
   };
   const humanLoad = {
     id: 'human-history', name: 'exec', status: 'completed', sessionOrdinal: 0, eventOrdinal: 3,
-    input: { command: `node knowledge-cli.mjs load ${workId} --source-run-id run-1` },
+    input: { command: `node knowledge-cli.mjs load '${workId}' --source-run-id run-1` },
   };
   const humanResult = {
     toolUseId: 'human-history', sessionOrdinal: 0, isError: false,
@@ -684,6 +684,36 @@ test('post-hoc crosscheck ignores quoted Node prose, but requires an exact histo
     events: [{ ...historicalTrace.events[0], subtype: 'history-preview' }],
   }, [humanLoad], [humanResult], [session]).availability, 'unavailable');
   assert.equal(traceWithOperationCrosscheck(historicalTrace, [humanLoad], [humanResult], [{ ...session, contextHash: 'other-context' }]).availability, 'unavailable');
+
+  const currentHuman = {
+    ...humanResult,
+    content: `# ${workId}\n- ID: ${workId}\nHistorical work record: historical evidence only, not active guidance.\n\nCurrent project-scoped work body.\n`,
+  };
+  const currentSession = [{
+    contextHash: 'current-context',
+    before: { records: [{ id: workId, revisionToken: 'current-revision', kind: 'work', applicability: { scope: 'project' } }] },
+    after: { records: [{ id: workId, revisionToken: 'later-revision', kind: 'work', applicability: { scope: 'project' } }] },
+  }];
+  const currentTrace = {
+    availability: 'available',
+    events: [{ type: 'load', id: workId, revisionToken: 'current-revision', contextHash: 'current-context', responseBytes: Buffer.byteLength(currentHuman.content) }],
+  };
+  assert.equal(traceWithOperationCrosscheck(currentTrace, [humanLoad], [currentHuman], currentSession).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck({
+    ...currentTrace,
+    events: [{ ...currentTrace.events[0], responseBytes: Buffer.byteLength(currentHuman.content) + 1 }],
+  }, [humanLoad], [currentHuman], currentSession).availability, 'unavailable');
+
+  const matchingWorkSession = [{
+    contextHash: 'matching-work-context',
+    before: { records: [{ id: workId, revisionToken: 'matching-work-revision', kind: 'work', applicability: { scope: 'work', workId: 'evaluation-work' } }] },
+  }];
+  const matchingWorkLoad = { ...humanLoad, input: { command: `node knowledge-cli.mjs load '${workId}' --work-id evaluation-work` } };
+  const matchingWorkTrace = {
+    availability: 'available',
+    events: [{ type: 'load', id: workId, revisionToken: 'matching-work-revision', contextHash: 'matching-work-context', responseBytes: Buffer.byteLength(currentHuman.content) }],
+  };
+  assert.equal(traceWithOperationCrosscheck(matchingWorkTrace, [matchingWorkLoad], [currentHuman], matchingWorkSession).availability, 'available');
 
   const prose = {
     id: 'node-prose', name: 'exec', status: 'completed', sessionOrdinal: 0,
