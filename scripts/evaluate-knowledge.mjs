@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
-import { snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { blockKnowledgeRegistration, snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs';
 
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
@@ -378,8 +378,10 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
           `Write the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`,
       ].join('\n')];
       const runs = [];
-      for (const [sessionOrdinal, prompt] of prompts.entries()) {
-        runs.push(await invoke({
+      let registrationFault = null;
+      try {
+        for (const [sessionOrdinal, prompt] of prompts.entries()) {
+          runs.push(await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
           preparedFixture: staged, rawLogDirectory: path.join(rawLogRoot, cell.id, `session-${sessionOrdinal + 1}`),
@@ -390,7 +392,11 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
             SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `${cell.caseId}:${cell.condition}:${cell.repeat}`,
           },
           limits: options.limits,
-        }));
+          }));
+          if (fixtureCase.id === 'lifecycle-identity' && sessionOrdinal === 0) registrationFault = blockKnowledgeRegistration(staged);
+        }
+      } finally {
+        registrationFault?.restore();
       }
       const hostResult = mergeHostRuns(runs);
       const snapshotAfter = snapshotKnowledgeCell(staged);
