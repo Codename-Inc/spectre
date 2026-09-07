@@ -37,6 +37,11 @@ test('workflow skills make capture primary-owned and preserve delivery lifecycle
   assert.match(createPr, /unchanged candidate[\s\S]*no-op/i);
   assert.match(createPr, /draft[\s\S]*not[\s\S]*merged/i);
   assert.match(capture, /load[\s\S]*--json[\s\S]*revisionToken/i);
+  assert.match(capture, /one successful[\s\S]*--json[\s\S]*unchanged revision[\s\S]*context/i);
+  assert.match(capture, /reuse[\s\S]*record[\s\S]*revisionToken[\s\S]*no-op[\s\S]*proposal[\s\S]*result/i);
+  assert.match(capture, /metadata-only[\s\S]*revision check/i);
+  assert.match(capture, /reload only[\s\S]*changed revision[\s\S]*conflict[\s\S]*new context/i);
+  assert.match(capture, /allowance[\s\S]*--allowance-tokens[\s\S]*never read canonical files/i);
   assert.match(capture, /outside[\s\S]*knowledge store[\s\S]*expected-revision/i);
   assert.match(capture, /never[\s\S]*canonical[\s\S]*index\.json[\s\S]*history/i);
   assert.match(capture, /pullRequest\.state[\s\S]*draft-open/i);
