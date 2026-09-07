@@ -94,6 +94,31 @@ test('a frozen cell result resumes only when its freeze hash matches', async () 
   assert.equal(calls, 3);
 });
 
+test('candidate-only plugin changes reuse frozen controls while pipeline and prompt changes invalidate their cells', async () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-condition-cache-'));
+  const cells = ['candidate', 'baseline', 'no-knowledge'].map((condition) => ({
+    id: `case:${condition}:claude:1`, caseId: 'case', condition, host: 'claude', promptHash: `prompt-${condition}`,
+  }));
+  const manifest = {
+    hashes: { fixtures: 'fixture-hash', oracle: 'oracle-hash', configuration: 'config-hash', candidate: 'candidate-v1', nativePipelineInputs: 'pipeline-v1' },
+    baseline: 'baseline-pinned-sha', cells, concurrency: { total: 3, perHost: 3 }, oracle: { case: { requiredPhrases: ['answer'] } },
+  };
+  const calls = [];
+  const invoke = async (cell) => {
+    calls.push(cell.condition);
+    return { status: 'completed', textFinalAnswers: ['answer'], deliverable: { exists: true, bytes: 1 } };
+  };
+  await runCells(manifest, output, invoke);
+  await runCells({ ...manifest, hashes: { ...manifest.hashes, candidate: 'candidate-v2' } }, output, invoke);
+  assert.deepEqual(calls, ['candidate', 'baseline', 'no-knowledge', 'candidate']);
+  await runCells({ ...manifest, hashes: { ...manifest.hashes, candidate: 'candidate-v2', nativePipelineInputs: 'pipeline-v2' } }, output, invoke);
+  assert.equal(calls.length, 7);
+  await runCells({ ...manifest, hashes: { ...manifest.hashes, candidate: 'candidate-v2', nativePipelineInputs: 'pipeline-v2' }, cells: cells.map((cell) =>
+    cell.condition === 'baseline' ? { ...cell, promptHash: 'prompt-baseline-v2' } : cell
+  ) }, output, invoke);
+  assert.deepEqual(calls.slice(-1), ['baseline']);
+});
+
 test('a thrown cell is persisted as failed while other frozen cells continue', async () => {
   const result = await runCells({
     cells: [{ id: 'first', caseId: 'case', host: 'claude' }, { id: 'second', caseId: 'case', host: 'codex' }],
@@ -379,6 +404,21 @@ test('historical inspection accepts a successful inspect-historical load and ign
   const oracle = { history: { requiredRecordHashes: [recordHash], requiredReadCommand: 'inspect', manualRubric: 'review' } };
   assert.equal(judgeCell({ caseId: 'history', condition: 'candidate' }, runtime, oracle).structuralValid, true);
   assert.equal(traceWithOperationCrosscheck(runtime.trace, runtime.toolOperations, runtime.toolResults).availability, 'available');
+});
+
+test('trace crosscheck classifies a successful historical work load from native response metadata', () => {
+  const workId = 'evaluation-cell-cache-rotation-procedure';
+  const operation = { id: 'historical-work', name: 'exec', status: 'completed', eventOrdinal: 3, input: {
+    command: `node knowledge-cli.mjs load ${workId} --source-run-id run-1 --project-dir . --json`,
+  } };
+  const result = { toolUseId: 'historical-work', eventOrdinal: 4, isError: false, content: JSON.stringify({
+    ok: true, status: 'loaded', id: workId, kind: 'work', historical: true, activation: 'historical', revisionToken: 'historic-revision',
+  }) };
+  const trace = { availability: 'available', events: [{ type: 'history-read', subtype: 'history-body', id: workId, revisionToken: 'historic-revision', contextHash: 'context' }] };
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [result]).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [{ ...result, content: JSON.stringify({
+    ok: true, status: 'loaded', id: workId, kind: 'work', historical: false, activation: 'current-guidance', revisionToken: 'current-revision',
+  }) }]).availability, 'unavailable');
 });
 
 test('verified capture cases require a successful persisted capture without a pre-session load', () => {

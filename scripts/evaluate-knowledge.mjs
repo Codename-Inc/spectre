@@ -420,9 +420,12 @@ export async function runCells(freezeManifest, outputDir, invoke) {
     prompt: cell.promptHash ?? null,
     artifactPath: cell.artifactPath ?? null,
     configuration: freezeManifest.hashes.configuration,
-    candidate: freezeManifest.hashes.candidate,
+    plugin: cell.condition === 'candidate'
+      ? { source: 'candidate', hash: freezeManifest.hashes.candidate }
+      : cell.condition === 'baseline'
+        ? { source: 'baseline', revision: freezeManifest.baseline }
+        : null,
     nativePipelineInputs: freezeManifest.hashes.nativePipelineInputs,
-    baseline: freezeManifest.baseline,
   }));
   const resumeEnabled = Boolean(freezeManifest.hashes);
   const cacheDirectory = path.join(outputDir, '.knowledge-evaluation-cells');
@@ -1000,6 +1003,8 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
   if (trace.availability !== 'available') return trace;
   const actions = classifyKnowledgeCommands(toolOperations);
   const expected = new Map();
+  const matchedHistoricalEvents = new Set();
+  const missingHistoricalEvents = [];
   const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
     if (operation.status && operation.status !== 'completed') continue;
@@ -1008,13 +1013,36 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
     if (!delivered.some((result) => result.isError !== true)) continue;
     const found = actions.get(operation);
     if (found?.has('search')) expect('search');
-    if (found?.has('load')) expect(/--inspect-historical\b/.test(operation.input?.command ?? '') ? 'history-read' : 'load');
+    if (found?.has('load')) {
+      const historicalWork = delivered.flatMap((result) => {
+        if (result.isError === true || typeof result.content !== 'string') return [];
+        try {
+          const payload = JSON.parse(result.content);
+          return payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === true &&
+            payload.activation === 'historical' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : [];
+        } catch {
+          return [];
+        }
+      });
+      if (historicalWork.length > 0) {
+        const matchingIndex = trace.events.findIndex((event, index) => !matchedHistoricalEvents.has(index) &&
+          event.type === 'history-read' && event.subtype === 'history-body' && typeof event.contextHash === 'string' &&
+          historicalWork.some((payload) => event.id === payload.id && event.revisionToken === payload.revisionToken)
+        );
+        if (matchingIndex === -1) missingHistoricalEvents.push('history-read');
+        else matchedHistoricalEvents.add(matchingIndex);
+      } else {
+        expect(/--inspect-historical\b/.test(operation.input?.command ?? '') ? 'history-read' : 'load');
+      }
+    }
     if (found?.has('resource')) expect('resource-read');
     if (['register', 'capture', 'learn'].some((action) => found?.has(action))) expect('capture');
   }
-  const missing = [...expected].flatMap(([type, count]) =>
-    Array.from({ length: Math.max(0, count - trace.events.filter((event) => event.type === type).length) }, () => type)
-  );
+  const missing = [...missingHistoricalEvents, ...expected].flatMap((entry) => {
+    if (typeof entry === 'string') return [entry];
+    const [type, count] = entry;
+    return Array.from({ length: Math.max(0, count - trace.events.filter((event) => event.type === type).length) }, () => type);
+  });
   return missing.length === 0
     ? trace
     : { availability: 'unavailable', reason: `trace lacks native ${missing.join(', ')} event evidence`, events: trace.events };
