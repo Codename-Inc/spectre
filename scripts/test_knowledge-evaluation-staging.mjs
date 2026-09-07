@@ -165,6 +165,7 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   const config = fs.readFileSync(staged.codexConfigPath, 'utf8');
   assert.match(config, /\[features\][\s\S]*\bapps\s*=\s*false/);
   assert.match(config, /\[features\][\s\S]*\benable_mcp_apps\s*=\s*false/);
+  assert.match(config, /\[features\][\s\S]*\bweb_search_request\s*=\s*false/);
 });
 
 test('isolates login shells, Git config, and GitHub commands for every condition', async (t) => {

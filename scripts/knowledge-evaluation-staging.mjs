@@ -235,7 +235,7 @@ function configureCodexExternalTools(codexHome, options = {}) {
     return `${source.slice(0, start)}${nextBody}${source.slice(end)}`;
   };
   const config = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
-  fs.writeFileSync(configPath, setFeature(setFeature(config, 'apps'), 'enable_mcp_apps'));
+  fs.writeFileSync(configPath, setFeature(setFeature(setFeature(config, 'apps'), 'enable_mcp_apps'), 'web_search_request'));
   const checked = run(binary, ['--strict-config', '--version'], { env: environment });
   if (checked.status !== 0) throw new Error(`Isolated Codex external-tool configuration is invalid: ${checked.stderr}`);
   const mcp = run(binary, ['mcp', 'list'], { env: environment });
