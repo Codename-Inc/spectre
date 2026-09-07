@@ -417,9 +417,14 @@ test('trace crosscheck classifies a successful historical work load from native 
   const trace = { availability: 'available', events: [{ type: 'history-read', subtype: 'history-body', id: workId, revisionToken: 'historic-revision', contextHash: 'context' }] };
   const session = [{ contextHash: 'context', before: { records: [{ id: workId, revisionToken: 'historic-revision' }] } }];
   assert.equal(traceWithOperationCrosscheck(trace, [operation], [result], session).availability, 'available');
-  assert.equal(traceWithOperationCrosscheck(trace, [operation], [{ ...result, content: JSON.stringify({
+  const currentResult = { ...result, content: JSON.stringify({
     ok: true, status: 'loaded', id: workId, kind: 'work', historical: false, activation: 'current-guidance', revisionToken: 'current-revision',
-  }) }], session).availability, 'unavailable');
+  }) };
+  const currentTrace = { availability: 'available', events: [{ type: 'load', id: workId, revisionToken: 'current-revision', contextHash: 'context' }] };
+  assert.equal(traceWithOperationCrosscheck(currentTrace, [{ ...operation, input: {
+    command: `node knowledge-cli.mjs load ${workId} --inspect-historical --json`,
+  } }], [currentResult], session).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [currentResult], session).availability, 'unavailable');
 });
 
 test('verified capture cases require a successful persisted capture without a pre-session load', () => {
@@ -703,6 +708,8 @@ test('post-hoc bypass replay ignores outside-store Read paths but retains canoni
       { id: 'metadata-only', name: 'exec', input: { command: `/bin/zsh -lc "ls -ld ${storePath}/knowledge ${recordPath} && stat -f '%Sp %N' ${storePath}/index.json"` } },
       { id: 'digest-pipeline', name: 'exec', input: { command: `shasum -a 256 '${recordPath}' | shasum -a 256` } },
       { id: 'digest', name: 'exec', input: { command: `shasum -a 256 '${recordPath}'` } },
+      { id: 'metadata-with-cli-search', name: 'exec', input: { command: `/bin/zsh -lc "ls -ld ${storePath}/knowledge ${recordPath} && shasum -a 256 ${recordPath} && node /isolated/plugin/knowledge-cli.mjs search 'captured work' --project-dir . --json"` } },
+      { id: 'quoted-proposal-node', name: 'Bash', input: { command: `node -e 'const fs=require("fs"); const recordPath="${recordPath}"; const dir="/tmp/proposal/captured-work"; const prior=fs.readFileSync("/tmp/ship-load.json","utf8"); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,"record.json"), prior + recordPath);'` } },
       { id: 'mixed-digest-read', name: 'exec', input: { command: `shasum -a 256 '${recordPath}' | cat` } },
       { id: 'canonical-shell-read', name: 'exec', input: { command: `cat '${recordPath}'` } },
     ],

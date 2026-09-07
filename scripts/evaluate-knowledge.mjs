@@ -1079,6 +1079,7 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
   const actions = classifyKnowledgeCommands(toolOperations);
   const expected = new Map();
   const matchedHistoricalEvents = new Set();
+  const matchedLoadEvents = new Set();
   const missingHistoricalEvents = [];
   const expect = (type) => expected.set(type, (expected.get(type) ?? 0) + 1);
   for (const operation of toolOperations ?? []) {
@@ -1095,8 +1096,23 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
         payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === true &&
           payload.activation === 'historical' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : []
       ));
+      const currentWork = loadResults.flatMap((result) => jsonPayloads(result.content).flatMap((payload) =>
+        payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === false &&
+          payload.activation === 'current-guidance' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : []
+      ));
       const commandId = (operation.input?.command ?? '').match(/\bload\s+([a-z0-9]+(?:-[a-z0-9]+)+)\b/i)?.[1] ?? null;
       const session = sessionSnapshots[operation.sessionOrdinal ?? 0];
+      if (currentWork.length > 0) {
+        for (const payload of currentWork) {
+          const matchingIndex = trace.events.findIndex((event, index) => !matchedLoadEvents.has(index) &&
+            event.type === 'load' && event.contextHash === session?.contextHash &&
+            event.id === payload.id && event.revisionToken === payload.revisionToken
+          );
+          if (matchingIndex === -1) missingHistoricalEvents.push('load');
+          else matchedLoadEvents.add(matchingIndex);
+        }
+        continue;
+      }
       const humanHistorical = commandId && loadResults.some((result) => result.isError !== true &&
         typeof result.content === 'string' && result.content.includes(`- ID: ${commandId}`) && /Historical work record: historical evidence only/.test(result.content));
       const wrappedHistorical = commandId && loadResults.some(wrappedLoadEvidence);
@@ -1247,6 +1263,63 @@ function isDigestOnlyShellOperation(operation) {
   );
 }
 
+function shellCommand(operation) {
+  const command = operation?.input?.command;
+  if (typeof command !== 'string') return null;
+  const wrapped = /^\/bin\/(?:zsh|bash)\s+-lc\s+(['"])([\s\S]*)\1$/.exec(command.trim());
+  return (wrapped?.[2] ?? command).trim() || null;
+}
+
+function isMetadataWithKnowledgeSearch(operation) {
+  if (operation?.name !== 'exec' && operation?.type !== 'command_execution') return false;
+  const shell = shellCommand(operation);
+  if (!shell || /[;|`]|\$\(|[<>]/.test(shell)) return false;
+  const stages = shell.split(/\s*&&\s*/);
+  if (stages.length < 2) return false;
+  const digest = /^\s*shasum\s+-a\s+256(?:\s+(?:'[^']*'|"[^"]*"|[^\s'"-][^\s'"]*))*\s*$/;
+  const metadata = /^\s*(?:ls|stat)\b/;
+  const knowledgeSearch = /^\s*node\s+\S*knowledge-cli\.mjs\s+search\b/;
+  return stages.some((stage) => knowledgeSearch.test(stage)) && stages.every((stage) =>
+    metadata.test(stage) || digest.test(stage) || knowledgeSearch.test(stage)
+  );
+}
+
+function inlineNodeSource(operation) {
+  const command = operation?.input?.command;
+  if (typeof command !== 'string') return null;
+  const match = /\bnode(?:\s+--[\w-]+(?:=\S+)?)?\s+-e\s+(['"])/.exec(command);
+  if (!match) return null;
+  const start = match.index + match[0].length;
+  const end = command.lastIndexOf(match[1]);
+  return end > start ? command.slice(start, end) : null;
+}
+
+function isExternalProposalNodeOperation(operation, roots, workingDir) {
+  if (operation?.name !== 'exec' && operation?.name !== 'Bash' && operation?.type !== 'command_execution') return false;
+  const source = inlineNodeSource(operation);
+  if (!source) return false;
+  const bindings = new Map([...source.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])([^'"]+)\2/g)]
+    .map((match) => [match[1], match[3]]));
+  const calls = [...source.matchAll(/\bfs\.(?:readFileSync|writeFileSync|appendFileSync|mkdirSync)\s*\(\s*/g)];
+  if (calls.length === 0) return false;
+  const targets = [];
+  for (const call of calls) {
+    const expression = source.slice(call.index + call[0].length);
+    let target = null;
+    const literal = /^(['"])([^'"]+)\1/.exec(expression);
+    const joined = /^path\.join\(\s*([A-Za-z_$][\w$]*)\s*,/.exec(expression);
+    const variable = /^([A-Za-z_$][\w$]*)(?:\s*[,)]|$)/.exec(expression);
+    if (literal) target = literal[2];
+    else if (joined && bindings.has(joined[1])) target = bindings.get(joined[1]);
+    else if (variable && bindings.has(variable[1])) target = bindings.get(variable[1]);
+    if (!target) return false;
+    targets.push(target);
+  }
+  return targets.every((target) => equivalentPaths(target, workingDir).every((resolved) =>
+    !roots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))
+  ));
+}
+
 function equivalentPaths(value, workingDir) {
   const resolved = path.resolve(workingDir ?? process.cwd(), value);
   const equivalents = new Set([resolved]);
@@ -1271,9 +1344,12 @@ function normalizedCanonicalRead(operation, evidence, roots) {
 
 function bypassRelevantOperations(toolOperations = [], evidence = {}) {
   const roots = (evidence.canonicalRoots ?? []).flatMap((entry) => equivalentPaths(entry));
-  if (roots.length === 0) return toolOperations.filter((operation) => !isMetadataOnlyShellOperation(operation) && !isDigestOnlyShellOperation(operation));
+  if (roots.length === 0) return toolOperations.filter((operation) =>
+    !isMetadataOnlyShellOperation(operation) && !isDigestOnlyShellOperation(operation) && !isMetadataWithKnowledgeSearch(operation)
+  );
   return toolOperations.flatMap((operation) => {
-    if (isMetadataOnlyShellOperation(operation) || isDigestOnlyShellOperation(operation)) return [];
+    if (isMetadataOnlyShellOperation(operation) || isDigestOnlyShellOperation(operation) ||
+      isMetadataWithKnowledgeSearch(operation) || isExternalProposalNodeOperation(operation, roots, evidence.workingDir)) return [];
     if (operation?.name !== 'Read' && operation?.type !== 'Read') return [operation];
     const normalized = normalizedCanonicalRead(operation, evidence, roots);
     return normalized ? [normalized] : [];
