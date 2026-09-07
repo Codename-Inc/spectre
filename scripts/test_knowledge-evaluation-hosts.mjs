@@ -600,6 +600,44 @@ test('Claude refresh credentials are staged ephemerally instead of a possibly ex
   }
 });
 
+test('a staged Claude cell refreshes once and reuses its cell-local credential', async () => {
+  const setup = await fixture('claude');
+  const calls = [];
+  let credentialReads = 0;
+  try {
+    const dependencies = {
+      readClaudeOauthCredentials: () => {
+        credentialReads += 1;
+        return { refreshToken: 'fixture-claude-oauth-refresh-token', scopes: ['user:inference'] };
+      },
+      spawn: (_command, args, options) => {
+        calls.push({ args, environment: options.env });
+        return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) });
+      },
+    };
+    const request = {
+      host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task',
+      preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+    };
+    await invokeKnowledgeHost(request, dependencies);
+    await invokeKnowledgeHost(request, dependencies);
+    assert.equal(credentialReads, 1);
+    assert.equal(calls.length, 3);
+    assert.ok(calls[0].args.includes('auth') && calls[0].args.includes('login'));
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, 'fixture-claude-oauth-refresh-token');
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_SCOPES, 'user:inference');
+    assert.ok(calls[1].args.includes('-p'));
+    assert.equal(calls[1].environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, undefined);
+    assert.ok(calls[2].args.includes('-p'));
+    assert.equal(calls[2].args.includes('auth'), false);
+    assert.equal(calls[2].environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, undefined);
+    assert.equal(calls[2].environment.CLAUDE_CODE_OAUTH_SCOPES, undefined);
+  } finally {
+    await fs.rm(setup.root, { recursive: true, force: true });
+    await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });
+  }
+});
+
 test('Codex never receives Claude OAuth refresh credentials or a Claude auth preflight', async () => {
   const setup = await fixture('codex');
   const calls = [];
