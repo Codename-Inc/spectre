@@ -121,6 +121,10 @@ test('lifecycle prompts use user transport only where the plugin exists', () => 
   const verified = { id: 'verified-gotcha', workflowCommandSession: 0, longitudinalSteps: ['Review verified evidence.'] };
   assert.match(promptContract(accepted, 'artifacts/decision.md', 'claude', 'candidate')[1], /^\/spectre:spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
   assert.match(promptContract(verified, 'artifacts/decision.md', 'codex', 'candidate')[0], /^spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
+  const learn = { id: 'accepted-decision', userLearnSessions: [0], longitudinalSteps: ['Invoke Learn without evidence.'] };
+  assert.match(promptContract(learn, 'artifacts/decision.md', 'claude', 'candidate')[0], /^\/spectre:spectre-learn\n/);
+  assert.match(promptContract(learn, 'artifacts/decision.md', 'codex', 'candidate')[0], /^spectre-learn\n/);
+  assert.doesNotMatch(promptContract(learn, 'artifacts/decision.md', 'claude', 'no-knowledge')[0], /^\/spectre:|^spectre-learn/);
 });
 
 test('workflow fixtures receive the frozen extended timeout without changing ordinary tasks', () => {
@@ -494,9 +498,10 @@ test('lifecycle requires a replacement draft after the registration fault', () =
   const runtime = {
     status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
     toolOperations: [
-      { name: 'Learn', sessionOrdinal: 3, eventOrdinal: 1, input: {} },
+      { id: 'noop-learn', name: 'Learn', sessionOrdinal: 3, eventOrdinal: 1, input: {} },
       { name: 'Write', status: 'completed', sessionOrdinal: 4, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } },
     ],
+    toolResults: [{ toolUseId: 'noop-learn', sessionOrdinal: 3, eventOrdinal: 1, isError: false, content: 'No durable update was needed.' }],
     trace: { availability: 'available', events: [
       { type: 'capture', contextHash: 'execute', outcome: 'created' }, { type: 'capture', contextHash: 'fault', outcome: 'failed' },
     ] },
@@ -524,9 +529,10 @@ test('an explicit bare Learn no-op may skip registration when records remain unc
   const runtime = {
     status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
     toolOperations: [
-      { name: 'Learn', sessionOrdinal: 1, eventOrdinal: 1, input: { intent: 'no-op' } },
+      { id: 'learn', name: 'Learn', sessionOrdinal: 1, eventOrdinal: 1, input: { intent: 'no-op' } },
       { name: 'Write', status: 'completed', sessionOrdinal: 1, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } },
     ],
+    toolResults: [{ toolUseId: 'learn', sessionOrdinal: 1, eventOrdinal: 1, isError: false, content: 'No durable update was needed.' }],
     trace: { availability: 'available', events: [] },
     sessionSnapshots: [
       { before: { records: [{ id: 'known' }], history: [] }, after: { records: [{ id: 'known' }], history: [] } },
@@ -536,9 +542,15 @@ test('an explicit bare Learn no-op may skip registration when records remain unc
   const oracle = { case: { requiredRecordHashes: [], requiredStates: ['bare-learn-noop'], manualRubric: 'review no-op' } };
   assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, runtime, oracle).structuralValid, true);
   assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, {
-    ...runtime, toolOperations: [{ name: 'exec', sessionOrdinal: 1, eventOrdinal: 1, input: { command: 'cat .agents/skills/spectre-learn/SKILL.md' } }, runtime.toolOperations[1]],
+    ...runtime,
+    toolOperations: [{ id: 'skill-read', name: 'exec', sessionOrdinal: 1, eventOrdinal: 1, input: { command: 'cat .agents/skills/spectre-learn/SKILL.md' } }, runtime.toolOperations[1]],
+    toolResults: [{ toolUseId: 'skill-read', sessionOrdinal: 1, eventOrdinal: 1, content: 'on-demand knowledge capture skill' }],
   }, oracle).structuralValid, true);
   assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, { ...runtime, toolOperations: [runtime.toolOperations[1]] }, oracle).reason, 'explicit no-op invocation evidence is missing');
+  assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, {
+    ...runtime, toolOperations: [{ id: 'denied', name: 'Skill', sessionOrdinal: 1, eventOrdinal: 1, input: { skill: 'spectre-learn' } }, runtime.toolOperations[1]],
+    toolResults: [{ toolUseId: 'denied', sessionOrdinal: 1, eventOrdinal: 1, isError: true, content: 'disable-model-invocation' }],
+  }, oracle).reason, 'explicit no-op invocation evidence is missing');
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {

@@ -75,8 +75,8 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
   const commands = condition === 'no-knowledge'
     ? { EXECUTE_COMMAND: 'the Execute workflow step', SHIP_COMMAND: 'the Ship workflow step' }
     : host === 'claude'
-    ? { EXECUTE_COMMAND: '/spectre:spectre-execute', SHIP_COMMAND: '/spectre:spectre-ship' }
-    : { EXECUTE_COMMAND: 'spectre-execute', SHIP_COMMAND: 'spectre-ship' };
+    ? { EXECUTE_COMMAND: '/spectre:spectre-execute', SHIP_COMMAND: '/spectre:spectre-ship', LEARN_COMMAND: '/spectre:spectre-learn' }
+    : { EXECUTE_COMMAND: 'spectre-execute', SHIP_COMMAND: 'spectre-ship', LEARN_COMMAND: 'spectre-learn' };
   const featureRoot = '.spectre/features/evaluation-cell';
   const executeSource = `${featureRoot}/specs/execute.md`;
   const prompts = entry.longitudinalSteps ?? [[
@@ -92,6 +92,9 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     }
     if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 2) {
       resolved = `${commands.SHIP_COMMAND} ${featureRoot}\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run \S+:\s*/, '')}`;
+    }
+    if (condition !== 'no-knowledge' && entry.userLearnSessions?.includes(index)) {
+      resolved = `${commands.LEARN_COMMAND}\n${resolved.replace(/\b(?:Invoke|Use) Learn\b/gi, 'Complete the requested on-demand capture')}`;
     }
     return resolved;
   });
@@ -300,11 +303,14 @@ export function judgeCell(cell, runtime, oracle) {
           JSON.stringify(session.before?.records ?? []) === JSON.stringify(session.after?.records ?? []) &&
           JSON.stringify(session.before?.history ?? []) === JSON.stringify(session.after?.history ?? []) ? [index] : []
         ));
+        const operationSucceeded = (operation) => operation.status !== 'failed' && (runtime.toolResults ?? []).some((result) =>
+          result.toolUseId === operation.id && (result.sessionOrdinal ?? 0) === (operation.sessionOrdinal ?? 0) && result.isError !== true
+        );
         const explicitNoopInvocation = (runtime.toolOperations ?? []).some((operation) =>
-          unchangedSessions.has(operation.sessionOrdinal ?? 0) && (operation.name === 'Learn' ||
+          unchangedSessions.has(operation.sessionOrdinal ?? 0) && operationSucceeded(operation) && (operation.name === 'Learn' ||
             operation.name === 'Skill' && /(?:spectre[-:]learn|\blearn\b|\bcapture\b)/i.test(JSON.stringify(operation.input ?? {})) ||
             /spectre[-/](?:learn|capture)(?:[/.]|\b)/i.test(operation.input?.command ?? ''))
-        );
+        ) || [...unchangedSessions].some((sessionOrdinal) => runtime.explicitLearnSessions?.includes(sessionOrdinal) && runtime.sessions?.[sessionOrdinal]?.status === 'completed');
         if (!explicitNoopInvocation) return { valid: false, recalled: false, reason: 'explicit no-op invocation evidence is missing' };
       }
       const faultContext = snapshots.at(-1)?.contextHash;
@@ -1139,6 +1145,9 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const snapshotBefore = compact(rawSnapshotBefore);
       const deliverablePath = cell.artifactPath;
       const preparedPrompts = promptContract(fixtureCase, deliverablePath, cell.host, cell.condition);
+      const explicitLearnSessions = preparedPrompts.flatMap((prompt, sessionOrdinal) =>
+        /^(?:\/spectre:spectre-learn|spectre-learn)(?:\s|$)/.test(prompt) ? [sessionOrdinal] : []
+      );
       const runs = [];
       const sessionSnapshots = [];
       let registrationFault = null;
@@ -1197,6 +1206,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         projectEvidence: changedProjectEvidence(staged.projectDir),
         snapshots: { before: snapshotBefore, after: snapshotAfter },
         sessionSnapshots,
+        explicitLearnSessions,
         sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),

@@ -123,6 +123,7 @@
       "cohort": "workflow",
       "longitudinal": true,
       "workflowCommandSession": 1,
+      "userLearnSessions": [0],
       "longitudinalSteps": [
         "Start a fresh session for the API review. Invoke Learn without any accepted decision, verified evidence, or work-summary material. Record the no-op outcome; do not manufacture knowledge.",
         "Start a fresh session. Review the accepted API evidence: search pagination must use a stable cursor and offset pagination was rejected. Complete the bounded staged change and capture this consequential accepted decision through the normal workflow, then write the evaluation artifact."
@@ -151,6 +152,7 @@
       ],
       "cohort": "workflow",
       "longitudinal": true,
+      "userLearnSessions": [0, 1],
       "longitudinalSteps": [
         "Start a fresh session. Invoke Learn without new verified evidence and record the no-op outcome.",
         "Start a fresh session. Consider the experimental annotation observation: one prototype used an embedded store, but there is no accepted architecture decision. Plan the recommendation without capturing speculation as durable knowledge. Repeat the unchanged capture request and record its no-op outcome, then write the evaluation artifact."
@@ -175,6 +177,7 @@
       "workflow": "Use Learn summarize this work, Plan, Execute, Ship, and CreatePR in order. Prove one work ID survives refresh, repair, URL update, and unchanged capture; a knowledge-save failure does not block the draft.",
       "initialFacts": [],
       "workflowCommandSession": 0,
+      "userLearnSessions": [1, 3],
       "longitudinalSteps": [
         "Start a fresh session. As the user-requested workflow command, run {EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only for the staged feature.",
         "Start a fresh session. Use Learn with explicit work-summary intent to capture the Execute-created templated work record, including unknown or pending fields truthfully.",
@@ -187,6 +190,7 @@
     {
       "id": "longitudinal-correction",
       "longitudinal": true,
+      "userLearnSessions": [0, 2],
       "task": "Maintain incident retry guidance through the requested updates.",
       "workflow": "Use Learn for the correction, then complete the correction artifact through Plan, Execute, Ship, and CreatePR.",
       "initialFacts": [
