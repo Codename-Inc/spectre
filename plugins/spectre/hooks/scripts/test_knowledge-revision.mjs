@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
+import { resolveProjectStore } from './knowledge/store.mjs';
 import {
   parseKnowledgeRecord,
   revisionDirectoryName,
@@ -193,6 +194,36 @@ describe('whole-package revision tokens', () => {
 });
 
 describe('registration preconditions', () => {
+  it('rejects a record file whose parent is not its exact package ID before traversal', async (t) => {
+    const workspace = makeWorkspace(t);
+    const sessionRoot = path.join(workspace.tmp, 'session-root');
+    fs.mkdirSync(path.join(sessionRoot, 'unrelated-session-output'), { recursive: true });
+    fs.writeFileSync(path.join(sessionRoot, 'record.json'), `${JSON.stringify(knowledgeRecord({ id: 'exact-package-id' }), null, 2)}\n`);
+    fs.writeFileSync(path.join(sessionRoot, 'unrelated-session-output', 'marker.txt'), 'must not be registered\n');
+
+    await assert.rejects(
+      register(workspace, path.join(sessionRoot, 'record.json')),
+      (error) => error.code === 'KNOWLEDGE_RECORD_INVALID' && /exact-package-id\/record\.json/.test(error.message),
+    );
+    assert.equal(fs.existsSync(path.join(workspace.spectreHome, 'projects')), false);
+  });
+
+  it('rejects a package root that contains its resolved store before creating a stage', async (t) => {
+    const workspace = makeWorkspace(t);
+    const sourceRoot = path.join(workspace.tmp, 'contained-store');
+    const embeddedHome = path.join(sourceRoot, 'spectre-home');
+    writePackage(path.dirname(sourceRoot), knowledgeRecord({ id: 'contained-store' }));
+    const { storePath } = await resolveProjectStore(workspace.projectDir, { spectreHome: embeddedHome });
+    fs.writeFileSync(path.join(sourceRoot, 'unrelated-session-note.txt'), 'do not traverse me\n');
+
+    await assert.rejects(
+      registerCanonicalKnowledge({ projectDir: workspace.projectDir, spectreHome: embeddedHome, recordPath: sourceRoot }),
+      (error) => error.code === 'KNOWLEDGE_RECORD_INVALID' && /contains the knowledge store/i.test(error.message),
+    );
+    assert.equal(fs.readdirSync(storePath).some(entry => entry.startsWith('.registration-stage-')), false);
+    assert.equal(fs.existsSync(path.join(storePath, 'knowledge', 'contained-store')), false);
+  });
+
   it('creates only when absent and reports the identical re-registration as a no-op', async (t) => {
     const workspace = makeWorkspace(t);
     const proposal = writePackage(workspace.proposals, knowledgeRecord({ id: 'precondition-create' }));

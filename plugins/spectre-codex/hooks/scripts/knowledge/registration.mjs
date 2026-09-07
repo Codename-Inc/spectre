@@ -45,6 +45,52 @@ function proposalRecordDir(recordPath) {
   return stat.isDirectory() ? absolutePath : path.dirname(absolutePath);
 }
 
+function validateSourcePackage(sourceDir) {
+  const recordPath = path.join(sourceDir, RECORD_FILE_NAME);
+  let directoryStat;
+  try {
+    directoryStat = fs.lstatSync(sourceDir);
+  } catch {
+    throw codedError('KNOWLEDGE_RECORD_INVALID', `Typed record package must contain ${RECORD_FILE_NAME}: ${sourceDir}`);
+  }
+  if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+    throw codedError('KNOWLEDGE_RECORD_INVALID', `Typed record package is not a safe directory: ${sourceDir}`);
+  }
+  let recordStat;
+  try {
+    recordStat = fs.lstatSync(recordPath);
+  } catch {
+    if (fs.existsSync(path.join(sourceDir, 'SKILL.md'))) {
+      throw codedError(
+        'KNOWLEDGE_LEGACY_WRITE_RETIRED',
+        'Legacy SKILL.md packages are retired. Run `node "${PLUGIN_ROOT}/hooks/scripts/knowledge-cli.mjs" migrate` to preserve the source, then update the typed record.',
+      );
+    }
+    throw codedError('KNOWLEDGE_RECORD_INVALID', `Typed record package must contain ${RECORD_FILE_NAME}: ${sourceDir}`);
+  }
+  if (!recordStat.isFile() || recordStat.isSymbolicLink()) {
+    throw codedError('KNOWLEDGE_RECORD_INVALID', `Typed record package is not a safe directory: ${sourceDir}`);
+  }
+  let record;
+  try {
+    record = JSON.parse(fs.readFileSync(recordPath, 'utf8'));
+  } catch {
+    throw codedError('KNOWLEDGE_RECORD_INVALID', `Typed record package has malformed ${RECORD_FILE_NAME}: ${sourceDir}`);
+  }
+  if (!record || typeof record.id !== 'string' || path.basename(sourceDir) !== record.id) {
+    throw codedError(
+      'KNOWLEDGE_RECORD_INVALID',
+      `Typed record package must use <exact-id>/${RECORD_FILE_NAME}; expected ${record?.id || '<record-id>'}/${RECORD_FILE_NAME}.`,
+    );
+  }
+}
+
+function sourceContainsStore(sourceDir, storePath) {
+  const source = path.resolve(sourceDir);
+  const store = path.resolve(storePath);
+  return store === source || store.startsWith(`${source}${path.sep}`);
+}
+
 function copyDirectory(sourceDir, destinationDir) {
   fs.mkdirSync(destinationDir, { recursive: true });
   for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
@@ -257,6 +303,7 @@ function restoreBytes(filePath, priorBytes) {
 export async function registerCanonicalKnowledge(options) {
   const projectDir = path.resolve(options.projectDir || options.projectRoot || process.cwd());
   const sourceDir = proposalRecordDir(options.recordPath || options.record);
+  validateSourcePackage(sourceDir);
   let importReceipt = null;
   if (options.importReceipt) {
     try {
@@ -271,6 +318,12 @@ export async function registerCanonicalKnowledge(options) {
     allocationLockOptions: options.allocationLockOptions,
   });
   const storePath = resolved.storePath;
+  if (sourceContainsStore(sourceDir, storePath)) {
+    throw codedError(
+      'KNOWLEDGE_RECORD_INVALID',
+      `Typed record package contains the knowledge store and cannot be registered: ${sourceDir}`,
+    );
+  }
 
   return withStoreLock(
     storePath,

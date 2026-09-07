@@ -258,7 +258,7 @@ describe('typed public knowledge CLI parity', () => {
     assert.equal(wrapperFailure.status, 1);
     assert.equal(canonicalFailure.status, 1);
     assert.equal(output(wrapperFailure).code, output(canonicalFailure).code);
-    assert.match(output(wrapperFailure).message, /unknown kind undefined/);
-    assert.match(output(canonicalFailure).message, /unknown kind undefined/);
+    assert.match(output(wrapperFailure).message, /<exact-id>\/record\.json/);
+    assert.match(output(canonicalFailure).message, /<exact-id>\/record\.json/);
   });
 });
