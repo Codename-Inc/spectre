@@ -117,20 +117,28 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   if (Array.isArray(expected.requiredRecordHashes)) {
     const expectedHashes = new Set(expected.requiredRecordHashes);
+    const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
+      const command = operation?.input?.command ?? '';
+      return /knowledge-cli\.mjs\s+load\s+([a-z0-9]+(?:-[a-z0-9]+)*)\b/.test(command) &&
+        [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => expectedHashes.has(hash(match[0]))) &&
+        (operation.status === null || operation.status === 'completed');
+    });
     const matchedResults = (runtime.toolResults ?? []).filter((result) =>
+      loadOperations.some((operation) => operation.id !== null && operation.id === result.toolUseId) &&
       typeof result.content === 'string' && [...result.content.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)]
         .some((match) => expectedHashes.has(hash(match[0])))
     );
     const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
       (operation.name === 'Write' || operation.name === 'exec') &&
-      JSON.stringify(operation.input ?? '').includes('evaluation-result.json')
+      JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath)
     );
     const orderedLoad = matchedResults.some((result) =>
       Number.isInteger(result.eventOrdinal) &&
-      (!Number.isInteger(artifactWrite?.eventOrdinal) || result.eventOrdinal < artifactWrite.eventOrdinal)
+      Number.isInteger(artifactWrite?.eventOrdinal) && result.eventOrdinal < artifactWrite.eventOrdinal
     );
+    const stagedRevisions = new Map((runtime.snapshots?.before?.records ?? []).map((record) => [record.id, record.revisionToken]));
     const tracedLoad = runtime.trace?.events?.some((event) =>
-      event.type === 'load' && expectedHashes.has(hash(event.id ?? ''))
+      event.type === 'load' && expectedHashes.has(hash(event.id ?? '')) && event.revisionToken === stagedRevisions.get(event.id)
     );
     if (expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
@@ -200,14 +208,25 @@ function cohortReport(cells) {
   const cohorts = {};
   for (const cell of cells) {
     const key = `${cell.condition}:${cell.host}`;
-    const cohort = cohorts[key] ?? { samples: 0, completed: 0, invalid: 0, recalled: 0 };
+    const cohort = cohorts[key] ?? { samples: 0, completed: 0, invalid: 0, recalled: 0, manualPending: 0, sessions: [], messages: [], historyEntries: [], loadedBodyTokens: [] };
     cohort.samples += 1;
     if (cell.status === 'completed') cohort.completed += 1;
     if (cell.status === 'invalid') cohort.invalid += 1;
     if (cell.judged?.recalled === true) cohort.recalled += 1;
+    if (cell.judged?.structuralValid === true) cohort.manualPending += 1;
+    cohort.sessions.push(cell.runtime?.sessions?.length ?? 1);
+    cohort.messages.push(cell.runtime?.textFinalAnswers?.length ?? 0);
+    cohort.historyEntries.push(cell.runtime?.snapshots?.after?.history?.length ?? null);
+    cohort.loadedBodyTokens.push(cell.runtime?.loadedBodyTokens ?? null);
     cohorts[key] = cohort;
   }
-  return cohorts;
+  return Object.fromEntries(Object.entries(cohorts).map(([key, cohort]) => [key, {
+    ...cohort,
+    sessions: { median: percentile(cohort.sessions, .5), p95: percentile(cohort.sessions, .95) },
+    messages: { median: percentile(cohort.messages, .5), p95: percentile(cohort.messages, .95) },
+    historyEntries: { median: percentile(cohort.historyEntries, .5), p95: percentile(cohort.historyEntries, .95) },
+    loadedBodyTokens: { median: percentile(cohort.loadedBodyTokens, .5), p95: percentile(cohort.loadedBodyTokens, .95) },
+  }]));
 }
 
 function pairedReport(cells) {
@@ -224,6 +243,9 @@ function pairedReport(cells) {
     candidate: group.candidate?.judged?.recalled ?? null,
     noKnowledge: group['no-knowledge']?.judged?.recalled ?? null,
     comparable: Boolean(group.baseline && group.candidate && group['no-knowledge']),
+    loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
+      ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
+    candidateVsNoKnowledge: group.candidate?.judged?.recalled === true && group['no-knowledge']?.judged?.recalled === false,
   }));
 }
 
@@ -349,10 +371,11 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       configureLifecycleMock(staged, fixtureCase);
       const hostSettings = hostConfiguration(options.configuration, cell.host);
       const snapshotBefore = snapshotKnowledgeCell(staged);
+      const deliverablePath = path.join('artifacts', `${cell.caseId}.md`);
       const prompts = fixtureCase.longitudinalSteps ?? [[
         fixtureCase.task,
-        fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
-        'Reply with the decision and write evaluation-result.json with recordIds and actions arrays describing the evidence you used.',
+          fixtureCase.workflow ?? 'Use the installed Spectre workflow to complete the task.',
+          `Write the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`,
       ].join('\n')];
       const runs = [];
       for (const [sessionOrdinal, prompt] of prompts.entries()) {
@@ -376,6 +399,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations);
       return {
         ...hostResult,
+        deliverablePath,
         snapshots: { before: snapshotBefore, after: snapshotAfter },
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
