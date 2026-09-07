@@ -8,6 +8,8 @@ const RECORD_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const REVISION_TOKEN = /^sha256:[a-f0-9]{64}$/;
 const OUTCOMES = new Set(['created', 'updated', 'noop', 'merged', 'loaded', 'failed', 'unknown']);
 const HISTORY_SUBTYPES = new Set(['history-preview', 'history-body']);
+const TRACE_LOCK_ATTEMPTS = 200;
+const TRACE_LOCK_DELAY_MS = 5;
 
 function hash(value) {
   return `sha256:${createHash('sha256').update(String(value)).digest('hex')}`;
@@ -82,9 +84,79 @@ export function readEvaluationTrace(filePath) {
   return { availability: 'available', events };
 }
 
-function appendTrace(filePath, event) {
+function waitForTraceLock() {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, TRACE_LOCK_DELAY_MS);
+}
+
+function withTraceLock(filePath, operation) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.appendFileSync(filePath, `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...event })}\n`, 'utf8');
+  const lockPath = `${filePath}.lock`;
+  let descriptor;
+  for (let attempt = 0; attempt < TRACE_LOCK_ATTEMPTS; attempt += 1) {
+    try {
+      descriptor = fs.openSync(lockPath, 'wx');
+      try {
+        fs.writeFileSync(descriptor, `${process.pid}\n`);
+      } catch (error) {
+        fs.closeSync(descriptor);
+        descriptor = undefined;
+        fs.rmSync(lockPath, { force: true });
+        throw error;
+      }
+      break;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      waitForTraceLock();
+    }
+  }
+  if (descriptor === undefined) {
+    const error = new Error('Timed out waiting for evaluation trace coordination.');
+    error.code = 'TRACE_LOCK_TIMEOUT';
+    throw error;
+  }
+  try {
+    return operation();
+  } finally {
+    try { fs.closeSync(descriptor); } finally { fs.rmSync(lockPath, { force: true }); }
+  }
+}
+
+function appendTrace(filePath, event) {
+  return withTraceLock(filePath, () => {
+    let destination;
+    try {
+      destination = fs.lstatSync(filePath);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (destination && (!destination.isFile() || destination.isSymbolicLink())) {
+      const error = new Error('Evaluation trace destination is not a regular file.');
+      error.traceStatus = { availability: 'unavailable', reason: 'unreadable', events: [] };
+      throw error;
+    }
+    let current;
+    try {
+      current = fs.readFileSync(filePath, 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      current = '';
+    }
+    if (current.trim()) {
+      const existing = readEvaluationTrace(filePath);
+      if (existing.availability !== 'available') {
+        const error = new Error('Evaluation trace is not valid append-only evidence.');
+        error.traceStatus = existing;
+        throw error;
+      }
+    }
+    const temporaryPath = `${filePath}.append-${process.pid}-${Date.now()}`;
+    try {
+      fs.writeFileSync(temporaryPath, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${JSON.stringify({ schemaVersion: SCHEMA_VERSION, ...event })}\n`, 'utf8');
+      fs.renameSync(temporaryPath, filePath);
+    } finally {
+      fs.rmSync(temporaryPath, { force: true });
+    }
+  });
 }
 
 /** Opt-in evaluator-only trace. It deliberately never stores task text or record bodies. */
@@ -94,18 +166,21 @@ export function createEvaluationTrace(options = {}) {
     ? path.resolve(options.filePath)
     : null;
   const events = [];
-  let status = filePath
-    ? readEvaluationTrace(filePath)
+  const initial = filePath ? readEvaluationTrace(filePath) : null;
+  let status = initial?.reason === 'corrupt' || initial?.reason === 'unreadable'
+    ? initial
     : { availability: enabled ? 'available' : 'disabled', events: [] };
-  if (status.reason === 'missing') status = { availability: 'available', events: [] };
   return {
     record(event) {
       if (!enabled || status.availability !== 'available') return null;
       const safe = safeEvent(event, options);
-      events.push(safe);
       if (filePath) {
-        try { appendTrace(filePath, safe); } catch { status = { availability: 'unavailable', reason: 'unwritable', events: [] }; }
+        try { appendTrace(filePath, safe); } catch (error) {
+          status = error?.traceStatus || { availability: 'unavailable', reason: error?.code === 'TRACE_LOCK_TIMEOUT' ? 'locked' : 'unwritable', events: [] };
+          return null;
+        }
       }
+      events.push(safe);
       return safe;
     },
     events() { return events.map((event) => ({ ...event, results: event.results?.map((result) => ({ ...result })) })); },
@@ -115,8 +190,8 @@ export function createEvaluationTrace(options = {}) {
       try {
         for (const event of this.events()) appendTrace(path.resolve(destination), event);
         return true;
-      } catch {
-        status = { availability: 'unavailable', reason: 'unwritable', events: [] };
+      } catch (error) {
+        status = error?.traceStatus || { availability: 'unavailable', reason: error?.code === 'TRACE_LOCK_TIMEOUT' ? 'locked' : 'unwritable', events: [] };
         return false;
       }
     },

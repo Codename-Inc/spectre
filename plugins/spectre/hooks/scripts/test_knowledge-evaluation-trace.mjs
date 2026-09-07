@@ -60,7 +60,7 @@ function traceEvents(tracePath) {
 }
 
 function runTraceWriter(tracePath, contextId) {
-  const code = `import { createEvaluationTrace } from ${JSON.stringify(TRACE_MODULE_URL)}; createEvaluationTrace({ enabled: true, filePath: process.argv[1] }).record({ type: 'search', query: process.argv[2], contextId: process.argv[2] });`;
+  const code = `import { createEvaluationTrace } from ${JSON.stringify(TRACE_MODULE_URL)}; const trace = createEvaluationTrace({ enabled: true, filePath: process.argv[1] }); if (trace.record({ type: 'search', query: process.argv[2], contextId: process.argv[2] }) === null || trace.status().availability !== 'available') process.exit(1);`;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--input-type=module', '--eval', code, tracePath, contextId], { stdio: 'ignore' });
     child.once('error', reject);
@@ -179,6 +179,7 @@ test('parallel writers preserve every event and corrupt or unwritable artifacts 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-evaluation-trace-write-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const tracePath = path.join(root, 'trace.jsonl');
+  fs.writeFileSync(tracePath, '');
   await Promise.all(Array.from({ length: 8 }, (_, index) => runTraceWriter(tracePath, `writer-${index}`)));
   assert.equal(traceEvents(tracePath).length, 8);
 
