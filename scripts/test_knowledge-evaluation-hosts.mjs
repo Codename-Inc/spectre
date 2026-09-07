@@ -136,6 +136,55 @@ test('Codex transcript reports command timing without inventing omitted usage fi
   assert.deepEqual(result.textFinalAnswers, ['Codex final answer']);
 });
 
+test('Codex transcript preserves MCP results and web action metadata without inventing web results', () => {
+  const transcript = normalizeKnowledgeHostTranscript('codex', [
+    JSON.stringify({ type: 'item.completed', item: {
+      type: 'mcp_tool_call', id: 'mcp-1', server: 'codex_apps', tool: 'github.search_repositories',
+      arguments: { query: 'acquired-deploy', topn: 20 }, status: 'failed',
+      result: {
+        content: [{ type: 'text', text: 'connector returned a partial result' }],
+        structured_content: { repositories: [{ id: 'repo-1' }], error_code: 'PARTIAL' },
+        _meta: { source: 'connector' },
+      },
+      error: { code: 'UPSTREAM_PARTIAL', message: 'partial result' },
+    } }),
+    JSON.stringify({ type: 'item.completed', item: {
+      type: 'web_search', id: 'web-1', query: 'Codex project instructions',
+      action: { type: 'search', query: 'Codex project instructions' }, status: 'completed',
+    } }),
+  ].join('\n'));
+
+  assert.deepEqual(transcript.toolOperations, [
+    {
+      id: 'mcp-1', host: 'codex', name: 'github.search_repositories', type: 'mcp_tool_call',
+      input: { server: 'codex_apps', tool: 'github.search_repositories', arguments: { query: 'acquired-deploy', topn: 20 } },
+      status: 'failed', startedAt: null, endedAt: null, durationMs: null,
+      actorRole: 'primary', actorId: null, parentToolUseId: null,
+      externalTool: { kind: 'mcp', server: 'codex_apps', tool: 'github.search_repositories' }, eventOrdinal: 0,
+    },
+    {
+      id: 'web-1', host: 'codex', name: 'web_search', type: 'web_search',
+      input: { query: 'Codex project instructions', action: { type: 'search', query: 'Codex project instructions' } },
+      status: 'completed', startedAt: null, endedAt: null, durationMs: null,
+      actorRole: 'primary', actorId: null, parentToolUseId: null,
+      externalTool: { kind: 'web', query: 'Codex project instructions', action: { type: 'search', query: 'Codex project instructions' } }, eventOrdinal: 1,
+    },
+  ]);
+  assert.deepEqual(transcript.toolResults, [{
+    host: 'codex', toolUseId: 'mcp-1', eventOrdinal: 0,
+    type: 'mcp_tool_call', server: 'codex_apps', tool: 'github.search_repositories', status: 'failed',
+    content: '[{"type":"text","text":"connector returned a partial result"}]',
+    structuredContent: { repositories: [{ id: 'repo-1' }], error_code: 'PARTIAL' },
+    error: { code: 'UPSTREAM_PARTIAL', message: 'partial result' },
+    result: {
+      content: [{ type: 'text', text: 'connector returned a partial result' }],
+      structured_content: { repositories: [{ id: 'repo-1' }], error_code: 'PARTIAL' },
+      _meta: { source: 'connector' },
+    },
+    isError: true,
+  }]);
+});
+
 test('nonzero host exits retain normalized evidence and remove staged Codex auth in finally', async () => {
   const setup = await fixture('codex');
   const authSource = path.join(setup.root, 'source-auth.json');

@@ -366,7 +366,35 @@ function codexOperation(item, event) {
       ...actorDetails({ ...event, agent_id: event.agent_id ?? event.agentId ?? item.agent_id ?? item.agentId }),
     };
   }
-  if (['mcp_tool_call', 'web_search', 'file_change', 'function_call'].includes(type)) {
+  if (type === 'mcp_tool_call') {
+    const server = typeof item.server === 'string' ? item.server : null;
+    const tool = typeof item.tool === 'string' ? item.tool : typeof item.tool_name === 'string' ? item.tool_name : null;
+    return {
+      id: typeof item.id === 'string' ? item.id : null,
+      host: 'codex', name: tool ?? 'mcp_tool_call', type,
+      input: { server, tool, arguments: safeStructured(item.arguments ?? item.input ?? null) }, status: item.status ?? null,
+      startedAt: item.started_at ?? item.startedAt ?? null,
+      endedAt: item.ended_at ?? item.endedAt ?? null,
+      durationMs: Number.isFinite(item.duration_ms) ? item.duration_ms : null,
+      externalTool: { kind: 'mcp', server, tool },
+      ...actorDetails({ ...event, agent_id: event.agent_id ?? event.agentId ?? item.agent_id ?? item.agentId }),
+    };
+  }
+  if (type === 'web_search') {
+    const query = typeof item.query === 'string' ? item.query : null;
+    const action = safeStructured(item.action ?? null);
+    return {
+      id: typeof item.id === 'string' ? item.id : null,
+      host: 'codex', name: 'web_search', type,
+      input: { query, action }, status: item.status ?? null,
+      startedAt: item.started_at ?? item.startedAt ?? null,
+      endedAt: item.ended_at ?? item.endedAt ?? null,
+      durationMs: Number.isFinite(item.duration_ms) ? item.duration_ms : null,
+      externalTool: { kind: 'web', query, action },
+      ...actorDetails({ ...event, agent_id: event.agent_id ?? event.agentId ?? item.agent_id ?? item.agentId }),
+    };
+  }
+  if (['file_change', 'function_call'].includes(type)) {
     return {
       id: typeof item.id === 'string' ? item.id : null,
       host: 'codex', name: item.name ?? item.tool_name ?? type, type,
@@ -378,6 +406,21 @@ function codexOperation(item, event) {
     };
   }
   return null;
+}
+
+function codexMcpResult(item, eventOrdinal) {
+  if (item?.type !== 'mcp_tool_call' || (!Object.hasOwn(item, 'result') && !Object.hasOwn(item, 'error'))) return null;
+  const result = safeStructured(item.result ?? null);
+  const content = item.result?.content === undefined ? null : safeLog(JSON.stringify(item.result.content));
+  return {
+    host: 'codex', toolUseId: item.id ?? null, eventOrdinal,
+    type: 'mcp_tool_call', server: typeof item.server === 'string' ? item.server : null,
+    tool: typeof item.tool === 'string' ? item.tool : typeof item.tool_name === 'string' ? item.tool_name : null,
+    status: item.status ?? null, content,
+    structuredContent: safeStructured(item.result?.structured_content ?? item.result?.structuredContent ?? null),
+    error: safeStructured(item.error ?? item.result?.error ?? null), result,
+    isError: item.status === 'failed' || item.error != null || item.result?.is_error === true,
+  };
 }
 
 function normalizeClaude(events) {
@@ -440,6 +483,8 @@ function normalizeCodex(events) {
       if (typeof item.aggregated_output === 'string') {
         toolResults.push({ host: 'codex', toolUseId: item.id ?? null, eventOrdinal, content: safeLog(item.aggregated_output) });
       }
+      const mcpResult = codexMcpResult(item, eventOrdinal);
+      if (mcpResult) toolResults.push(mcpResult);
       if (item.type === 'agent_message') {
         const text = item.text ?? item.content;
         if (typeof text === 'string' && text) answers.push(text);
@@ -508,6 +553,15 @@ function safeLog(value) {
     .replace(/(Bearer\s+)[^\s"']+/gi, '$1[REDACTED]')
     .replace(/((?:api[_-]?key|token|secret|password)\s*[=:]\s*["']?)[^\s,"'}]+/gi, '$1[REDACTED]')
     .replace(/\b(sk-[A-Za-z0-9_-]{12,})\b/g, '[REDACTED]');
+}
+
+function safeStructured(value) {
+  if (value === undefined) return null;
+  try {
+    return JSON.parse(safeLog(JSON.stringify(value)));
+  } catch {
+    return safeLog(value);
+  }
 }
 
 async function stageCodexAuth(codexHome, authSourcePath) {
