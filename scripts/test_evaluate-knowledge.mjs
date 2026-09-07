@@ -415,10 +415,11 @@ test('trace crosscheck classifies a successful historical work load from native 
     ok: true, status: 'loaded', id: workId, kind: 'work', historical: true, activation: 'historical', revisionToken: 'historic-revision',
   }) };
   const trace = { availability: 'available', events: [{ type: 'history-read', subtype: 'history-body', id: workId, revisionToken: 'historic-revision', contextHash: 'context' }] };
-  assert.equal(traceWithOperationCrosscheck(trace, [operation], [result]).availability, 'available');
+  const session = [{ contextHash: 'context', before: { records: [{ id: workId, revisionToken: 'historic-revision' }] } }];
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [result], session).availability, 'available');
   assert.equal(traceWithOperationCrosscheck(trace, [operation], [{ ...result, content: JSON.stringify({
     ok: true, status: 'loaded', id: workId, kind: 'work', historical: false, activation: 'current-guidance', revisionToken: 'current-revision',
-  }) }]).availability, 'unavailable');
+  }) }], session).availability, 'unavailable');
 });
 
 test('verified capture cases require a successful persisted capture without a pre-session load', () => {
@@ -647,4 +648,71 @@ test('trace metrics distinguish SessionStart, previews, bodies, resources, and r
   assert.equal(zero.loadedBodyTokens, 0);
   assert.equal(zero.redundantTokens, 0);
   assert.equal(zero.totalTokens, 0);
+});
+
+test('post-hoc crosscheck ignores quoted Node prose, but requires an exact historical human body event', () => {
+  const workId = 'evaluation-cell-cache-rotation-procedure';
+  const session = {
+    contextHash: 'historical-context',
+    before: { records: [{ id: workId, revisionToken: 'historic-revision' }] },
+  };
+  const humanLoad = {
+    id: 'human-history', name: 'exec', status: 'completed', sessionOrdinal: 0, eventOrdinal: 3,
+    input: { command: `node knowledge-cli.mjs load ${workId} --source-run-id run-1` },
+  };
+  const humanResult = {
+    toolUseId: 'human-history', sessionOrdinal: 0, isError: false,
+    content: `# ${workId}\n- ID: ${workId}\nHistorical work record: historical evidence only, not active guidance.`,
+  };
+  const historicalTrace = {
+    availability: 'available',
+    events: [{ type: 'history-read', subtype: 'history-body', id: workId, revisionToken: 'historic-revision', contextHash: 'historical-context' }],
+  };
+  assert.equal(traceWithOperationCrosscheck(historicalTrace, [humanLoad], [humanResult], [session]).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(historicalTrace, [humanLoad], [humanResult], [{
+    ...session,
+    before: { records: [{ id: workId, revisionToken: 'prior-revision' }] },
+    after: { records: [{ id: workId, revisionToken: 'historic-revision' }] },
+  }]).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck({
+    ...historicalTrace,
+    events: [{ ...historicalTrace.events[0], subtype: 'history-preview' }],
+  }, [humanLoad], [humanResult], [session]).availability, 'unavailable');
+  assert.equal(traceWithOperationCrosscheck(historicalTrace, [humanLoad], [humanResult], [{ ...session, contextHash: 'other-context' }]).availability, 'unavailable');
+
+  const prose = {
+    id: 'node-prose', name: 'exec', status: 'completed', sessionOrdinal: 0,
+    input: { command: `node -e 'const note="it'"'"'s a note"; console.log("knowledge-cli.mjs register ${workId}")'` },
+  };
+  assert.equal(traceWithOperationCrosscheck({ availability: 'available', events: [] }, [prose], [{ toolUseId: 'node-prose', isError: false, content: 'done' }]).availability, 'available');
+});
+
+test('post-hoc bypass replay ignores outside-store Read paths but retains canonical reads and shell access', () => {
+  const storePath = '/isolated/lifecycle-store';
+  const recordPath = `${storePath}/knowledge/captured-work/record.json`;
+  const runtime = {
+    trace: { availability: 'available', events: [] },
+    bypassEvidence: {
+      workingDir: '/isolated/project',
+      canonicalRoots: [`${storePath}/knowledge`, `${storePath}/knowledge-history`],
+      knownPaths: [recordPath],
+    },
+    toolOperations: [
+      { id: 'plugin-read', name: 'Read', input: { file_path: '/isolated/plugin/hooks/load-knowledge.mjs' } },
+      { id: 'canonical-read', name: 'Read', input: { file_path: recordPath } },
+      { id: 'metadata-only', name: 'exec', input: { command: `/bin/zsh -lc "ls -ld ${storePath}/knowledge ${recordPath} && stat -f '%Sp %N' ${storePath}/index.json"` } },
+      { id: 'canonical-shell-read', name: 'exec', input: { command: `cat '${recordPath}'` } },
+    ],
+  };
+  const replayed = replayCachedRuntime({ condition: 'candidate' }, runtime);
+  assert.deepEqual(replayed.bypass.map((entry) => entry.reason), ['direct-read', 'shell-read']);
+
+  const aliasStore = '/var/folders/evaluation-store';
+  const aliasRecord = `${aliasStore}/knowledge/captured-work/record.json`;
+  const aliasRuntime = {
+    ...runtime,
+    toolOperations: [{ name: 'Read', input: { file_path: `/private${aliasRecord}` } }],
+    bypassEvidence: { ...runtime.bypassEvidence, canonicalRoots: [`${aliasStore}/knowledge`], knownPaths: [aliasRecord] },
+  };
+  assert.deepEqual(replayCachedRuntime({ condition: 'candidate' }, aliasRuntime).bypass.map((entry) => entry.reason), ['direct-read']);
 });

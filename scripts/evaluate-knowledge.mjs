@@ -191,6 +191,43 @@ function isArtifactWrite(operation, deliverablePath) {
   return new RegExp(`(?:>|>>)\\s*['\"]?${escaped}|\\btee(?:\\s+[^|;&]+)*\\s+['\"]?${escaped}|\\bapply_patch\b`).test(command);
 }
 
+function withoutNodeEvalPayloads(command) {
+  let output = '';
+  let cursor = 0;
+  const nodeEval = /\bnode\s+-e\s+/;
+  while (true) {
+    const match = nodeEval.exec(command.slice(cursor));
+    if (!match) return output + command.slice(cursor);
+    const start = cursor + match.index;
+    let index = start + match[0].length;
+    const quote = command[index];
+    if (quote !== "'" && quote !== '"') {
+      output += command.slice(cursor, index);
+      cursor = index;
+      continue;
+    }
+    index += 1;
+    while (index < command.length) {
+      if (quote === "'" && command.startsWith(`'"'"'`, index)) {
+        index += 5;
+        continue;
+      }
+      if (command[index] === '\\') {
+        index += 2;
+        continue;
+      }
+      if (command[index] === quote) {
+        index += 1;
+        break;
+      }
+      index += 1;
+    }
+    if (index > command.length || command[index - 1] !== quote) return output + command.slice(cursor);
+    output += `${command.slice(cursor, start)}node -e <script>`;
+    cursor = index;
+  }
+}
+
 function classifyKnowledgeCommands(toolOperations = []) {
   const actions = new Map();
   const variables = new Map();
@@ -200,14 +237,16 @@ function classifyKnowledgeCommands(toolOperations = []) {
   for (const operation of ordered) {
     const command = operation?.input?.command;
     if (typeof command !== 'string') continue;
+    // Tool output can quote CLI examples inside a Node evaluation payload. That prose is not an invocation.
+    const executable = withoutNodeEvalPayloads(command);
     const session = operation.sessionOrdinal ?? 0;
     const available = variables.get(session) ?? new Set();
-    for (const match of command.matchAll(/\b([A-Z][A-Z0-9_]*)=(?:['"])?[^\s;'"]*knowledge-cli\.mjs/g)) available.add(match[1]);
+    for (const match of executable.matchAll(/\b([A-Z][A-Z0-9_]*)=(?:['"])?[^\s;'"]*knowledge-cli\.mjs/g)) available.add(match[1]);
     variables.set(session, available);
     const found = new Set();
     for (const action of ['search', 'load', 'resource', 'history', 'inspect', 'register', 'capture', 'learn']) {
-      const direct = new RegExp(`knowledge-cli\\.mjs['\"]?\\s+${action}\\b`).test(command);
-      const variable = [...command.matchAll(new RegExp(`(?:['\"])?\\$\\{?([A-Z][A-Z0-9_]*)\\}?(?:['\"])?\\s+${action}\\b`, 'g'))]
+      const direct = new RegExp(`knowledge-cli\\.mjs['\"]?\\s+${action}\\b`).test(executable);
+      const variable = [...executable.matchAll(new RegExp(`(?:['\"])?\\$\\{?([A-Z][A-Z0-9_]*)\\}?(?:['\"])?\\s+${action}\\b`, 'g'))]
         .some((match) => available.has(match[1]));
       if (direct || variable) found.add(action);
     }
@@ -999,7 +1038,7 @@ function nativeFullCycleUsage(runs) {
   };
 }
 
-export function traceWithOperationCrosscheck(trace, toolOperations, toolResults = []) {
+export function traceWithOperationCrosscheck(trace, toolOperations, toolResults = [], sessionSnapshots = []) {
   if (trace.availability !== 'available') return trace;
   const actions = classifyKnowledgeCommands(toolOperations);
   const expected = new Map();
@@ -1024,10 +1063,25 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
           return [];
         }
       });
-      if (historicalWork.length > 0) {
+      const commandId = (operation.input?.command ?? '').match(/\bload\s+([a-z0-9]+(?:-[a-z0-9]+)+)\b/i)?.[1] ?? null;
+      const session = sessionSnapshots[operation.sessionOrdinal ?? 0];
+      const humanHistorical = commandId && delivered.some((result) => result.isError !== true &&
+        typeof result.content === 'string' && result.content.includes(`- ID: ${commandId}`) && /Historical work record: historical evidence only/.test(result.content));
+      const snapshotRevisions = new Set([session?.before, session?.after].flatMap((snapshot) =>
+        (snapshot?.records ?? []).filter((record) => record.id === commandId).map((record) => record.revisionToken)
+      ).filter((revisionToken) => typeof revisionToken === 'string'));
+      for (const event of trace.events) {
+        if (event.type === 'capture' && event.id === commandId && event.contextHash === session?.contextHash && typeof event.revisionToken === 'string') {
+          snapshotRevisions.add(event.revisionToken);
+        }
+      }
+      const expectedHistorical = historicalWork.length > 0 ? historicalWork
+        : humanHistorical && typeof session?.contextHash === 'string'
+          ? [...snapshotRevisions].map((revisionToken) => ({ id: commandId, revisionToken })) : [];
+      if (expectedHistorical.length > 0) {
         const matchingIndex = trace.events.findIndex((event, index) => !matchedHistoricalEvents.has(index) &&
-          event.type === 'history-read' && event.subtype === 'history-body' && typeof event.contextHash === 'string' &&
-          historicalWork.some((payload) => event.id === payload.id && event.revisionToken === payload.revisionToken)
+          event.type === 'history-read' && event.subtype === 'history-body' && event.contextHash === session?.contextHash &&
+          expectedHistorical.some((payload) => event.id === payload.id && event.revisionToken === payload.revisionToken)
         );
         if (matchingIndex === -1) missingHistoricalEvents.push('history-read');
         else matchedHistoricalEvents.add(matchingIndex);
@@ -1135,12 +1189,55 @@ export function knowledgeBypassEvidence(staged = {}, snapshots = []) {
 }
 
 /** Recompute derivable evidence from a cached native transcript without invoking a host. */
+function isMetadataOnlyShellOperation(operation) {
+  if (operation?.name !== 'exec' && operation?.type !== 'command_execution') return false;
+  const command = operation.input?.command;
+  if (typeof command !== 'string') return false;
+  const wrapped = /^\/bin\/(?:zsh|bash)\s+-lc\s+(['"])([\s\S]*)\1$/.exec(command.trim());
+  const shell = (wrapped?.[2] ?? command).trim();
+  if (!shell || /(?:[|;`]|\$\(|[<>]|\b(?:cat|cp|mv|node|python|ruby|perl|tee|dd|sed|awk|grep|rg|head|tail)\b)/.test(shell)) return false;
+  return shell.split(/\s*&&\s*/).every((part) => /^\s*(?:ls|stat)\b/.test(part));
+}
+
+function equivalentPaths(value, workingDir) {
+  const resolved = path.resolve(workingDir ?? process.cwd(), value);
+  const equivalents = new Set([resolved]);
+  if (resolved.startsWith('/private/var/')) equivalents.add(resolved.replace('/private/var/', '/var/'));
+  if (resolved.startsWith('/var/')) equivalents.add(resolved.replace('/var/', '/private/var/'));
+  return [...equivalents];
+}
+
+function normalizedCanonicalRead(operation, evidence, roots) {
+  const supplied = operation?.input?.file_path ?? operation?.input?.filePath ?? operation?.input?.path ?? operation?.path;
+  if (typeof supplied !== 'string') return operation;
+  const direct = detectTraceBypass([operation], evidence);
+  if (direct.some((finding) => finding.reason === 'direct-read' && finding.evidence === 'detected')) return operation;
+  const canonical = equivalentPaths(supplied, evidence.workingDir).find((target) => roots.some((root) =>
+    target === root || target.startsWith(`${root}${path.sep}`)
+  ));
+  if (!canonical) return null;
+  const input = operation.input ?? {};
+  const field = ['file_path', 'filePath', 'path'].find((name) => typeof input[name] === 'string');
+  return field ? { ...operation, input: { ...input, [field]: canonical } } : { ...operation, path: canonical };
+}
+
+function bypassRelevantOperations(toolOperations = [], evidence = {}) {
+  const roots = (evidence.canonicalRoots ?? []).flatMap((entry) => equivalentPaths(entry));
+  if (roots.length === 0) return toolOperations.filter((operation) => !isMetadataOnlyShellOperation(operation));
+  return toolOperations.flatMap((operation) => {
+    if (isMetadataOnlyShellOperation(operation)) return [];
+    if (operation?.name !== 'Read' && operation?.type !== 'Read') return [operation];
+    const normalized = normalizedCanonicalRead(operation, evidence, roots);
+    return normalized ? [normalized] : [];
+  });
+}
+
 export function replayCachedRuntime(cell, runtime = {}) {
   const measurement = runtime.sessionStartMeasurement ?? runtime.usage?.sessionStartMeasurement ?? null;
   const staleCrosscheck = runtime.trace?.availability === 'unavailable' && /^trace lacks native /.test(runtime.trace.reason ?? '');
   const canReplayTrace = runtime.traceUnavailable !== true && (runtime.trace?.availability === 'available' || staleCrosscheck) && Array.isArray(runtime.trace?.events);
   const trace = canReplayTrace
-    ? traceWithOperationCrosscheck({ availability: 'available', events: runtime.trace.events }, runtime.toolOperations, runtime.toolResults)
+    ? traceWithOperationCrosscheck({ availability: 'available', events: runtime.trace.events }, runtime.toolOperations, runtime.toolResults, runtime.sessionSnapshots)
     : runtime.trace;
   const measured = cell.condition === 'baseline'
     ? baselineRuntimeFacts({
@@ -1151,7 +1248,7 @@ export function replayCachedRuntime(cell, runtime = {}) {
       ? noKnowledgeRuntimeFacts(runtime, runtime.knowledgeAbsence === 'verified')
       : traceRuntimeFacts(trace ?? { availability: 'unavailable', events: [] }, { ...runtime, sessionStartMeasurement: measurement });
   const bypass = runtime.bypassEvidence
-    ? detectTraceBypass(runtime.toolOperations, runtime.bypassEvidence)
+    ? detectTraceBypass(bypassRelevantOperations(runtime.toolOperations, runtime.bypassEvidence), runtime.bypassEvidence)
     : runtime.bypass;
   return {
     ...runtime,
@@ -1253,7 +1350,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       const bypassEvidence = knowledgeBypassEvidence(staged, rawSnapshots);
       const trace = !staged.tracePath || hostResult.traceUnavailable === true
         ? { availability: 'unavailable', reason: 'host reported trace collection unavailable', events: [] }
-        : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations, hostResult.toolResults);
+        : traceWithOperationCrosscheck(readEvaluationTrace(staged.tracePath), hostResult.toolOperations, hostResult.toolResults, sessionSnapshots);
       const measuredRuntime = cell.condition === 'baseline'
         ? baselineRuntimeFacts({
           toolOperations: hostResult.toolOperations, toolResults: hostResult.toolResults,
@@ -1278,7 +1375,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         bypassEvidence,
         ...attachNativeUsage(measuredRuntime, hostResult),
         bypass: [
-          ...detectTraceBypass(hostResult.toolOperations, bypassEvidence),
+          ...detectTraceBypass(bypassRelevantOperations(hostResult.toolOperations, bypassEvidence), bypassEvidence),
           ...trace.events.filter((event) => event.type === 'bypass'),
         ],
       };
