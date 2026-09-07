@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { invokeKnowledgeHost, normalizeKnowledgeHostTranscript } from './knowledge-evaluation-hosts.mjs';
+import { createKnowledgeEvaluationSandbox, invokeKnowledgeHost, normalizeKnowledgeHostTranscript } from './knowledge-evaluation-hosts.mjs';
 
 function childFor({ stdout = '', stderr = '', exitCode = 0, signal = null, delay = 0 }) {
   const child = new EventEmitter();
@@ -26,6 +27,7 @@ function childFor({ stdout = '', stderr = '', exitCode = 0, signal = null, delay
 async function fixture(host) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `knowledge-host-${host}-`));
   const value = {
+    root,
     projectDir: path.join(root, 'project'),
     storeDir: path.join(root, 'store'),
     pluginDir: path.join(root, 'plugin'),
@@ -34,7 +36,8 @@ async function fixture(host) {
     claudeHome: path.join(root, 'claude'),
   };
   await Promise.all(Object.values(value).filter((directory) => typeof directory === 'string').map((directory) => fs.mkdir(directory, { recursive: true })));
-  return { root, value, rawLogDirectory: path.join(root, 'raw-host-logs') };
+  const rawLogDirectory = await fs.mkdtemp(path.join(os.tmpdir(), `knowledge-host-raw-${host}-`));
+  return { root, value, rawLogDirectory };
 }
 
 test('Claude transcript preserves primary and worker native usage, tools, and final text', async () => {
@@ -193,11 +196,131 @@ test('no-knowledge invocation omits plugin and store arguments while retaining t
   let launched;
   await invokeKnowledgeHost({
     host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
-    preparedFixture: { projectDir: setup.value.projectDir, codexHome: setup.value.codexHome, claudeHome: setup.value.claudeHome, freshStore: true, noKnowledge: true },
+    preparedFixture: { root: setup.root, projectDir: setup.value.projectDir, codexHome: setup.value.codexHome, claudeHome: setup.value.claudeHome, freshStore: true, noKnowledge: true },
     rawLogDirectory: setup.rawLogDirectory,
   }, { spawn: (command, args) => { launched = { command, args }; return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) }); } });
   assert.equal(launched.args.includes('--add-dir'), false);
   assert.equal(launched.args.includes(setup.value.storeDir), false);
+});
+
+test('wraps every host launch in a fail-closed per-cell filesystem sandbox', async () => {
+  const setup = await fixture('codex');
+  let launched;
+  const result = await invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+  }, {
+    sandboxExecutable: '/usr/bin/true',
+    spawn: (command, args) => {
+      launched = { command, args };
+      return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) });
+    },
+  });
+  assert.equal(launched.command, '/usr/bin/true');
+  assert.equal(launched.args[0], '-p');
+  assert.match(launched.args[1], /\(import "system\.sb"\)/);
+  assert.match(launched.args[1], /\(allow file-write\*/);
+  assert.equal(launched.args.some((entry) => path.basename(entry) === 'codex'), true);
+  assert.equal(result.isolation.filesystemBoundary.enabled, true);
+  assert.match(result.isolation.filesystemBoundary.profileHash, /^sha256:[a-f0-9]{64}$/);
+  assert.ok(result.isolation.filesystemBoundary.allowedPaths.includes(setup.root));
+});
+
+test('fails closed without a usable filesystem boundary before launching a host', async () => {
+  const setup = await fixture('codex');
+  let launched = false;
+  const result = await invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+  }, {
+    sandboxExecutable: '/missing-evaluation-sandbox-exec',
+    spawn: () => { launched = true; return childFor({}); },
+  });
+  assert.equal(result.status, 'launch_failed');
+  assert.match(result.exit.error, /filesystem boundary is unavailable/);
+  assert.equal(result.isolation.filesystemBoundary.enabled, false);
+  assert.equal(launched, false);
+});
+
+test('rejects a cell-visible raw log or environment path before launching a host', async () => {
+  const setup = await fixture('claude');
+  let launched = false;
+  const base = {
+    host: 'claude', model: 'opus', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value,
+  };
+  const dependencies = { spawn: () => { launched = true; return childFor({}); } };
+  const rawInsideCell = await invokeKnowledgeHost({ ...base, rawLogDirectory: path.join(setup.root, 'raw') }, dependencies);
+  assert.equal(rawInsideCell.status, 'launch_failed');
+  assert.match(rawInsideCell.exit.error, /rawLogDirectory must be outside every filesystem boundary/);
+  const externalHome = await fs.mkdtemp(path.join(os.tmpdir(), 'knowledge-host-external-home-'));
+  const escapedEnvironment = await invokeKnowledgeHost({
+    ...base, rawLogDirectory: setup.rawLogDirectory, environment: { HOME: externalHome },
+  }, dependencies);
+  assert.equal(escapedEnvironment.status, 'launch_failed');
+  assert.match(escapedEnvironment.exit.error, /environment HOME escapes its cell root/);
+  assert.equal(launched, false);
+  await fs.rm(externalHome, { recursive: true, force: true });
+});
+
+test('default-deny boundary permits only one cell and both host runtimes without a model invocation', async (t) => {
+  const setup = await fixture('codex');
+  const externalRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'knowledge-host-external-'));
+  t.after(async () => Promise.all([fs.rm(setup.root, { recursive: true, force: true }), fs.rm(setup.rawLogDirectory, { recursive: true, force: true }), fs.rm(externalRoot, { recursive: true, force: true })]));
+  const allowed = path.join(setup.value.projectDir, 'allowed.txt');
+  const written = path.join(setup.value.projectDir, 'written.txt');
+  const external = path.join(externalRoot, 'oracle.txt');
+  const userGitConfig = path.join(os.homedir(), '.gitconfig');
+  const escaped = path.join(setup.value.projectDir, 'outside');
+  const probe = path.join(setup.value.projectDir, 'child-probe.mjs');
+  await fs.writeFile(allowed, 'allowed');
+  await fs.writeFile(external, 'external');
+  await fs.access(userGitConfig);
+  await fs.symlink(externalRoot, escaped);
+  await fs.writeFile(probe, [
+    "import fs from 'node:fs';",
+    "const [allowedPath, outputPath, deniedPath] = process.argv.slice(2);",
+    "if (fs.readFileSync(allowedPath, 'utf8') !== 'allowed') process.exit(2);",
+    "fs.writeFileSync(outputPath, 'child write');",
+    "try { fs.readFileSync(deniedPath); process.exit(3); } catch { process.exit(0); }",
+  ].join('\n'));
+  const environment = {
+    PATH: process.env.PATH,
+    HOME: setup.value.claudeHome,
+    ZDOTDIR: setup.value.claudeHome,
+    TMPDIR: setup.value.claudeHome,
+    TMP: setup.value.claudeHome,
+    TEMP: setup.value.claudeHome,
+    CODEX_HOME: setup.value.codexHome,
+    CLAUDE_CONFIG_DIR: setup.value.claudeHome,
+  };
+  const shell = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: '/bin/sh', environment,
+  });
+  const shellScript = [
+    `test "$(cat ${JSON.stringify(allowed)})" = allowed`,
+    `printf shell-write > ${JSON.stringify(written)}`,
+    `! cat ${JSON.stringify(external)} >/dev/null 2>&1`,
+    `! cat ${JSON.stringify(path.join(escaped, 'oracle.txt'))} >/dev/null 2>&1`,
+    `! cat ${JSON.stringify(userGitConfig)} >/dev/null 2>&1`,
+    `${JSON.stringify(process.execPath)} ${JSON.stringify(probe)} ${JSON.stringify(allowed)} ${JSON.stringify(path.join(setup.value.projectDir, 'child-write.txt'))} ${JSON.stringify(external)}`,
+  ].join('; ');
+  const shellResult = spawnSync(shell.command, [...shell.args, '-c', shellScript], {
+    cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 30_000,
+  });
+  assert.equal(shellResult.status, 0, shellResult.stderr);
+  assert.equal(shellResult.stderr, '');
+  assert.equal(await fs.readFile(written, 'utf8'), 'shell-write');
+  assert.equal(await fs.readFile(path.join(setup.value.projectDir, 'child-write.txt'), 'utf8'), 'child write');
+  for (const provider of ['codex', 'claude']) {
+    const boundary = createKnowledgeEvaluationSandbox({
+      preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: provider, environment,
+    });
+    const version = spawnSync(boundary.command, [...boundary.args, '--version'], {
+      cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(version.status, 0, `${provider}: ${version.stderr}`);
+  }
 });
 
 test('Codex permits git metadata writes only for an attested isolated fixture', async () => {

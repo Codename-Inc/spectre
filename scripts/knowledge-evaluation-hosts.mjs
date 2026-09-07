@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { spawn as nativeSpawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import { access, chmod, copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +10,15 @@ const DEFAULT_LIMITS = Object.freeze({
   maxOutputBytes: 20 * 1024 * 1024,
   terminationGraceMs: 100,
 });
+const SANDBOX_EXECUTABLE = '/usr/bin/sandbox-exec';
+const SYSTEM_RUNTIME_PATHS = ['/bin', '/usr/bin', '/usr/sbin', '/sbin', '/private/var/select', '/opt/homebrew/bin'];
+const ISOLATED_ENVIRONMENT_PATHS = new Set([
+  'HOME', 'ZDOTDIR', 'BASH_ENV', 'GIT_CONFIG_GLOBAL', 'GH_CONFIG_DIR',
+  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'TMPDIR', 'TMP', 'TEMP',
+  'SPECTRE_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'CLAUDE_PROJECT_DIR',
+  'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'SPECTRE_KNOWLEDGE_EVALUATION_TRACE',
+  'SPECTRE_EVALUATION_GH_LOG', 'SPECTRE_EVALUATION_GH_STATE',
+]);
 
 function isWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
@@ -23,6 +34,155 @@ function absoluteDirectory(value, label) {
 
 function optionalDirectory(value, label) {
   return value == null ? null : absoluteDirectory(value, label);
+}
+
+function realDirectory(value, label) {
+  const directory = absoluteDirectory(value, label);
+  try {
+    return fs.realpathSync.native(directory);
+  } catch {
+    throw new Error(`${label} must exist before launching a host`);
+  }
+}
+
+function resolveExecutable(command, environment) {
+  if (typeof command !== 'string' || !command) throw new Error('host command must be a non-empty string');
+  const candidates = path.isAbsolute(command)
+    ? [command]
+    : String(environment.PATH || process.env.PATH || '').split(path.delimiter).filter(Boolean).map((entry) => path.join(entry, command));
+  for (const candidate of candidates) {
+    try {
+      const stat = fs.statSync(candidate);
+      if (stat.isFile() && (stat.mode & 0o111) !== 0) return fs.realpathSync.native(candidate);
+    } catch {
+      // Continue through PATH candidates.
+    }
+  }
+  throw new Error(`Host executable is unavailable: ${command}`);
+}
+
+function sandboxString(value) {
+  return JSON.stringify(value);
+}
+
+function pathAliases(value, label) {
+  const lexical = absoluteDirectory(value, label);
+  return [...new Set([lexical, realDirectory(lexical, label)])];
+}
+
+function requireContained(cellRoot, directories) {
+  const rootAliases = pathAliases(cellRoot, 'preparedFixture.root');
+  for (const directory of directories.filter(Boolean)) {
+    const aliases = pathAliases(directory, 'prepared fixture directory');
+    if (!aliases.every((alias) => rootAliases.some((root) => isWithin(root, alias)))) {
+      throw new Error(`prepared fixture directory escapes its cell root: ${directory}`);
+    }
+  }
+  return rootAliases;
+}
+
+function containedAliases(cellRoot, directories) {
+  return [...new Set(directories.filter(Boolean).flatMap((directory) => {
+    const aliases = pathAliases(directory, 'prepared fixture directory');
+    if (!aliases.every((alias) => cellRoot.some((root) => isWithin(root, alias)))) {
+      throw new Error(`prepared fixture directory escapes its cell root: ${directory}`);
+    }
+    return aliases;
+  }))];
+}
+
+function sandboxRuntimePaths(command, environment) {
+  const executable = resolveExecutable(command, environment);
+  const providerExecutables = [
+    executable,
+    resolveExecutable(environment.CLAUDE_BIN || process.env.CLAUDE_BIN || 'claude', environment),
+    resolveExecutable(environment.CODEX_BIN || process.env.CODEX_BIN || 'codex', environment),
+  ];
+  const paths = new Set([...SYSTEM_RUNTIME_PATHS, ...providerExecutables.map(path.dirname), path.dirname(process.execPath)]);
+  const cellaredNode = process.execPath.match(/^(.*\/Cellar\/node\/[^/]+)/);
+  if (cellaredNode) paths.add(cellaredNode[1]);
+  return { executable, executables: [...new Set(providerExecutables)], paths: [...paths].filter((value) => fs.existsSync(value)) };
+}
+
+function assertSeparated(rawAliases, allowedPaths) {
+  if (rawAliases.some((raw) => allowedPaths.some((allowed) => isWithin(raw, allowed) || isWithin(allowed, raw)))) {
+    throw new Error('rawLogDirectory must be outside every filesystem boundary allowlist path');
+  }
+}
+
+function assertIsolatedEnvironment(cellAliases, environment) {
+  for (const [key, value] of Object.entries(environment)) {
+    if (!ISOLATED_ENVIRONMENT_PATHS.has(key) || typeof value !== 'string' || !path.isAbsolute(value)) continue;
+    const lexical = path.resolve(value);
+    if (!cellAliases.some((root) => isWithin(root, lexical))) {
+      throw new Error(`evaluation environment ${key} escapes its cell root`);
+    }
+    try {
+      const canonical = fs.realpathSync.native(lexical);
+      if (!cellAliases.some((root) => isWithin(root, canonical))) {
+        throw new Error(`evaluation environment ${key} resolves outside its cell root`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('resolves outside')) throw error;
+    }
+  }
+}
+
+/** Build a default-deny Seatbelt profile for one staged evaluation cell. */
+export function createKnowledgeEvaluationSandbox({ preparedFixture, command, environment, sandboxExecutable = SANDBOX_EXECUTABLE }) {
+  if (!path.isAbsolute(sandboxExecutable)) throw new Error('sandbox executable must be an absolute path');
+  const cellAliases = requireContained(preparedFixture.root, [
+    preparedFixture.projectDir, preparedFixture.storeDir, preparedFixture.pluginDir,
+    preparedFixture.codexHome, preparedFixture.claudeHome,
+  ]);
+  const fixtureAliases = containedAliases(cellAliases, [
+    preparedFixture.projectDir, preparedFixture.storeDir, preparedFixture.pluginDir,
+    preparedFixture.codexHome, preparedFixture.claudeHome,
+  ]);
+  const { executable, executables, paths: runtimePaths } = sandboxRuntimePaths(command, environment);
+  const allowedPaths = [...new Set([...cellAliases, ...runtimePaths])];
+  assertIsolatedEnvironment(cellAliases, environment);
+  assertSeparated(pathAliases(preparedFixture.rawDirectory, 'rawLogDirectory'), allowedPaths);
+  const readPaths = allowedPaths.map((entry) => `(subpath ${sandboxString(entry)})`).join(' ');
+  const rootMetadata = [...new Set([...cellAliases, ...fixtureAliases])]
+    .map((entry) => `(path-ancestors ${sandboxString(entry)})`).join(' ');
+  const profile = [
+    '(version 1)',
+    '(import "system.sb")',
+    '(deny default)',
+    '(allow process-exec)',
+    '(allow process-fork)',
+    '(allow process-info*)',
+    '(allow network-outbound)',
+    `(allow file-read* file-map-executable ${readPaths})`,
+    `(allow file-read-metadata ${rootMetadata})`,
+    `(allow file-write* ${cellAliases.map((entry) => `(subpath ${sandboxString(entry)})`).join(' ')})`,
+  ].join('\n');
+  return {
+    command: sandboxExecutable,
+    args: ['-p', profile, executable],
+    profileHash: `sha256:${createHash('sha256').update(profile).digest('hex')}`,
+    mode: 'default-deny',
+    allowedPaths,
+    cellPaths: cellAliases,
+    providerExecutables: executables,
+  };
+}
+
+function sandboxForInvocation({ preparedFixture, native, environment, sandboxExecutable }) {
+  const executable = sandboxExecutable ?? SANDBOX_EXECUTABLE;
+  try {
+    fs.accessSync(executable, fs.constants.X_OK);
+  } catch {
+    throw new Error(`Knowledge evaluation filesystem boundary is unavailable: ${executable}`);
+  }
+  const sandbox = createKnowledgeEvaluationSandbox({
+    preparedFixture,
+    command: native.command,
+    environment,
+    sandboxExecutable: executable,
+  });
+  return { ...sandbox, args: [...sandbox.args, ...native.args] };
 }
 
 async function exists(filePath) {
@@ -256,7 +416,7 @@ export function normalizeKnowledgeHostTranscript(host, rawStdout) {
 function cleanEnvironment(base = process.env) {
   const environment = {};
   for (const [key, value] of Object.entries(base)) {
-    if (/^(CLAUDE|CODEX|SPECTRE|ANTHROPIC|MCP)_/.test(key)) continue;
+    if (/^(CLAUDE|CODEX|SPECTRE|ANTHROPIC|MCP)_/.test(key) || ISOLATED_ENVIRONMENT_PATHS.has(key)) continue;
     environment[key] = value;
   }
   return environment;
@@ -386,6 +546,7 @@ function validateInputs({ host, model, effort, prompt, preparedFixture, rawLogDi
   const storeDir = noKnowledge ? optionalDirectory(preparedFixture?.storeDir ?? preparedFixture?.spectreHome, 'preparedFixture.storeDir') : absoluteDirectory(preparedFixture?.storeDir ?? preparedFixture?.spectreHome, 'preparedFixture.storeDir');
   const pluginDir = noKnowledge ? optionalDirectory(preparedFixture?.pluginDir, 'preparedFixture.pluginDir') : absoluteDirectory(preparedFixture?.pluginDir, 'preparedFixture.pluginDir');
   const rawDirectory = absoluteDirectory(rawLogDirectory, 'rawLogDirectory');
+  const cellRoot = absoluteDirectory(preparedFixture?.root, 'preparedFixture.root');
   const root = path.resolve(repositoryRoot ?? process.cwd());
   if (isWithin(root, rawDirectory)) throw new Error('rawLogDirectory must be outside the checkout');
   if ([projectDir, storeDir, pluginDir].filter(Boolean).some((directory) => isWithin(root, directory))) {
@@ -393,7 +554,8 @@ function validateInputs({ host, model, effort, prompt, preparedFixture, rawLogDi
   }
   const directories = [projectDir, storeDir, pluginDir].filter(Boolean);
   if (new Set(directories).size !== directories.length) throw new Error('prepared fixture directories must be distinct');
-  return { projectDir, storeDir, pluginDir, noKnowledge, rawDirectory, repositoryRoot: root };
+  if (isWithin(root, cellRoot)) throw new Error('preparedFixture.root must be isolated outside the checkout');
+  return { projectDir, storeDir, pluginDir, noKnowledge, rawDirectory, cellRoot, repositoryRoot: root };
 }
 
 /**
@@ -422,6 +584,11 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   environment.CLAUDE_CONFIG_DIR = fixture.claudeHome;
   environment.CLAUDE_SECURESTORAGE_CONFIG_DIR = '';
   environment.CODEX_HOME = fixture.codexHome;
+  environment.HOME ??= fixture.claudeHome;
+  environment.ZDOTDIR ??= fixture.claudeHome;
+  environment.TMPDIR ??= fixture.claudeHome;
+  environment.TMP ??= fixture.claudeHome;
+  environment.TEMP ??= fixture.claudeHome;
   const native = hostCommand({ host, model, effort, prompt, preparedFixture: fixture, command: request.command, extraArgs: request.extraArgs, allowedTools: request.allowedTools });
   const startedAt = new Date().toISOString();
   const started = performance.now();
@@ -439,7 +606,14 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
         claudeOauthStaged = true;
       }
     }
-    processResult = await runChild(native.command, native.args, {
+    const sandbox = sandboxForInvocation({
+      preparedFixture: fixture,
+      native,
+      environment,
+      sandboxExecutable: dependencies.sandboxExecutable,
+    });
+    fixture.filesystemBoundary = sandbox;
+    processResult = await runChild(sandbox.command, sandbox.args, {
       cwd: paths.projectDir, env: { ...environment }, timeoutMs: limits.timeoutMs,
       maxOutputBytes: limits.maxOutputBytes, terminationGraceMs: limits.terminationGraceMs,
     }, dependencies.spawn ?? nativeSpawn);
@@ -495,6 +669,17 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
       freshStore: preparedFixture.freshStore ?? null, isolated: true,
       codexSandbox: host === 'codex' ? (preparedFixture.isolatedGitWorkflow === true ? 'danger-full-access' : 'workspace-write') : null,
       rawLogsOutsideCheckout: !isWithin(paths.repositoryRoot, paths.rawDirectory),
+      filesystemBoundary: fixture.filesystemBoundary
+        ? {
+          enabled: true,
+          mode: fixture.filesystemBoundary.mode,
+          profileHash: fixture.filesystemBoundary.profileHash,
+          allowedPaths: fixture.filesystemBoundary.allowedPaths,
+          cellPaths: fixture.filesystemBoundary.cellPaths,
+          providerExecutables: fixture.filesystemBoundary.providerExecutables,
+          deniedAttemptsObserved: /Operation not permitted|Sandbox: deny/i.test(processResult?.stderr ?? ''),
+        }
+        : { enabled: false, reason: 'sandbox-unavailable' },
     },
   };
 }
