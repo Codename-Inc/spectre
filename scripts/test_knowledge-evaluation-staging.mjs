@@ -190,7 +190,7 @@ test('can force an actual registration failure without blocking existing reads',
 });
 
 
-test('adds deterministic real distractors without publishing a repository catalog', async (t) => {
+test('adds neutral deterministic operational notes without publishing a repository catalog', async (t) => {
   const value = fixture(t);
   value.fixture.scaleDistractors = [10, 100];
   const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
@@ -198,9 +198,11 @@ test('adds deterministic real distractors without publishing a repository catalo
   const neutralEvidence = fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8');
 
   assert.equal(snapshot.records.length, 101);
-  assert.equal(snapshot.records.at(-1).id, 'staged-fact');
-  assert.equal(snapshot.records.some(record => record.id === 'scale-distractor-00100'), true);
-  assert.equal(neutralEvidence.includes('scale-distractor'), false);
+  assert.equal(snapshot.records.some(record => record.id === 'staged-fact'), true);
+  assert.equal(snapshot.records.some(record => record.id === 'telemetry-checkpoint-00100'), true);
+  assert.equal(neutralEvidence.includes('telemetry-checkpoint'), false);
+  const recordBytes = fs.readFileSync(path.join(staged.storePath, 'knowledge', 'telemetry-checkpoint-00100', 'record.json'), 'utf8').toLocaleLowerCase();
+  assert.equal(/distractor|irrelevant|unrelated/.test(recordBytes), false);
 });
 
 
@@ -247,4 +249,18 @@ test('stages the opposing provider plugin mirror without sharing a live home', a
   assert.equal(fs.existsSync(path.join(staged.claudePluginDir, 'skills', 'spectre-execute', 'SKILL.md')), true);
   assert.equal(staged.codexPlugin.installedPath, staged.pluginDir);
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins', 'cache')), true);
+});
+
+
+test('keeps the relevant payment record reachable among ten thousand neutral operational notes', async (t) => {
+  const value = fixture(t);
+  value.fixture.initialFacts = [{ id: 'payments-dual-settlement', content: 'Keep the legacy and new settlement ledgers in parallel until reconciliation passes.' }];
+  value.fixture.scaleDistractors = 10_000;
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+
+  assert.equal(staged.knownPaths.length, 10_001);
+  assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
+  assert.equal(staged.probe.search.result.results[0].id, 'payments-dual-settlement');
+  const bytes = fs.readFileSync(path.join(staged.storePath, 'knowledge', 'telemetry-checkpoint-10000', 'record.json'), 'utf8').toLocaleLowerCase();
+  assert.equal(/distractor|irrelevant|unrelated/.test(bytes), false);
 });

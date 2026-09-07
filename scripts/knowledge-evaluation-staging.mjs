@@ -109,9 +109,9 @@ function fixtureFacts(fixtureCase, requestedScale) {
   for (let index = 0; index < count; index += 1) {
     const suffix = String(index + 1).padStart(5, '0');
     facts.push({
-      id: `scale-distractor-${suffix}`,
-      content: `Unrelated deterministic scale evidence ${suffix}.`,
-      tags: ['evaluation-distractor'], scaleDistractor: true,
+      id: `telemetry-checkpoint-${suffix}`,
+      content: `The telemetry collector for zone ${suffix} retains one local checkpoint after rotation.`,
+      tags: ['observability'], scaleDistractor: true,
     });
   }
   return facts;
