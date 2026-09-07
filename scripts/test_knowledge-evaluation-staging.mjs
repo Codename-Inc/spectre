@@ -40,6 +40,10 @@ test('stages valid candidate records through the real CLI and native host surfac
   for (const host of ['claude', 'codex']) {
     const staged = await stageKnowledgeCell({ condition: 'candidate', host }, value.fixture, value.options);
     assert.equal(staged.freshStore, true);
+    assert.equal(fs.statSync(staged.claudeHome).isDirectory(), true);
+    assert.equal(fs.statSync(staged.codexHome).isDirectory(), true);
+    assert.equal(fs.existsSync(path.join(staged.claudePluginDir, 'skills', 'spectre-capture', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(staged.codexPlugin.installedPath, 'skills', 'spectre-capture', 'SKILL.md')), true);
     assert.deepEqual(readSessionStartMeasurement(staged), { availability: 'unavailable', injectedTokens: null, injectedBytes: null });
     assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
     assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
@@ -88,6 +92,10 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   assert.equal(fs.existsSync(path.join(staged.projectDir, 'TASK.md')), true);
   assert.equal(fs.existsSync(path.join(staged.root, 'plugin')), false);
   assert.equal(fs.existsSync(path.join(staged.root, 'spectre-home')), false);
+  assert.equal(fs.statSync(staged.claudeHome).isDirectory(), true);
+  assert.equal(fs.statSync(staged.codexHome).isDirectory(), true);
+  assert.equal(staged.claudePluginDir, null);
+  assert.equal(staged.codexPlugin, null);
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins')), false);
 });
 
@@ -228,4 +236,15 @@ test('keeps neutral facts outside the knowledge store when seedKnowledge is fals
   assert.equal(staged.probe, null);
   assert.deepEqual(snapshotKnowledgeCell(staged).records, []);
   assert.match(fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8'), /Keep both ledgers/);
+});
+
+
+test('stages the opposing provider plugin mirror without sharing a live home', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'baseline', host: 'codex' }, value.fixture, value.options);
+
+  assert.notEqual(staged.claudePluginDir, staged.pluginDir);
+  assert.equal(fs.existsSync(path.join(staged.claudePluginDir, 'skills', 'spectre-execute', 'SKILL.md')), true);
+  assert.equal(staged.codexPlugin.installedPath, staged.pluginDir);
+  assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins', 'cache')), true);
 });

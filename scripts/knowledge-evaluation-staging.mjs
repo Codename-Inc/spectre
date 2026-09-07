@@ -289,19 +289,29 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const facts = fixtureFacts(fixtureCase, cell.scaleDistractors);
   const repository = initializeRepository(projectDir, fixtureCase);
   const gh = writeGhMock(root);
-  const hostHome = path.join(root, cell.host === 'codex' ? 'codex-home' : 'claude-home');
+  const claudeHome = path.join(root, 'claude-home');
+  const codexHome = path.join(root, 'codex-home');
+  fs.mkdirSync(claudeHome, { recursive: true });
+  fs.mkdirSync(codexHome, { recursive: true });
 
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
       freshStore: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, environment: gh.environment,
-      ...(cell.host === 'codex' ? { codexHome: hostHome } : { claudeHome: hostHome }),
+      claudeHome, codexHome, claudePluginDir: null, codexPlugin: null,
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
   }
 
   const storeDir = path.join(root, 'spectre-home');
   const sourcePluginDir = path.join(root, 'plugin');
+  const claudePluginDir = cell.host === 'claude' ? sourcePluginDir : path.join(root, 'claude-plugin');
+  const codexSourcePluginDir = cell.host === 'codex' ? sourcePluginDir : path.join(root, 'codex-plugin');
+  const stagePluginMirror = (host, destination) => {
+    if (destination === sourcePluginDir) return;
+    if (cell.condition === 'baseline') archiveBaselinePlugin(repositoryRoot, host, destination, options.baselineRef || BASELINE_REF);
+    else fs.cpSync(hostPluginSource(repositoryRoot, host, options), destination, { recursive: true });
+  };
   let provenance;
   if (cell.condition === 'baseline') {
     provenance = archiveBaselinePlugin(repositoryRoot, cell.host, sourcePluginDir, options.baselineRef || BASELINE_REF);
@@ -310,13 +320,14 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
     fs.cpSync(source, sourcePluginDir, { recursive: true });
     provenance = { candidateSource: source, sourceHash: hash(fs.readFileSync(path.join(sourcePluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs'))) };
   }
-  const codexPlugin = cell.host === 'codex' ? installCodexPlugin(hostHome, sourcePluginDir, options) : null;
-  const pluginDir = codexPlugin?.installedPath || sourcePluginDir;
+  stagePluginMirror('claude', claudePluginDir);
+  stagePluginMirror('codex', codexSourcePluginDir);
+  const codexPlugin = installCodexPlugin(codexHome, codexSourcePluginDir, options);
+  const pluginDir = cell.host === 'codex' ? codexPlugin.installedPath : claudePluginDir;
   const seededFacts = facts.filter(fact => fact.seedKnowledge !== false);
   const seeded = cell.condition === 'baseline'
     ? await seedBaseline(projectDir, storeDir, seededFacts)
     : await seedCandidate(projectDir, storeDir, seededFacts);
-  if (cell.host !== 'codex') fs.mkdirSync(hostHome, { recursive: true });
   const cliPath = path.join(pluginDir, 'hooks', 'scripts', 'knowledge-cli.mjs');
   const activityPath = path.join(seeded.storePath, 'activity.json');
   const activityBeforeProbe = fs.existsSync(activityPath) ? fs.readFileSync(activityPath) : null;
@@ -330,7 +341,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
     freshStore: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
     ghLogPath: gh.ghLogPath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
-    ...(cell.host === 'codex' ? { codexHome: hostHome, codexPlugin } : { claudeHome: hostHome }),
+    claudeHome, codexHome, claudePluginDir, codexPlugin,
     provenance: { condition: cell.condition, ...provenance }, repository, probe,
   };
 }
