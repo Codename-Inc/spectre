@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
-import { blockKnowledgeRegistration, snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
+import { blockKnowledgeRegistration, readSessionStartMeasurement, snapshotKnowledgeCell, stageKnowledgeCell as stagePreparedKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks/scripts/knowledge/evaluation-trace.mjs';
 
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
@@ -170,11 +170,12 @@ export function judgeCell(cell, runtime, oracle) {
         [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => expectedHashes.has(hash(match[0]))) &&
         (operation.status === null || operation.status === 'completed');
     });
-    const matchedResults = (runtime.toolResults ?? []).filter((result) =>
-      loadOperations.some((operation) => operation.id !== null && operation.id === result.toolUseId &&
-        (operation.sessionOrdinal ?? 0) === (result.sessionOrdinal ?? 0)) && result.isError !== true &&
-      typeof result.content === 'string' && [...result.content.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)]
-        .some((match) => expectedHashes.has(hash(match[0])))
+    const matchedResults = (runtime.toolResults ?? []).flatMap((result) =>
+      loadOperations.filter((operation) => operation.id !== null && operation.id === result.toolUseId &&
+        (operation.sessionOrdinal ?? 0) === (result.sessionOrdinal ?? 0)).flatMap((operation) =>
+        result.isError !== true && typeof result.content === 'string' && [...result.content.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)]
+          .some((match) => expectedHashes.has(hash(match[0]))) ? [{ operation, result }] : []
+      )
     );
     const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
       (operation.name === 'Write' || operation.name === 'exec' || operation.type === 'file_change') &&
@@ -182,14 +183,18 @@ export function judgeCell(cell, runtime, oracle) {
       (operation.status === null || operation.status === 'completed')
     );
     if (!artifactWrite) return { valid: false, recalled: false, reason: 'native decision-artifact write evidence is missing' };
-    const orderedLoad = matchedResults.some((result) =>
+    const orderedLoad = matchedResults.some(({ result }) =>
       eventPrecedes(result, artifactWrite)
     );
-    const stagedRevisions = new Map((runtime.snapshots?.before?.records ?? []).map((record) => [record.id, record.revisionToken]));
-    const tracedLoad = runtime.trace?.events?.some((event) =>
-      (readCommand === 'inspect' ? event.type === 'history-read' && event.subtype === 'history-body' : event.type === 'load') &&
-      expectedHashes.has(hash(event.id ?? '')) && event.revisionToken === stagedRevisions.get(event.id)
-    );
+    const tracedLoad = matchedResults.some(({ operation }) => {
+      const session = runtime.sessionSnapshots?.[operation.sessionOrdinal ?? 0];
+      const stagedRevisions = new Map((session?.before?.records ?? runtime.snapshots?.before?.records ?? []).map((record) => [record.id, record.revisionToken]));
+      return runtime.trace?.events?.some((event) =>
+        (readCommand === 'inspect' ? event.type === 'history-read' && event.subtype === 'history-body' : event.type === 'load') &&
+        expectedHashes.has(hash(event.id ?? '')) && event.revisionToken === stagedRevisions.get(event.id) &&
+        (!session?.contextHash || event.contextHash === session.contextHash)
+      );
+    });
     if (cell.condition !== 'no-knowledge' && expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
     }
@@ -492,6 +497,7 @@ function mergeHostRuns(runs) {
       primary: runs.at(-1)?.usage?.primary ?? null,
       workers: runs.at(-1)?.usage?.workers ?? null,
       fullCycle: nativeFullCycleUsage(runs),
+      sessionStartMeasurement: sessionStartMeasurement(runs),
       sessions: runs.map((run) => run.usage ?? null),
     },
     toolOperations: runs.flatMap((run, sessionOrdinal) =>
@@ -502,6 +508,20 @@ function mergeHostRuns(runs) {
     ),
     textFinalAnswers: runs.flatMap((run) => run.textFinalAnswers ?? []),
     sessions: runs.map((run) => ({ status: run.status, exit: run.exit ?? null })),
+  };
+}
+
+function sessionStartMeasurement(runs) {
+  const measurements = runs.map((run) => run.sessionStartMeasurement).filter(Boolean);
+  if (measurements.length !== runs.length) return { availability: 'unavailable', injectedTokens: null, injectedBytes: null };
+  if (measurements.every((measurement) => measurement.availability === 'none')) return { availability: 'none', injectedTokens: 0, injectedBytes: 0 };
+  if (!measurements.every((measurement) => measurement.availability === 'available' && Number.isFinite(measurement.injectedTokens) && Number.isFinite(measurement.injectedBytes))) {
+    return { availability: 'unavailable', injectedTokens: null, injectedBytes: null };
+  }
+  return {
+    availability: 'available',
+    injectedTokens: measurements.reduce((total, measurement) => total + measurement.injectedTokens, 0),
+    injectedBytes: measurements.reduce((total, measurement) => total + measurement.injectedBytes, 0),
   };
 }
 
@@ -618,10 +638,13 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         ? `${prompt}\nWrite the decision artifact to ${deliverablePath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
         : prompt);
       const runs = [];
+      const sessionSnapshots = [];
       let registrationFault = null;
       try {
         for (const [sessionOrdinal, prompt] of preparedPrompts.entries()) {
-          runs.push(await invoke({
+          const contextId = `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`;
+          const beforeSession = snapshotKnowledgeCell(staged);
+          const run = await invoke({
           host: cell.host, model: hostSettings.model, effort: hostSettings.effort,
           prompt,
           preparedFixture: staged, rawLogDirectory: path.join(rawLogRoot, cell.id, `session-${sessionOrdinal + 1}`),
@@ -629,10 +652,12 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
             ...staged.environment,
             ...(staged.tracePath ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: staged.tracePath } : {}),
             SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: `${cell.id}:session:${sessionOrdinal + 1}`,
-            SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `${cell.caseId}:${cell.condition}:${cell.repeat}:session:${sessionOrdinal + 1}`,
+            SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: contextId,
           },
           limits: options.limits,
-          }));
+          });
+          runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
+          sessionSnapshots.push({ before: beforeSession, after: snapshotKnowledgeCell(staged), contextHash: hash(contextId) });
           if (fixtureCase.id === 'lifecycle-identity' && cell.condition !== 'no-knowledge' && sessionOrdinal === 1 && runs.at(-1)?.status === 'completed') {
             registrationFault = blockKnowledgeRegistration(staged);
           }
@@ -651,11 +676,12 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         deliverable: deliverableEvidence(staged.projectDir, deliverablePath),
         projectEvidence: changedProjectEvidence(staged.projectDir),
         snapshots: { before: snapshotBefore, after: snapshotAfter },
-        sessionStartMeasurement: staged.sessionStartMeasurement ?? null,
+        sessionSnapshots,
+        sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
         trace,
-        ...traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: staged.sessionStartMeasurement }),
+        ...traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement }),
         bypass: [
           ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths, workingDir: staged.projectDir }),
           ...trace.events.filter((event) => event.type === 'bypass'),
