@@ -118,6 +118,7 @@ test('judging requires an exact successful load and a later persisted decision a
     ...runtime, toolOperations: [runtime.toolOperations[1]], toolResults: [], trace: { availability: 'unavailable', events: [] },
   }, oracle);
   assert.equal(control.recalled, null);
+  assert.equal(judgeCell(cell, runtime, { case: { requiredRecordHashes: [], allowedLoads: 0, manualRubric: 'manual review' } }).recalled, false);
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {

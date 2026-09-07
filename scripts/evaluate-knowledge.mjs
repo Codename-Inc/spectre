@@ -207,6 +207,15 @@ export function judgeCell(cell, runtime, oracle) {
     if (expected.requiresCapture === true && captureOperations.some((operation) => operation.actorRole === 'worker')) {
       return { valid: false, recalled: false, reason: 'worker-owned knowledge capture is not primary evidence' };
     }
+    const commands = (runtime.toolOperations ?? []).map((operation) => operation?.input?.command ?? '').filter((command) => typeof command === 'string');
+    const bodyLoads = commands.filter((command) => /knowledge-cli\.mjs\s+load\b/.test(command)).length;
+    const historyLoads = commands.filter((command) => /knowledge-cli\.mjs\s+(?:history|inspect)\b/.test(command)).length;
+    if (Number.isInteger(expected.allowedLoads) && bodyLoads > expected.allowedLoads) {
+      return { valid: false, recalled: false, reason: 'unnecessary knowledge body load evidence is present' };
+    }
+    if (Number.isInteger(expected.allowedHistoryLoads) && historyLoads > expected.allowedHistoryLoads) {
+      return { valid: false, recalled: false, reason: 'unnecessary history load evidence is present' };
+    }
     const ghCommands = runtime.workflowEvidence?.ghCommands ?? [];
     if (cell.condition === 'candidate' && Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
       return { valid: false, recalled: false, reason: 'direct PR fallback evidence is missing' };
