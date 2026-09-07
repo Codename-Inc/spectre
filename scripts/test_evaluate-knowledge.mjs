@@ -381,7 +381,7 @@ test('verified capture cases require a successful persisted capture without a pr
   const runtime = {
     status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
     toolOperations: [{ name: 'Write', status: 'completed', eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } }],
-    trace: { availability: 'available', events: [{ type: 'capture', id: 'document-export-resolution', outcome: 'created' }] },
+    trace: { availability: 'available', events: [{ type: 'capture', id: 'document-export-resolution', revisionToken: 'captured-revision', outcome: 'created' }] },
     snapshots: { before: { records: [] }, after: { records: [{ id: 'document-export-resolution', revisionToken: 'captured-revision', recordHash: 'sha256:record' }] } },
   };
   const oracle = { blocker: { requiredRecordHashes: [], requiresCapture: true, requiredStates: ['blocker-resolution-capture'], manualRubric: 'review' } };
@@ -393,6 +393,14 @@ test('verified capture cases require a successful persisted capture without a pr
   assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, {
     ...runtime, snapshots: { before: { records: [] }, after: { records: [] } },
   }, oracle).reason, 'successful capture was not persisted in snapshot evidence');
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, {
+    ...runtime, snapshots: { before: { records: [{ id: 'document-export-resolution', revisionToken: 'old-revision' }] }, after: { records: [{ id: 'document-export-resolution', revisionToken: 'other-revision', recordHash: 'sha256:record' }] } },
+  }, oracle).reason, 'successful capture was not persisted in snapshot evidence');
+  assert.equal(judgeCell({ caseId: 'blocker', condition: 'candidate' }, {
+    ...runtime,
+    trace: { availability: 'available', events: [{ type: 'capture', id: 'document-export-resolution', revisionToken: 'updated-revision', outcome: 'updated' }] },
+    snapshots: { before: { records: [{ id: 'document-export-resolution', revisionToken: 'old-revision' }] }, after: { records: [{ id: 'document-export-resolution', revisionToken: 'updated-revision', recordHash: 'sha256:record' }] } },
+  }, oracle).structuralValid, true);
 });
 
 test('cached native evidence reruns only stale derived trace checks and preserves real trace failures', () => {

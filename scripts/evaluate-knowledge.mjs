@@ -237,11 +237,11 @@ export function judgeCell(cell, runtime, oracle) {
   if (runtime?.deliverable?.exists !== true) return { valid: false, recalled: false, reason: 'decision artifact was not persisted' };
   if (cell.condition === 'candidate' && expected.requiresCapture === true) {
     const captures = (runtime.trace?.events ?? []).filter((event) => event.type === 'capture' &&
-      (event.outcome === 'created' || event.outcome === 'updated') && typeof event.id === 'string');
+      (event.outcome === 'created' || event.outcome === 'updated') && typeof event.id === 'string' && typeof event.revisionToken === 'string');
     if (captures.length === 0) return { valid: false, recalled: false, reason: 'successful capture trace evidence is missing' };
     const snapshots = [runtime.snapshots?.after, ...(runtime.sessionSnapshots ?? []).map((session) => session.after)].filter(Boolean);
     const persisted = captures.some((capture) => snapshots.some((snapshot) => (snapshot.records ?? []).some((record) =>
-      record.id === capture.id && Boolean(record.revisionToken ?? record.sourceFingerprint ?? record.recordHash)
+      record.id === capture.id && record.revisionToken === capture.revisionToken
     )));
     if (!persisted) return { valid: false, recalled: false, reason: 'successful capture was not persisted in snapshot evidence' };
   }
