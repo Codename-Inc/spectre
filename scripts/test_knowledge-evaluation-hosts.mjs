@@ -220,10 +220,14 @@ test('every host invocation receives both isolated provider homes and removes st
   const result = await invokeKnowledgeHost({
     host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task',
     preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
-  }, { spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); } });
+  }, {
+    baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json' },
+    spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
+  });
   assert.equal(environment.CODEX_HOME, setup.value.codexHome);
   assert.equal(environment.CLAUDE_CONFIG_DIR, setup.value.claudeHome);
   assert.equal(environment.CLAUDE_SECURESTORAGE_CONFIG_DIR, '');
+  assert.equal(environment.MCP_CONFIG_PATH, undefined);
   assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
   assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
 });

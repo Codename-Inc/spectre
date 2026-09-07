@@ -104,6 +104,32 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins')), false);
 });
 
+test('isolates login shells, Git config, and GitHub commands for every condition', async (t) => {
+  const value = fixture(t);
+  for (const condition of ['candidate', 'baseline', 'no-knowledge']) {
+    const staged = await stageKnowledgeCell({ condition, host: 'claude' }, value.fixture, value.options);
+    const environment = { ...process.env, ...staged.environment };
+    const expectedGh = path.join(staged.root, 'bin', 'gh');
+    for (const shell of ['/bin/zsh', '/bin/bash']) {
+      const result = spawnSync(shell, ['-lc', 'command -v gh; gh auth status >/dev/null; gh repo view --json nameWithOwner --jq .nameWithOwner; git config --global --list'], {
+        cwd: staged.projectDir, env: environment, encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, `${condition} ${shell}: ${result.stderr}`);
+      assert.equal(result.stdout.split('\n')[0], expectedGh);
+      assert.match(result.stdout, /evaluation-fixture\/knowledge-evaluation/);
+    }
+    const created = spawnSync('/bin/zsh', ['-lc', 'gh pr create --draft --head evaluation/knowledge-cell --base main --title fixture --body fixture'], {
+      cwd: staged.projectDir, env: environment, encoding: 'utf8',
+    });
+    assert.equal(created.status, 0, `${condition}: ${created.stderr}`);
+    assert.match(created.stdout, /github\.com\/evaluation-fixture\/knowledge-evaluation\/pull\/1/);
+    assert.match(fs.readFileSync(staged.ghLogPath, 'utf8'), /pr create/);
+    assert.equal(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests.length, 1);
+    assert.notEqual(staged.environment.HOME, os.homedir());
+    assert.notEqual(staged.environment.GIT_CONFIG_GLOBAL, path.join(os.homedir(), '.gitconfig'));
+  }
+});
+
 test('restores pristine activity after preflight and snapshots bounded durable evidence', async (t) => {
   const value = fixture(t);
   const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);

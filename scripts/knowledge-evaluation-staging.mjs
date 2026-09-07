@@ -227,7 +227,7 @@ function installCodexPlugin(codexHome, pluginDir, options = {}) {
     plugins: [{ name: 'spectre', source: './plugins/spectre-codex', version: '7.3.0' }],
   }, null, 2)}\n`);
   fs.mkdirSync(codexHome, { recursive: true });
-  const environment = { ...process.env, CODEX_HOME: codexHome };
+  const environment = { ...process.env, ...options.environment, CODEX_HOME: codexHome };
   const binary = options.codexCommand || process.env.CODEX_BIN || 'codex';
   const marketplace = run(binary, ['plugin', 'marketplace', 'add', marketplaceRoot, '--json'], { env: environment });
   if (marketplace.status !== 0) throw new Error(`Could not add isolated Codex marketplace: ${marketplace.stderr}`);
@@ -417,6 +417,7 @@ fail('unsupported local gh fixture command: ' + args.join(' '));
 `);
   fs.chmodSync(executable, 0o755);
   return {
+    bin,
     ghLogPath,
     ghStatePath,
     environment: {
@@ -425,6 +426,48 @@ fail('unsupported local gh fixture command: ' + args.join(' '));
       SPECTRE_EVALUATION_GH_STATE: ghStatePath,
     },
   };
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function writeIsolatedEnvironment(root, gh) {
+  const home = path.join(root, 'home');
+  const shellHome = path.join(root, 'shell-home');
+  const gitConfig = path.join(root, 'gitconfig');
+  const ghConfig = path.join(root, 'gh-config');
+  const xdgConfig = path.join(root, 'xdg-config');
+  const xdgData = path.join(root, 'xdg-data');
+  const xdgCache = path.join(root, 'xdg-cache');
+  const pathValue = `${gh.bin}${path.delimiter}${process.env.PATH || '/usr/bin:/bin'}`;
+  for (const directory of [home, shellHome, ghConfig, xdgConfig, xdgData, xdgCache]) {
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
+  fs.writeFileSync(gitConfig, '# isolated evaluation Git config\n', { mode: 0o600 });
+  const environment = {
+    ...gh.environment,
+    HOME: home,
+    PATH: pathValue,
+    ZDOTDIR: shellHome,
+    BASH_ENV: path.join(shellHome, '.bash_env'),
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GH_CONFIG_DIR: ghConfig,
+    XDG_CONFIG_HOME: xdgConfig,
+    XDG_DATA_HOME: xdgData,
+    XDG_CACHE_HOME: xdgCache,
+  };
+  const exports = Object.entries(environment)
+    .filter(([key]) => ['HOME', 'PATH', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GH_CONFIG_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'].includes(key))
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
+    .join('\n');
+  fs.writeFileSync(path.join(shellHome, '.zshenv'), `${exports}\n`);
+  fs.writeFileSync(path.join(shellHome, '.zprofile'), `${exports}\n`);
+  fs.writeFileSync(path.join(shellHome, '.bash_env'), `${exports}\n`);
+  fs.writeFileSync(path.join(home, '.bash_profile'), `${exports}\n`);
+  fs.writeFileSync(path.join(home, '.profile'), `${exports}\n`);
+  return environment;
 }
 
 function probeCli(cliPath, projectDir, storeDir, fact) {
@@ -469,6 +512,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const facts = fixtureFacts(fixtureCase, cell.scaleDistractors);
   const repository = initializeRepository(projectDir, fixtureCase);
   const gh = writeGhMock(root);
+  const environment = writeIsolatedEnvironment(root, gh);
   const claudeHome = path.join(root, 'claude-home');
   const codexHome = path.join(root, 'codex-home');
   fs.mkdirSync(claudeHome, { recursive: true });
@@ -477,7 +521,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
-      freshStore: true, isolatedGitWorkflow: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: gh.environment,
+      freshStore: true, isolatedGitWorkflow: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment,
       claudeHome, codexHome, claudePluginDir: null, codexPlugin: null,
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
@@ -502,7 +546,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   }
   stagePluginMirror('claude', claudePluginDir);
   stagePluginMirror('codex', codexSourcePluginDir);
-  const codexPlugin = installCodexPlugin(codexHome, codexSourcePluginDir, options);
+  const codexPlugin = installCodexPlugin(codexHome, codexSourcePluginDir, { ...options, environment });
   const pluginDir = cell.host === 'codex' ? codexPlugin.installedPath : claudePluginDir;
   const seededFacts = facts.filter(fact => fact.seedKnowledge !== false);
   const seeded = cell.condition === 'baseline'
@@ -520,7 +564,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   return {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
     freshStore: true, isolatedGitWorkflow: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
-    ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: { ...gh.environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
+    ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: { ...environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
     claudeHome, codexHome, claudePluginDir, codexPlugin,
     provenance: { condition: cell.condition, ...provenance }, repository, probe,
   };

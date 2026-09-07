@@ -256,7 +256,7 @@ export function normalizeKnowledgeHostTranscript(host, rawStdout) {
 function cleanEnvironment(base = process.env) {
   const environment = {};
   for (const [key, value] of Object.entries(base)) {
-    if (/^(CLAUDE|CODEX|SPECTRE|ANTHROPIC)_/.test(key)) continue;
+    if (/^(CLAUDE|CODEX|SPECTRE|ANTHROPIC|MCP)_/.test(key)) continue;
     environment[key] = value;
   }
   return environment;
