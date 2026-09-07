@@ -184,7 +184,7 @@ export async function main(argv = process.argv.slice(2)) {
       const selectedOutput = renderResult(result, flags);
       recordTrace(trace, command === 'history'
         ? { type: 'history-read', subtype: 'history-preview', id: result.id, results: result.entries, ...responseMetrics(selectedOutput) }
-        : { type: 'history-read', subtype: 'history-body', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), ...responseMetrics(selectedOutput) });
+        : { type: 'history-read', subtype: 'history-body', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: estimatePayloadTokens(result.rendered), ...responseMetrics(selectedOutput) });
       process.stdout.write(selectedOutput);
     } catch (error) { throw codedError(error?.code || 'KNOWLEDGE_HISTORY_FAILED', error instanceof Error ? error.message : String(error)); }
     return;

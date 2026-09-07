@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { estimatePayloadTokens } from './knowledge/payload.mjs';
-import { refreshKnowledgeIndex, revisionDirectoryName, revisionTokenFor } from './knowledge/records.mjs';
+import { refreshKnowledgeIndex, renderKnowledgeRecord, revisionDirectoryName, revisionTokenFor } from './knowledge/records.mjs';
 import { createEvaluationTrace, detectTraceBypass } from './knowledge/evaluation-trace.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
 
@@ -109,6 +109,29 @@ test('runtime trace is opt-in and records actual public operations without query
   assert.equal(serialized.includes('secret query text'), false);
   assert.equal(serialized.includes('SPECTRE_TRACE_RECORD_BODY'), false);
   assert.equal(serialized.includes('SPECTRE_CAPTURE_BODY'), false);
+});
+
+test('historical inspection traces semantic body sizes for human and JSON output without recording body text', async (t) => {
+  const value = await fixture(t);
+  const tracePath = path.join(value.root, 'history-body.jsonl');
+  const expectedRendered = renderKnowledgeRecord(record(value.id));
+  const expectedBytes = Buffer.byteLength(expectedRendered, 'utf8');
+  const expectedTokens = estimatePayloadTokens(expectedRendered);
+
+  for (const json of [false, true]) {
+    const result = run(value, tracePath, ['inspect', value.id, '--revision', value.revisionToken], { json });
+    assert.equal(result.status, 0, result.stderr);
+  }
+
+  const events = traceEvents(tracePath);
+  assert.equal(events.length, 2);
+  for (const event of events) {
+    assert.equal(event.type, 'history-read');
+    assert.equal(event.subtype, 'history-body');
+    assert.equal(event.loadedBytes, expectedBytes);
+    assert.equal(event.loadedTokens, expectedTokens);
+  }
+  assert.equal(fs.readFileSync(tracePath, 'utf8').includes('SPECTRE_TRACE_RECORD_BODY'), false);
 });
 
 test('response measurements match the exact human or JSON wire payload including framing', async (t) => {
