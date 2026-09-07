@@ -11,7 +11,7 @@ import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
 import { previewKnowledgeRegistry } from './knowledge/preview.mjs';
 import { registerCanonicalKnowledge, serializeKnowledgeError } from './knowledge/registration.mjs';
 import { formatKnowledgeSearchHuman, formatKnowledgeSearchWarningsHuman, searchKnowledge } from './knowledge/search.mjs';
-import { applyTagOperationFile, searchTags, serializeTagError } from './knowledge/tags.mjs';
+import { applyTagOperationFile, ensureTags, mergeTags, readTagOperationFile, searchTags, serializeTagError } from './knowledge/tags.mjs';
 import { resolveWorkIdentity } from './knowledge/work.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,6 +66,8 @@ function usage() {
     'Usage:',
     '  knowledge-cli.mjs search [query] [--tag <tag>] [--path <path>] [--work-id <id>] [--run-id <id>] --project-dir <path> [--json]',
     '  knowledge-cli.mjs tags search [query] --project-dir <path> [--json]',
+    '  knowledge-cli.mjs tags ensure --input <json> --project-dir <path> [--json]',
+    '  knowledge-cli.mjs tags merge --input <json> --project-dir <path> [--json]',
     '  knowledge-cli.mjs tags apply --input <json> --project-dir <path> [--json]',
     '  knowledge-cli.mjs load <id> [--work-id <id>] [--run-id <id>] [--allowance-tokens <n>] [--inspect-historical] --project-dir <path> [--json]',
     '  knowledge-cli.mjs history <id> --project-dir <path> [--json]',
@@ -81,6 +83,24 @@ function usage() {
 function writeResult(result, flags, human) {
   if (flags.has('--json')) process.stdout.write(`${JSON.stringify(result)}\n`);
   else process.stdout.write(human ? human(result) : `${JSON.stringify(result)}\n`);
+}
+
+async function runTagOperation(operation, flags) {
+  const { operation: inputOperation, ...request } = readTagOperationFile(flags.get('--input'));
+  if (inputOperation !== operation) {
+    throw codedError('TAG_INPUT_INVALID', `Input operation ${inputOperation} cannot run as tags ${operation}.`);
+  }
+  const options = { projectDir: projectDir(flags), ...request, lockOptions: lockOptions(flags) };
+  return operation === 'ensure' ? ensureTags(options) : mergeTags(options);
+}
+
+function sourceRunId(flags) {
+  const sourceRunId = flags.get('--source-run-id');
+  const runId = flags.get('--run-id');
+  if (sourceRunId !== undefined && runId !== undefined && sourceRunId !== runId) {
+    throw codedError('WORK_SOURCE_RUN_CONFLICT', '--source-run-id and --run-id must match when both are supplied.');
+  }
+  return sourceRunId ?? runId;
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -108,12 +128,14 @@ export async function main(argv = process.argv.slice(2)) {
     try {
       const result = subcommand === 'search'
         ? await searchTags({ projectDir: projectDir(flags), query: positional.slice(2).join(' '), limit: numericFlag(flags, '--limit'), cursor: flags.get('--cursor') })
-        : subcommand === 'apply'
-          ? await applyTagOperationFile({ projectDir: projectDir(flags), inputPath: flags.get('--input'), lockOptions: lockOptions(flags) })
+        : subcommand === 'ensure' || subcommand === 'merge'
+          ? await runTagOperation(subcommand, flags)
+          : subcommand === 'apply'
+            ? await applyTagOperationFile({ projectDir: projectDir(flags), inputPath: flags.get('--input'), lockOptions: lockOptions(flags) })
           : null;
       if (!result) throw codedError('UNKNOWN_TAG_COMMAND', `Unknown tags command "${subcommand || ''}".`);
       writeResult(result, flags);
-    } catch (error) { const payload = serializeTagError(error); throw codedError(payload.code, payload.message); }
+    } catch (error) { const payload = serializeTagError(error); throw codedError(payload.code, payload.message, payload); }
     return;
   }
   if (command === 'load') {
@@ -140,7 +162,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'work' && subcommand === 'resolve') {
     try {
       const candidate = flags.get('--candidate') ? JSON.parse(flags.get('--candidate')) : undefined;
-      writeResult(await resolveWorkIdentity({ projectDir: projectDir(flags), workId: flags.get('--work-id'), sourceRunId: flags.get('--source-run-id'), pullRequestId: flags.get('--pull-request-id'), candidate, lockOptions: lockOptions(flags) }), flags);
+      writeResult(await resolveWorkIdentity({ projectDir: projectDir(flags), workId: flags.get('--work-id'), sourceRunId: sourceRunId(flags), pullRequestId: flags.get('--pull-request-id'), candidate, lockOptions: lockOptions(flags) }), flags);
     } catch (error) { throw codedError(error?.code || 'WORK_RESOLUTION_FAILED', error instanceof Error ? error.message : String(error)); }
     return;
   }

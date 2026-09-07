@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { refreshKnowledgeIndex } from './knowledge/records.mjs';
 import { resolveProjectStore } from './knowledge/store.mjs';
+import { resolveOrAllocateWorkIdentity } from './knowledge/work.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIR, '../../../..');
@@ -56,6 +57,18 @@ function run(kind, args, value) {
   });
 }
 
+function runHelp(kind) {
+  const command = kind === 'npm' ? NPM_CLI : BUNDLED_CLI;
+  const prefix = kind === 'npm' ? [] : [];
+  return spawnSync(process.execPath, [command, ...prefix, 'help'], { encoding: 'utf8' });
+}
+
+function writeInput(value, name, input) {
+  const inputPath = path.join(value.root, name);
+  fs.writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
+  return inputPath;
+}
+
 function runWrapper(script, args, value) {
   return spawnSync(process.execPath, [script, ...args, '--project-dir', value.projectDir, '--json'], {
     cwd: value.projectDir, env: { ...process.env, SPECTRE_HOME: value.spectreHome }, encoding: 'utf8',
@@ -99,6 +112,86 @@ describe('typed public knowledge CLI parity', () => {
       const rejected = run(kind, ['register', '--record', proposal, '--expected-revision', 'sha256:0000000000000000000000000000000000000000000000000000000000000000'], value);
       assert.equal(rejected.status, 1);
       assert.equal(output(rejected).code, 'KNOWLEDGE_REVISION_CONFLICT');
+    }
+  });
+
+  it('exposes structured tag ensure and merge commands in both public CLIs', async (t) => {
+    for (const kind of ['bundled', 'npm']) {
+      const value = await fixture(t);
+      const ensured = run(kind, ['tags', 'ensure', '--input', writeInput(value, `${kind}-ensure.json`, {
+        operation: 'ensure',
+        tags: [{ id: 'cli-extra', description: 'An additional public CLI tag.', aliases: ['extra-cli'] }],
+      })], value);
+      assert.equal(ensured.status, 0, ensured.stderr);
+      assert.equal(output(ensured).tags[0].id, 'cli-extra');
+
+      const merged = run(kind, ['tags', 'merge', '--input', writeInput(value, `${kind}-merge.json`, {
+        operation: 'merge', from: ['cli-extra'], into: 'cli-test', revision: 'ignored',
+        expectedRevision: output(ensured).revision,
+      })], value);
+      assert.equal(merged.status, 0, merged.stderr);
+      assert.deepEqual(output(merged).retired, ['cli-extra']);
+      assert.equal(output(merged).redirects['cli-extra'], 'cli-test');
+
+      const help = runHelp(kind);
+      assert.equal(help.status, 0, help.stderr);
+      assert.match(help.stdout, /tags ensure --input <json>/);
+      assert.match(help.stdout, /tags merge --input <json>/);
+    }
+  });
+
+  it('resolves an exact source run through either supported public flag', async (t) => {
+    for (const kind of ['bundled', 'npm']) {
+      const value = await fixture(t);
+      const work = await resolveOrAllocateWorkIdentity({
+        projectDir: value.projectDir, spectreHome: value.spectreHome, sourceRunId: 'run-cli-alias',
+      });
+      const sourceRun = run(kind, ['work', 'resolve', '--source-run-id', 'run-cli-alias'], value);
+      const runAlias = run(kind, ['work', 'resolve', '--run-id', 'run-cli-alias'], value);
+      assert.equal(sourceRun.status, 0, sourceRun.stderr);
+      assert.equal(runAlias.status, 0, runAlias.stderr);
+      assert.deepEqual(output(runAlias), output(sourceRun));
+      assert.equal(output(runAlias).workId, work.workId);
+
+      const conflict = run(kind, ['work', 'resolve', '--source-run-id', 'run-cli-alias', '--run-id', 'run-other'], value);
+      assert.equal(conflict.status, 1);
+      assert.equal(output(conflict).code, 'WORK_SOURCE_RUN_CONFLICT');
+    }
+  });
+
+  it('preserves create, noop, and typed registration precondition errors across public CLIs', async (t) => {
+    for (const kind of ['bundled', 'npm']) {
+      const value = await fixture(t);
+      const proposal = path.join(value.root, 'proposals', `${kind}-created`);
+      fs.mkdirSync(proposal, { recursive: true });
+      fs.writeFileSync(path.join(proposal, 'record.json'), JSON.stringify(typedRecord(`${kind}-created`)));
+      const created = run(kind, ['register', '--record', proposal], value);
+      assert.equal(created.status, 0, created.stderr);
+      assert.equal(output(created).status, 'created');
+      const noop = run(kind, ['register', '--record', proposal], value);
+      assert.equal(noop.status, 0, noop.stderr);
+      assert.equal(output(noop).status, 'noop');
+
+      const replacement = path.join(value.root, 'replacement', value.id);
+      fs.mkdirSync(replacement, { recursive: true });
+      fs.writeFileSync(path.join(replacement, 'record.json'), JSON.stringify(typedRecord(value.id, ['replacement'])));
+      const missingExpected = run(kind, ['register', '--record', replacement], value);
+      assert.equal(missingExpected.status, 1);
+      const missing = output(missingExpected);
+      assert.deepEqual(Object.keys(missing).sort(), ['code', 'currentRevision', 'message', 'ok', 'status']);
+      assert.equal(missing.code, 'KNOWLEDGE_REVISION_REQUIRED');
+      assert.equal(missing.status, 'conflict');
+      assert.match(missing.currentRevision, /^sha256:[a-f0-9]{64}$/);
+
+      const staleRevision = `sha256:${'0'.repeat(64)}`;
+      const staleExpected = run(kind, ['register', '--record', replacement, '--expected-revision', staleRevision], value);
+      assert.equal(staleExpected.status, 1);
+      const stale = output(staleExpected);
+      assert.deepEqual(Object.keys(stale).sort(), ['code', 'currentRevision', 'expectedRevision', 'message', 'ok', 'status']);
+      assert.equal(stale.code, 'KNOWLEDGE_REVISION_CONFLICT');
+      assert.equal(stale.status, 'conflict');
+      assert.equal(stale.expectedRevision, staleRevision);
+      assert.equal(stale.currentRevision, missing.currentRevision);
     }
   });
 

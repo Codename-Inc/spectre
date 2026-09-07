@@ -30,6 +30,9 @@ import {
 } from '../../plugins/spectre/hooks/scripts/knowledge/history.mjs';
 import {
   applyTagOperationFile,
+  ensureTags,
+  mergeTags,
+  readTagOperationFile,
   searchTags
 } from '../../plugins/spectre/hooks/scripts/knowledge/tags.mjs';
 import {
@@ -70,6 +73,26 @@ export async function searchCanonicalKnowledgeTags(options) {
 
 export async function applyCanonicalKnowledgeTagOperation(options) {
   return applyTagOperationFile(options);
+}
+
+async function runCanonicalKnowledgeTagOperation(operation, options) {
+  const { operation: inputOperation, ...request } = readTagOperationFile(options.inputPath);
+  if (inputOperation !== operation) {
+    const error = new Error(`Input operation ${inputOperation} cannot run as tags ${operation}.`);
+    error.code = 'TAG_INPUT_INVALID';
+    throw error;
+  }
+  return operation === 'ensure'
+    ? ensureTags({ ...options, ...request })
+    : mergeTags({ ...options, ...request });
+}
+
+export async function ensureCanonicalKnowledgeTags(options) {
+  return runCanonicalKnowledgeTagOperation('ensure', options);
+}
+
+export async function mergeCanonicalKnowledgeTags(options) {
+  return runCanonicalKnowledgeTagOperation('merge', options);
 }
 
 export async function resolveCanonicalKnowledgeWork(options) {
