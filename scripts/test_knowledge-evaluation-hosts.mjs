@@ -88,6 +88,17 @@ test('Claude model totals are the only full-cycle aggregate and duplicate worker
   });
 });
 
+test('Claude preserves parent tool linkage without treating a bare agent id as worker proof', () => {
+  const transcript = normalizeKnowledgeHostTranscript('claude', [
+    JSON.stringify({ type: 'assistant', agent_id: 'root-agent', message: { content: [{ type: 'tool_use', id: 'primary-read', name: 'Read', input: {} }] } }),
+    JSON.stringify({ type: 'assistant', agent_id: 'child-agent', parent_tool_use_id: 'task-1', message: { content: [{ type: 'tool_use', id: 'child-read', name: 'Read', input: {} }] } }),
+  ].join('\n'));
+  assert.deepEqual(transcript.toolOperations.map(({ id, actorRole, actorId, parentToolUseId }) => ({ id, actorRole, actorId, parentToolUseId })), [
+    { id: 'primary-read', actorRole: 'primary', actorId: 'root-agent', parentToolUseId: null },
+    { id: 'child-read', actorRole: 'worker', actorId: 'child-agent', parentToolUseId: 'task-1' },
+  ]);
+});
+
 test('Codex transcript reports command timing without inventing omitted usage fields', async () => {
   const setup = await fixture('codex');
   const stdout = [
