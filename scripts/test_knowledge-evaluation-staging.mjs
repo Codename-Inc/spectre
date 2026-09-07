@@ -130,6 +130,8 @@ test('isolates login shells, Git config, and GitHub commands for every condition
     assert.notEqual(staged.environment.GIT_CONFIG_GLOBAL, path.join(os.homedir(), '.gitconfig'));
     assert.equal(staged.environment.TMPDIR, staged.environment.TMP);
     assert.equal(staged.environment.TMPDIR, staged.environment.TEMP);
+    assert.equal(staged.environment.SSL_CERT_FILE, path.join(staged.root, 'trust', 'cert.pem'));
+    assert.equal(fs.readFileSync(staged.environment.SSL_CERT_FILE, 'utf8').includes('BEGIN CERTIFICATE'), true);
   }
 });
 

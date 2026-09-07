@@ -442,6 +442,17 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+function stageTrustBundle(root) {
+  const source = '/etc/ssl/cert.pem';
+  if (!fs.statSync(source).isFile()) throw new Error('System CA bundle is unavailable');
+  const directory = path.join(root, 'trust');
+  const destination = path.join(directory, 'cert.pem');
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  fs.copyFileSync(source, destination);
+  fs.chmodSync(destination, 0o600);
+  return destination;
+}
+
 function writeIsolatedEnvironment(root, gh) {
   const home = path.join(root, 'home');
   const shellHome = path.join(root, 'shell-home');
@@ -451,6 +462,7 @@ function writeIsolatedEnvironment(root, gh) {
   const xdgData = path.join(root, 'xdg-data');
   const xdgCache = path.join(root, 'xdg-cache');
   const temporaryDirectory = path.join(root, 'tmp');
+  const trustBundle = stageTrustBundle(root);
   const pathValue = `${gh.bin}${path.delimiter}${process.env.PATH || '/usr/bin:/bin'}`;
   for (const directory of [home, shellHome, ghConfig, xdgConfig, xdgData, xdgCache, temporaryDirectory]) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -471,9 +483,10 @@ function writeIsolatedEnvironment(root, gh) {
     TMPDIR: temporaryDirectory,
     TMP: temporaryDirectory,
     TEMP: temporaryDirectory,
+    SSL_CERT_FILE: trustBundle,
   };
   const exports = Object.entries(environment)
-    .filter(([key]) => ['HOME', 'PATH', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GH_CONFIG_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'TMPDIR', 'TMP', 'TEMP'].includes(key))
+    .filter(([key]) => ['HOME', 'PATH', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GH_CONFIG_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'TMPDIR', 'TMP', 'TEMP', 'SSL_CERT_FILE'].includes(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('\n');
   fs.writeFileSync(path.join(shellHome, '.zshenv'), `${exports}\n`);

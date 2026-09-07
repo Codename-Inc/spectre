@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -224,6 +225,10 @@ test('wraps every host launch in a fail-closed per-cell filesystem sandbox', asy
   assert.equal(result.isolation.filesystemBoundary.enabled, true);
   assert.match(result.isolation.filesystemBoundary.profileHash, /^sha256:[a-f0-9]{64}$/);
   assert.ok(result.isolation.filesystemBoundary.allowedPaths.includes(setup.root));
+  assert.deepEqual(result.isolation.filesystemBoundary.runtimeExceptions, [{
+    kind: 'xcrun-cache', pathPattern: `${fsSync.realpathSync.native(os.tmpdir())}/xcrun_db(-[A-Za-z0-9]+)?`, access: 'read-write',
+  }]);
+  assert.equal(result.isolation.filesystemBoundary.cellOnlyWrites, false);
 });
 
 test('fails closed without a usable filesystem boundary before launching a host', async () => {
@@ -263,18 +268,23 @@ test('rejects a cell-visible raw log or environment path before launching a host
   await fs.rm(externalHome, { recursive: true, force: true });
 });
 
-test('default-deny boundary permits only one cell and both host runtimes without a model invocation', async (t) => {
+test('default-deny boundary permits one cell, declared toolchain cache, and both host runtimes without a model invocation', async (t) => {
   const setup = await fixture('codex');
   const externalRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'knowledge-host-external-'));
   t.after(async () => Promise.all([fs.rm(setup.root, { recursive: true, force: true }), fs.rm(setup.rawLogDirectory, { recursive: true, force: true }), fs.rm(externalRoot, { recursive: true, force: true })]));
   const allowed = path.join(setup.value.projectDir, 'allowed.txt');
   const written = path.join(setup.value.projectDir, 'written.txt');
   const external = path.join(externalRoot, 'oracle.txt');
+  const otherTemp = path.join(os.tmpdir(), `knowledge-host-unrelated-${process.pid}.txt`);
   const userGitConfig = path.join(os.homedir(), '.gitconfig');
   const escaped = path.join(setup.value.projectDir, 'outside');
   const probe = path.join(setup.value.projectDir, 'child-probe.mjs');
   await fs.writeFile(allowed, 'allowed');
   await fs.writeFile(external, 'external');
+  await fs.writeFile(otherTemp, 'unrelated');
+  t.after(() => fs.rm(otherTemp, { force: true }));
+  const initialized = spawnSync('git', ['init', setup.value.projectDir], { encoding: 'utf8' });
+  assert.equal(initialized.status, 0, initialized.stderr);
   await fs.access(userGitConfig);
   await fs.symlink(externalRoot, escaped);
   await fs.writeFile(probe, [
@@ -295,6 +305,7 @@ test('default-deny boundary permits only one cell and both host runtimes without
     BUN_TMPDIR: setup.value.claudeHome,
     CLAUDE_CODE_TMPDIR: setup.value.claudeHome,
     CLAUDE_TMPDIR: setup.value.claudeHome,
+    DEVELOPER_DIR: '/Library/Developer/CommandLineTools',
     CODEX_HOME: setup.value.codexHome,
     CLAUDE_CONFIG_DIR: setup.value.claudeHome,
   };
@@ -307,6 +318,9 @@ test('default-deny boundary permits only one cell and both host runtimes without
     `! cat ${JSON.stringify(external)} >/dev/null 2>&1`,
     `! cat ${JSON.stringify(path.join(escaped, 'oracle.txt'))} >/dev/null 2>&1`,
     `! cat ${JSON.stringify(userGitConfig)} >/dev/null 2>&1`,
+    `! cat ${JSON.stringify(otherTemp)} >/dev/null 2>&1`,
+    'git -C . status --porcelain=v1',
+    'python3 --version',
     `${JSON.stringify(process.execPath)} ${JSON.stringify(probe)} ${JSON.stringify(allowed)} ${JSON.stringify(path.join(setup.value.projectDir, 'child-write.txt'))} ${JSON.stringify(external)}`,
   ].join('; ');
   const shellResult = spawnSync(shell.command, [...shell.args, '-c', shellScript], {
@@ -316,6 +330,7 @@ test('default-deny boundary permits only one cell and both host runtimes without
   assert.equal(shellResult.stderr, '');
   assert.equal(await fs.readFile(written, 'utf8'), 'shell-write');
   assert.equal(await fs.readFile(path.join(setup.value.projectDir, 'child-write.txt'), 'utf8'), 'child write');
+  await fs.rm(otherTemp, { force: true });
   for (const provider of ['codex', 'claude']) {
     const boundary = createKnowledgeEvaluationSandbox({
       preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: provider, environment,
@@ -368,6 +383,8 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.equal(environment.CLAUDE_TMPDIR, setup.value.claudeHome);
     assert.equal(environment.XDG_RUNTIME_DIR, setup.value.claudeHome);
     assert.equal(environment.BUN_TMPDIR, setup.value.claudeHome);
+    assert.equal(environment.DEVELOPER_DIR, '/Library/Developer/CommandLineTools');
+    assert.match(environment.PATH, /\/Library\/Developer\/CommandLineTools\/usr\/bin/);
     assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, oauthToken);
     assert.equal(environment.MCP_CONFIG_PATH, undefined);
     assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });

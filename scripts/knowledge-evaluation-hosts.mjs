@@ -11,13 +11,13 @@ const DEFAULT_LIMITS = Object.freeze({
   terminationGraceMs: 100,
 });
 const SANDBOX_EXECUTABLE = '/usr/bin/sandbox-exec';
-const SYSTEM_RUNTIME_PATHS = ['/bin', '/usr/bin', '/usr/sbin', '/sbin', '/private/var/select', '/opt/homebrew/bin'];
+const SYSTEM_RUNTIME_PATHS = ['/bin', '/usr/bin', '/usr/sbin', '/sbin', '/private/var/select', '/opt/homebrew/bin', '/private/etc/ssl/openssl.cnf'];
 const ISOLATED_ENVIRONMENT_PATHS = new Set([
   'HOME', 'ZDOTDIR', 'BASH_ENV', 'GIT_CONFIG_GLOBAL', 'GH_CONFIG_DIR',
   'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'TMPDIR', 'TMP', 'TEMP', 'BUN_TMPDIR',
   'SPECTRE_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'CLAUDE_PROJECT_DIR',
   'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_TMPDIR', 'SPECTRE_KNOWLEDGE_EVALUATION_TRACE',
-  'SPECTRE_EVALUATION_GH_LOG', 'SPECTRE_EVALUATION_GH_STATE',
+  'SPECTRE_EVALUATION_GH_LOG', 'SPECTRE_EVALUATION_GH_STATE', 'SSL_CERT_FILE',
 ]);
 
 function isWithin(root, target) {
@@ -65,6 +65,15 @@ function sandboxString(value) {
   return JSON.stringify(value);
 }
 
+function sandboxRegexForPrefix(value, suffix) {
+  const escaped = value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+  return JSON.stringify(`^${escaped}${suffix}$`);
+}
+
+function xcrunCachePrefix() {
+  return `${fs.realpathSync.native(os.tmpdir())}/xcrun_db`;
+}
+
 function pathAliases(value, label) {
   const lexical = absoluteDirectory(value, label);
   return [...new Set([lexical, realDirectory(lexical, label)])];
@@ -91,17 +100,51 @@ function containedAliases(cellRoot, directories) {
   }))];
 }
 
+function developerToolchain() {
+  const selected = spawnSync('/usr/bin/xcode-select', ['-p'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const commandLineTools = '/Library/Developer/CommandLineTools';
+  const root = fs.existsSync(path.join(commandLineTools, 'usr', 'bin', 'git'))
+    ? commandLineTools
+    : selected.status === 0 ? selected.stdout.trim() : '';
+  if (!root) throw new Error('Knowledge evaluation developer runtime is unavailable: xcode-select -p');
+  const developerRoot = realDirectory(root, 'xcode developer root');
+  const toolBin = realDirectory(path.join(developerRoot, 'usr', 'bin'), 'xcode developer tools');
+  for (const command of ['git', 'python3']) {
+    try {
+      const stat = fs.statSync(path.join(toolBin, command));
+      if (!stat.isFile() || (stat.mode & 0o111) === 0) throw new Error('not executable');
+    } catch {
+      throw new Error(`Knowledge evaluation developer runtime is missing ${command}`);
+    }
+  }
+  if (developerRoot === commandLineTools) return { developerRoot, toolBin, runtimePaths: [developerRoot] };
+  const xcodeContents = realDirectory(path.dirname(developerRoot), 'xcode contents');
+  const coreDevice = fs.existsSync('/Library/Developer/PrivateFrameworks/CoreDevice.framework')
+    ? realDirectory('/Library/Developer/PrivateFrameworks/CoreDevice.framework', 'xcode CoreDevice framework')
+    : null;
+  return { developerRoot, toolBin, runtimePaths: [xcodeContents, coreDevice].filter(Boolean) };
+}
+
+function prependDeveloperTools(environment, toolBin) {
+  const entries = String(environment.PATH || '').split(path.delimiter).filter(Boolean);
+  environment.PATH = [toolBin, ...entries.filter((entry) => path.resolve(entry) !== toolBin)].join(path.delimiter);
+}
+
 function sandboxRuntimePaths(command, environment) {
+  const developer = developerToolchain();
+  if (environment.DEVELOPER_DIR && path.resolve(environment.DEVELOPER_DIR) !== developer.developerRoot) {
+    throw new Error('evaluation environment DEVELOPER_DIR does not match xcode-select -p');
+  }
   const executable = resolveExecutable(command, environment);
   const providerExecutables = [
     executable,
     resolveExecutable(environment.CLAUDE_BIN || process.env.CLAUDE_BIN || 'claude', environment),
     resolveExecutable(environment.CODEX_BIN || process.env.CODEX_BIN || 'codex', environment),
   ];
-  const paths = new Set([...SYSTEM_RUNTIME_PATHS, ...providerExecutables.map(path.dirname), path.dirname(process.execPath)]);
+  const paths = new Set([...SYSTEM_RUNTIME_PATHS, ...developer.runtimePaths, ...providerExecutables.map(path.dirname), path.dirname(process.execPath)]);
   const cellaredNode = process.execPath.match(/^(.*\/Cellar\/node\/[^/]+)/);
   if (cellaredNode) paths.add(cellaredNode[1]);
-  return { executable, executables: [...new Set(providerExecutables)], paths: [...paths].filter((value) => fs.existsSync(value)) };
+  return { executable, executables: [...new Set(providerExecutables)], paths: [...paths].filter((value) => fs.existsSync(value)), developer };
 }
 
 function assertSeparated(rawAliases, allowedPaths) {
@@ -144,8 +187,14 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
   assertIsolatedEnvironment(cellAliases, environment);
   assertSeparated(pathAliases(preparedFixture.rawDirectory, 'rawLogDirectory'), allowedPaths);
   const readPaths = allowedPaths.map((entry) => `(subpath ${sandboxString(entry)})`).join(' ');
-  const rootMetadata = [...new Set([...cellAliases, ...fixtureAliases])]
+  const rootMetadata = [...new Set([...cellAliases, ...fixtureAliases, ...runtimePaths])]
     .map((entry) => `(path-ancestors ${sandboxString(entry)})`).join(' ');
+  const xcrunCache = sandboxRegexForPrefix(xcrunCachePrefix(), '(-[A-Za-z0-9]+)?');
+  const runtimeExceptions = [{
+    kind: 'xcrun-cache',
+    pathPattern: `${xcrunCachePrefix()}(-[A-Za-z0-9]+)?`,
+    access: 'read-write',
+  }];
   const profile = [
     '(version 1)',
     '(import "system.sb")',
@@ -157,6 +206,8 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
     `(allow file-read* file-map-executable ${readPaths})`,
     `(allow file-read-metadata ${rootMetadata})`,
     `(allow file-write* ${cellAliases.map((entry) => `(subpath ${sandboxString(entry)})`).join(' ')})`,
+    `(allow file-write* (regex ${xcrunCache}))`,
+    `(allow file-read* (regex ${xcrunCache}))`,
   ].join('\n');
   return {
     command: sandboxExecutable,
@@ -166,6 +217,7 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
     allowedPaths,
     cellPaths: cellAliases,
     providerExecutables: executables,
+    runtimeExceptions,
   };
 }
 
@@ -593,6 +645,9 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   environment.BUN_TMPDIR ??= environment.TMPDIR;
   environment.CLAUDE_CODE_TMPDIR ??= environment.TMPDIR;
   environment.CLAUDE_TMPDIR ??= environment.TMPDIR;
+  const developer = developerToolchain();
+  environment.DEVELOPER_DIR = developer.developerRoot;
+  prependDeveloperTools(environment, developer.toolBin);
   const native = hostCommand({ host, model, effort, prompt, preparedFixture: fixture, command: request.command, extraArgs: request.extraArgs, allowedTools: request.allowedTools });
   const startedAt = new Date().toISOString();
   const started = performance.now();
@@ -681,6 +736,8 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
           allowedPaths: fixture.filesystemBoundary.allowedPaths,
           cellPaths: fixture.filesystemBoundary.cellPaths,
           providerExecutables: fixture.filesystemBoundary.providerExecutables,
+          runtimeExceptions: fixture.filesystemBoundary.runtimeExceptions,
+          cellOnlyWrites: fixture.filesystemBoundary.runtimeExceptions.length === 0,
           deniedAttemptsObserved: /Operation not permitted|Sandbox: deny/i.test(processResult?.stderr ?? ''),
         }
         : { enabled: false, reason: 'sandbox-unavailable' },
