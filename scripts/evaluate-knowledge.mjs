@@ -1038,6 +1038,42 @@ function nativeFullCycleUsage(runs) {
   };
 }
 
+function jsonPayloads(content) {
+  if (typeof content !== 'string') return [];
+  const payloads = [];
+  try {
+    payloads.push(JSON.parse(content));
+  } catch {
+    for (const line of content.split(/\r?\n/)) {
+      try {
+        payloads.push(JSON.parse(line));
+      } catch {
+        // Mixed command output may include one JSON payload per line.
+      }
+    }
+  }
+  return payloads;
+}
+
+function loadNeedsExpansion(result) {
+  if (typeof result?.content !== 'string') return false;
+  return /Knowledge load needs expansion:/.test(result.content)
+    || jsonPayloads(result.content).some((payload) => payload?.status === 'expansion-needed');
+}
+
+function wrappedLoadEvidence(result) {
+  if (typeof result?.content !== 'string') return false;
+  if (!/(?:^|\n)exit=0(?:\r?\n|$)/.test(result.content)) return false;
+  return ['ok', 'status', 'id', 'revisionToken', 'record'].every((field) =>
+    new RegExp(`['\"]?${field}['\"]?`).test(result.content)
+  );
+}
+
+function returnedRevision(result) {
+  if (typeof result?.content !== 'string') return null;
+  return result.content.match(/(?:materialized at revision:|--- current revision ---\s*)(sha256:[a-f0-9]+)/i)?.[1] ?? null;
+}
+
 export function traceWithOperationCrosscheck(trace, toolOperations, toolResults = [], sessionSnapshots = []) {
   if (trace.availability !== 'available') return trace;
   const actions = classifyKnowledgeCommands(toolOperations);
@@ -1053,20 +1089,18 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
     const found = actions.get(operation);
     if (found?.has('search')) expect('search');
     if (found?.has('load')) {
-      const historicalWork = delivered.flatMap((result) => {
-        if (result.isError === true || typeof result.content !== 'string') return [];
-        try {
-          const payload = JSON.parse(result.content);
-          return payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === true &&
-            payload.activation === 'historical' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : [];
-        } catch {
-          return [];
-        }
-      });
+      const loadResults = delivered.filter((result) => !loadNeedsExpansion(result));
+      if (loadResults.length === 0) continue;
+      const historicalWork = loadResults.flatMap((result) => jsonPayloads(result.content).flatMap((payload) =>
+        payload?.ok === true && payload.status === 'loaded' && payload.kind === 'work' && payload.historical === true &&
+          payload.activation === 'historical' && typeof payload.id === 'string' && typeof payload.revisionToken === 'string' ? [payload] : []
+      ));
       const commandId = (operation.input?.command ?? '').match(/\bload\s+([a-z0-9]+(?:-[a-z0-9]+)+)\b/i)?.[1] ?? null;
       const session = sessionSnapshots[operation.sessionOrdinal ?? 0];
-      const humanHistorical = commandId && delivered.some((result) => result.isError !== true &&
+      const humanHistorical = commandId && loadResults.some((result) => result.isError !== true &&
         typeof result.content === 'string' && result.content.includes(`- ID: ${commandId}`) && /Historical work record: historical evidence only/.test(result.content));
+      const wrappedHistorical = commandId && loadResults.some(wrappedLoadEvidence);
+      const reportedRevision = loadResults.map(returnedRevision).find(Boolean);
       const snapshotRevisions = new Set([session?.before, session?.after].flatMap((snapshot) =>
         (snapshot?.records ?? []).filter((record) => record.id === commandId).map((record) => record.revisionToken)
       ).filter((revisionToken) => typeof revisionToken === 'string'));
@@ -1076,8 +1110,10 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
         }
       }
       const expectedHistorical = historicalWork.length > 0 ? historicalWork
-        : humanHistorical && typeof session?.contextHash === 'string'
-          ? [...snapshotRevisions].map((revisionToken) => ({ id: commandId, revisionToken })) : [];
+        : (humanHistorical || wrappedHistorical) && typeof session?.contextHash === 'string'
+          ? [...snapshotRevisions].map((revisionToken) => ({ id: commandId, revisionToken }))
+          : reportedRevision && snapshotRevisions.has(reportedRevision) && typeof session?.contextHash === 'string'
+            ? [{ id: commandId, revisionToken: reportedRevision }] : [];
       if (expectedHistorical.length > 0) {
         const matchingIndex = trace.events.findIndex((event, index) => !matchedHistoricalEvents.has(index) &&
           event.type === 'history-read' && event.subtype === 'history-body' && event.contextHash === session?.contextHash &&

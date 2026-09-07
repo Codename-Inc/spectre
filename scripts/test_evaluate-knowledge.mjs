@@ -716,3 +716,22 @@ test('post-hoc bypass replay ignores outside-store Read paths but retains canoni
   };
   assert.deepEqual(replayCachedRuntime({ condition: 'candidate' }, aliasRuntime).bypass.map((entry) => entry.reason), ['direct-read']);
 });
+
+test('post-hoc crosscheck binds only successful wrapped historical loads and ignores expansion preflights', () => {
+  const workId = 'evaluation-cell-cache-rotation-procedure';
+  const revision = 'historic-revision';
+  const session = [{ contextHash: 'historical-context', before: { records: [{ id: workId, revisionToken: revision }] }, after: { records: [{ id: workId, revisionToken: revision }] } }];
+  const trace = { availability: 'available', events: [{ type: 'history-read', subtype: 'history-body', id: workId, revisionToken: revision, contextHash: 'historical-context' }] };
+  const wrapped = { id: 'wrapped', status: 'completed', sessionOrdinal: 0, input: { command: `node knowledge-cli.mjs load ${workId} --allowance-tokens 4000 --json > /tmp/load.json; echo exit=0` } };
+  const wrappedResult = { toolUseId: 'wrapped', sessionOrdinal: 0, isError: false, content: "exit=0\n[ 'ok', 'status', 'id', 'revisionToken', 'record' ]\nrevisionToken= [REDACTED]" };
+  assert.equal(traceWithOperationCrosscheck(trace, [wrapped], [wrappedResult], session).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(trace, [wrapped], [{ ...wrappedResult, content: 'exit=0' }], session).availability, 'unavailable');
+
+  const mixed = { id: 'mixed', status: 'completed', sessionOrdinal: 0, input: { command: `node knowledge-cli.mjs work resolve --work-id ${workId}; node knowledge-cli.mjs load ${workId} --json` } };
+  const mixedResult = { toolUseId: 'mixed', sessionOrdinal: 0, isError: false, content: `${JSON.stringify({ status: 'unresolved', workId: null })}\n${JSON.stringify({ ok: true, status: 'loaded', id: workId, kind: 'work', historical: true, activation: 'historical', revisionToken: revision })}` };
+  assert.equal(traceWithOperationCrosscheck(trace, [mixed], [mixedResult], session).availability, 'available');
+
+  const expansion = { id: 'expansion', status: 'completed', sessionOrdinal: 0, input: { command: `node knowledge-cli.mjs load ${workId}` } };
+  const expansionResult = { toolUseId: 'expansion', sessionOrdinal: 0, isError: false, content: `Knowledge load needs expansion: ${workId} requires 1995 estimated tokens (allowance 1500).` };
+  assert.equal(traceWithOperationCrosscheck({ availability: 'available', events: [{ type: 'expansion', id: workId, contextHash: 'historical-context' }] }, [expansion], [expansionResult], session).availability, 'available');
+});
