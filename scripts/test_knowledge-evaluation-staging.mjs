@@ -145,24 +145,45 @@ test('stages imported work, scoped disputed knowledge, retired status, and tag a
 });
 
 
-test('stages the same feature branch, base ref, and Execute fixture for every condition', async (t) => {
+test('stages one concrete pending factual delivery task for every condition', async (t) => {
   const value = fixture(t);
   for (const condition of ['candidate', 'baseline', 'no-knowledge']) {
     const staged = await stageKnowledgeCell({ condition, host: 'claude' }, value.fixture, value.options);
     const branch = spawnSync('git', ['branch', '--show-current'], { cwd: staged.projectDir, encoding: 'utf8' });
     const base = spawnSync('git', ['merge-base', 'origin/main', 'HEAD'], { cwd: staged.projectDir, encoding: 'utf8' });
-    const featureCommit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: staged.projectDir, encoding: 'utf8' });
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: staged.projectDir, encoding: 'utf8' });
+    const implementation = fs.readFileSync(path.join(staged.projectDir, 'IMPLEMENTATION.md'), 'utf8');
+    const execute = fs.readFileSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md'), 'utf8');
+    const tasks = JSON.parse(fs.readFileSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json'), 'utf8'));
 
     assert.equal(branch.stdout.trim(), 'evaluation/knowledge-cell');
     assert.equal(base.status, 0, base.stderr);
-    assert.notEqual(base.stdout.trim(), featureCommit.stdout.trim());
+    assert.equal(base.stdout.trim(), head.stdout.trim(), 'Execute must have the required change still to make');
     assert.equal(fs.existsSync(path.join(staged.repository.originDir, 'HEAD')), true);
-    assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md')), true);
-    assert.equal(fs.existsSync(path.join(staged.repository.featureRoot, 'specs', 'tasks.json')), true);
+    assert.match(implementation, /Task: Plan the staged migration\./);
+    assert.match(implementation, /Delivery note: pending\./);
+    assert.match(execute, /Source evidence: `TASK\.md` and `EVIDENCE\.md`\./);
+    assert.match(execute, /Target: `IMPLEMENTATION\.md` only\./);
+    assert.match(execute, /Delivery note: pending\./);
+    assert.match(tasks.phases[0].parents[0].description, /IMPLEMENTATION\.md/);
     const neutralEvidence = fs.readFileSync(path.join(staged.projectDir, 'docs', 'task-context.md'), 'utf8');
     assert.match(neutralEvidence, /Keep both ledgers until reconciliation passes/);
     assert.equal(neutralEvidence.includes('knowledge/'), false);
   }
+});
+
+test('does not seed future accepted evidence but requires its factual incorporation when supplied', async (t) => {
+  const value = fixture(t);
+  value.fixture.initialFacts = [];
+  value.fixture.workflow = 'Accepted review evidence: stable cursor required; offset pagination rejected.';
+  const staged = await stageKnowledgeCell({ condition: 'no-knowledge', host: 'claude' }, value.fixture, value.options);
+  const execute = fs.readFileSync(path.join(staged.repository.featureRoot, 'specs', 'execute.md'), 'utf8');
+  const allRepositoryBytes = ['TASK.md', 'EVIDENCE.md', 'IMPLEMENTATION.md']
+    .map(name => fs.readFileSync(path.join(staged.projectDir, name), 'utf8')).join('\n');
+
+  assert.match(execute, /currently supplied accepted or verified evidence/);
+  assert.equal(allRepositoryBytes.includes('stable cursor required'), false);
+  assert.equal(allRepositoryBytes.includes('offset pagination rejected'), false);
 });
 
 test('can force an actual registration failure without blocking existing reads', async (t) => {

@@ -64,23 +64,37 @@ function initializeRepository(projectDir, fixtureCase) {
   fs.writeFileSync(path.join(projectDir, 'EVIDENCE.md'), `# Neutral project evidence\n\n${neutralFacts}\n`);
   fs.writeFileSync(path.join(projectDir, 'docs', 'task-context.md'), `# Task context\n\n${fixtureCase.task}\n\n## Observed facts\n${neutralFacts}\n`);
   fs.writeFileSync(path.join(projectDir, 'test', 'evaluation-facts.txt'), `${neutralFacts}\n`);
+  fs.writeFileSync(path.join(projectDir, 'IMPLEMENTATION.md'), [
+    '# Evaluation delivery note', '', `Task: ${fixtureCase.task}`,
+    'Evidence: pending.', 'Delivery note: pending.', '',
+  ].join('\n'));
   const featureRoot = path.join(projectDir, '.spectre', 'features', 'evaluation-cell', 'specs');
   fs.mkdirSync(featureRoot, { recursive: true });
   fs.writeFileSync(path.join(featureRoot, 'execute.md'), [
     '# Evaluation cell execution', '', 'Tasks JSON: `tasks.json`', '',
-    'Execute the one bounded fixture task and record the truthful result.', '',
+    '## One bounded task', '',
+    'Source evidence: `TASK.md` and `EVIDENCE.md`.',
+    'Target: `IMPLEMENTATION.md` only.',
+    'Replace `Evidence: pending.` and `Delivery note: pending.` with factual statements for the task.',
+    'Use only source evidence or currently supplied accepted or verified evidence. Do not invent facts or edit source evidence.', '',
+    '## Verification', '',
+    `- ` + '`IMPLEMENTATION.md` retains `Task: ' + fixtureCase.task + '` exactly.',
+    '- It contains no `pending.` placeholder.',
+    '- Its Evidence and Delivery note lines are non-empty factual statements.', '',
   ].join('\n'));
   fs.writeFileSync(path.join(featureRoot, 'tasks.json'), `${JSON.stringify({
     schemaVersion: 1,
     phases: [{ id: '1', title: 'Evaluation fixture', parents: [{
-      id: '1.1', title: 'Deliver the evaluation artifact', description: 'Make the scoped fixture change and verify it.', subtasks: [],
+      id: '1.1', title: 'Write the factual delivery note',
+      description: `Edit only IMPLEMENTATION.md. Use TASK.md and EVIDENCE.md, or currently supplied accepted or verified evidence, to replace its pending Evidence and Delivery note lines. Verify the exact Task line remains and no pending placeholder remains.`,
+      subtasks: [],
     }] }],
   }, null, 2)}\n`);
   const initialize = run('git', ['init', '--initial-branch=main'], { cwd: projectDir });
   if (initialize.status !== 0) throw new Error(`Could not initialize isolated fixture repository: ${initialize.stderr}`);
   const commands = [
     ['config', 'user.email', 'evaluation@example.invalid'], ['config', 'user.name', 'Knowledge Evaluation'],
-    ['add', 'TASK.md', 'EVIDENCE.md', 'docs', 'test', '.spectre'], ['commit', '-m', 'evaluation base fixture'],
+    ['add', 'TASK.md', 'EVIDENCE.md', 'IMPLEMENTATION.md', 'docs', 'test', '.spectre'], ['commit', '-m', 'evaluation base fixture'],
   ];
   for (const args of commands) {
     const result = run('git', args, { cwd: projectDir });
@@ -93,10 +107,6 @@ function initializeRepository(projectDir, fixtureCase) {
     const result = run('git', args, { cwd: projectDir });
     if (result.status !== 0) throw new Error(`Could not prepare isolated fixture branch: ${result.stderr}`);
   }
-  fs.writeFileSync(path.join(projectDir, 'IMPLEMENTATION.md'), 'Feature branch fixture change.\n');
-  const commit = run('git', ['add', 'IMPLEMENTATION.md'], { cwd: projectDir });
-  const finalize = commit.status === 0 && run('git', ['commit', '-m', 'evaluation feature fixture'], { cwd: projectDir });
-  if (commit.status !== 0 || finalize.status !== 0) throw new Error(`Could not create isolated fixture feature change: ${commit.stderr || finalize.stderr}`);
   return { branch: 'evaluation/knowledge-cell', baseRef: 'origin/main', originDir, featureRoot: path.dirname(featureRoot) };
 }
 
