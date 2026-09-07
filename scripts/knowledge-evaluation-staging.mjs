@@ -109,7 +109,7 @@ function fixtureFacts(fixtureCase) {
     facts.push({
       id: `scale-distractor-${suffix}`,
       content: `Unrelated deterministic scale evidence ${suffix}.`,
-      tags: ['evaluation-distractor'],
+      tags: ['evaluation-distractor'], scaleDistractor: true,
     });
   }
   return facts;
@@ -173,12 +173,19 @@ async function seedCandidate(projectDir, storeDir, facts) {
   const knownPaths = [];
   for (const fact of facts) {
     const record = candidateRecord(fact);
-    const proposal = path.join(path.dirname(storeDir), 'proposals', record.id);
-    fs.mkdirSync(proposal, { recursive: true });
-    fs.writeFileSync(path.join(proposal, 'record.json'), `${JSON.stringify(record, null, 2)}\n`);
-    const result = await registerCanonicalKnowledge({ projectDir, spectreHome: storeDir, recordPath: proposal });
-    if (result.status !== 'created' && result.status !== 'noop') throw new Error(`Could not seed candidate record ${record.id}`);
-    knownPaths.push(path.join(resolved.storePath, 'knowledge', record.id, 'record.json'));
+    const recordPath = path.join(resolved.storePath, 'knowledge', record.id, 'record.json');
+    if (fact.scaleDistractor === true) {
+      fs.mkdirSync(path.dirname(recordPath), { recursive: true });
+      fs.writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`);
+      parseKnowledgeRecord(recordPath);
+    } else {
+      const proposal = path.join(path.dirname(storeDir), 'proposals', record.id);
+      fs.mkdirSync(proposal, { recursive: true });
+      fs.writeFileSync(path.join(proposal, 'record.json'), `${JSON.stringify(record, null, 2)}\n`);
+      const result = await registerCanonicalKnowledge({ projectDir, spectreHome: storeDir, recordPath: proposal });
+      if (result.status !== 'created' && result.status !== 'noop') throw new Error(`Could not seed candidate record ${record.id}`);
+    }
+    knownPaths.push(recordPath);
   }
   refreshKnowledgeIndex(resolved.storePath);
   return { storePath: resolved.storePath, knownPaths };
