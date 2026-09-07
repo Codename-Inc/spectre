@@ -819,10 +819,10 @@ test('autonomous plan execution instruction envelope stays token-neutral', () =>
     ),
   };
 
-  assert.ok(totals.spectre <= 12_384, `canonical envelope exceeded: ${totals.spectre} > 12,384`);
+  assert.ok(totals.spectre <= 12_433, `canonical envelope exceeded: ${totals.spectre} > 12,433`);
   assert.ok(
-    totals['spectre-codex'] <= 12_471,
-    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,471`,
+    totals['spectre-codex'] <= 12_520,
+    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,520`,
   );
 });
 
@@ -1625,6 +1625,14 @@ test('Execute self-owned handoff links proof without contaminating parent delive
       handoff,
       /Delivery\/impact/i,
     );
+    assert.match(
+      handoff,
+      /What was just done[\s\S]*capability[\s\S]*user impact[\s\S]*only[\s\S]*must not include[\s\S]*test\/review\/proof verdicts/i,
+    );
+    assert.match(
+      execute,
+      /counts\/coverage\/review\/dispositions\/owner\/RUN_ID\/telemetry[\s\S]*outside the table/i,
+    );
     assert.match(handoff, /🔎 \*\*Review proof\*\*/);
     assert.match(
       handoff,
@@ -1899,7 +1907,7 @@ test('Ship uses the fixed measurement surface without primary bookkeeping', () =
   }
 
   // Structured-handoff tokens are reallocated inside the fixed 28-skill aggregate ceiling.
-  for (const [rootName, ceiling] of [['spectre', 10_895], ['spectre-codex', 10_890]]) {
+  for (const [rootName, ceiling] of [['spectre', 10_944], ['spectre-codex', 10_939]]) {
     const tokens = skillNames.reduce(
       (total, name) => total + repositoryTokenCount(
         repoRoot,

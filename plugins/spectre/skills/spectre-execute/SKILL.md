@@ -68,6 +68,8 @@ Parent: machine `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PEN
 | ▶️ **Proposed next step** | Render resolved action. |
 | 🔎 **Review proof** | Render Markdown [Review proof](/absolute/resolved-feature-root/proof/proof.html); substitute absolute FEATURE_ROOT. |
 
+`What was just done` contains delivered capability + user impact only; must not include test/review/proof verdicts. Put counts/coverage/review/dispositions/owner/RUN_ID/telemetry outside the table.
+
 High → Fix; coverage → Test; else `/spectre:ship`; blocked/failed → same table/exact resolved recovery action.
 
 ## Escalate-If
