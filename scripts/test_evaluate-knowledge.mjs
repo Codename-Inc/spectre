@@ -150,20 +150,45 @@ test('thresholds use hash-bound manual outcomes, bounded trace metrics, and qual
     ] } : { availability: 'unavailable', events: [] },
   });
   const cells = ['baseline', 'candidate', 'no-knowledge'].map((condition) => ({
-    id: `case:${condition}:claude:1`, caseId: 'case', condition, host: 'claude', repeat: 1, critical: condition === 'candidate',
+    id: `case:${condition}:claude:1`, caseId: 'case', condition, host: 'claude', repeat: 1, cohort: 'chat', critical: condition === 'candidate',
     runtime: runtime(condition, `sha256:${condition}`), judged: { structuralValid: true, recalled: null },
   }));
+  cells[1].runtime.trace.events.push({ type: 'history-read', subtype: 'history-body', loadedTokens: 10 });
   const judgments = cells.map((cell) => ({ cellId: cell.id, artifactHash: cell.runtime.deliverable.hash, artifactEvidence: cell.runtime.deliverable.hash,
-    correct: true, relevant: true, requiredRecallBeforeDecision: true }));
+    correct: true, relevant: true, requiredRecallBeforeDecision: true, irrelevantTokens: cell.condition === 'candidate' ? 4 : 0, unnecessaryHistoryLoads: 0 }));
   const oracle = { case: { requiredRecordHashes: ['sha256:record'] } };
   const paired = pairedReport(cells, oracle, judgments);
   const report = thresholdReport(cells, paired, oracle, judgments);
   assert.equal(report.requiredRecall, 'pass');
   assert.equal(report.efficiency.startupTokens.status, 'pass');
   assert.equal(report.efficiency.searchPreviewTokens.status, 'pass');
+  assert.equal(report.efficiency.routineIrrelevantLoadedBodyRate, .04);
+  assert.equal(report.efficiency.criticalHistoryLoads, 0);
   assert.equal(report.pairedEfficiency.qualityEligiblePairs, 1);
   assert.equal(report.correctnessVsBothControls.status, 'pass');
   assert.equal(report.status, 'pending');
+});
+
+test('paired reporting flags a regression against either control and never selects cheap failed pairs', () => {
+  const usage = { coverage: 'complete', total: { input: 10, cache: 0, cacheWrite: 0, output: 1, reasoning: null } };
+  const cells = ['baseline', 'candidate', 'no-knowledge'].map((condition) => ({
+    id: `case:${condition}:claude:1`, caseId: 'case', condition, host: 'claude', repeat: 1, cohort: 'workflow', critical: false,
+    runtime: { deliverable: { hash: `sha256:${condition}` }, nativeFullCycleUsage: usage, loadedBodyTokens: 1, redundantTokens: 0,
+      usage: { sessions: [{ sessionStartMeasurement: { availability: 'available', injectedTokens: 1 } }] },
+      trace: condition === 'candidate' ? { availability: 'available', events: [] } : { availability: 'unavailable', events: [] } },
+    judged: { structuralValid: true, recalled: null },
+  }));
+  const judgments = cells.map((cell) => ({ cellId: cell.id, artifactHash: cell.runtime.deliverable.hash, artifactEvidence: cell.runtime.deliverable.hash,
+    correct: cell.condition !== 'candidate', relevant: true, requiredRecallBeforeDecision: true, irrelevantTokens: 0, unnecessaryHistoryLoads: 0 }));
+  const oracle = { case: { requiresCapture: true } };
+  const paired = pairedReport(cells, oracle, judgments);
+  const report = thresholdReport(cells, paired, oracle, judgments);
+  assert.equal(paired[0].correctnessVsBothControls, 'regression');
+  assert.equal(report.correctnessVsBothControls.status, 'fail');
+  assert.equal(report.pairedEfficiency.failedQualityPairs, 1);
+  assert.equal(report.pairedEfficiency.hypothesis, 'unknown');
+  const incomplete = thresholdReport(cells, paired, oracle, judgments.map((judgment) => ({ ...judgment, irrelevantTokens: undefined })));
+  assert.equal(incomplete.efficiency.routineIrrelevantLoadedBodyRate, 'unknown');
 });
 
 test('cohorts retain measured retrieval totals alongside native full-cycle dimensions', () => {

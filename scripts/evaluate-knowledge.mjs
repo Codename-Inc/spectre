@@ -494,6 +494,7 @@ function pairedReport(cells, oracle = {}, primaryJudgments = []) {
     const candidateSemantic = semanticOutcome(manual.get(group.candidate?.id));
     const baselineSemantic = semanticOutcome(manual.get(group.baseline?.id));
     const noKnowledgeSemantic = semanticOutcome(manual.get(group['no-knowledge']?.id));
+    const eitherControlCorrect = baselineSemantic === true || noKnowledgeSemantic === true;
     const controlsCorrect = baselineSemantic === true && noKnowledgeSemantic === true;
     const structural = group.candidate?.judged?.structuralValid === true;
     return {
@@ -505,7 +506,7 @@ function pairedReport(cells, oracle = {}, primaryJudgments = []) {
       comparable: Boolean(group.baseline && group.candidate && group['no-knowledge']),
       knowledgeBenefit: knowledgeBenefitCase(oracle[group.candidate?.caseId ?? group.baseline?.caseId ?? group['no-knowledge']?.caseId] ?? {}),
       semantic: { candidate: candidateSemantic, baseline: baselineSemantic, noKnowledge: noKnowledgeSemantic },
-      correctnessVsBothControls: candidateSemantic === false && controlsCorrect ? 'regression'
+      correctnessVsBothControls: candidateSemantic === false && eitherControlCorrect ? 'regression'
         : candidateSemantic === true && controlsCorrect ? 'no-regression'
           : candidateSemantic === null || baselineSemantic === null || noKnowledgeSemantic === null ? 'unknown' : 'not-comparable',
       qualityGate: structural && candidateSemantic === true && controlsCorrect,
@@ -615,7 +616,7 @@ function cappedMeasurements(values, limit) {
   };
 }
 
-function knowledgeEfficiencyReport(cells, oracle) {
+function knowledgeEfficiencyReport(cells, oracle, primaryJudgments = []) {
   const candidates = cells.filter((cell) => cell.condition === 'candidate');
   const candidateEvents = candidates.map((cell) => ({ cell, events: cell.runtime?.trace?.availability === 'available' ? cell.runtime.trace.events ?? [] : null }));
   const sessionStart = candidates.flatMap((cell) => {
@@ -629,14 +630,13 @@ function knowledgeEfficiencyReport(cells, oracle) {
   const searchResponses = candidateEvents.flatMap(({ events }) => events === null ? [null] : events.filter((event) => event.type === 'search').map((event) => event.responseTokens));
   const initialBodies = candidateEvents.flatMap(({ events }) => events === null ? [null] : events.filter((event) => event.type === 'load' && event.expanded !== true).map((event) => event.loadedTokens));
   const expansions = candidateEvents.flatMap(({ events }) => events === null ? [{ known: false }] : events.filter((event) => event.type === 'expansion'));
-  const routine = candidates.filter((cell) => oracle[cell.caseId]?.allowedLoads === 0);
-  const completeRoutine = routine.every((cell) => Number.isFinite(cell.runtime?.loadedBodyTokens));
-  const completeCandidateBodies = candidates.every((cell) => Number.isFinite(cell.runtime?.loadedBodyTokens));
+  const manual = new Map(primaryJudgmentReport(cells, primaryJudgments).reviewed.map((judgment) => [judgment.cellId, judgment]));
+  const routine = candidates.filter((cell) => cell.cohort === 'chat' || cell.cohort === 'workflow');
+  const completeRoutine = routine.every((cell) => Number.isFinite(cell.runtime?.loadedBodyTokens) && Number.isFinite(manual.get(cell.id)?.irrelevantTokens));
+  const routineIrrelevant = completeRoutine ? routine.reduce((total, cell) => total + manual.get(cell.id).irrelevantTokens, 0) : null;
   const routineLoaded = completeRoutine ? routine.reduce((total, cell) => total + cell.runtime.loadedBodyTokens, 0) : null;
-  const totalLoaded = completeCandidateBodies ? candidates.reduce((total, cell) => total + cell.runtime.loadedBodyTokens, 0) : null;
   const critical = candidates.filter((cell) => cell.critical === true);
-  const criticalHistory = critical.map((cell) => cell.runtime?.trace?.availability === 'available'
-    ? cell.runtime.trace.events.filter((event) => event.type === 'history-read').length : null);
+  const criticalHistory = critical.map((cell) => manual.get(cell.id)?.unnecessaryHistoryLoads);
   const criticalRedundant = critical.map((cell) => cell.runtime?.redundantTokens);
   return {
     startupTokens: cappedMeasurements(sessionStart, 300),
@@ -648,11 +648,11 @@ function knowledgeEfficiencyReport(cells, oracle) {
       overAllowance: expansions.filter((event) => event.deliveredOverAllowance === true).length,
       status: expansions.some((event) => event.known === false) ? 'unknown' : expansions.some((event) => event.deliveredOverAllowance === true) ? 'fail' : 'pass',
     },
-    routineIrrelevantLoadedBodyRate: routineLoaded === null || totalLoaded === null ? 'unknown'
-      : totalLoaded === 0 ? 0 : routineLoaded / totalLoaded,
-    routineIrrelevantLoadedBodyRateStatus: routineLoaded === null || totalLoaded === null ? 'unknown'
-      : totalLoaded === 0 || routineLoaded / totalLoaded <= ACCEPTANCE_THRESHOLDS.routineIrrelevantLoadedBodyRate ? 'pass' : 'fail',
-    criticalHistoryLoads: completeCandidateBodies && criticalHistory.every(Number.isFinite) ? criticalHistory.reduce((total, value) => total + value, 0) : 'unknown',
+    routineIrrelevantLoadedBodyRate: routineIrrelevant === null || routineLoaded === null ? 'unknown'
+      : routineLoaded === 0 ? 0 : routineIrrelevant / routineLoaded,
+    routineIrrelevantLoadedBodyRateStatus: routineIrrelevant === null || routineLoaded === null ? 'unknown'
+      : routineLoaded === 0 || routineIrrelevant / routineLoaded <= ACCEPTANCE_THRESHOLDS.routineIrrelevantLoadedBodyRate ? 'pass' : 'fail',
+    criticalHistoryLoads: criticalHistory.every(Number.isFinite) ? criticalHistory.reduce((total, value) => total + value, 0) : 'unknown',
     criticalRedundantTokens: criticalRedundant.every(Number.isFinite) ? criticalRedundant.reduce((total, value) => total + value, 0) : 'unknown',
   };
 }
@@ -667,8 +667,11 @@ function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
   const required = cells.filter((cell) => cell.condition === 'candidate' && cell.critical === true);
   const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.structuralValid === true && semanticOutcome(manualByCell.get(cell.id)) === true)
     ? 'pass' : required.some((cell) => cell.judged?.recalled === false || semanticOutcome(manualByCell.get(cell.id)) === false) ? 'fail' : 'unknown';
-  const efficiency = knowledgeEfficiencyReport(cells, oracle);
-  const eligible = paired.filter((pair) => pair.knowledgeBenefit && pair.qualityGate === true);
+  const efficiency = knowledgeEfficiencyReport(cells, oracle, primaryJudgments);
+  const benefitPairs = paired.filter((pair) => pair.knowledgeBenefit);
+  const eligible = benefitPairs.filter((pair) => pair.qualityGate === true);
+  const failedQualityPairs = benefitPairs.filter((pair) => pair.qualityGate === false);
+  const unknownQualityPairs = benefitPairs.filter((pair) => pair.qualityGate !== true && pair.qualityGate !== false);
   const pairedCosts = eligible.map((pair) => pair.nativeFullCycleTokenDelta).filter(Number.isFinite);
   const regressions = paired.filter((pair) => pair.correctnessVsBothControls === 'regression').length;
   const unknownComparisons = paired.filter((pair) => pair.knowledgeBenefit && pair.correctnessVsBothControls === 'unknown').length;
@@ -681,11 +684,13 @@ function thresholdReport(cells, paired, oracle = {}, primaryJudgments = []) {
     correctnessVsBothControls: { regressions, unknown: unknownComparisons, status: correctnessStatus },
     efficiency,
     pairedEfficiency: {
-      knowledgeBenefitPairs: paired.filter((pair) => pair.knowledgeBenefit).length,
+      knowledgeBenefitPairs: benefitPairs.length,
       qualityEligiblePairs: eligible.length,
+      failedQualityPairs: failedQualityPairs.length,
+      unknownQualityPairs: unknownQualityPairs.length,
       knownCostPairs: pairedCosts.length,
       medianDelta: pairedCosts.length > 0 ? percentile(pairedCosts, .5) : 'unknown',
-      hypothesis: eligible.length === 0 || pairedCosts.length !== eligible.length ? 'unknown'
+      hypothesis: benefitPairs.length === 0 || failedQualityPairs.length > 0 || unknownQualityPairs.length > 0 || pairedCosts.length !== benefitPairs.length ? 'unknown'
         : percentile(pairedCosts, .5) < 0 ? 'supported' : 'not-supported',
     },
     manual,
