@@ -224,6 +224,23 @@ describe('registration preconditions', () => {
     assert.equal(fs.existsSync(path.join(storePath, 'knowledge', 'contained-store')), false);
   });
 
+  it('rejects a store-containing package through a symlinked ancestor alias before staging', async (t) => {
+    const workspace = makeWorkspace(t);
+    const physicalRoot = path.join(workspace.tmp, 'physical-root');
+    const sourceRoot = path.join(physicalRoot, 'aliased-store');
+    const aliasRoot = path.join(workspace.tmp, 'alias-root');
+    const embeddedHome = path.join(sourceRoot, 'spectre-home');
+    writePackage(physicalRoot, knowledgeRecord({ id: 'aliased-store' }));
+    fs.symlinkSync(physicalRoot, aliasRoot);
+    const { storePath } = await resolveProjectStore(workspace.projectDir, { spectreHome: embeddedHome });
+
+    await assert.rejects(
+      registerCanonicalKnowledge({ projectDir: workspace.projectDir, spectreHome: embeddedHome, recordPath: path.join(aliasRoot, 'aliased-store') }),
+      (error) => error.code === 'KNOWLEDGE_RECORD_INVALID' && /contains the knowledge store/i.test(error.message),
+    );
+    assert.equal(fs.readdirSync(storePath).some(entry => entry.startsWith('.registration-stage-')), false);
+  });
+
   it('creates only when absent and reports the identical re-registration as a no-op', async (t) => {
     const workspace = makeWorkspace(t);
     const proposal = writePackage(workspace.proposals, knowledgeRecord({ id: 'precondition-create' }));

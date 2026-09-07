@@ -104,12 +104,14 @@ describe('plugin typed knowledge registration', () => {
     const value = fixture(t);
     const proposal = path.join(value.root, 'legacy-proposal');
     fs.mkdirSync(proposal, { recursive: true });
-    fs.writeFileSync(path.join(proposal, 'SKILL.md'), '---\nname: legacy-write\n---\n');
+    const source = '---\nname: legacy-write\n---\n';
+    fs.writeFileSync(path.join(proposal, 'SKILL.md'), source);
     const result = run(REGISTER_BIN, ['--record', proposal], value);
 
     assert.equal(result.status, 1);
     assert.equal(parsed(result).code, 'KNOWLEDGE_LEGACY_WRITE_RETIRED');
-    assert.equal(fs.existsSync(value.spectreHome), true);
+    assert.equal(fs.existsSync(value.spectreHome), false);
+    assert.equal(fs.readFileSync(path.join(proposal, 'SKILL.md'), 'utf8'), source);
   });
 });
 

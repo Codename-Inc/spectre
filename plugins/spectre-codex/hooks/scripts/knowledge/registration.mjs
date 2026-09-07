@@ -86,8 +86,8 @@ function validateSourcePackage(sourceDir) {
 }
 
 function sourceContainsStore(sourceDir, storePath) {
-  const source = path.resolve(sourceDir);
-  const store = path.resolve(storePath);
+  const source = fs.realpathSync.native(sourceDir);
+  const store = fs.realpathSync.native(storePath);
   return store === source || store.startsWith(`${source}${path.sep}`);
 }
 
