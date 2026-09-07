@@ -281,7 +281,7 @@ function hostCommand({ host, model, effort, prompt, preparedFixture, command, ex
     command: binary,
     args: [
       'exec', '--json', '--ephemeral', '--skip-git-repo-check',
-      '--dangerously-bypass-hook-trust', '--sandbox', 'workspace-write',
+      '--dangerously-bypass-hook-trust', '--sandbox', preparedFixture.isolatedGitWorkflow === true ? 'danger-full-access' : 'workspace-write',
       ...(preparedFixture.storeDir ? ['--add-dir', preparedFixture.storeDir] : []), '-c', 'approval_policy="never"',
       '-C', preparedFixture.projectDir,
       ...(model ? ['-m', model] : []),
@@ -464,6 +464,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
       projectDir: paths.projectDir, storeDir: paths.storeDir, pluginDir: paths.pluginDir,
       claudeHome: fixture.claudeHome, codexHome: fixture.codexHome,
       freshStore: preparedFixture.freshStore ?? null, isolated: true,
+      codexSandbox: host === 'codex' ? (preparedFixture.isolatedGitWorkflow === true ? 'danger-full-access' : 'workspace-write') : null,
       rawLogsOutsideCheckout: !isWithin(paths.repositoryRoot, paths.rawDirectory),
     },
   };

@@ -200,6 +200,18 @@ test('no-knowledge invocation omits plugin and store arguments while retaining t
   assert.equal(launched.args.includes(setup.value.storeDir), false);
 });
 
+test('Codex permits git metadata writes only for an attested isolated fixture', async () => {
+  const setup = await fixture('codex');
+  let launched;
+  const result = await invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'complete the local workflow',
+    preparedFixture: { ...setup.value, isolatedGitWorkflow: true }, rawLogDirectory: setup.rawLogDirectory,
+  }, { spawn: (_command, args) => { launched = args; return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) }); } });
+  const sandbox = launched.indexOf('--sandbox');
+  assert.equal(launched[sandbox + 1], 'danger-full-access');
+  assert.equal(result.isolation.codexSandbox, 'danger-full-access');
+});
+
 test('every host invocation receives both isolated provider homes and removes staged Codex auth', async () => {
   const setup = await fixture('claude');
   const authSource = path.join(setup.root, 'source-auth.json');
