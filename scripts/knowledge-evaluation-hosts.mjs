@@ -526,6 +526,7 @@ function hostCommand({ host, model, effort, prompt, preparedFixture, command, ex
       command: binary,
       args: [
         ...(preparedFixture.pluginDir ? ['--plugin-dir', preparedFixture.pluginDir, '--setting-sources', 'project'] : []),
+        '--strict-mcp-config',
         '--allowedTools', (allowedTools ?? ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'Skill', 'Task']).join(','),
         '--permission-mode', 'dontAsk', '--no-session-persistence',
         '--output-format', 'stream-json', '--include-hook-events', '--verbose',

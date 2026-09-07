@@ -162,6 +162,9 @@ test('no-knowledge stages normal repository evidence without a Spectre plugin or
   assert.equal(staged.claudePluginDir, null);
   assert.equal(staged.codexPlugin, null);
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins')), false);
+  const config = fs.readFileSync(staged.codexConfigPath, 'utf8');
+  assert.match(config, /\[features\][\s\S]*\bapps\s*=\s*false/);
+  assert.match(config, /\[features\][\s\S]*\benable_mcp_apps\s*=\s*false/);
 });
 
 test('isolates login shells, Git config, and GitHub commands for every condition', async (t) => {
@@ -400,6 +403,27 @@ test('stages the opposing provider plugin mirror without sharing a live home', a
   assert.equal(fs.existsSync(path.join(staged.claudePluginDir, 'skills', 'spectre-execute', 'SKILL.md')), true);
   assert.equal(staged.codexPlugin.installedPath, staged.pluginDir);
   assert.equal(fs.existsSync(path.join(staged.codexHome, 'plugins', 'cache')), true);
+});
+
+test('persists disabled Codex Apps and MCP Apps while retaining the isolated plugin', async (t) => {
+  const value = fixture(t);
+  const staged = await stageKnowledgeCell({ condition: 'candidate', host: 'claude' }, value.fixture, value.options);
+  const config = fs.readFileSync(path.join(staged.codexHome, 'config.toml'), 'utf8');
+
+  assert.match(config, /\[features\][\s\S]*\bapps\s*=\s*false/);
+  assert.match(config, /\[features\][\s\S]*\benable_mcp_apps\s*=\s*false/);
+  assert.equal(staged.codexPlugin.listing.installed[0].pluginId, 'spectre@evaluation');
+
+  const environment = { ...process.env, ...staged.environment, CODEX_HOME: staged.codexHome };
+  const configCheck = spawnSync('codex', ['--strict-config', '--version'], { env: environment, encoding: 'utf8' });
+  assert.equal(configCheck.status, 0, configCheck.stderr);
+  const features = spawnSync('codex', ['features', 'list'], { env: environment, encoding: 'utf8' });
+  assert.equal(features.status, 0, features.stderr);
+  assert.match(features.stdout, /^apps\s+stable\s+false$/m);
+  assert.match(features.stdout, /^enable_mcp_apps\s+under development\s+false$/m);
+  const mcp = spawnSync('codex', ['mcp', 'list'], { env: environment, encoding: 'utf8' });
+  assert.equal(mcp.status, 0, mcp.stderr);
+  assert.match(mcp.stdout, /No MCP servers configured/);
 });
 
 

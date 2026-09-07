@@ -425,6 +425,23 @@ test('Codex permits git metadata writes only for an attested isolated fixture', 
   assert.equal(result.isolation.codexSandbox, 'danger-full-access');
 });
 
+test('Claude launch rejects implicit MCP sources while retaining its staged plugin', async () => {
+  const setup = await fixture('claude');
+  let launched;
+  await invokeKnowledgeHost({
+    host: 'claude', model: 'opus', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+  }, {
+    spawn: (_command, args) => {
+      launched = args;
+      return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) });
+    },
+  });
+  assert.equal(launched.includes('--strict-mcp-config'), true);
+  assert.equal(launched.includes('--plugin-dir'), true);
+  assert.equal(launched.includes(setup.value.pluginDir), true);
+});
+
 test('every host invocation receives isolated homes, removes staged Codex auth, and clears Claude OAuth', async () => {
   for (const host of ['claude', 'codex']) {
     const setup = await fixture(host);

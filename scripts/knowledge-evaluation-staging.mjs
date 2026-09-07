@@ -217,6 +217,34 @@ async function seedBaseline(projectDir, storeDir, facts) {
   return { storePath: resolved.storePath, knownPaths };
 }
 
+function configureCodexExternalTools(codexHome, options = {}) {
+  const configPath = path.join(codexHome, 'config.toml');
+  const binary = options.codexCommand || process.env.CODEX_BIN || 'codex';
+  const environment = { ...process.env, ...options.environment, CODEX_HOME: codexHome };
+  const setFeature = (source, key) => {
+    const header = /^\[features\]\s*$/m.exec(source);
+    if (!header) return `${source.trimEnd()}\n\n[features]\n${key} = false\n`;
+    const start = header.index + header[0].length;
+    const nextSection = source.slice(start).search(/^\[/m);
+    const end = nextSection < 0 ? source.length : start + nextSection;
+    const body = source.slice(start, end);
+    const setting = new RegExp(`^${key}\\s*=.*$`, 'm');
+    const nextBody = setting.test(body)
+      ? body.replace(setting, `${key} = false`)
+      : `${body.endsWith('\n') ? body : `${body}\n`}${key} = false\n`;
+    return `${source.slice(0, start)}${nextBody}${source.slice(end)}`;
+  };
+  const config = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+  fs.writeFileSync(configPath, setFeature(setFeature(config, 'apps'), 'enable_mcp_apps'));
+  const checked = run(binary, ['--strict-config', '--version'], { env: environment });
+  if (checked.status !== 0) throw new Error(`Isolated Codex external-tool configuration is invalid: ${checked.stderr}`);
+  const mcp = run(binary, ['mcp', 'list'], { env: environment });
+  if (mcp.status !== 0 || !/No MCP servers configured/.test(mcp.stdout)) {
+    throw new Error(`Isolated Codex MCP configuration is not empty: ${mcp.stderr || mcp.stdout}`);
+  }
+  return configPath;
+}
+
 function installCodexPlugin(codexHome, pluginDir, options = {}) {
   const marketplaceRoot = path.join(path.dirname(pluginDir), 'codex-marketplace');
   const marketplacePlugin = path.join(marketplaceRoot, 'plugins', 'spectre-codex');
@@ -241,11 +269,12 @@ function installCodexPlugin(codexHome, pluginDir, options = {}) {
   if (!fs.existsSync(path.join(installedPath, 'skills', 'spectre-execute', 'SKILL.md')) || !fs.existsSync(path.join(installedPath, 'hooks', 'hooks.json'))) {
     throw new Error('Isolated Codex plugin cache is missing required workflow skills or hooks');
   }
-  const config = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+  const configPath = path.join(codexHome, 'config.toml');
+  const config = fs.readFileSync(configPath, 'utf8');
   if (!config.includes('[plugins."spectre@evaluation"]') || fs.existsSync(path.join(codexHome, 'hooks.json'))) {
     throw new Error('Isolated Codex plugin configuration is incomplete or manually hooked');
   }
-  return { marketplaceRoot, marketplacePlugin, installedPath, listing: listed.result, configPath: path.join(codexHome, 'config.toml') };
+  return { marketplaceRoot, marketplacePlugin, installedPath, listing: listed.result, configPath: configureCodexExternalTools(codexHome, options) };
 }
 
 function writeGhMock(root) {
@@ -557,12 +586,13 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
   const codexHome = path.join(root, 'codex-home');
   fs.mkdirSync(claudeHome, { recursive: true });
   fs.mkdirSync(codexHome, { recursive: true });
+  const codexConfigPath = configureCodexExternalTools(codexHome, { ...options, environment });
 
   if (cell.condition === 'no-knowledge') {
     return {
       root, projectDir, storeDir: null, storePath: null, pluginDir: null, runtimePath: null, cliPath: null, noKnowledge: true,
       freshStore: true, isolatedGitWorkflow: true, knownPaths: [], tracePath: null, sessionStartMeasurement: { availability: 'none', injectedTokens: 0, injectedBytes: 0 }, ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment,
-      claudeHome, codexHome, claudePluginDir: null, codexPlugin: null,
+      claudeHome, codexHome, codexConfigPath, claudePluginDir: null, codexPlugin: null,
       provenance: { condition: 'no-knowledge' }, repository, probe: null,
     };
   }
@@ -605,7 +635,7 @@ export async function stageKnowledgeCell(cell, fixtureCase, options = {}) {
     root, projectDir, storeDir, storePath: seeded.storePath, pluginDir, sourcePluginDir, runtimePath: path.join(pluginDir, 'hooks', 'scripts', 'load-knowledge.mjs'), cliPath,
     freshStore: true, isolatedGitWorkflow: true, knownPaths: seeded.knownPaths, tracePath: cell.condition === 'candidate' ? path.join(root, 'trace.jsonl') : null, sessionStartObservationPath,
     ghLogPath: gh.ghLogPath, ghStatePath: gh.ghStatePath, environment: { ...environment, ...(cell.condition === 'candidate' ? { SPECTRE_KNOWLEDGE_EVALUATION_TRACE: path.join(root, 'trace.jsonl') } : {}) },
-    claudeHome, codexHome, claudePluginDir, codexPlugin,
+    claudeHome, codexHome, codexConfigPath, claudePluginDir, codexPlugin,
     provenance: { condition: cell.condition, ...provenance }, repository, probe,
   };
 }
