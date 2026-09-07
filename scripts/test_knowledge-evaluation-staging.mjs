@@ -338,6 +338,32 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   const duplicate = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Duplicate', '--body', 'Duplicate']);
   assert.equal(duplicate.status, 1);
   assert.match(duplicate.stderr, /already has an open pull request/i);
+
+  const closed = execute(['pr', 'close', '1']);
+  assert.equal(closed.status, 0, closed.stderr);
+  const closedByNumber = execute(['pr', 'view', '1', '--json', 'url,state,isDraft,headRefName,baseRefName']);
+  assert.equal(closedByNumber.status, 0, closedByNumber.stderr);
+  assert.deepEqual(JSON.parse(closedByNumber.stdout), {
+    url: created.stdout.trim(), state: 'CLOSED', isDraft: true,
+    headRefName: 'evaluation/knowledge-cell', baseRefName: 'main',
+  });
+  const closedByUrl = execute(['pr', 'view', created.stdout.trim(), '--json', 'url', '--jq', '.url']);
+  assert.equal(closedByUrl.status, 0, closedByUrl.stderr);
+  assert.equal(closedByUrl.stdout, created.stdout);
+  const noCurrentDraft = execute(['pr', 'view', '--json', 'url']);
+  assert.equal(noCurrentDraft.status, 1);
+
+  const recreated = execute(['pr', 'create', '--draft', '--head', 'evaluation/knowledge-cell', '--base', 'main', '--title', 'Second draft', '--body', 'Second body']);
+  assert.equal(recreated.status, 0, recreated.stderr);
+  assert.match(recreated.stdout.trim(), /\/pull\/2$/);
+  const otherBranch = execute(['pr', 'create', '--draft', '--head', 'evaluation/other-branch', '--base', 'main', '--title', 'Other draft', '--body', 'Other body']);
+  assert.equal(otherBranch.status, 0, otherBranch.stderr);
+  const closedOtherByUrl = execute(['pr', 'close', otherBranch.stdout.trim()]);
+  assert.equal(closedOtherByUrl.status, 0, closedOtherByUrl.stderr);
+  const state = JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8'));
+  assert.deepEqual(state.pullRequests.map(({ number, state: pullState }) => ({ number, state: pullState })), [
+    { number: 1, state: 'CLOSED' }, { number: 2, state: 'OPEN' }, { number: 3, state: 'CLOSED' },
+  ]);
   const unsupported = execute(['api', 'repos/example/example']);
   assert.equal(unsupported.status, 1);
   assert.match(unsupported.stderr, /unsupported local gh fixture command/i);

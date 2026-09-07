@@ -345,9 +345,19 @@ if (args[0] !== 'pr') fail('unsupported local gh fixture command: ' + args.join(
 
 const state = readState();
 const openPull = (head) => state.pullRequests.find(pull => pull.state === 'OPEN' && (!head || pull.headRefName === head));
+function pullSelector(value) {
+  if (typeof value !== 'string') return null;
+  const match = new RegExp('(?:^|/pull/)([0-9]+)$').exec(value);
+  return match ? Number(match[1]) : null;
+}
+function selectedPull(value) {
+  const number = pullSelector(value);
+  return number === null ? null : state.pullRequests.find(pull => pull.number === number);
+}
 if (args[1] === 'view') {
-  const pull = openPull(headName());
-  if (!pull) fail('no open pull request for the current branch');
+  const explicit = args[2] && !args[2].startsWith('--') ? args[2] : null;
+  const pull = explicit ? selectedPull(explicit) : openPull(headName());
+  if (!pull) fail(explicit ? 'pull request not found: ' + explicit : 'no open pull request for the current branch');
   const payload = pullPayload(pull);
   if (jsonFields()) emit(payload);
   else process.stdout.write(pull.url + '\\n');
@@ -359,6 +369,15 @@ if (args[1] === 'list') {
   if (flag('--jq') !== undefined) fail('unsupported local gh fixture jq query: ' + flag('--jq'));
   if (jsonFields()) print(pulls.map(pull => select(pullPayload(pull))));
   else process.stdout.write(pulls.map(pull => pull.url).join('\\n') + (pulls.length ? '\\n' : ''));
+  process.exit(0);
+}
+if (args[1] === 'close') {
+  const pull = selectedPull(args[2]);
+  if (!pull) fail('pull request not found: ' + (args[2] || ''));
+  if (pull.state !== 'OPEN') fail('pull request is not open: ' + pull.number);
+  pull.state = 'CLOSED';
+  writeState(state);
+  process.stdout.write(pull.url + '\\n');
   process.exit(0);
 }
 if (args[1] === 'create') {
