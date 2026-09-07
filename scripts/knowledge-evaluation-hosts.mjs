@@ -411,6 +411,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     toolResults: normalized.toolResults,
     textFinalAnswers: normalized.textFinalAnswers,
     transcript: normalized.transcript,
+    traceUnavailable: /SPECTRE_EVALUATION_TRACE_UNAVAILABLE\b/.test(processResult?.stderr ?? ''),
     timing: { startedAt, endedAt: new Date().toISOString(), wallDurationMs: performance.now() - started, nativeDurationMs: normalized.nativeDurationMs },
     rawLogs: { stdoutPath, stderrPath },
     cleanup,

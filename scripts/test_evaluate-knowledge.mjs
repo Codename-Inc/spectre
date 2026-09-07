@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, freeze, normalizeUsage } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, stageKnowledgeCell } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -24,4 +24,57 @@ test('usage normalization preserves missing native fields as unknown and aggrega
   const report = aggregate([{ runtime: { injectedTokens: 3, previewTokens: 4, loadedBodyTokens: 5, redundantTokens: 0, totalTokens: 12 }, judged: { required: true, recalled: true } }]);
   assert.equal(report.runtime.totalTokens.median, 12);
   assert.equal(report.judged.requiredRecall, true);
+});
+
+test('freeze binds configuration and candidate content, while missing oracle judgments cannot pass', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-freeze-'));
+  const fixtures = path.join(root, 'fixtures'); const candidate = path.join(root, 'candidate');
+  fs.mkdirSync(fixtures); fs.mkdirSync(candidate);
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}`, task: `Task ${index}` })) }));
+  const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [`answer-${index}`] }]))));
+  const configuration = path.join(root, 'config.json'); fs.writeFileSync(configuration, JSON.stringify({ model: 'test-model', effort: 'medium' }));
+  fs.writeFileSync(path.join(candidate, 'plugin.txt'), 'candidate-v1');
+  const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'), { configurationPath: configuration, candidatePath: candidate });
+  assert.match(frozen.hashes.configuration, /^sha256:/);
+  assert.match(frozen.hashes.candidate, /^sha256:/);
+  const cells = await runCells(frozen, path.join(root, 'cells'), async () => ({ status: 'completed', textFinalAnswers: ['answer-0'], trace: { availability: 'available', events: [] } }));
+  assert.equal(cells.cells.find((cell) => cell.caseId === 'case-0').judged.recalled, true);
+  assert.equal(cells.cells.find((cell) => cell.caseId === 'case-1').status, 'invalid');
+  assert.deepEqual(judgeCell({ caseId: 'case-1' }, { status: 'completed', textFinalAnswers: [] }, null), {
+    valid: false, recalled: false, reason: 'oracle judgment is missing',
+  });
+});
+
+test('runCells honors total and per-host concurrency limits', async () => {
+  const cells = [
+    { id: 'a', caseId: 'a', host: 'claude' }, { id: 'b', caseId: 'b', host: 'claude' },
+    { id: 'c', caseId: 'c', host: 'claude' }, { id: 'd', caseId: 'd', host: 'codex' },
+  ];
+  let active = 0; let claude = 0; let maximum = 0; let maximumClaude = 0;
+  await runCells({ cells, concurrency: { total: 2, perHost: 1 }, oracle: {} }, os.tmpdir(), async (cell) => {
+    active += 1; if (cell.host === 'claude') claude += 1;
+    maximum = Math.max(maximum, active); maximumClaude = Math.max(maximumClaude, claude);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1; if (cell.host === 'claude') claude -= 1;
+    return { status: 'completed', textFinalAnswers: [] };
+  });
+  assert.equal(maximum, 2);
+  assert.equal(maximumClaude, 1);
+});
+
+test('staging gives baseline and candidate the same fresh facts, keeps no-knowledge empty, and gates native calls', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-stage-'));
+  const plugin = path.join(root, 'plugin'); fs.mkdirSync(plugin);
+  const fixtureCase = { task: 'Answer the staged task.', initialFacts: [{ id: 'stable-fact', content: 'A fixture fact.' }] };
+  const staged = await stageKnowledgeCell({ host: 'claude', condition: 'candidate' }, fixtureCase, { candidatePluginRoot: plugin, baselinePluginRoot: plugin });
+  const none = await stageKnowledgeCell({ host: 'codex', condition: 'no-knowledge' }, fixtureCase, { candidatePluginRoot: plugin, baselinePluginRoot: plugin });
+  assert.equal(staged.freshStore, true);
+  assert.equal(staged.knownPaths.length, 1);
+  assert.equal(none.knownPaths.length, 0);
+  fs.rmSync(staged.root, { recursive: true, force: true }); fs.rmSync(none.root, { recursive: true, force: true });
+  const fixtures = path.join(root, 'fixtures'); fs.mkdirSync(fixtures);
+  fs.writeFileSync(path.join(fixtures, 'manifest.json'), JSON.stringify({ cases: Array.from({ length: 12 }, (_, index) => ({ id: `case-${index}` })) }));
+  const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [] }]))));
+  const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'));
+  await assert.rejects(() => evaluateKnowledge(frozen, { fixtureRoot: fixtures }), /allowNative/);
 });
