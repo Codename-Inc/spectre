@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, replayCachedRuntime, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
+import { aggregate, attachNativeUsage, cohortReport, compactSnapshot, evaluateKnowledge, evaluationActorContext, evaluationQualityReport, freeze, judgeCell, limitsForFixture, mergeHostRuns, noKnowledgeRuntimeFacts, normalizeUsage, pairedReport, primaryJudgmentReport, promptContract, replayCachedRuntime, runCells, selectFrozenCells, thresholdReport, traceRuntimeFacts, traceWithOperationCrosscheck } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -121,6 +121,23 @@ test('lifecycle prompts use user transport only where the plugin exists', () => 
   const verified = { id: 'verified-gotcha', workflowCommandSession: 0, longitudinalSteps: ['Review verified evidence.'] };
   assert.match(promptContract(accepted, 'artifacts/decision.md', 'claude', 'candidate')[1], /^\/spectre:spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
   assert.match(promptContract(verified, 'artifacts/decision.md', 'codex', 'candidate')[0], /^spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
+});
+
+test('workflow fixtures receive the frozen extended timeout without changing ordinary tasks', () => {
+  const limits = { ordinary: { timeoutMs: 600000 }, workflow: { timeoutMs: 1200000 } };
+  assert.deepEqual(limitsForFixture({ cohort: 'chat' }, limits), limits.ordinary);
+  assert.deepEqual(limitsForFixture({ cohort: 'workflow' }, limits), limits.workflow);
+  assert.deepEqual(limitsForFixture({ longitudinal: true, cohort: 'chat' }, limits), limits.workflow);
+});
+
+test('merged workflow failures retain the failed session exit rather than a later successful exit', () => {
+  const merged = mergeHostRuns([
+    { status: 'timed_out', exit: { exitCode: null, signal: 'SIGKILL', timedOut: true }, traceUnavailable: true },
+    { status: 'completed', exit: { exitCode: 0, signal: null, timedOut: false }, traceUnavailable: false },
+  ]);
+  assert.equal(merged.status, 'timed_out');
+  assert.deepEqual(merged.exit, { exitCode: null, signal: 'SIGKILL', timedOut: true });
+  assert.equal(merged.traceUnavailable, true);
 });
 
 test('native actor and context inputs are opaque to fixture labels', () => {
@@ -455,11 +472,12 @@ test('lifecycle requires a replacement draft after the registration fault', () =
       { name: 'Write', status: 'completed', sessionOrdinal: 4, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } },
     ],
     trace: { availability: 'available', events: [
-      { type: 'capture', contextHash: 'execute', outcome: 'created' }, { type: 'capture', outcome: 'failed' },
+      { type: 'capture', contextHash: 'execute', outcome: 'created' }, { type: 'capture', contextHash: 'fault', outcome: 'failed' },
     ] },
     sessionSnapshots: [
       { contextHash: 'execute', before: { records: [] }, after: { records: [] } }, {}, {},
       { before: { records: [{ id: 'work' }], history: [] }, after: { records: [{ id: 'work' }], history: [] } },
+      { contextHash: 'fault', before: { records: [{ id: 'work' }], history: [] }, after: { records: [{ id: 'work' }], history: [] } },
     ],
     snapshots: { after: { workRecords: [{ id: 'work', revisionToken: 'rev', execution: {}, verification: {}, pullRequest: {} }] } },
     lifecycleEvidence: { registrationFault: 'armed', draftClosure: 'closed', closedDraftNumber: 1 },

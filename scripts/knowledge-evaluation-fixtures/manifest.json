@@ -180,7 +180,7 @@
         "Start a fresh session. Use Learn with explicit work-summary intent to capture the Execute-created templated work record, including unknown or pending fields truthfully.",
         "Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh that same work before opening the local gh draft, then repair verification and retain the draft URL.",
         "Start a fresh session. Repeat the unchanged work capture and record its explicit no-op outcome. Do not attempt a forced registration failure in this session.",
-        "Start a fresh session. The prior local draft was closed after an unchanged work capture. If the registration-failure fixture was armed, report its failure and recovery input; otherwise report that fault setup was unavailable without claiming a save failure. In either case, use the direct CreatePR fallback to open a new local draft on the same branch, then write evaluation-result.json with the required decision artifact."
+        "Start a fresh session. The prior local draft was closed after an unchanged work capture. A newly verified delivery-note review confirms the bounded implementation result, so refresh that work with this fresh fact. If the registration-failure fixture was armed, report its failure and recovery input; otherwise report that fault setup was unavailable without claiming a save failure. In either case, use the direct CreatePR fallback to open a new local draft on the same branch, then write evaluation-result.json with the required decision artifact."
       ],
       "cohort": "workflow"
     },

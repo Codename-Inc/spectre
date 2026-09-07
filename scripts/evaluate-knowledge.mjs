@@ -300,7 +300,10 @@ export function judgeCell(cell, runtime, oracle) {
         );
         if (!explicitNoopInvocation) return { valid: false, recalled: false, reason: 'explicit no-op invocation evidence is missing' };
       }
-      if (expected.requiredStates.includes('save-failure') && !captureOutcomes.includes('failed')) {
+      const faultContext = snapshots.at(-1)?.contextHash;
+      const faultFailure = (runtime.trace?.events ?? []).some((event) => event.type === 'capture' && event.outcome === 'failed' &&
+        typeof faultContext === 'string' && event.contextHash === faultContext);
+      if (expected.requiredStates.includes('save-failure') && !faultFailure) {
         if (runtime.lifecycleEvidence?.registrationFault && runtime.lifecycleEvidence.registrationFault !== 'armed') {
           return { valid: false, recalled: false, reason: 'lifecycle registration-fault setup was unavailable' };
         }
@@ -906,6 +909,12 @@ function hostConfiguration(configuration, host) {
   return selected;
 }
 
+export function limitsForFixture(fixtureCase, limits = {}) {
+  return fixtureCase?.longitudinal === true || fixtureCase?.cohort === 'workflow'
+    ? limits.workflow ?? limits.ordinary ?? undefined
+    : limits.ordinary ?? undefined;
+}
+
 function candidatePluginRoots(options = {}) {
   if (options.candidatePluginRoots) return options.candidatePluginRoots;
   const root = options.candidatePluginRoot;
@@ -918,11 +927,14 @@ function candidatePluginRoots(options = {}) {
   return { claude, codex };
 }
 
-function mergeHostRuns(runs) {
+export function mergeHostRuns(runs) {
   const completed = runs.every((run) => run.status === 'completed');
+  const failed = runs.find((run) => run.status !== 'completed');
   return {
     ...runs.at(-1),
     status: completed ? 'completed' : runs.find((run) => run.status !== 'completed').status,
+    exit: failed?.exit ?? runs.at(-1)?.exit ?? null,
+    traceUnavailable: runs.some((run) => run.traceUnavailable === true),
     usage: {
       primary: runs.at(-1)?.usage?.primary ?? null,
       workers: runs.at(-1)?.usage?.workers ?? null,
@@ -1140,7 +1152,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
             SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: actorId,
             SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: contextId,
           },
-          limits: options.limits,
+          limits: limitsForFixture(fixtureCase, options.limits),
           });
           runs.push({ ...run, sessionStartMeasurement: readSessionStartMeasurement(staged) });
           const rawAfterSession = snapshotKnowledgeCell(staged);
@@ -1227,9 +1239,10 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const reportPath = argument(process.argv, '--report');
     const judgmentsPath = argument(process.argv, '--primary-judgments');
     if (!freezePath || !fixtures || !configurationPath || !baselinePluginRoot || (!candidatePluginRoot && !(candidateClaudePluginRoot && candidateCodexPluginRoot)) || !output || !reportPath || !process.argv.includes('--allow-native')) throw new Error(usage());
+    const configuration = readJson(path.resolve(configurationPath));
     const report = await evaluateKnowledge(readJson(path.resolve(freezePath)), {
       allowNative: true, fixtureRoot: path.resolve(fixtures), outputDir: path.resolve(output), reportPath: path.resolve(reportPath),
-      configuration: readJson(path.resolve(configurationPath)), baselinePluginRoot: path.resolve(baselinePluginRoot),
+      configuration, limits: configuration.limits, baselinePluginRoot: path.resolve(baselinePluginRoot),
       ...(candidatePluginRoot ? { candidatePluginRoot: path.resolve(candidatePluginRoot) } : { candidatePluginRoots: { claude: path.resolve(candidateClaudePluginRoot), codex: path.resolve(candidateCodexPluginRoot) } }),
       rawLogRoot: argument(process.argv, '--raw-logs') ?? undefined, cellIds: argumentsNamed(process.argv, '--cell'),
       primaryJudgments: judgmentsPath ? readJson(path.resolve(judgmentsPath)) : [],
