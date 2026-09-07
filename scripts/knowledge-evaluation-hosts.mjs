@@ -749,7 +749,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   let cleanup = { stagedAuth: 'not-staged' };
   try {
     stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
-    if (host === 'claude') {
+    if (host === 'claude' && preparedFixture.claudeRefreshBootstrapped !== true) {
       const readOauthCredentials = dependencies.readClaudeOauthCredentials ?? (dependencies.spawn ? null : readClaudeOauthCredentials);
       const oauthCredentials = readOauthCredentials?.();
       if (oauthCredentials?.refreshToken && oauthCredentials.scopes?.length) {
@@ -795,6 +795,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
       if (claudeAuthentication.status !== 'completed') {
         processResult = authenticationResult;
       } else {
+        preparedFixture.claudeRefreshBootstrapped = true;
         delete environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN;
         delete environment.CLAUDE_CODE_OAUTH_SCOPES;
         sandbox = sandboxForInvocation({
