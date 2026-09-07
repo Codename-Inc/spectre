@@ -45,10 +45,12 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Delivery complete. |
-| 📦 **What was just done** | Proof, PR, `CI: pending`. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Return scope/evidence/review/proof/tuple/rebase/limits/PR. Next: review proof and draft PR.
 
 ## Escalate-If
 

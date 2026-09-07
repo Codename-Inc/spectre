@@ -46,10 +46,12 @@ DONE when both stages complete; research ran once at most; every mechanism trace
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Review. |
-| 📦 **What was just done** | Plan. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Return routes/correctness/deletions/exceptions/delta/dispositions/reports/withheld scope/plan (≤1K). `--orchestrated`: return; standalone → `spectre-create_tasks` or direct `spectre-execute` resolved plan + `--origin plan`.
 
 ## Escalate-If
 

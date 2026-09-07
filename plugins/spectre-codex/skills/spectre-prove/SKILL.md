@@ -68,15 +68,15 @@ Exclude secrets, credentials, private customer data, and unnecessary local paths
 
 ## Handoff
 
-`--orchestrated` returns `PROOF_RESULT` only.
+Return `PROOF_RESULT`: profile/status/candidate/rows/fingerprints/evidence/limits/authority/journeys/artifacts; `--orchestrated`: parent.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Proof outcome. |
-| 📦 **What was just done** | Result, journeys, artifacts, failures. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Standalone `PASS` → `spectre-ship`; non-PASS → Fix, Scope, UX, or prerequisite; `NEEDS_AUTHORITY` → Handoff. Return result/evidence/paths. proof status alone never gates `spectre-ship`.
+Standalone `PASS` → `spectre-ship`; non-PASS → Fix/Scope/UX/prerequisite; proof status alone never gates `spectre-ship`. `NEEDS_AUTHORITY` pause → Handoff rows/evidence/resume.
 
 ## Escalate-If
 

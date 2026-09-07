@@ -42,14 +42,15 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Handoff
 
-`--orchestrated`: result.
+Report analyzed/removed/excluded counts, lint/test, manual review; `--orchestrated`: no user step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Pruned. |
-| 📦 **What was just done** | Pruned. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
+Standalone concrete coverage risk → `/spectre:test`; otherwise `/spectre:sweep`; one result-tied route.
 
 ## Escalate-If
 

@@ -52,13 +52,13 @@ Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title 
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Scope boundary. |
-| 📦 **What was just done** | Boundaries and path. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
-| 🔀 **Alternative** | Pause: `/spectre:handoff {feature}` when stopping. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+| 🔀 **Alternative** | Pause: `/spectre:handoff` with the resolved feature when stopping. |
 
-Unsettled → Scope; unresolved journeys, segments, states, copy, or accessibility → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → Plan. One route.
+Present boundaries/assumptions/path; unsettled → Scope; UI load-bearing and journeys, segments, states, copy, or accessibility unresolved → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → Plan. One route/conditional; edits re-route.
 
 ## Escalate-If
 

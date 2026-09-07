@@ -36,13 +36,15 @@ One or more conventional commits covering the changes. Sweep is the sole pre-reb
    - One concern per commit — if it spans concerns, split it. Treat commits as durable context for future readers/LLMs; never `fix: updates` / `refactor: clean up`.
 
 ## Handoff
-`--orchestrated`: result.
+`--orchestrated`: commit hashes/verification, no user step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Swept. |
-| 📦 **What was just done** | Swept. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+
+Standalone: unproven work → Prove; merge-prep → Rebase; only current target → Create PR.
 
 ## Escalate-If
 - A secret/credential appears in the diff — stop, surface it, do not commit until resolved.

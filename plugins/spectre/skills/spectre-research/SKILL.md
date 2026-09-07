@@ -39,13 +39,12 @@ Write one research doc to `{FEATURE_ROOT}/research/{topic}_{MMDDYY}.md`; the res
 
 ## Handoff
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Research update. |
-| 📦 **What was just done** | Findings and document. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Follow-ups update the SAME doc.
-Render Plan with the resolved research document path.
+Follow-ups update the same doc (metadata + timestamped section); close with one next-step pointer: Plan with resolved research document path or further research.
 
 ## Escalate-If
 - The question is too broad/ambiguous to scope agents → ask one clarifying question before fanning out.

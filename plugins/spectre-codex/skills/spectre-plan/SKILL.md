@@ -40,12 +40,12 @@ DONE when initial and observed routing decisions are recorded; the observed reco
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Plan. |
-| 📦 **What was just done** | Draft. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
 
-Render Execute: resolved absolute plan path, `--origin plan`, resolved preflight depth.
+Execute owns assessment/review/tasks/gates/resume. Never generate a goal prompt. Render Execute: resolved absolute plan path, `--origin plan`, resolved preflight depth.
 
 ## Escalate-If
 

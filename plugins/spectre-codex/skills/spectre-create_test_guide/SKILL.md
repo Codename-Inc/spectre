@@ -47,13 +47,15 @@ Feature-section shape:
 - Each scenario validates one capability end-to-end.
 
 ## Handoff
-`--orchestrated`: path/coverage only; no extra docs.
+Return coverage; `--orchestrated`: path/coverage, no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Guide completed. |
-| 📦 **What was just done** | Coverage/path. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Standalone: observable → Prove; automation gap → Test; deferred proof → Clean; one observed route.
 
 ## Escalate-If
 - Task context is too thin to identify the changed features or personas — ask before guessing.

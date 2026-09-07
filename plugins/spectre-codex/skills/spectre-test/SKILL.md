@@ -42,15 +42,15 @@ Add risk-weighted behavioral tests and commit standalone batches. Test boundarie
 
 ## Handoff
 
-`--orchestrated`: result.
+Report tiers/tests/lint/commits; `--orchestrated` or supplied risk plan: no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Tested. |
-| 📦 **What was just done** | Tested. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Gap → Prove; hygiene → Sweep; else Rebase; tests ≠ Rebase.
+Standalone: unproven work → Prove; uncommitted hygiene → Sweep; clean proven/deferred → Rebase; passing tests alone never jumps to Rebase.
 
 ## Escalate-If
 

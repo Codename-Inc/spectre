@@ -83,10 +83,12 @@ Capture durable project knowledge as a canonical user-level record. When invoked
 
 ## Handoff
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Record handled. |
-| 📦 **What was just done** | Path, action, category, confidence, version. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Return path/action/category/confidence/version/resources; correct records via search/proposal/stage/registration/verification.
 
 ## Escalate-If
 - Category is ambiguous → ask the user which of the ten categories.

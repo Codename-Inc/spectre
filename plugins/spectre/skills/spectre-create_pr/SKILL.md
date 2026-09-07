@@ -35,13 +35,15 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 
 ## Handoff
 
-`--orchestrated`: result.
+Return URL/body or `PR_CANDIDATE_STALE`; `--orchestrated`: no user step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | PR. |
-| 📦 **What was just done** | PR. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Standalone: review the PR.
 
 ## Escalate-If
 

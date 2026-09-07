@@ -53,12 +53,12 @@ DONE when every planned mechanism maps to a current requirement, constraint, pre
 `--no-review` / `--orchestrated` returns path, depth, assumptions, exceptions, and findings only.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Plan approval. |
-| 📦 **What was just done** | Plan, depth, findings. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Approved direct → `/spectre:execute {PLAN_FILE} --origin plan`; approved XS structured override → `/spectre:create_tasks --depth xs`; approved light structured → `/spectre:create_tasks`; approved standard/comprehensive → `/spectre:plan_review`; unresolved behavior → UX/Prototype. One primary route and pause.
+Standalone awaits approval: Approved direct → `/spectre:execute`; Approved XS structured → `/spectre:create_tasks --depth xs`; Approved light structured → `/spectre:create_tasks`; Approved standard/comprehensive → `/spectre:plan_review`; unresolved behavior → UX/Prototype. One primary/conditional/pause.
 
 ## Escalate-If
 

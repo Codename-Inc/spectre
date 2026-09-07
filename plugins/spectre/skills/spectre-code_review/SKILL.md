@@ -41,15 +41,15 @@ DONE when schema validation passes; scope/tuple are unchanged; every requirement
 
 ## Handoff
 
-`--orchestrated`: verdict/evidence/metadata/report; no user step.
+`--orchestrated`: verdict, counts, CRITICAL/HIGH evidence/IDs, metadata/report; no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Review verdict. |
-| 📦 **What was just done** | Verdict, report, CRITICAL/HIGH findings. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Blocker → Fix; else Prove, gap Test, or deferred Clean.
+Standalone: verdict/runtime/fallback/report + numbered CRITICAL/HIGH; blockers → Fix, else Prove/Test gap/deferred Clean.
 
 ## Escalate-If
 

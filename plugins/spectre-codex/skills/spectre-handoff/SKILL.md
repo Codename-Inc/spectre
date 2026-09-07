@@ -84,12 +84,12 @@ DONE when paths/numbering follow the selected-history rule; current `summary`, `
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Handoff saved. |
-| 📦 **What was just done** | Session at `{path}`. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Output only the applicable table; do not narrate execution.
+First: path/first-session notice; continuation: path/session/continuity counts. Output only applicable table.
 
 ## Escalate-If
 

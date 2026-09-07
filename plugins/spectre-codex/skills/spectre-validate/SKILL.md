@@ -62,13 +62,13 @@ Write `VALIDATION_REPORT`. Required sections:
 
 ## Handoff
 
-`--orchestrated`: summary/gaps only.
+Return status/delivered/gap/scope-creep/findings/report; `--orchestrated`: summary/gaps only.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Validation. |
-| 📦 **What was just done** | Gaps, path. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
 Standalone `Needs Work`/`Significant Gaps` → `spectre-fix` then revalidate; Standalone `Complete` → `spectre-prove`. Boundary ambiguity → Scope; flow/state/copy ambiguity → UX; pause → Handoff; Test/Clean only when proof is deferred.
 

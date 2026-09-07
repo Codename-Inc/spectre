@@ -39,13 +39,15 @@ A rebased branch and a **Rebase Summary** returned in-thread (not written to dis
 5. Track every resolution decision as you go (the summary table is a postcondition, not an afterthought).
 
 ## Handoff
-`--orchestrated`: Rebase Summary; parent verification `REBASE_READY`, never DONE.
+Return compressed Rebase Summary; `--orchestrated`: no step; parent verification `REBASE_READY`, never DONE.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Rebase/recovery. |
-| 📦 **What was just done** | Summary/checks. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Standalone success → `/spectre:create_pr`; incomplete → exact recovery only.
 
 ## Escalate-If
 - Conflicts can't be resolved by favoring the target (genuine semantic divergence) → stop, report, leave the rebase in progress for the user.

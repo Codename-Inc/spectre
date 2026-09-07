@@ -59,13 +59,13 @@ Compute coverage from the local ledger. Run only stale or uncovered checks; neve
 
 ## Handoff
 
-Parent: machine `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PENDING`), no table. Self terminal. Companion opens same resolved local file beside conversation; outside same clickable link/no failure; Never publish/share proof.
+Parent: machine `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PENDING`), no table. Self terminal: returns counts/coverage/review/dispositions/owner/proof/findings/`RUN_ID`/telemetry. Companion opens same resolved local file beside conversation; outside same clickable link/no failure; Never publish/share proof.
 
 | Handoff | Details |
-| --- | --- |
+|---|---|
 | 🧭 **Current phase** | Complete/recovery. |
 | 📦 **What was just done** | Delivery/impact. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 | 🔎 **Review proof** | Render Markdown [Review proof](/absolute/resolved-feature-root/proof/proof.html); substitute absolute FEATURE_ROOT. |
 
 High → Fix; coverage → Test; else `spectre-ship`; blocked/failed → same table/exact resolved recovery action.

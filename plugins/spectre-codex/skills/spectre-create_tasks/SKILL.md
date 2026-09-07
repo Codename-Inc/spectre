@@ -58,15 +58,15 @@ Primary writes selected canonical artifacts only; never delegate authorship/revi
 
 ## Handoff
 
-`--orchestrated` returns without user-facing Next Steps.
+Report mode/paths/graph; finalized index adds waves. `--orchestrated` returns without user-facing Next Steps.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Tasks. |
-| 📦 **What was just done** | Graph. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX/Prototype. Tasks-only → Task Review; else Execute: resolved absolute execute index, `--origin plan`; pause → Handoff.
+Standalone: load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX or Prototype, regenerate; comprehensive tasks-only → Task Review; else Execute resolved absolute execute index + `--origin plan`; pause → Handoff.
 
 ## Escalate-If
 

@@ -40,13 +40,15 @@ Implement assigned behavior through strict RED → GREEN → REFACTOR. Outcome: 
 
 ## Handoff
 
-`--orchestrated`: completion report; no user step.
+Return completion report + exact pass/fail commands; `--orchestrated`: no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | TDD done. |
-| 📦 **What was just done** | Completion report and checks. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
+
+Standalone: observable → Prove; concrete coverage gap → Test; deferred proof → Clean; one observed route.
 
 ## Escalate-If
 

@@ -34,10 +34,10 @@ Turn requirements into a behavioral spec — **what users see/do and the system 
 - Present a take and ask for pushback. Every initial or feedback-revised flow presentation ends with the compact handoff table:
 
 | Handoff | Details |
-| --- | --- |
+|---|---|
 | 🧭 **Current phase** | Flow approval. |
 | 📦 **What was just done** | Initial or revised flows. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
 - `CONTINUATION`: Prototype when interaction, layout, visual validation, or stakeholder review materially matters; otherwise Plan when Scope + flows suffice. Render `/spectre:prototype {FEATURE_ROOT} FROM_UX=true` or `/spectre:plan {FEATURE_ROOT}`; at most one explicit conditional alternative.
 - Flows approved: complete {OUT_DIR}/ux.md, then Prototype or Plan with resolved values.
@@ -80,11 +80,11 @@ Derive both values from the physical feature directory.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | UX complete. |
-| 📦 **What was just done** | `ux.md` and selected continuation. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Prototype covers material visual/interaction validation; otherwise Plan. Read-only may stop/handoff.
+Confirm UX/doc path. Material visual/interaction/stakeholder/prose-limit → Prototype (apply assumptions to `ux.md`); otherwise Plan. One route/conditional; read-only may stop/Handoff.
 
 ## Escalate-If
 

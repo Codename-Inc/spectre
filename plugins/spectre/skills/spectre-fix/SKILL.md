@@ -33,13 +33,12 @@ The core's full diagnosis and experience contract rendered in-thread, mirrored i
 
 ## Handoff
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Repair approved. |
-| 📦 **What was just done** | Diagnosis and experience contract. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Closeout commits the report.
-Render Execute with resolved absolute plan path and `--origin fix`.
+Return approved diagnosis/contract + one Execute route; closeout commits report, never repair. Render Execute with resolved absolute plan path + `--origin fix`.
 
 ## Escalate-If
 - Bug report is empty or too thin to form hypotheses → ask the user for error, repro, and context.

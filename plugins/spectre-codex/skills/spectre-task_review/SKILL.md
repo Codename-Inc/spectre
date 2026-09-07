@@ -53,15 +53,15 @@ DONE when the attempt is `complete`; findings preceded edits; every finding has 
 
 ## Handoff
 
-`--orchestrated`: review data; no user step.
+Return runtime/fallback/findings/dispositions/report/tasks/parse/validation/scope change; `--orchestrated`: no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Task review. |
-| 📦 **What was just done** | Findings, paths, validation. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Render Execute with resolved absolute execute index and `--origin plan`.
+Standalone unresolved Blocker/High stays remediation; resolved review → Execute resolved absolute index + `--origin plan`.
 
 ## Escalate-If
 

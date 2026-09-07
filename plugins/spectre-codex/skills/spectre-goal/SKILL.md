@@ -85,13 +85,12 @@ DONE means the one prompt passes the contract and quality checks, references aut
 `--orchestrated` returns `GOAL_FILE`, runtime, cap, sources, assumptions, and validation only.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Goal prepared. |
-| 📦 **What was just done** | File, runtime, validation. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Pause → `spectre-handoff {feature}`.
-Render `/goal` with the resolved goal file path.
+Standalone: run `/goal` from resolved goal-file path; pause → Handoff.
 
 ## Escalate-If
 

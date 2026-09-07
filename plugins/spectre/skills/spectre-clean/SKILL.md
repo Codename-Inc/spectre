@@ -47,15 +47,15 @@ Guardrails:
 
 ## Handoff
 
-`--orchestrated`: result.
+`NEEDS_AUTHORITY`: phase/impasse/manual review; ordinary failures repair. `--orchestrated`: result + `CLEANED_THROUGH_SHA`, no step.
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Cleaned. |
-| 📦 **What was just done** | Clean. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** |Done|
+| 📦 **What was just done** |Result|
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-Proof → `/spectre:prove`; checks ≠ `NEEDS_AUTHORITY`.
+Standalone: `/spectre:rebase`; acceptance needed: alternative `/spectre:prove`.
 
 ## Escalate-If
 

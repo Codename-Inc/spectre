@@ -45,10 +45,12 @@ Never use `--no-verify`, force-push over unrelated remote history, suppress fail
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Shipped; terminal. |
-| 📦 **What was just done** | PR. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render one resolved action; no placeholders. |
+
+Return PR URL + `PR_OPENED`/verification; review PR, CI owns merge-gating full-suite. Terminal: no handoff.
 
 ## Escalate-If
 

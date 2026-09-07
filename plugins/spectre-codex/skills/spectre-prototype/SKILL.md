@@ -56,12 +56,12 @@ Use inline SVG/data URIs/CSS shapes only: no remote images, relative assets, cus
 ## Handoff
 
 | Handoff | Details |
-| --- | --- |
-| 🧭 **Current phase** | Prototype route. |
-| 📦 **What was just done** | Path, screens, assumptions. |
-| ▶️ **Proposed next step** | Resolve before rendering one action; never placeholders. |
+|---|---|
+| 🧭 **Current phase** | Done |
+| 📦 **What was just done** | Result |
+| ▶️ **Proposed next step** | Render resolved action; no placeholders. |
 
-`explore` → Scope; `flows-only ux` → UX Stage 2; `post-ux`/`post-scope` unresolved UX → UX, else Plan; `standalone` without scope → Scope, else reclassify as `post-scope`; pause → Handoff. One route.
+Return path/screens/fidelity/anchor/assumptions/NOT included; opens/shareable; revalidate edits/research; promote post-UX to `ux.md`. explore → Scope; flows-only UX → Stage 2; post-UX contradiction/assumption → UX, else Plan; post-scope unresolved UX → UX, else Plan; standalone no scope → Scope, else reclassify as `post-scope`. One route/conditional/pause.
 
 ## Escalate-If
 

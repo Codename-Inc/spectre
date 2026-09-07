@@ -795,6 +795,7 @@ test('plan-direct execute creates compact local execution state before dispatch'
 });
 
 test('autonomous plan execution instruction envelope stays token-neutral', () => {
+  // Structured-handoff tokens are reallocated inside the fixed 28-skill aggregate ceiling below.
   const repoRoot = path.resolve(__dirname, '..');
   const files = [
     'spectre-execute/SKILL.md',
@@ -818,10 +819,10 @@ test('autonomous plan execution instruction envelope stays token-neutral', () =>
     ),
   };
 
-  assert.ok(totals.spectre <= 12_220, `canonical envelope exceeded: ${totals.spectre} > 12,220`);
+  assert.ok(totals.spectre <= 12_394, `canonical envelope exceeded: ${totals.spectre} > 12,394`);
   assert.ok(
-    totals['spectre-codex'] <= 12_300,
-    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,300`,
+    totals['spectre-codex'] <= 12_481,
+    `Codex envelope exceeded: ${totals['spectre-codex']} > 12,481`,
   );
 });
 
@@ -1701,7 +1702,7 @@ test('user-facing handoffs use the compact table contract without changing inter
       );
       assert.match(
         proposed,
-        /resolve before rendering.*never placeholders/i,
+        /(?:resolve before rendering one action; never placeholders|render (?:one )?resolved action; no placeholders)/i,
         `${rootName}/${skillName} must require a fully resolved copy-ready action`,
       );
     }
@@ -1740,6 +1741,32 @@ test('user-facing handoffs use the compact table contract without changing inter
         repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md',
       ), 'utf8');
       assert.match(source, requirement, `${rootName}/${skillName} omits a required resolved argument`);
+    }
+  }
+});
+
+test('compact handoff tables retain the pre-table routing contracts', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const retainedRoutes = {
+    'spectre-plan_review': /orchestrated.*return[\s\S]*standalone.*spectre[:-]create_tasks[\s\S]*direct.*spectre[:-]execute/i,
+    'spectre-create_tasks': /report mode[\s\S]*graph[\s\S]*waves[\s\S]*UX[\s\S]*Prototype[\s\S]*tasks-only[\s\S]*Task Review[\s\S]*origin plan/i,
+    'spectre-clean': /NEEDS_AUTHORITY[\s\S]*ordinary failures[\s\S]*orchestrated[\s\S]*CLEANED_THROUGH_SHA[\s\S]*Standalone[\s\S]*spectre[:-]rebase[\s\S]*alternative.*spectre[:-]prove/i,
+    'spectre-code_review': /orchestrated[\s\S]*CRITICAL\/HIGH[\s\S]*no step[\s\S]*Standalone[\s\S]*blockers[\s\S]*Prove\/Test gap\/deferred Clean/i,
+    'spectre-create_pr': /PR_CANDIDATE_STALE[\s\S]*orchestrated[\s\S]*no user step[\s\S]*Standalone[\s\S]*review the PR/i,
+    'spectre-create_test_guide': /orchestrated[\s\S]*coverage[\s\S]*observable.*Prove[\s\S]*automation gap.*Test[\s\S]*deferred proof.*Clean/i,
+    'spectre-prune': /analyzed\/removed\/excluded[\s\S]*manual review[\s\S]*orchestrated[\s\S]*coverage risk[\s\S]*spectre[:-]test[\s\S]*spectre[:-]sweep/i,
+    'spectre-rebase': /orchestrated[\s\S]*REBASE_READY[\s\S]*never DONE[\s\S]*Standalone[\s\S]*spectre[:-]create_pr[\s\S]*recovery/i,
+    'spectre-ship': /PR_OPENED[\s\S]*CI.*merge-gating[\s\S]*no handoff/i,
+    'spectre-sweep': /orchestrated[\s\S]*unproven work.*Prove[\s\S]*merge-prep.*Rebase[\s\S]*current target.*Create PR/i,
+    'spectre-task_review': /orchestrated[\s\S]*unresolved Blocker\/High[\s\S]*remediation[\s\S]*origin plan/i,
+    'spectre-tdd': /orchestrated[\s\S]*observable.*Prove[\s\S]*coverage gap.*Test[\s\S]*deferred proof.*Clean/i,
+  };
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    for (const [skillName, route] of Object.entries(retainedRoutes)) {
+      const source = fs.readFileSync(path.join(
+        repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md',
+      ), 'utf8');
+      assert.match(handoffSection(source), route, `${rootName}/${skillName} lost a legacy handoff route`);
     }
   }
 });
