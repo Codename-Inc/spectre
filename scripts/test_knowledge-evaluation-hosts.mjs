@@ -546,7 +546,7 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.equal(environment.BUN_TMPDIR, setup.value.claudeHome);
     assert.equal(environment.DEVELOPER_DIR, '/Library/Developer/CommandLineTools');
     assert.match(environment.PATH, /\/Library\/Developer\/CommandLineTools\/usr\/bin/);
-    assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, oauthToken);
+    assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, host === 'claude' ? oauthToken : undefined);
     assert.equal(environment.MCP_CONFIG_PATH, undefined);
     assert.equal(environment.GROVE_CDP_PORT, undefined);
     assert.equal(environment.SUBSPACE_SESSION_TOKEN, undefined);
@@ -555,7 +555,7 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.equal(environment.SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID, `evaluation-context-${host}`);
     assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
     assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
-    assert.equal(result.cleanup.claudeOauth, 'cleared');
+    assert.equal(result.cleanup.claudeOauth, host === 'claude' ? 'cleared' : undefined);
     assert.equal(JSON.stringify(result).includes(oauthToken), false);
   }
 });
@@ -594,6 +594,31 @@ test('Claude refresh credentials are staged ephemerally instead of a possibly ex
     assert.ok(calls[0].includes('auth'));
     assert.ok(calls[0].includes('login'));
     assert.ok(calls[1].includes('-p'));
+  } finally {
+    await fs.rm(setup.root, { recursive: true, force: true });
+    await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });
+  }
+});
+
+test('Codex never receives Claude OAuth refresh credentials or a Claude auth preflight', async () => {
+  const setup = await fixture('codex');
+  const calls = [];
+  try {
+    await invokeKnowledgeHost({
+      host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'workflow task',
+      preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+    }, {
+      readClaudeOauthCredentials: () => ({ refreshToken: 'fixture-claude-oauth-refresh-token', scopes: ['user:inference'] }),
+      spawn: (_command, args, options) => {
+        calls.push({ args, environment: options.env });
+        return childFor({ stdout: JSON.stringify({ type: 'turn.completed', usage: {} }) });
+      },
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_REFRESH_TOKEN, undefined);
+    assert.equal(calls[0].environment.CLAUDE_CODE_OAUTH_SCOPES, undefined);
+    assert.ok(calls[0].args.includes('exec'));
+    assert.equal(calls[0].args.includes('auth'), false);
   } finally {
     await fs.rm(setup.root, { recursive: true, force: true });
     await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });

@@ -749,7 +749,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   let cleanup = { stagedAuth: 'not-staged' };
   try {
     stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
-    {
+    if (host === 'claude') {
       const readOauthCredentials = dependencies.readClaudeOauthCredentials ?? (dependencies.spawn ? null : readClaudeOauthCredentials);
       const oauthCredentials = readOauthCredentials?.();
       if (oauthCredentials?.refreshToken && oauthCredentials.scopes?.length) {
