@@ -46,11 +46,9 @@ Never use `--no-verify`, force-push over unrelated remote history, suppress fail
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Shipping done. |
-| 📦 **What was just done** | PR URL and status. |
-| ▶️ **Proposed next step** | `spectre-create_pr` — review; CI merge-gates. |
-
-Do not offer handoff after this terminal boundary.
+| 🧭 **Current phase** | Shipped; terminal. |
+| 📦 **What was just done** | PR. |
+| ▶️ **Proposed next step** | `spectre-create_pr` — review; CI gate. |
 
 ## Escalate-If
 

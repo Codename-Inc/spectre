@@ -47,15 +47,15 @@ Guardrails:
 
 ## Handoff
 
-`--orchestrated`: result + `CLEANED_THROUGH_SHA`; no user step.
+`--orchestrated`: result.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Cleanup. |
-| 📦 **What was just done** | Commits or impasse. |
-| ▶️ **Proposed next step** | `spectre-rebase` — ready to merge. |
+| 🧭 **Current phase** | Cleaned. |
+| 📦 **What was just done** | Clean. |
+| ▶️ **Proposed next step** | `spectre-rebase` — merge-ready. |
 
-Acceptance evidence → `spectre-prove`; check failures never `NEEDS_AUTHORITY`.
+Proof → `spectre-prove`; checks ≠ `NEEDS_AUTHORITY`.
 
 ## Escalate-If
 

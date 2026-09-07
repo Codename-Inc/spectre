@@ -35,13 +35,13 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 
 ## Handoff
 
-`--orchestrated` returns the URL/body or `PR_CANDIDATE_STALE` only.
+`--orchestrated`: result.
 
 | Handoff | Details |
 | --- | --- |
 | 🧭 **Current phase** | PR. |
-| 📦 **What was just done** | URL/body or stale candidate. |
-| ▶️ **Proposed next step** | `/spectre:create_pr` — review or recover. |
+| 📦 **What was just done** | PR. |
+| ▶️ **Proposed next step** | `/spectre:create_pr` — review/recover. |
 
 ## Escalate-If
 

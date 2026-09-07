@@ -59,14 +59,14 @@ Compute coverage from the local ledger. Run only stale or uncovered checks; neve
 
 ## Handoff
 
-Parent-owned runs return unchanged machine-facing `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` payload plus `FINAL_REVIEW_PENDING` when applicable, without user-facing next steps (no user-facing table or next step). Only after self-owned authoritative terminal state render this table. In Subspace, if companion opening is available, request `{FEATURE_ROOT}/proof/proof.html` beside the conversation. Outside Subspace or unavailable, return the same link without failure. Never publish or share proof.
+Parent-owned runs: unchanged machine-facing `IMPLEMENTATION_READY`/`ACCEPTANCE_PENDING` (+ `FINAL_REVIEW_PENDING` if applicable); no user-facing table/step. Render table only after self-owned terminal authority. Subspace companion available: open proof beside conversation. Outside Subspace/unavailable: same link; no failure. Never publish/share proof.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Execute completed or reached recovery. |
-| 📦 **What was just done** | Delivered product experience or technical capability and user impact; no change log or verification recap. |
-| ▶️ **Proposed next step** | Blocked or failed: same table; exact copy-ready recovery prompt; otherwise one copy-ready prompt: fix high findings, test a concrete coverage gap, else `/spectre:ship`. |
-| 🔎 **Review proof** | Link `{FEATURE_ROOT}/proof/proof.html` only; do not restate verification outcome. |
+| 🧭 **Current phase** | Execute: completed/recovery. |
+| 📦 **What was just done** | Delivered product experience/technical capability + user impact; no recap. |
+| ▶️ **Proposed next step** | Blocked/failed: same table, exact copy-ready recovery prompt; else Fix high/Test coverage/`/spectre:ship`. |
+| 🔎 **Review proof** | `{FEATURE_ROOT}/proof/proof.html`. |
 
 ## Escalate-If
 

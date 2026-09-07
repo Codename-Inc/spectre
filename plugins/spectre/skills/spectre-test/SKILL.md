@@ -42,15 +42,15 @@ Add risk-weighted behavioral tests and commit standalone batches. Test boundarie
 
 ## Handoff
 
-`--orchestrated`/risk plan: results only; no user step.
+`--orchestrated`: result.
 
 | Handoff | Details |
 | --- | --- |
-| 🧭 **Current phase** | Tests done. |
-| 📦 **What was just done** | Tiers, tests, checks, commits. |
-| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from live state. |
+| 🧭 **Current phase** | Tested. |
+| 📦 **What was just done** | Tested. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — state-selected. |
 
-Unproven observable work → Prove; hygiene → Sweep; clean proven/deferred work → Rebase. Never rebase merely because tests passed.
+Gap → Prove; hygiene → Sweep; else Rebase; tests ≠ Rebase.
 
 ## Escalate-If
 

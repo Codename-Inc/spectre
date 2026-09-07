@@ -1570,7 +1570,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(execute, /After review dispositions are recorded/);
     assert.match(execute, /Skill\(spectre-prove\)/);
     assert.match(execute, /Proof is always the last acceptance gate/);
-    assert.match(execute, /Parent-owned runs[^\n]*without user-facing next steps/i);
+    assert.match(execute, /Parent-owned runs[^\n]*no user-facing table\/step/i);
     assert.match(validate, /Standalone `Complete`.*spectre-prove/);
     assert.match(proof, /Standalone `PASS`.*spectre-ship/);
     assert.match(proof, /proof status alone never gates .*spectre.*ship/);
@@ -1612,36 +1612,36 @@ test('Execute self-owned handoff links proof without contaminating parent delive
 
     assert.match(
       execute,
-      /Only after self-owned authoritative terminal state[\s\S]*render[\s\S]*table/i,
+      /Render table only after self-owned terminal authority/i,
     );
     assert.match(
       execute,
-      /parent[\s\S]*`IMPLEMENTATION_READY`[\s\S]*`ACCEPTANCE_PENDING`[\s\S]*no user-facing table or next step/i,
+      /Parent-owned runs:[\s\S]*machine-facing[\s\S]*`IMPLEMENTATION_READY`[\s\S]*`ACCEPTANCE_PENDING`[\s\S]*no user-facing table\/step/i,
     );
-    assert.match(handoff, /Execute completed or reached recovery/i);
+    assert.match(handoff, /Execute: completed\/recovery/i);
     assert.match(
       handoff,
-      /delivered product experience or technical capability[\s\S]*user impact/i,
+      /delivered product experience\/technical capability[\s\S]*user impact/i,
     );
     assert.match(handoff, /\{FEATURE_ROOT\}\/proof\/proof\.html/);
     assert.match(handoff, /🔎 \*\*Review proof\*\*/);
     assert.doesNotMatch(handoff, /Counts, proof, findings, `RUN_ID`/);
     assert.match(
       execute,
-      /In Subspace[\s\S]*companion opening is available[\s\S]*proof\.html[\s\S]*beside the conversation/i,
+      /Subspace companion available:[\s\S]*open proof[\s\S]*beside conversation/i,
     );
     assert.match(
       execute,
-      /Outside Subspace[\s\S]*same link[\s\S]*without failure/i,
+      /Outside Subspace[\s\S]*same link[\s\S]*no failure/i,
     );
-    assert.match(execute, /Never publish or share(?: the)? proof/i);
+    assert.match(execute, /Never publish\/share proof/i);
     assert.match(
       handoff,
-      /fix high findings, test a concrete coverage gap, else `\/?spectre[-:]ship`/i,
+      /Fix high\/Test coverage\/`\/?spectre[-:]ship`/i,
     );
     assert.match(
       handoff,
-      /blocked or failed[\s\S]*same table[\s\S]*exact copy-ready recovery prompt/i,
+      /blocked\/failed[\s\S]*same table[\s\S]*exact copy-ready recovery prompt/i,
     );
   }
 });
