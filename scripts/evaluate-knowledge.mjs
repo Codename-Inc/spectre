@@ -77,6 +77,8 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     : host === 'claude'
     ? { EXECUTE_COMMAND: '/spectre:spectre-execute', SHIP_COMMAND: '/spectre:spectre-ship' }
     : { EXECUTE_COMMAND: 'spectre-execute', SHIP_COMMAND: 'spectre-ship' };
+  const featureRoot = '.spectre/features/evaluation-cell';
+  const executeSource = `${featureRoot}/specs/execute.md`;
   const prompts = entry.longitudinalSteps ?? [[
     entry.task,
     entry.workflow ?? 'Use the installed Spectre workflow to complete the task.',
@@ -86,10 +88,10 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     ? `${prompt}\nWrite the decision artifact to ${artifactPath}, then write evaluation-result.json with recordIds and actions arrays describing the evidence you used.`
     : prompt).replaceAll('{EXECUTE_COMMAND}', commands.EXECUTE_COMMAND).replaceAll('{SHIP_COMMAND}', commands.SHIP_COMMAND);
     if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 0) {
-      resolved = `${commands.EXECUTE_COMMAND} --orchestrated --finalization-owner parent --review-profile final-only\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*? for the staged feature\.\s*/, '')}`;
+      resolved = `${commands.EXECUTE_COMMAND} ${executeSource} --orchestrated --finalization-owner parent --review-profile final-only\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*? for the staged feature\.\s*/, '')}`;
     }
     if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 2) {
-      resolved = `${commands.SHIP_COMMAND}\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run .*?:\s*/, '')}`;
+      resolved = `${commands.SHIP_COMMAND} ${featureRoot}\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run \S+:\s*/, '')}`;
     }
     return resolved;
   });
@@ -285,9 +287,17 @@ export function judgeCell(cell, runtime, oracle) {
       if (expected.requiredStates.some((state) => /noop/.test(state)) && !unchangedSession) {
         return { valid: false, recalled: false, reason: 'required unchanged capture evidence is missing' };
       }
-      if (expected.requiredStates.some((state) => /noop/.test(state)) &&
-        !captureOutcomes.some((outcome) => outcome === 'noop' || outcome === 'unchanged')) {
-        return { valid: false, recalled: false, reason: 'explicit no-op capture result is missing' };
+      if (expected.requiredStates.some((state) => /noop/.test(state))) {
+        const unchangedSessions = new Set(snapshots.flatMap((session, index) =>
+          JSON.stringify(session.before?.records ?? []) === JSON.stringify(session.after?.records ?? []) &&
+          JSON.stringify(session.before?.history ?? []) === JSON.stringify(session.after?.history ?? []) ? [index] : []
+        ));
+        const explicitNoopInvocation = (runtime.toolOperations ?? []).some((operation) =>
+          unchangedSessions.has(operation.sessionOrdinal ?? 0) && (operation.name === 'Learn' ||
+            operation.name === 'Skill' && /(?:spectre[-:]learn|\blearn\b|\bcapture\b)/i.test(JSON.stringify(operation.input ?? {})) ||
+            /spectre[-/](?:learn|capture)(?:[/.]|\b)/i.test(operation.input?.command ?? ''))
+        );
+        if (!explicitNoopInvocation) return { valid: false, recalled: false, reason: 'explicit no-op invocation evidence is missing' };
       }
       if (expected.requiredStates.includes('save-failure') && !captureOutcomes.includes('failed')) {
         if (runtime.lifecycleEvidence?.registrationFault && runtime.lifecycleEvidence.registrationFault !== 'armed') {

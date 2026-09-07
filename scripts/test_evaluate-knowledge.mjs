@@ -112,9 +112,10 @@ test('lifecycle prompts use user transport only where the plugin exists', () => 
     'Learn the work.',
     'Start a fresh session. As the user-requested workflow command, run {SHIP_COMMAND}: refresh the work.',
   ] };
-  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /^\/spectre:spectre-execute /);
-  assert.match(promptContract(entry, 'artifacts/decision.md', 'codex', 'candidate')[2], /^spectre-ship\n/);
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /^\/spectre:spectre-execute \.spectre\/features\/evaluation-cell\/specs\/execute\.md /);
+  assert.match(promptContract(entry, 'artifacts/decision.md', 'codex', 'candidate')[2], /^spectre-ship \.spectre\/features\/evaluation-cell\n/);
   assert.match(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[0], /--finalization-owner parent/);
+  assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'candidate')[2], /\nspectre-ship:/);
   assert.doesNotMatch(promptContract(entry, 'artifacts/decision.md', 'claude', 'no-knowledge')[2], /spectre:|spectre-ship/);
 });
 
@@ -372,6 +373,27 @@ test('lifecycle requires Execute capture before a later explicit work summary', 
   assert.equal(judgeCell({ caseId: 'lifecycle', condition: 'candidate' }, {
     ...runtime, toolOperations: [{ name: 'Learn', sessionOrdinal: 0, eventOrdinal: 1, input: {} }, ...runtime.toolOperations],
   }, oracle).reason, 'automatic Execute capture evidence is missing');
+});
+
+test('an explicit bare Learn no-op may skip registration when records remain unchanged', () => {
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/decision.md', deliverable: { exists: true, bytes: 1 }, bypass: [],
+    toolOperations: [
+      { name: 'Learn', sessionOrdinal: 1, eventOrdinal: 1, input: { intent: 'no-op' } },
+      { name: 'Write', status: 'completed', sessionOrdinal: 1, eventOrdinal: 2, input: { file_path: 'artifacts/decision.md' } },
+    ],
+    trace: { availability: 'available', events: [] },
+    sessionSnapshots: [
+      { before: { records: [{ id: 'known' }], history: [] }, after: { records: [{ id: 'known' }], history: [] } },
+      { before: { records: [{ id: 'known' }], history: [] }, after: { records: [{ id: 'known' }], history: [] } },
+    ],
+  };
+  const oracle = { case: { requiredRecordHashes: [], requiredStates: ['bare-learn-noop'], manualRubric: 'review no-op' } };
+  assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, runtime, oracle).structuralValid, true);
+  assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, {
+    ...runtime, toolOperations: [{ name: 'exec', sessionOrdinal: 1, eventOrdinal: 1, input: { command: 'cat .agents/skills/spectre-learn/SKILL.md' } }, runtime.toolOperations[1]],
+  }, oracle).structuralValid, true);
+  assert.equal(judgeCell({ caseId: 'case', condition: 'candidate' }, { ...runtime, toolOperations: [runtime.toolOperations[1]] }, oracle).reason, 'explicit no-op invocation evidence is missing');
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {
