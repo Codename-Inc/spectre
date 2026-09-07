@@ -13,12 +13,7 @@
       ],
       "cohort": "chat",
       "critical": true,
-      "scaleDistractors": [
-        10,
-        100,
-        1000,
-        10000
-      ]
+      "scaleDistractors": 10000
     },
     {
       "id": "alias-tag-reuse",
@@ -42,7 +37,7 @@
     {
       "id": "imported-work",
       "task": "Plan the import of the acquired team's deployment workflow.",
-      "workflow": "Search the imported historical work before deciding whether a maintained equivalent exists, then Plan the safe import.",
+      "workflow": "Plan the safe import from the supplied project evidence, preserving source ownership before a maintained equivalent exists.",
       "initialFacts": [
         {
           "id": "acquisition-deploy-boundary",
@@ -77,7 +72,7 @@
     {
       "id": "deliberate-history",
       "task": "Decide whether to restore the previous notification batch size.",
-      "workflow": "Give the current recommendation and distinguish any historical evidence from active guidance.",
+      "workflow": "Answer the historical restoration question using the supplied evidence and label historical evidence separately from active guidance.",
       "initialFacts": [
         {
           "id": "notification-batch-history",
@@ -92,7 +87,7 @@
     {
       "id": "worktree-applicability",
       "task": "Prepare a release note for the mobile worktree.",
-      "workflow": "Recall the work-scoped applicability boundary and keep unrelated worktree guidance out of the note.",
+      "workflow": "Prepare the mobile release note from the supplied project evidence and keep unrelated worktree guidance out.",
       "initialFacts": [
         {
           "id": "desktop-only-packaging",
@@ -159,7 +154,7 @@
       "id": "longitudinal-correction",
       "longitudinal": true,
       "task": "Capture the incident correction that changes the retry ceiling from five to three attempts, then recall and report the current value.",
-      "workflow": "Use Learn for the correction, Recall the revised record, then Plan, Execute, Ship, and CreatePR the correction artifact.",
+      "workflow": "Use Learn for the correction, then complete the correction artifact through Plan, Execute, Ship, and CreatePR.",
       "initialFacts": [
         {
           "id": "retry-ceiling",
@@ -167,10 +162,10 @@
         }
       ],
       "longitudinalSteps": [
-        "Start a fresh session. Recall the current retry-ceiling record and write the initial value to evaluation-result.json.",
-        "Start a fresh session. Reuse the recalled retry-ceiling guidance in a brief plan.",
+        "Start a fresh session. Capture the incident evidence that retry-ceiling is five and write the resulting action to evaluation-result.json.",
+        "Start a fresh session. Use the independently saved guidance in a brief plan without an explicit Recall instruction.",
         "Start a fresh session. Use Learn to correct retry-ceiling: the current ceiling is three attempts and the earlier value is superseded.",
-        "Start a fresh session. Recall retry-ceiling after the correction, report the current value, and write evaluation-result.json with recordIds and actions."
+        "Start a fresh session. Complete the correction artifact using current project evidence, and write evaluation-result.json with loaded record IDs, revisions, and actions."
       ],
       "cohort": "longitudinal"
     }
