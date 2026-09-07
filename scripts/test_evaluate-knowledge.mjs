@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, primaryJudgmentReport, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, evaluationQualityReport, freeze, judgeCell, normalizeUsage, primaryJudgmentReport, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -111,6 +111,20 @@ test('primary judgments bind a reviewed conclusion to the persisted artifact has
   }]);
   assert.equal(accepted.status, 'reviewed');
   assert.equal(primaryJudgmentReport(cells, [{ ...accepted.reviewed[0], cellId: cells[0].id, artifactHash: 'sha256:wrong', artifactEvidence: 'sha256:wrong' }]).status, 'fail');
+});
+
+test('quality report keeps incomplete controls and unreviewed artifacts pending', () => {
+  const cells = [{
+    id: 'critical:candidate:claude:1', condition: 'candidate', host: 'claude', critical: true,
+    runtime: { status: 'completed', trace: { availability: 'available' }, nativeFullCycleUsage: { coverage: 'complete' }, deliverable: { hash: 'sha256:artifact' } },
+    judged: { structuralValid: true, recalled: null },
+  }];
+  const quality = evaluationQualityReport(cells, []);
+  assert.equal(quality.status, 'pending');
+  assert.equal(quality.observedSamples, 1);
+  assert.equal(quality.controls.candidate.nativeFullCycleUsage.known, 1);
+  assert.equal(quality.controls.candidate.trace.available, 1);
+  assert.equal(quality.controls.baseline.postHocPayloadMetrics.available, 0);
 });
 
 test('judging requires an exact successful load and a later persisted decision artifact', () => {

@@ -499,6 +499,44 @@ export function primaryJudgmentReport(cells, primaryJudgments = []) {
   return { reviewed, status: failed ? 'fail' : pending ? 'pending' : 'reviewed' };
 }
 
+export function evaluationQualityReport(cells, primaryJudgments = []) {
+  const manual = primaryJudgmentReport(cells, primaryJudgments);
+  const byCondition = Object.fromEntries(CONDITIONS.map((condition) => {
+    const samples = cells.filter((cell) => cell.condition === condition);
+    const runtime = samples.map((cell) => cell.runtime ?? {});
+    const completeUsage = runtime.filter((value) => value.nativeFullCycleUsage?.coverage === 'complete').length;
+    const traceAvailable = condition === 'candidate'
+      ? runtime.filter((value) => value.trace?.availability === 'available').length : null;
+    const verifiedNoKnowledgeHook = condition === 'no-knowledge'
+      ? runtime.filter((value) => value.sessionStartMeasurement?.availability === 'none').length : null;
+    const baselineMetrics = condition === 'baseline'
+      ? runtime.filter((value) => Number.isFinite(value.loadedBodyTokens) || Number.isFinite(value.previewTokens)).length : null;
+    return [condition, {
+      samples: samples.length,
+      hostCompleted: samples.filter((cell) => cell.runtime?.status === 'completed').length,
+      structuralValid: samples.filter((cell) => cell.judged?.structuralValid === true).length,
+      invalid: samples.filter((cell) => cell.judged?.recalled === false).length,
+      manualPending: samples.filter((cell) => cell.judged?.recalled === null).length,
+      nativeFullCycleUsage: { known: completeUsage, missing: samples.length - completeUsage },
+      ...(condition === 'candidate' ? { trace: { available: traceAvailable, unavailable: samples.length - traceAvailable } } : {}),
+      ...(condition === 'baseline' ? { postHocPayloadMetrics: { available: baselineMetrics, unavailable: samples.length - baselineMetrics } } : {}),
+      ...(condition === 'no-knowledge' ? { sessionStart: { verifiedNone: verifiedNoKnowledgeHook, unavailable: samples.length - verifiedNoKnowledgeHook } } : {}),
+    }];
+  }));
+  const structuralFailures = cells.filter((cell) => cell.judged?.recalled === false).length;
+  const expected = 12 * CONDITIONS.length * HOSTS.length * 2;
+  return {
+    expectedSamples: expected,
+    observedSamples: cells.length,
+    missingSamples: Math.max(0, expected - cells.length),
+    controls: byCondition,
+    manual,
+    status: structuralFailures > 0 || manual.status === 'fail' ? 'fail'
+      : cells.length === expected && manual.status === 'reviewed' ? 'reviewed' : 'pending',
+    note: 'Unknown native usage, unavailable trace, unavailable baseline payload metrics, and unreviewed artifacts remain explicit gaps and cannot establish a pass.',
+  };
+}
+
 function thresholdReport(cells, paired, primaryJudgments = []) {
   const required = cells.filter((cell) => cell.critical === true);
   const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.recalled === true)
@@ -561,11 +599,13 @@ function changedProjectEvidence(projectDir) {
 }
 
 function compactSnapshot(snapshot, relevantIds, previous = null) {
-  const before = new Map((previous?.records ?? []).map((record) => [record.id, record.revisionToken ?? record.sourceFingerprint ?? null]));
   const retain = new Set(relevantIds);
-  for (const record of snapshot.records ?? []) {
-    const token = record.revisionToken ?? record.sourceFingerprint ?? null;
-    if (!before.has(record.id) || before.get(record.id) !== token) retain.add(record.id);
+  if (previous) {
+    const before = new Map((previous.records ?? []).map((record) => [record.id, record.revisionToken ?? record.sourceFingerprint ?? null]));
+    for (const record of snapshot.records ?? []) {
+      const token = record.revisionToken ?? record.sourceFingerprint ?? null;
+      if (!before.has(record.id) || before.get(record.id) !== token) retain.add(record.id);
+    }
   }
   const records = (snapshot.records ?? []).filter((record) => retain.has(record.id));
   const history = (snapshot.history ?? []).filter((entry) => retain.has(entry.id));
@@ -856,6 +896,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
   const report = {
     ...result, freeze: { hashes: freezeManifest.hashes, baseline: freezeManifest.baseline },
     cohorts: cohortReport(result.cells), paired, primaryJudgments: primaryJudgmentReport(result.cells, primaryJudgments),
+    quality: evaluationQualityReport(result.cells, primaryJudgments),
     thresholds: thresholdReport(result.cells, paired, primaryJudgments),
   };
   if (options.reportPath) fs.writeFileSync(options.reportPath, `${JSON.stringify(report, null, 2)}\n`);
