@@ -241,6 +241,44 @@ describe('registration preconditions', () => {
     assert.equal(fs.readdirSync(storePath).some(entry => entry.startsWith('.registration-stage-')), false);
   });
 
+  it('rejects canonical-store proposals and a current package that no longer matches its index', async (t) => {
+    const workspace = makeWorkspace(t);
+    const proposal = writePackage(workspace.proposals, knowledgeRecord({ id: 'stored-proposal' }));
+    const created = await register(workspace, proposal);
+    const storePath = findOnlyStore(workspace.spectreHome);
+    const canonicalRecordPath = path.join(storePath, 'knowledge', 'stored-proposal', 'record.json');
+    const indexPath = path.join(storePath, 'index.json');
+    const originalRecord = fs.readFileSync(canonicalRecordPath, 'utf8');
+    const originalIndex = fs.readFileSync(indexPath, 'utf8');
+
+    for (const source of [
+      canonicalRecordPath,
+      (() => {
+        const alias = path.join(workspace.tmp, 'store-alias');
+        fs.symlinkSync(storePath, alias);
+        return path.join(alias, 'knowledge', 'stored-proposal', 'record.json');
+      })(),
+    ]) {
+      await assert.rejects(
+        register(workspace, source),
+        (error) => error.code === 'KNOWLEDGE_RECORD_INVALID' && /inside the knowledge store/i.test(error.message),
+      );
+      assert.equal(fs.readFileSync(canonicalRecordPath, 'utf8'), originalRecord);
+      assert.equal(fs.readFileSync(indexPath, 'utf8'), originalIndex);
+    }
+
+    const tampered = knowledgeRecord({ id: 'stored-proposal', content: 'Tampered canonical bytes.' });
+    fs.writeFileSync(canonicalRecordPath, `${JSON.stringify(tampered, null, 2)}\n`);
+    const externalProposal = writePackage(path.join(workspace.proposals, 'external'), tampered);
+    await assert.rejects(
+      register(workspace, externalProposal, { expectedRevision: created.revisionToken }),
+      (error) => error.code === 'KNOWLEDGE_CURRENT_RECORD_MISMATCH' && error.currentRevision !== created.revisionToken,
+    );
+    assert.equal(fs.readFileSync(canonicalRecordPath, 'utf8'), `${JSON.stringify(tampered, null, 2)}\n`);
+    assert.equal(fs.readFileSync(indexPath, 'utf8'), originalIndex);
+    assert.equal(fs.existsSync(path.join(storePath, 'knowledge-history', 'stored-proposal')), false);
+  });
+
   it('creates only when absent and reports the identical re-registration as a no-op', async (t) => {
     const workspace = makeWorkspace(t);
     const proposal = writePackage(workspace.proposals, knowledgeRecord({ id: 'precondition-create' }));

@@ -91,6 +91,22 @@ function sourceContainsStore(sourceDir, storePath) {
   return store === source || store.startsWith(`${source}${path.sep}`);
 }
 
+function sourceIsInsideStore(sourceDir, storePath) {
+  const source = fs.realpathSync.native(sourceDir);
+  const store = fs.realpathSync.native(storePath);
+  return source === store || source.startsWith(`${store}${path.sep}`);
+}
+
+function indexedRevision(storePath, id) {
+  try {
+    const index = JSON.parse(fs.readFileSync(path.join(storePath, 'index.json'), 'utf8'));
+    const entry = Array.isArray(index?.records) ? index.records.find((record) => record?.id === id) : null;
+    return typeof entry?.revisionToken === 'string' ? entry.revisionToken : null;
+  } catch {
+    return null;
+  }
+}
+
 function copyDirectory(sourceDir, destinationDir) {
   fs.mkdirSync(destinationDir, { recursive: true });
   for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
@@ -225,7 +241,7 @@ function validateStagedRecord(stagePath) {
  * Compare-and-swap over the whole package: a create requires absence, a replacement
  * requires the caller's expected token, and identical content never rewrites the store.
  */
-function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, stagedRevision }) {
+function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, stagedRevision, indexedCurrentRevision }) {
   const exists = fs.existsSync(destinationPath);
   const currentRevision = exists ? readRecordRevision(destinationPath) : null;
   if (!exists) {
@@ -238,15 +254,22 @@ function resolveRegistrationOutcome({ id, destinationPath, expectedRevision, sta
     }
     return { status: 'created', currentRevision: null };
   }
-  if (currentRevision !== null && currentRevision === stagedRevision) {
-    return { status: 'noop', currentRevision };
-  }
   if (currentRevision === null) {
     throw codedError(
       'KNOWLEDGE_CURRENT_RECORD_UNREADABLE',
       `Current record ${id} is unreadable. Preserve or recover its package before retrying; migration cannot replace an unreadable typed record.`,
       { status: 'conflict', currentRevision: null },
     );
+  }
+  if (indexedCurrentRevision && indexedCurrentRevision !== currentRevision) {
+    throw codedError(
+      'KNOWLEDGE_CURRENT_RECORD_MISMATCH',
+      `Current record ${id} differs from its persisted index revision. Preserve or recover the package before retrying.`,
+      { status: 'conflict', currentRevision, indexedRevision: indexedCurrentRevision },
+    );
+  }
+  if (currentRevision === stagedRevision) {
+    return { status: 'noop', currentRevision };
   }
   if (!expectedRevision) {
     throw codedError(
@@ -324,6 +347,12 @@ export async function registerCanonicalKnowledge(options) {
       `Typed record package contains the knowledge store and cannot be registered: ${sourceDir}`,
     );
   }
+  if (sourceIsInsideStore(sourceDir, storePath)) {
+    throw codedError(
+      'KNOWLEDGE_RECORD_INVALID',
+      `Typed record package is inside the knowledge store and cannot be registered: ${sourceDir}`,
+    );
+  }
 
   return withStoreLock(
     storePath,
@@ -347,6 +376,7 @@ export async function registerCanonicalKnowledge(options) {
           destinationPath,
           expectedRevision: options.expectedRevision,
           stagedRevision: parsed.revisionToken,
+          indexedCurrentRevision: indexedRevision(storePath, parsed.record.id),
         });
         if (outcome.status === 'noop') {
           const recorded = importReceipt

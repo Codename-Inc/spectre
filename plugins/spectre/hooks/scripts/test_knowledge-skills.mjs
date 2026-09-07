@@ -22,6 +22,7 @@ test('workflow skills make capture primary-owned and preserve delivery lifecycle
   const execute = skill('spectre-execute');
   const ship = skill('spectre-ship');
   const createPr = skill('spectre-create_pr');
+  const capture = skill('spectre-capture');
 
   assert.match(execute, /workers[\s\S]*findings[\s\S]*primary/i);
   assert.match(execute, /accepted batch[\s\S]*capture/i);
@@ -35,6 +36,10 @@ test('workflow skills make capture primary-owned and preserve delivery lifecycle
   assert.match(createPr, /shared pre-PR capture/i);
   assert.match(createPr, /unchanged candidate[\s\S]*no-op/i);
   assert.match(createPr, /draft[\s\S]*not[\s\S]*merged/i);
+  assert.match(capture, /load[\s\S]*--json[\s\S]*revisionToken/i);
+  assert.match(capture, /outside[\s\S]*knowledge store[\s\S]*expected-revision/i);
+  assert.match(capture, /never[\s\S]*canonical[\s\S]*index\.json[\s\S]*history/i);
+  assert.match(capture, /pullRequest\.state[\s\S]*draft-open/i);
 });
 
 test('Learn delegates capture and planning retains only loaded knowledge provenance', () => {
