@@ -77,9 +77,8 @@ Derive both values from the physical feature directory.
 | 🧭 **Current phase** | UX route. |
 | 📦 **What was just done** | Flows and `ux.md`. |
 | ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed UX signal}`. |
-| 🔀 **Alternative** | `/spectre:handoff {feature}` when stopping. |
 
-Visual/interaction assumptions, visual review, or prose-insufficient validation → Prototype; else Plan, the unified tier/research/review/task router. Apply assumptions to `ux.md`; read-only may stop/handoff.
+Material visual/interaction assumptions remain, visual review, or prose-insufficient validation → Prototype; else Plan, the unified tier/research/review/task router. Apply assumptions to `ux.md`; read-only may stop/handoff.
 
 ## Escalate-If
 

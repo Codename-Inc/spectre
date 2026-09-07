@@ -1543,7 +1543,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.ok(scopeUx !== -1);
     assert.ok(scopePrototype > scopeUx);
     assert.ok(scopePlan > scopePrototype);
-    assert.match(scope, /Next \(recommended\)/);
+    assert.match(scope, /\| ▶️ \*\*Proposed next step\*\* \|/);
     assert.match(scope, /Pause: .*spectre-handoff/);
 
     assert.match(ux, /Material visual\/interaction assumptions remain/);
@@ -1581,7 +1581,7 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.doesNotMatch(ship, /Skill\(spectre-clean\)/);
     assert.match(ship, /Skill\(spectre-rebase\)/);
     assert.match(ship, /Skill\(spectre-create_pr\)/);
-    assert.match(ship, /Next \(recommended\): review the PR/);
+    assert.match(ship, /\| ▶️ \*\*Proposed next step\*\* \|/);
   }
 });
 

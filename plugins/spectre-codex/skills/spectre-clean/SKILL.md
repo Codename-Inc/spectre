@@ -54,9 +54,8 @@ Guardrails:
 | 🧭 **Current phase** | Cleanup. |
 | 📦 **What was just done** | Commits or impasse. |
 | ▶️ **Proposed next step** | `spectre-rebase` — ready to merge. |
-| 🔀 **Alternative** | `spectre-prove` for desired acceptance evidence. |
 
-Check failures never `NEEDS_AUTHORITY`.
+Acceptance evidence → `spectre-prove`; check failures never `NEEDS_AUTHORITY`.
 
 ## Escalate-If
 

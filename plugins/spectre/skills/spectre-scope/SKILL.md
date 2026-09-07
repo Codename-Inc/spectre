@@ -58,7 +58,7 @@ Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title 
 | ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed scope signal}`. |
 | 🔀 **Alternative** | Pause: `/spectre:handoff {feature}` when stopping. |
 
-Unsettled → Scope; unresolved UX → UX; visual validation → Prototype; else Plan. One route.
+Unsettled → Scope; unresolved journeys, segments, states, copy, or accessibility → UX; interaction/layout/visual validation materially matters → Prototype; otherwise confirmed repository-changing work → Plan. One route.
 
 ## Escalate-If
 

@@ -58,16 +58,15 @@ The primary directly writes only the selected canonical artifacts. Do not delega
 
 ## Handoff
 
-`--orchestrated` returns mode, paths, counts, and finalized waves only.
+`--orchestrated` returns mode, paths, counts, and finalized waves without user-facing Next Steps.
 
 | Handoff | Details |
 | --- | --- |
 | 🧭 **Current phase** | Task graph. |
 | 📦 **What was just done** | Mode, paths, counts, waves. |
 | ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from graph state. |
-| 🔀 **Alternative** | `/spectre:handoff {feature}` only when pausing. |
 
-Unaccepted behavior → UX if unresolved, else Prototype; comprehensive tasks-only → Task Review; else Execute `{EXECUTE_INDEX} --origin plan`; then regenerate.
+Standalone load-bearing user-facing behavior without adequate UX/prototype acceptance evidence → UX if unresolved, else Prototype; regenerate. Comprehensive tasks-only → Task Review; otherwise Execute `{EXECUTE_INDEX} --origin plan`; pause may Handoff.
 
 ## Escalate-If
 

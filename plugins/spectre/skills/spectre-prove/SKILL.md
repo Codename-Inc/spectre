@@ -75,9 +75,8 @@ Exclude secrets, credentials, private customer data, and unnecessary local paths
 | 🧭 **Current phase** | Proof outcome. |
 | 📦 **What was just done** | Result, journeys, artifacts, failures. |
 | ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from proof. |
-| 🔀 **Alternative** | `/spectre:handoff {feature}` on `NEEDS_AUTHORITY`. |
 
-PASS → Ship; else Fix, Scope, UX, or prerequisite. Return result/evidence/paths. Proof never gates Ship.
+Standalone `PASS` → `/spectre:ship`; non-PASS → Fix, Scope, UX, or prerequisite; `NEEDS_AUTHORITY` → Handoff. Return result/evidence/paths. proof status alone never gates `/spectre:ship`.
 
 ## Escalate-If
 

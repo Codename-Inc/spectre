@@ -60,9 +60,8 @@ Use inline SVG/data URIs/CSS shapes only: no remote images, relative assets, cus
 | 🧭 **Current phase** | Prototype route. |
 | 📦 **What was just done** | Path, screens, assumptions. |
 | ▶️ **Proposed next step** | `/spectre:{command}` — because `{mode + signal}`. |
-| 🔀 **Alternative** | `/spectre:handoff {feature}` only when pausing. |
 
-`explore` → Scope; `flows-only ux` → UX Stage 2; unresolved post-UX/Scope → UX, else Plan; standalone without scope → Scope, else `post-scope`. One route.
+`explore` → Scope; `flows-only ux` → UX Stage 2; `post-ux`/`post-scope` unresolved UX → UX, else Plan; `standalone` without scope → Scope, else reclassify as `post-scope`; pause → Handoff. One route.
 
 ## Escalate-If
 
