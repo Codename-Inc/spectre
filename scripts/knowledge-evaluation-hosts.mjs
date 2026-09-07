@@ -23,6 +23,10 @@ const LAUNCH_ENVIRONMENT_NAMES = new Set([
   ...ISOLATED_ENVIRONMENT_PATHS,
   'PATH', 'LANG', 'TERM', 'COLORTERM', 'NO_COLOR', 'GIT_CONFIG_NOSYSTEM',
 ]);
+const REQUEST_EVALUATION_IDENTIFIER_NAMES = new Set([
+  'SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID',
+  'SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID',
+]);
 
 function isWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
@@ -223,7 +227,7 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
     providerExecutables: executables,
     runtimeExceptions,
     networkPolicy: {
-      outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+      outbound: 'tcp-udp-443-and-mdns', loopback: 'denied', unixSockets: ['mDNSResponder'],
       residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
     },
   };
@@ -518,9 +522,18 @@ export function normalizeKnowledgeHostTranscript(host, rawStdout) {
   return { ...normalized, transcript: { eventCount: events.length, malformedLineCount } };
 }
 
-function cleanEnvironment(base = {}, { allowIsolated = false } = {}) {
+function isOpaqueEvaluationIdentifier(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+}
+
+function cleanEnvironment(base = {}, { allowIsolated = false, allowEvaluationIdentifiers = false } = {}) {
   const environment = {};
   for (const [key, value] of Object.entries(base)) {
+    if (allowEvaluationIdentifiers && REQUEST_EVALUATION_IDENTIFIER_NAMES.has(key)) {
+      if (!isOpaqueEvaluationIdentifier(value)) throw new Error(`${key} must be an opaque evaluation identifier`);
+      environment[key] = value;
+      continue;
+    }
     const allowed = (allowIsolated && ISOLATED_ENVIRONMENT_PATHS.has(key))
       || (LAUNCH_ENVIRONMENT_NAMES.has(key) && !ISOLATED_ENVIRONMENT_PATHS.has(key))
       || /^LC_[A-Z_]+$/.test(key);
@@ -694,7 +707,8 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   await Promise.all([mkdir(fixture.codexHome, { recursive: true, mode: 0o700 }), mkdir(fixture.claudeHome, { recursive: true, mode: 0o700 })]);
 
   const environment = {
-    ...cleanEnvironment(dependencies.baseEnvironment ?? process.env), ...cleanEnvironment(request.environment, { allowIsolated: true }),
+    ...cleanEnvironment(dependencies.baseEnvironment ?? process.env),
+    ...cleanEnvironment(request.environment, { allowIsolated: true, allowEvaluationIdentifiers: true }),
     ...(paths.storeDir ? { SPECTRE_HOME: paths.storeDir } : {}),
     ...(paths.pluginDir ? { CLAUDE_PROJECT_DIR: paths.projectDir, CLAUDE_PLUGIN_ROOT: paths.pluginDir, PLUGIN_ROOT: paths.pluginDir } : {}),
   };

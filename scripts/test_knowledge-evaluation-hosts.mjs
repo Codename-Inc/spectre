@@ -280,7 +280,7 @@ test('wraps every host launch in a fail-closed per-cell filesystem sandbox', asy
     kind: 'xcrun-cache', pathPattern: `${fsSync.realpathSync.native(os.tmpdir())}/xcrun_db(-[A-Za-z0-9]+)?`, access: 'read-write',
   }]);
   assert.deepEqual(result.isolation.filesystemBoundary.networkPolicy, {
-    outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+    outbound: 'tcp-udp-443-and-mdns', loopback: 'denied', unixSockets: ['mDNSResponder'],
     residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
   });
   assert.equal(result.isolation.filesystemBoundary.cellOnlyWrites, false);
@@ -509,7 +509,7 @@ test('default-deny host boundary blocks loopback and external Unix services', as
   ], { cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 5_000 });
   assert.equal(unix.status, 0, unix.stderr);
   assert.deepEqual(curlSandbox.networkPolicy, {
-    outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+    outbound: 'tcp-udp-443-and-mdns', loopback: 'denied', unixSockets: ['mDNSResponder'],
     residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
   });
 });
@@ -524,9 +524,16 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     const result = await invokeKnowledgeHost({
       host, model: host === 'claude' ? 'opus' : 'gpt-test', effort: 'medium', prompt: 'workflow task',
       preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
-      environment: { GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token', BROWSER_WS_ENDPOINT: 'ws://127.0.0.1:9222' },
+      environment: {
+        GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token', BROWSER_WS_ENDPOINT: 'ws://127.0.0.1:9222',
+        SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: `evaluation-actor-${host}`,
+        SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: `evaluation-context-${host}`,
+      },
     }, {
-      baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json', GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token' },
+      baseEnvironment: {
+        ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json', GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token',
+        SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: 'inherited-actor', SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID: 'inherited-context',
+      },
       readClaudeOauthToken: () => oauthToken,
       spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
     });
@@ -544,9 +551,24 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.equal(environment.GROVE_CDP_PORT, undefined);
     assert.equal(environment.SUBSPACE_SESSION_TOKEN, undefined);
     assert.equal(environment.BROWSER_WS_ENDPOINT, undefined);
+    assert.equal(environment.SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID, `evaluation-actor-${host}`);
+    assert.equal(environment.SPECTRE_KNOWLEDGE_EVALUATION_CONTEXT_ID, `evaluation-context-${host}`);
     assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
     assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
     assert.equal(result.cleanup.claudeOauth, 'cleared');
     assert.equal(JSON.stringify(result).includes(oauthToken), false);
   }
+});
+
+test('rejects non-opaque request trace identifiers before host launch', async () => {
+  const setup = await fixture('codex');
+  let launched = false;
+  await assert.rejects(() => invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+    environment: { SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID: 'not an opaque id' },
+  }, {
+    spawn: () => { launched = true; return childFor({}); },
+  }), /SPECTRE_KNOWLEDGE_EVALUATION_ACTOR_ID must be an opaque evaluation identifier/);
+  assert.equal(launched, false);
 });
