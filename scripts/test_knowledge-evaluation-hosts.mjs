@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
+import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -277,6 +279,10 @@ test('wraps every host launch in a fail-closed per-cell filesystem sandbox', asy
   assert.deepEqual(result.isolation.filesystemBoundary.runtimeExceptions, [{
     kind: 'xcrun-cache', pathPattern: `${fsSync.realpathSync.native(os.tmpdir())}/xcrun_db(-[A-Za-z0-9]+)?`, access: 'read-write',
   }]);
+  assert.deepEqual(result.isolation.filesystemBoundary.networkPolicy, {
+    outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+    residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
+  });
   assert.equal(result.isolation.filesystemBoundary.cellOnlyWrites, false);
 });
 
@@ -442,6 +448,72 @@ test('Claude launch rejects implicit MCP sources while retaining its staged plug
   assert.equal(launched.includes(setup.value.pluginDir), true);
 });
 
+test('default-deny host boundary blocks loopback and external Unix services', async (t) => {
+  const setup = await fixture('codex');
+  const externalRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'knowledge-host-network-'));
+  t.after(async () => {
+    await fs.rm(externalRoot, { recursive: true, force: true });
+    await fs.rm(setup.root, { recursive: true, force: true });
+    await fs.rm(setup.rawLogDirectory, { recursive: true, force: true });
+  });
+  const environment = {
+    PATH: process.env.PATH,
+    HOME: setup.value.claudeHome, ZDOTDIR: setup.value.claudeHome,
+    TMPDIR: setup.value.claudeHome, TMP: setup.value.claudeHome, TEMP: setup.value.claudeHome,
+    XDG_RUNTIME_DIR: setup.value.claudeHome, BUN_TMPDIR: setup.value.claudeHome,
+    CLAUDE_CODE_TMPDIR: setup.value.claudeHome, CLAUDE_TMPDIR: setup.value.claudeHome,
+    DEVELOPER_DIR: '/Library/Developer/CommandLineTools',
+    CODEX_HOME: setup.value.codexHome, CLAUDE_CONFIG_DIR: setup.value.claudeHome,
+  };
+  const httpServer = http.createServer((_request, response) => response.end('loopback service'));
+  await new Promise((resolve, reject) => httpServer.once('error', reject).listen(0, '127.0.0.1', resolve));
+  t.after(() => httpServer.close());
+  const port = httpServer.address().port;
+  const curlSandbox = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: '/usr/bin/curl', environment,
+  });
+  for (const host of ['127.0.0.1', 'localhost']) {
+    const result = spawnSync(curlSandbox.command, [
+      ...curlSandbox.args, '--noproxy', '*', '--connect-timeout', '1', '-sS', `http://${host}:${port}`,
+    ], { cwd: setup.value.projectDir, env: environment, encoding: 'utf8' });
+    assert.notEqual(result.status, 0, `${host} unexpectedly reached loopback: ${result.stdout}`);
+  }
+  const ipv6Server = http.createServer((_request, response) => response.end('loopback service'));
+  try {
+    await new Promise((resolve, reject) => ipv6Server.once('error', reject).listen(0, '::', resolve));
+    t.after(() => ipv6Server.close());
+    const ipv6Port = ipv6Server.address().port;
+    for (const host of ['[::1]', '[::ffff:127.0.0.1]']) {
+      const result = spawnSync(curlSandbox.command, [
+        ...curlSandbox.args, '--noproxy', '*', '--connect-timeout', '1', '-sS', `http://${host}:${ipv6Port}`,
+      ], { cwd: setup.value.projectDir, env: environment, encoding: 'utf8' });
+      assert.notEqual(result.status, 0, `${host} unexpectedly reached loopback: ${result.stdout}`);
+    }
+  } catch (error) {
+    ipv6Server.close();
+    assert.match(String(error), /EADDRNOTAVAIL|EAFNOSUPPORT/);
+  }
+  const unixPath = path.join(externalRoot, 'service.sock');
+  const unixServer = net.createServer(socket => socket.end('external service'));
+  await new Promise((resolve, reject) => unixServer.once('error', reject).listen(unixPath, resolve));
+  t.after(() => unixServer.close());
+  const nodeSandbox = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...setup.value, rawDirectory: setup.rawLogDirectory }, command: process.execPath, environment,
+  });
+  const webSocket = spawnSync(nodeSandbox.command, [
+    ...nodeSandbox.args, '-e', `const socket = new WebSocket(${JSON.stringify(`ws://127.0.0.1:${port}`)}); socket.addEventListener('open', () => process.exit(2)); socket.addEventListener('error', () => process.exit(0)); setTimeout(() => process.exit(3), 1000);`,
+  ], { cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 5_000 });
+  assert.equal(webSocket.status, 0, webSocket.stderr);
+  const unix = spawnSync(nodeSandbox.command, [
+    ...nodeSandbox.args, '-e', `const socket = require('node:net').createConnection(${JSON.stringify(unixPath)}); socket.on('connect', () => process.exit(2)); socket.on('error', () => process.exit(0)); setTimeout(() => process.exit(3), 1000);`,
+  ], { cwd: setup.value.projectDir, env: environment, encoding: 'utf8', timeout: 5_000 });
+  assert.equal(unix.status, 0, unix.stderr);
+  assert.deepEqual(curlSandbox.networkPolicy, {
+    outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+    residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
+  });
+});
+
 test('every host invocation receives isolated homes, removes staged Codex auth, and clears Claude OAuth', async () => {
   for (const host of ['claude', 'codex']) {
     const setup = await fixture(host);
@@ -452,8 +524,9 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     const result = await invokeKnowledgeHost({
       host, model: host === 'claude' ? 'opus' : 'gpt-test', effort: 'medium', prompt: 'workflow task',
       preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
+      environment: { GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token', BROWSER_WS_ENDPOINT: 'ws://127.0.0.1:9222' },
     }, {
-      baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json' },
+      baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json', GROVE_CDP_PORT: '9222', SUBSPACE_SESSION_TOKEN: 'fixture-subspace-token' },
       readClaudeOauthToken: () => oauthToken,
       spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
     });
@@ -468,6 +541,9 @@ test('every host invocation receives isolated homes, removes staged Codex auth, 
     assert.match(environment.PATH, /\/Library\/Developer\/CommandLineTools\/usr\/bin/);
     assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, oauthToken);
     assert.equal(environment.MCP_CONFIG_PATH, undefined);
+    assert.equal(environment.GROVE_CDP_PORT, undefined);
+    assert.equal(environment.SUBSPACE_SESSION_TOKEN, undefined);
+    assert.equal(environment.BROWSER_WS_ENDPOINT, undefined);
     assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
     assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
     assert.equal(result.cleanup.claudeOauth, 'cleared');

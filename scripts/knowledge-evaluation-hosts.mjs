@@ -19,6 +19,10 @@ const ISOLATED_ENVIRONMENT_PATHS = new Set([
   'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_TMPDIR', 'SPECTRE_KNOWLEDGE_EVALUATION_TRACE',
   'SPECTRE_EVALUATION_GH_LOG', 'SPECTRE_EVALUATION_GH_STATE', 'SSL_CERT_FILE',
 ]);
+const LAUNCH_ENVIRONMENT_NAMES = new Set([
+  ...ISOLATED_ENVIRONMENT_PATHS,
+  'PATH', 'LANG', 'TERM', 'COLORTERM', 'NO_COLOR', 'GIT_CONFIG_NOSYSTEM',
+]);
 
 function isWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
@@ -202,7 +206,7 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
     '(allow process-exec)',
     '(allow process-fork)',
     '(allow process-info*)',
-    '(allow network-outbound)',
+    '(allow network-outbound (require-all (require-any (remote tcp "*:443") (remote udp "*:443") (literal "/private/var/run/mDNSResponder")) (require-not (remote ip "localhost:*"))))',
     `(allow file-read* file-map-executable ${readPaths})`,
     `(allow file-read-metadata ${rootMetadata})`,
     `(allow file-write* ${cellAliases.map((entry) => `(subpath ${sandboxString(entry)})`).join(' ')})`,
@@ -218,6 +222,10 @@ export function createKnowledgeEvaluationSandbox({ preparedFixture, command, env
     cellPaths: cellAliases,
     providerExecutables: executables,
     runtimeExceptions,
+    networkPolicy: {
+      outbound: 'https-and-dns', loopback: 'denied', unixSockets: ['mDNSResponder'],
+      residual: 'non-loopback private addresses on port 443 are not distinguishable by Seatbelt',
+    },
   };
 }
 
@@ -510,11 +518,13 @@ export function normalizeKnowledgeHostTranscript(host, rawStdout) {
   return { ...normalized, transcript: { eventCount: events.length, malformedLineCount } };
 }
 
-function cleanEnvironment(base = process.env) {
+function cleanEnvironment(base = {}, { allowIsolated = false } = {}) {
   const environment = {};
   for (const [key, value] of Object.entries(base)) {
-    if (/^(CLAUDE|CODEX|SPECTRE|ANTHROPIC|MCP)_/.test(key) || ISOLATED_ENVIRONMENT_PATHS.has(key)) continue;
-    environment[key] = value;
+    const allowed = (allowIsolated && ISOLATED_ENVIRONMENT_PATHS.has(key))
+      || (LAUNCH_ENVIRONMENT_NAMES.has(key) && !ISOLATED_ENVIRONMENT_PATHS.has(key))
+      || /^LC_[A-Z_]+$/.test(key);
+    if (allowed) environment[key] = value;
   }
   return environment;
 }
@@ -684,7 +694,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   await Promise.all([mkdir(fixture.codexHome, { recursive: true, mode: 0o700 }), mkdir(fixture.claudeHome, { recursive: true, mode: 0o700 })]);
 
   const environment = {
-    ...cleanEnvironment(dependencies.baseEnvironment), ...(request.environment ?? {}),
+    ...cleanEnvironment(dependencies.baseEnvironment ?? process.env), ...cleanEnvironment(request.environment, { allowIsolated: true }),
     ...(paths.storeDir ? { SPECTRE_HOME: paths.storeDir } : {}),
     ...(paths.pluginDir ? { CLAUDE_PROJECT_DIR: paths.projectDir, CLAUDE_PLUGIN_ROOT: paths.pluginDir, PLUGIN_ROOT: paths.pluginDir } : {}),
   };
@@ -796,6 +806,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
           cellPaths: fixture.filesystemBoundary.cellPaths,
           providerExecutables: fixture.filesystemBoundary.providerExecutables,
           runtimeExceptions: fixture.filesystemBoundary.runtimeExceptions,
+          networkPolicy: fixture.filesystemBoundary.networkPolicy,
           cellOnlyWrites: fixture.filesystemBoundary.runtimeExceptions.length === 0,
           deniedAttemptsObserved: /Operation not permitted|Sandbox: deny/i.test(boundaryDiagnostic),
         }
