@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -1651,6 +1652,27 @@ test('Execute self-owned handoff links proof without contaminating parent delive
       /blocked\/failed[\s\S]*same table[\s\S]*exact resolved recovery action/i,
     );
   }
+});
+
+test('Execute delivery contract changes stay within its Handoff', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const execute = fs.readFileSync(path.join(
+    repoRoot, 'plugins', 'spectre', 'skills', 'spectre-execute', 'SKILL.md',
+  ), 'utf8');
+  const beforeHandoff = execute.slice(0, execute.indexOf('## Handoff'));
+
+  assert.equal(
+    crypto.createHash('sha256').update(beforeHandoff).digest('hex'),
+    'ae18c8e8e6b2d124f2c50d014c5c48d12794e2cac76a041163d946d0cfc2d52b',
+  );
+  assert.match(beforeHandoff, /Keep the invocation checkout/);
+  assert.match(
+    beforeHandoff,
+    /--origin fix` approved bug-report source adopts its containing `BUG_ROOT` directly, before feature-root resolution/,
+  );
+  assert.match(beforeHandoff, /`SCOPE_DOCS`: manifest paths or scope\/UX\/research cited by the plan/);
+  assert.match(beforeHandoff, /Maintain compact verification ledger by HEAD, check id, changed\/dependency surface/);
+  assert.match(beforeHandoff, /Expensive harness\/performance\/full qualification runs only for the final relevant candidate/);
 });
 
 test('user-facing handoffs use the compact table contract without changing internal protocols', () => {
