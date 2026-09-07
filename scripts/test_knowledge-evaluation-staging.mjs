@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { blockKnowledgeRegistration, readSessionStartMeasurement, snapshotKnowledgeCell, stageKnowledgeCell } from './knowledge-evaluation-staging.mjs';
 import { compactSnapshot } from './evaluate-knowledge.mjs';
+import { createKnowledgeEvaluationSandbox } from './knowledge-evaluation-hosts.mjs';
 import { registerCanonicalKnowledge } from '../plugins/spectre/hooks/scripts/knowledge/registration.mjs';
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,10 +30,34 @@ function runObservedSessionStart(staged) {
   const hooks = JSON.parse(fs.readFileSync(path.join(staged.pluginDir, 'hooks', 'hooks.json'), 'utf8'));
   const command = hooks.hooks.SessionStart.flatMap(group => group.hooks).map(hook => hook.command).find(value => value.includes('knowledge-host-probe-hook.mjs'));
   assert.ok(command, 'staged hook must use the observation wrapper');
+  assert.match(command, new RegExp(staged.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(fs.existsSync(path.join(staged.root, 'scripts', 'knowledge-host-probe-hook.mjs')), true);
   return spawnSync('/bin/sh', ['-lc', command], {
     cwd: staged.projectDir,
     env: { ...process.env, SPECTRE_HOME: staged.storeDir, CLAUDE_PROJECT_DIR: staged.projectDir, CLAUDE_PLUGIN_ROOT: staged.pluginDir, PLUGIN_ROOT: staged.pluginDir, CODEX_HOME: staged.codexHome || '' },
     input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: staged.projectDir, session_id: 'staging-test' }),
+    encoding: 'utf8',
+  });
+}
+
+function observedSessionStartCommand(staged) {
+  const hooks = JSON.parse(fs.readFileSync(path.join(staged.pluginDir, 'hooks', 'hooks.json'), 'utf8'));
+  return hooks.hooks.SessionStart.flatMap(group => group.hooks).map(hook => hook.command).find(value => value.includes('knowledge-host-probe-hook.mjs'));
+}
+
+function runSandboxedSessionStart(staged, rawLogDirectory, sessionId) {
+  const environment = {
+    ...staged.environment, CODEX_HOME: staged.codexHome, CLAUDE_CONFIG_DIR: staged.claudeHome,
+    SPECTRE_HOME: staged.storeDir, CLAUDE_PROJECT_DIR: staged.projectDir,
+    CLAUDE_PLUGIN_ROOT: staged.pluginDir, PLUGIN_ROOT: staged.pluginDir,
+  };
+  const sandbox = createKnowledgeEvaluationSandbox({
+    preparedFixture: { ...staged, rawDirectory: rawLogDirectory }, command: '/bin/sh', environment,
+  });
+  return spawnSync(sandbox.command, [...sandbox.args, '-c', observedSessionStartCommand(staged)], {
+    cwd: staged.projectDir,
+    env: environment,
+    input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: staged.projectDir, session_id: sessionId }),
     encoding: 'utf8',
   });
 }
@@ -70,6 +95,37 @@ test('stages valid candidate records through the real CLI and native host surfac
   }
 });
 
+test('records an actual SessionStart observation through the default-deny host boundary', async (t) => {
+  const value = fixture(t);
+  for (const host of ['claude', 'codex']) {
+    const staged = await stageKnowledgeCell({ condition: 'candidate', host }, value.fixture, value.options);
+    const rawLogDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-host-raw-'));
+    t.after(() => fs.rmSync(rawLogDirectory, { recursive: true, force: true }));
+    const result = runSandboxedSessionStart(staged, rawLogDirectory, `sandbox-staging-${host}`);
+    assert.equal(result.status, 0, `${host}: ${result.stderr}`);
+    const observation = fs.existsSync(staged.sessionStartObservationPath)
+      ? fs.readFileSync(staged.sessionStartObservationPath, 'utf8') : 'missing observation';
+    assert.equal(readSessionStartMeasurement(staged).availability, 'available', `${host}: ${result.stdout}\n${result.stderr}\n${observation}`);
+  }
+});
+
+test('starts the baseline observer within the default-deny boundary', async (t) => {
+  const value = fixture(t);
+  for (const host of ['claude', 'codex']) {
+    const staged = await stageKnowledgeCell({ condition: 'baseline', host }, value.fixture, value.options);
+    const rawLogDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-host-raw-'));
+    t.after(() => fs.rmSync(rawLogDirectory, { recursive: true, force: true }));
+    const result = runSandboxedSessionStart(staged, rawLogDirectory, `sandbox-baseline-${host}`);
+    assert.equal(result.status, 0, `${host}: ${result.stderr}`);
+    assert.equal(fs.existsSync(staged.sessionStartObservationPath), true);
+    const observation = JSON.parse(fs.readFileSync(staged.sessionStartObservationPath, 'utf8'));
+    assert.equal(observation.host, host);
+    assert.equal(observation.hookEventName, 'SessionStart');
+    const measurement = readSessionStartMeasurement(staged);
+    assert.ok(['available', 'unavailable'].includes(measurement.availability));
+  }
+});
+
 test('stages the pinned baseline as SKILL.md and verifies its own archived runtime', async (t) => {
   const value = fixture(t);
   const staged = await stageKnowledgeCell({ condition: 'baseline', host: 'claude' }, value.fixture, value.options);
@@ -84,6 +140,10 @@ test('stages the pinned baseline as SKILL.md and verifies its own archived runti
   assert.equal(staged.probe.search.status, 0, staged.probe.search.stderr);
   assert.equal(staged.probe.load.status, 0, staged.probe.load.stderr);
   assert.equal(staged.probe.load.result.record?.id ?? staged.probe.load.result.id, 'staged-fact');
+  assert.equal(
+    fs.readFileSync(path.join(staged.root, 'plugins', 'spectre', 'hooks', 'scripts', 'knowledge', 'payload.mjs'), 'utf8'),
+    fs.readFileSync(path.join(REPOSITORY_ROOT, 'plugins', 'spectre', 'hooks', 'scripts', 'knowledge', 'payload.mjs'), 'utf8'),
+  );
 });
 
 test('no-knowledge stages normal repository evidence without a Spectre plugin or store', async (t) => {

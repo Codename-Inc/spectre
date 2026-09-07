@@ -702,6 +702,10 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
     writeFile(stderrPath, safeLog(processResult?.stderr ?? ''), { mode: 0o600 }),
   ]);
   const normalized = normalizeKnowledgeHostTranscript(host, processResult?.stdout ?? '');
+  const boundaryDiagnostic = [
+    processResult?.stderr ?? '',
+    ...normalized.toolResults.map((result) => result.content ?? ''),
+  ].join('\n');
   const status = processResult.timedOut ? 'timed_out'
     : processResult.outputLimited ? 'output_limited'
       : processResult.error ? 'launch_failed'
@@ -738,7 +742,7 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
           providerExecutables: fixture.filesystemBoundary.providerExecutables,
           runtimeExceptions: fixture.filesystemBoundary.runtimeExceptions,
           cellOnlyWrites: fixture.filesystemBoundary.runtimeExceptions.length === 0,
-          deniedAttemptsObserved: /Operation not permitted|Sandbox: deny/i.test(processResult?.stderr ?? ''),
+          deniedAttemptsObserved: /Operation not permitted|Sandbox: deny/i.test(boundaryDiagnostic),
         }
         : { enabled: false, reason: 'sandbox-unavailable' },
     },

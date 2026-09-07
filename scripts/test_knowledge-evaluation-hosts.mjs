@@ -247,6 +247,21 @@ test('fails closed without a usable filesystem boundary before launching a host'
   assert.equal(launched, false);
 });
 
+test('records a sandbox denial reported by a native tool result', async () => {
+  const setup = await fixture('codex');
+  const result = await invokeKnowledgeHost({
+    host: 'codex', model: 'gpt-test', effort: 'medium', prompt: 'ordinary task',
+    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory,
+  }, {
+    sandboxExecutable: '/usr/bin/true',
+    spawn: () => childFor({ stdout: JSON.stringify({ type: 'item.completed', item: {
+      type: 'command_execution', id: 'denied-read', command: 'cat /outside/record.json', status: 'failed',
+      aggregated_output: 'cat: /outside/record.json: Operation not permitted',
+    } }) }),
+  });
+  assert.equal(result.isolation.filesystemBoundary.deniedAttemptsObserved, true);
+});
+
 test('rejects a cell-visible raw log or environment path before launching a host', async () => {
   const setup = await fixture('claude');
   let launched = false;

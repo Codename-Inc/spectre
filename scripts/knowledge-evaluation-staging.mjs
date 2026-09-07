@@ -15,6 +15,7 @@ import { rewriteHooks } from './verify-knowledge-hosts.mjs';
 export const BASELINE_REF = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 
 const PROBE_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'knowledge-host-probe-hook.mjs');
+const CURRENT_PAYLOAD_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../plugins/spectre/hooks/scripts/knowledge/payload.mjs');
 
 const hash = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
@@ -505,9 +506,21 @@ function probeCli(cliPath, projectDir, storeDir, fact) {
   return { search, load, historical };
 }
 
+function stageSessionStartProbe(root) {
+  const scriptDirectory = path.join(root, 'scripts');
+  const stagedProbe = path.join(scriptDirectory, 'knowledge-host-probe-hook.mjs');
+  const observerPayload = path.join(root, 'plugins', 'spectre', 'hooks', 'scripts', 'knowledge', 'payload.mjs');
+  fs.mkdirSync(scriptDirectory, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(path.dirname(observerPayload), { recursive: true, mode: 0o700 });
+  fs.copyFileSync(PROBE_SCRIPT, stagedProbe);
+  fs.copyFileSync(CURRENT_PAYLOAD_SCRIPT, observerPayload);
+  return stagedProbe;
+}
+
 function installSessionStartObservation({ host, pluginDir, runtimePath, root }) {
   const observationPath = path.join(root, 'session-start-observation.json');
-  rewriteHooks({ host, pluginRoot: pluginDir, runtimePath, observationPath });
+  const probeScript = stageSessionStartProbe(root);
+  rewriteHooks({ host, pluginRoot: pluginDir, runtimePath, observationPath, probeScript });
   return observationPath;
 }
 

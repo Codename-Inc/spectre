@@ -143,7 +143,7 @@ async function seedOverflowStore(projectDir, spectreHome) {
 function probeCommand(hostFixture) {
   return [
     'node',
-    shellQuote(PROBE_SCRIPT),
+    shellQuote(hostFixture.probeScript ?? PROBE_SCRIPT),
     '--runtime',
     shellQuote(hostFixture.runtimePath),
     '--host',
