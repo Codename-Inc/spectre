@@ -48,11 +48,14 @@ Write the kickoff doc to `{FEATURE_ROOT}/kickoff/{feature-name}_kickoff.md` (`mk
 **DONE when:** doc saved with every required section populated, all findings carry file:line (or external links), gap analysis and an MVP path are stated, and the saved summary + scoping questions have been presented to the user.
 
 ## Handoff
-Present a compact summary (vision · what exists w/ refs · architecture insights · external learnings · gap · MVP path) plus 1–3 scoping questions, each offering concrete options (e.g. "Option A leverages `code:line` vs Option B"). Then engage scoping: wait, ask follow-ups, and **research answerable questions instead of asking them** — do not move to planning until ambiguities resolve. Fold clarifications back into the doc under `## Scoping Clarifications [timestamp]`; spawn more research if needed.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Kickoff scoping. |
+| 📦 **What was just done** | Vision, evidence, gap, MVP path. |
+| ▶️ **Proposed next step** | `/spectre:scope FROM_KICKOFF=true KICKOFF_DOC={path} SKIP_EXPLORATION=true` — proceed to scope. |
+| 🔀 **Alternative** | `/spectre:plan {KICKOFF_DOC}` only when skipping scope is authorized. |
 
-When resolved, offer the next step:
-1. Proceed to scope → `/spectre:scope` with `FROM_KICKOFF=true`, `KICKOFF_DOC={path}`, `SKIP_EXPLORATION=true`, + context summary.
-2. Skip to planning → `/spectre:plan` with the kickoff doc as context.
+Ask 1–3 concrete questions; research answerable ones; do not plan while ambiguous.
 
 ## Escalate-If
 - No project context supplied and none inferable → ask the user before researching.

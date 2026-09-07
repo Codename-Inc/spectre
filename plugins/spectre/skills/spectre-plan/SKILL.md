@@ -39,7 +39,13 @@ DONE when initial and observed routing decisions are recorded; the observed reco
 
 ## Handoff
 
-The handoff gives Execute the aligned draft and depth hint. Execute owns assessment reuse or one missing assessment classification, scope-safe review/finalization, proportional task creation, delivery gates, and resume continuity. Never generate a goal prompt; autonomous goal mode is an explicit opt-in utility outside this route.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Plan ready. |
+| 📦 **What was just done** | Draft and depth hint for Execute. |
+| ▶️ **Proposed next step** | `/spectre:execute {PLAN_FILE} --origin plan --preflight-plan {depth}` — start delivery. |
+
+Execute owns delivery; goal is opt-in.
 
 ## Escalate-If
 

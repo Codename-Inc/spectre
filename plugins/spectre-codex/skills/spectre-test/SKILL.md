@@ -42,12 +42,15 @@ Add risk-weighted behavioral tests and commit standalone batches. Test boundarie
 
 ## Handoff
 
-Report inline: files triaged by tier, tests added per tier, lint/test status, commit list.
+`--orchestrated`/risk plan: results only; no user step.
 
-- `--orchestrated` or an orchestrator-provided risk plan → return results to the caller without user-facing Next Steps.
-- Standalone → choose from live state: completed user-observable work not yet acceptance-proven → `spectre-prove`; remaining uncommitted hygiene → `spectre-sweep`; clean, proven-or-explicitly-deferred work → `spectre-rebase`.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Tests done. |
+| 📦 **What was just done** | Tiers, tests, checks, commits. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from live state. |
 
-Render one primary recommendation with its observed reason; never jump directly to rebase merely because tests passed.
+Unproven observable work → Prove; hygiene → Sweep; clean proven/deferred work → Rebase. Never rebase merely because tests passed.
 
 ## Escalate-If
 

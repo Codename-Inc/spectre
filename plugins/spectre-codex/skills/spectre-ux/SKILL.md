@@ -72,12 +72,14 @@ Derive both values from the physical feature directory.
 
 ## Handoff
 
-Confirm completion inline (screens specified, segments addressed, flows documented, components+states, edge cases + a11y covered) with the doc path. Then choose one:
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | UX route. |
+| 📦 **What was just done** | Flows and `ux.md`. |
+| ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed UX signal}`. |
+| 🔀 **Alternative** | `spectre-handoff {feature}` when stopping. |
 
-1. Material visual/interaction assumptions remain, stakeholder visual review is needed, or prose alone cannot validate the experience → `spectre-prototype`. Apply surfaced assumptions or contradictions back to `ux.md` before planning.
-2. Otherwise → `spectre-plan`, the unified tier/research/review/task router.
-
-Render `Next (recommended): /spectre:{command} — because {observed UX signal}.` Confirmed repository-changing work routes to `spectre-plan`; read-only UX review may stop or hand off without planning. Add at most one conditional alternative. If stopping, offer `Pause: spectre-handoff {feature}` with the completed UX path and selected next step.
+Visual/interaction assumptions, visual review, or prose-insufficient validation → Prototype; else Plan, the unified tier/research/review/task router. Apply assumptions to `ux.md`; read-only may stop/handoff.
 
 ## Escalate-If
 

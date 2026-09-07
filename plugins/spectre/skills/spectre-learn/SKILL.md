@@ -82,7 +82,11 @@ Capture durable project knowledge as a canonical user-level record. When invoked
 - **DONE when:** the user approved at the proposal gate · registration returned `ok: true` · canonical search finds the expected active record · exact-ID load returns the approved full core and resource paths · no project knowledge files were created.
 
 ## Handoff
-Report the canonical `recordPath`, action, category, confidence, version, and any resource paths. If a previously applied record proved incomplete or wrong, route the correction through the same search, proposal, temporary-stage, registration, and verification flow.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Record handled. |
+| 📦 **What was just done** | Path, action, category, confidence, version. |
+| ▶️ **Proposed next step** | `/spectre:learn {correction}` — use the correction flow. |
 
 ## Escalate-If
 - Category is ambiguous → ask the user which of the ten categories.

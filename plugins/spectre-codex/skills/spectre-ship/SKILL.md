@@ -44,7 +44,13 @@ Never use `--no-verify`, force-push over unrelated remote history, suppress fail
 
 ## Handoff
 
-Return the PR URL plus compact `PR_OPENED`/verification status. End: `Next (recommended): review the PR; CI owns merge-gating full-suite validation.` Do not offer handoff after this terminal boundary.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Shipping done. |
+| 📦 **What was just done** | PR URL and status. |
+| ▶️ **Proposed next step** | `spectre-create_pr` — review; CI merge-gates. |
+
+Do not offer handoff after this terminal boundary.
 
 ## Escalate-If
 

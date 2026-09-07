@@ -44,9 +44,11 @@ Run Spectre autonomously from inferred scope through TDD, adversarial review, pr
 
 ## Handoff
 
-Return scope hash · affected evidence · review report/runtime/route/dispositions · proof paths/status · tuple · rebase/restore · limitations · `CI: pending` · PR URL.
-
-End with: `Next (recommended): review the proof and draft PR.`
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Delivery complete. |
+| 📦 **What was just done** | Proof, PR, `CI: pending`. |
+| ▶️ **Proposed next step** | `/spectre:prove` — review proof and draft PR. |
 
 ## Escalate-If
 

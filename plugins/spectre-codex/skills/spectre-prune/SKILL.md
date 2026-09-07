@@ -42,13 +42,15 @@ Find and remove dead code/artifacts from recent work. Conservative by default: i
 
 ## Handoff
 
-Report counts analyzed/removed/excluded, lint/test status, and the manual-review list.
+`--orchestrated`: results only.
 
-- `--orchestrated` → return results to the caller without user-facing Next Steps.
-- Standalone + concrete coverage risk exposed by cleanup → `spectre-test`.
-- Otherwise → `spectre-sweep`.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Pruning done. |
+| 📦 **What was just done** | Counts, checks. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — coverage risk Test, else Sweep. |
 
-Emit one primary recommendation tied to the cleanup result, not an equal-weight menu.
+Emit one primary recommendation tied to the cleanup result, never an equal-weight menu.
 
 ## Escalate-If
 

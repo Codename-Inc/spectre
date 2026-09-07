@@ -32,6 +32,22 @@ function repositoryTokenCount(repoRoot, filePath) {
   return Number(match[1].replaceAll(',', ''));
 }
 
+const USER_HANDOFF_SKILLS = [
+  'spectre-clean', 'spectre-code_review', 'spectre-create_plan', 'spectre-create_pr',
+  'spectre-create_tasks', 'spectre-create_test_guide', 'spectre-delegate', 'spectre-execute',
+  'spectre-fix', 'spectre-goal', 'spectre-handoff', 'spectre-kickoff', 'spectre-learn',
+  'spectre-plan', 'spectre-plan_review', 'spectre-prototype', 'spectre-prove', 'spectre-prune',
+  'spectre-rebase', 'spectre-research', 'spectre-scope', 'spectre-ship', 'spectre-sweep',
+  'spectre-task_review', 'spectre-tdd', 'spectre-test', 'spectre-ux', 'spectre-validate',
+];
+const INTERNAL_HANDOFF_SKILLS = [
+  'spectre-feature-root', 'spectre-fix-core', 'spectre-plan-route',
+];
+
+function handoffSection(source) {
+  return source.match(/^## Handoff\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1] || '';
+}
+
 function createFixture(root) {
   const canonicalRoot = path.join(root, 'plugins', 'spectre');
   const codexRoot = path.join(root, 'plugins', 'spectre-codex');
@@ -1566,6 +1582,51 @@ test('workflow handoffs are task-aware, phase-aware, and orchestration-safe', ()
     assert.match(ship, /Skill\(spectre-rebase\)/);
     assert.match(ship, /Skill\(spectre-create_pr\)/);
     assert.match(ship, /Next \(recommended\): review the PR/);
+  }
+});
+
+test('user-facing handoffs use the compact table contract without changing internal protocols', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  const requiredRows = [
+    '| Handoff | Details |',
+    '| 🧭 **Current phase** |',
+    '| 📦 **What was just done** |',
+    '| ▶️ **Proposed next step** |',
+  ];
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    for (const skillName of USER_HANDOFF_SKILLS) {
+      const source = fs.readFileSync(path.join(
+        repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md',
+      ), 'utf8');
+      const handoff = handoffSection(source);
+      for (const row of requiredRows) {
+        assert.ok(handoff.includes(row), `${rootName}/${skillName} is missing ${row}`);
+      }
+      assert.match(
+        handoff,
+        /\| ▶️ \*\*Proposed next step\*\* \|[^\n]*`(?:\/spectre:|spectre-|\/goal)/,
+        `${rootName}/${skillName} needs one copy-ready primary action`,
+      );
+    }
+
+    for (const skillName of INTERNAL_HANDOFF_SKILLS) {
+      const source = fs.readFileSync(path.join(
+        repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md',
+      ), 'utf8');
+      assert.doesNotMatch(handoffSection(source), /🧭 \*\*Current phase\*\*/);
+    }
+  }
+
+  for (const [rootName, ceiling] of [['spectre', 41_449], ['spectre-codex', 41_439]]) {
+    const tokens = USER_HANDOFF_SKILLS.reduce(
+      (total, skillName) => total + repositoryTokenCount(
+        repoRoot,
+        `plugins/${rootName}/skills/${skillName}/SKILL.md`,
+      ),
+      0,
+    );
+    assert.ok(tokens <= ceiling, `${rootName} handoff token budget exceeded: ${tokens} > ${ceiling}`);
   }
 });
 

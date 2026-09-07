@@ -35,7 +35,13 @@ The target-to-HEAD diff and commit log, issue reference, and any GitHub PR templ
 
 ## Handoff
 
-Return the URL/body or `PR_CANDIDATE_STALE`; orchestrated calls add no next step. Standalone: `Next (recommended): review the PR.`
+`--orchestrated` returns the URL/body or `PR_CANDIDATE_STALE` only.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | PR. |
+| 📦 **What was just done** | URL/body or stale candidate. |
+| ▶️ **Proposed next step** | `spectre-create_pr` — review or recover. |
 
 ## Escalate-If
 

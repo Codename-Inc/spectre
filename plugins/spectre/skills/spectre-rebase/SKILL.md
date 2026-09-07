@@ -39,7 +39,13 @@ A rebased branch and a **Rebase Summary** returned in-thread (not written to dis
 5. Track every resolution decision as you go (the summary table is a postcondition, not an afterthought).
 
 ## Handoff
-Return the Rebase Summary inline as a compressed (1–2K) block. With `--orchestrated`, return to the caller without user-facing Next Steps; parent-owned verification returns `REBASE_READY`, never DONE. Standalone success → `Next (recommended): /spectre:create_pr — the rebased branch is ready for review with affected verification recorded.` An incomplete rebase recommends only the exact recovery action.
+`--orchestrated`: Rebase Summary; parent verification `REBASE_READY`, never DONE.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Rebase/recovery. |
+| 📦 **What was just done** | Summary/checks. |
+| ▶️ **Proposed next step** | `/spectre:create_pr` — review, or exact recovery. |
 
 ## Escalate-If
 - Conflicts can't be resolved by favoring the target (genuine semantic divergence) → stop, report, leave the rebase in progress for the user.

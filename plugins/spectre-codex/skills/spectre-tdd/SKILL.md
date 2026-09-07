@@ -40,7 +40,13 @@ Implement assigned behavior through strict RED → GREEN → REFACTOR. Outcome: 
 
 ## Handoff
 
-Return the completion report inline with the exact commands run and pass/fail evidence — no scratch files. With `--orchestrated`, return to the caller without user-facing Next Steps. Standalone: recommend `spectre-prove` for completed user-observable behavior, `spectre-test` only for a concrete remaining coverage gap, or `spectre-clean` only when proof is explicitly deferred. Emit one primary route tied to the observed result.
+`--orchestrated`: completion report; no user step.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | TDD done. |
+| 📦 **What was just done** | Completion report and checks. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — Prove, gap Test, or deferred Clean. |
 
 ## Escalate-If
 

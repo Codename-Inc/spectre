@@ -41,8 +41,15 @@ DONE when schema validation passes; scope/tuple are unchanged; every requirement
 
 ## Handoff
 
-- Standalone: return verdict, reviewer runtime/model, fallback reason, report path, and only numbered CRITICAL/HIGH findings. Blockers recommend `/spectre:fix`; otherwise recommend one of `/spectre:prove`, `/spectre:test` for a concrete gap, or `/spectre:clean` only when proof is explicitly deferred.
-- `--orchestrated`: return verdict, delivery counts, CRITICAL/HIGH evidence chains and identities, reviewer metadata, and report path; do not pause or suggest another command.
+`--orchestrated`: verdict/evidence/metadata/report; no user step.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Review verdict. |
+| 📦 **What was just done** | Verdict, report, CRITICAL/HIGH findings. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from findings. |
+
+Blocker → Fix; else Prove, gap Test, or deferred Clean.
 
 ## Escalate-If
 

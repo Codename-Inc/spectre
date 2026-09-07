@@ -47,10 +47,16 @@ Guardrails:
 
 ## Handoff
 
-`NEEDS_AUTHORITY` reports its phase/impasse and manual-review list. Ordinary test/lint/build failures never produce it; repair or route them. Otherwise report commits.
+`--orchestrated`: result + `CLEANED_THROUGH_SHA`; no user step.
 
-- `--orchestrated` → return the result and `CLEANED_THROUGH_SHA` to the caller without user-facing Next Steps.
-- Standalone → `Next (recommended): /spectre:rebase — clean completed and the committed branch is ready for safe merge preparation.` Add `/spectre:prove` only as a conditional alternative when acceptance evidence is still desired before shipping.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Cleanup. |
+| 📦 **What was just done** | Commits or impasse. |
+| ▶️ **Proposed next step** | `/spectre:rebase` — ready to merge. |
+| 🔀 **Alternative** | `/spectre:prove` for desired acceptance evidence. |
+
+Check failures never `NEEDS_AUTHORITY`.
 
 ## Escalate-If
 

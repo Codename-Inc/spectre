@@ -68,13 +68,16 @@ Exclude secrets, credentials, private customer data, and unnecessary local paths
 
 ## Handoff
 
-Return `PROOF_RESULT`: profile · aggregate status · candidate key · failed/partial row ids · finding fingerprints/classifications · evidence references · limitations · `needs_authority`, plus proven journeys and both required artifact paths.
+`--orchestrated` returns `PROOF_RESULT` only.
 
-- `--orchestrated` → return the proof result to the parent without user-facing Next Steps.
-- Standalone `PASS` → `Next (recommended): /spectre:ship — every in-scope proof row passed with reviewed evidence.`
-- Standalone non-PASS → report once, then recommend `/spectre:fix`, `/spectre:scope`, `/spectre:ux`, or the named proof prerequisite. Qualified proof status alone never gates `/spectre:ship`.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Proof outcome. |
+| 📦 **What was just done** | Result, journeys, artifacts, failures. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from proof. |
+| 🔀 **Alternative** | `/spectre:handoff {feature}` on `NEEDS_AUTHORITY`. |
 
-If a standalone proof pauses on `NEEDS_AUTHORITY`, offer `Pause: /spectre:handoff {feature}` with the failing rows, evidence paths, and exact resume action.
+PASS → Ship; else Fix, Scope, UX, or prerequisite. Return result/evidence/paths. Proof never gates Ship.
 
 ## Escalate-If
 

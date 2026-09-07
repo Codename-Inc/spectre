@@ -36,8 +36,13 @@ One or more conventional commits covering the changes. Sweep is the sole pre-reb
    - One concern per commit — if it spans concerns, split it. Treat commits as durable context for future readers/LLMs; never `fix: updates` / `refactor: clean up`.
 
 ## Handoff
-- `--orchestrated` → return commit hashes and verification status to the caller without user-facing Next Steps.
-- Standalone → emit one repo-state-grounded recommendation: `/spectre:prove` if completed user-observable work still needs acceptance evidence; otherwise `/spectre:rebase` when the branch is ready for merge preparation, or `/spectre:create_pr` only when already current with the target.
+`--orchestrated` returns commit hashes and verification only.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Sweep done. |
+| 📦 **What was just done** | Commits and verification. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — Prove, Rebase, or current-target PR. |
 
 ## Escalate-If
 - A secret/credential appears in the diff — stop, surface it, do not commit until resolved.

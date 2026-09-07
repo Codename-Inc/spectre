@@ -62,13 +62,16 @@ Write `VALIDATION_REPORT`. Required sections:
 
 ## Handoff
 
-Return a short summary: status, {X of Y} delivered, gap count, scope-creep count, 1–2 sentence key findings, and the report path.
+`--orchestrated`: summary/gaps only.
 
-- `--orchestrated` → return the summary and gap categories to the caller without user-facing Next Steps.
-- Standalone `Needs Work` / `Significant Gaps` → `Next (recommended): spectre-fix — validation found {gap signal}; rerun spectre-validate afterward.` Route boundary/requirement ambiguity to `spectre-scope`; route user-flow/state/copy ambiguity to `spectre-ux`.
-- Standalone `Complete` → `Next (recommended): spectre-prove — wiring is delivered, but the public user workflow still needs acceptance evidence.` Use test/clean only when proof is explicitly unnecessary or deferred.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Validation. |
+| 📦 **What was just done** | Gaps, path. |
+| ▶️ **Proposed next step** | `/spectre:{selected route}` — selected from result. |
+| 🔀 **Alternative** | `spectre-handoff {feature}` only when pausing. |
 
-Offer `spectre-handoff` only when pausing on a standalone validation boundary.
+Needs Work/Significant Gaps → Fix then revalidate; Complete → Prove. Boundary ambiguity → Scope; flow/state/copy ambiguity → UX; Test/Clean only when proof is deferred.
 
 ## Escalate-If
 

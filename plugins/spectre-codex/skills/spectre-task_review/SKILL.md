@@ -53,7 +53,13 @@ DONE when the attempt is `complete`; findings preceded edits; every finding has 
 
 ## Handoff
 
-Return runtime/fallback, findings and dispositions, report/task paths, parse/validation status, and any unapplied scope-change recommendation. Under `--orchestrated`, omit user-facing next steps. Standalone unresolved Blocker/High stays in remediation; resolved review recommends `spectre-execute {EXECUTE_INDEX} --origin plan`.
+`--orchestrated`: review data; no user step.
+
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Task review. |
+| 📦 **What was just done** | Findings, paths, validation. |
+| ▶️ **Proposed next step** | `spectre-execute {EXECUTE_INDEX} --origin plan` — after Blocker/High. |
 
 ## Escalate-If
 

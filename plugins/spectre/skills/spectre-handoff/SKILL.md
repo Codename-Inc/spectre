@@ -83,9 +83,13 @@ DONE when paths/numbering follow the selected-history rule; current `summary`, `
 
 ## Handoff
 
-- First session: `✓ Handoff saved: {path}. First session recorded. Next session auto-resumes from this context.`
-- Continuation: `✓ Handoff saved: {path}. Session {n} recorded with continuity from {x} previous sessions. Next session auto-resumes from this context.`
-- Output only the applicable line; do not narrate execution.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Handoff saved. |
+| 📦 **What was just done** | Session at `{path}`. |
+| ▶️ **Proposed next step** | `/spectre:handoff {feature}` — next session auto-resumes. |
+
+Output only the applicable table; do not narrate execution.
 
 ## Escalate-If
 

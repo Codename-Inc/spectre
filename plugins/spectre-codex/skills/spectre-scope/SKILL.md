@@ -51,14 +51,14 @@ Write `{FEATURE_ROOT}/concepts/scope.md`, beginning immediately below the title 
 
 ## Handoff
 
-Present final boundaries (IN / OUT / ANTI-SCOPE / Maybe + top 1–3 load-bearing assumptions) inline with the doc path, then choose the **first applicable** route below — do not wait for approval. Confirmed repository-changing work proceeds through `spectre-plan`; reported bugs normally enter `spectre-fix`, while read-only diagnosis/review, release operations, and execution of already-approved artifacts remain direct specialist workflows.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Scope boundary. |
+| 📦 **What was just done** | Boundaries and path. |
+| ▶️ **Proposed next step** | `/spectre:{command}` — because `{observed scope signal}`. |
+| 🔀 **Alternative** | Pause: `spectre-handoff {feature}` when stopping. |
 
-1. Boundaries are not actually settled → remain in `spectre-scope`; do not recommend a forward phase.
-2. UI is load-bearing and journeys, segments, states, copy, or accessibility remain unresolved → `spectre-ux`.
-3. UI behavior is understood and uncomplicated, but interaction/layout/visual validation materially matters → `spectre-prototype`.
-4. Otherwise, confirmed repository-changing work → `spectre-plan`.
-
-Render exactly one primary line: `Next (recommended): /spectre:{command} — because {observed scope signal}.` Optionally add one `Alternative:` only when an explicit condition would change the route; never present an equal-weight command menu. If the user is stopping at this durable boundary, add `Pause: spectre-handoff {feature} — save the confirmed scope and selected next step for another session.` The user may still reply with scope edits; apply and re-route from the revised artifact.
+Unsettled → Scope; unresolved UX → UX; visual validation → Prototype; else Plan. One route.
 
 ## Escalate-If
 

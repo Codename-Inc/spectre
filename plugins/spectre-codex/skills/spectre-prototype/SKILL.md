@@ -55,9 +55,14 @@ Use inline SVG/data URIs/CSS shapes only: no remote images, relative assets, cus
 
 ## Handoff
 
-Report path, screens, fidelity, anchor, assumptions, filled assumptions, and NOT included; note it opens directly and is shareable. Revalidate every edit; structural feedback reruns research. Promote user-selected post-UX assumptions to the matching `ux.md` section and report a one-line diff.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Prototype route. |
+| 📦 **What was just done** | Path, screens, assumptions. |
+| ▶️ **Proposed next step** | `/spectre:{command}` — because `{mode + signal}`. |
+| 🔀 **Alternative** | `spectre-handoff {feature}` only when pausing. |
 
-Route once by observed state: `explore` → `spectre-scope`; `flows-only ux` → `spectre-ux` Stage 2; `post-ux` contradictions/material assumptions → `spectre-ux`, otherwise `spectre-plan`; `post-scope` unresolved UX → `spectre-ux`, validated scope → `spectre-plan`; `standalone` without scope → `spectre-scope`, otherwise reclassify as `post-scope`. Render exactly `Next (recommended): ... — because {mode + signal}.`, at most one conditional alternative, and optionally `Pause: spectre-handoff {feature}` with the path and next step.
+`explore` → Scope; `flows-only ux` → UX Stage 2; unresolved post-UX/Scope → UX, else Plan; standalone without scope → Scope, else `post-scope`. One route.
 
 ## Escalate-If
 

@@ -32,7 +32,13 @@ The core's full diagnosis and experience contract rendered in-thread, mirrored i
 4. A changed diagnosis, repair boundary, or experience contract returns to diagnosis/approval. Displaying the command never starts repair or grants execution approval.
 
 ## Handoff
-Return the approved diagnosis/experience contract and the copy-ready Execute route. The closeout route commits the report, not repair. Emit one primary route tied to the approved handoff.
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Repair approved. |
+| 📦 **What was just done** | Diagnosis and experience contract. |
+| ▶️ **Proposed next step** | `spectre-execute {PLAN_FILE} --origin fix` — the approved repair route. |
+
+Closeout commits the report.
 
 ## Escalate-If
 - Bug report is empty or too thin to form hypotheses → ask the user for error, repro, and context.

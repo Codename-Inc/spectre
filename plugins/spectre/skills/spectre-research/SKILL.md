@@ -38,8 +38,13 @@ Write one research doc to `{FEATURE_ROOT}/research/{topic}_{MMDDYY}.md`; the res
 - A concise findings summary (with key file refs) is presented to the user.
 
 ## Handoff
-- Follow-ups update the SAME doc: bump `last_updated`/`last_updated_by`, add `last_updated_note`, append `## Follow-up Research {timestamp}`, spawn agents as needed.
-- Close with a one-line Next Steps pointer (e.g. `/spectre:plan` to formalize, or further research).
+| Handoff | Details |
+| --- | --- |
+| 🧭 **Current phase** | Research update. |
+| 📦 **What was just done** | Findings and document. |
+| ▶️ **Proposed next step** | `/spectre:plan {RESEARCH_DOC}` — formalize or continue. |
+
+Follow-ups update the SAME doc.
 
 ## Escalate-If
 - The question is too broad/ambiguous to scope agents → ask one clarifying question before fanning out.
