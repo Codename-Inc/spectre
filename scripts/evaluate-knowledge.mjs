@@ -12,6 +12,12 @@ import { detectTraceBypass, readEvaluationTrace } from '../plugins/spectre/hooks
 const BASELINE = '1cd1f035a253e9d7ef5086693ab9f1d0b11d360b';
 const CONDITIONS = ['no-knowledge', 'baseline', 'candidate'];
 const HOSTS = ['claude', 'codex'];
+const ACCEPTANCE_THRESHOLDS = Object.freeze({
+  requiredRecall: 1,
+  unnecessaryHistoryLoads: 0,
+  redundantSameContextLoads: 0,
+  routineIrrelevantLoadedBodyRate: 0.05,
+});
 
 const hash = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -65,6 +71,8 @@ function freeze(fixtures, oracle, output, options = {}) {
       host,
       repeat,
       longitudinal: Boolean(entry.longitudinal),
+      cohort: entry.longitudinal ? 'longitudinal' : entry.cohort ?? 'workflow',
+      critical: entry.critical === true,
     })))
   ));
   const result = {
@@ -85,7 +93,7 @@ function freeze(fixtures, oracle, output, options = {}) {
 
 export function normalizeUsage(raw = {}) {
   const pick = key => Number.isFinite(raw[key]) ? raw[key] : 'unknown';
-  return { input: pick('input'), cache: pick('cache'), output: pick('output'), reasoning: pick('reasoning') };
+  return { input: pick('input'), cache: pick('cache'), cacheWrite: pick('cacheWrite'), output: pick('output'), reasoning: pick('reasoning') };
 }
 
 function percentile(values, fraction) {
@@ -115,6 +123,7 @@ export function judgeCell(cell, runtime, oracle) {
   if (cell.condition === 'candidate' && runtime?.trace?.availability === 'unavailable') return { valid: false, recalled: false, reason: 'candidate evaluation trace is unavailable' };
   if (runtime?.status !== 'completed') return { valid: false, recalled: false, reason: `host status is ${runtime?.status ?? 'missing'}` };
   if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
+  if (runtime?.deliverable?.exists !== true) return { valid: false, recalled: false, reason: 'decision artifact was not persisted' };
   if (Array.isArray(expected.requiredRecordHashes)) {
     const expectedHashes = new Set(expected.requiredRecordHashes);
     const loadOperations = (runtime.toolOperations ?? []).filter((operation) => {
@@ -130,7 +139,8 @@ export function judgeCell(cell, runtime, oracle) {
     );
     const artifactWrite = (runtime.toolOperations ?? []).find((operation) =>
       (operation.name === 'Write' || operation.name === 'exec') &&
-      JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath)
+      JSON.stringify(operation.input ?? '').includes(runtime.deliverablePath) &&
+      (operation.status === null || operation.status === 'completed')
     );
     const orderedLoad = matchedResults.some((result) =>
       Number.isInteger(result.eventOrdinal) &&
@@ -143,8 +153,14 @@ export function judgeCell(cell, runtime, oracle) {
     if (expectedHashes.size > 0 && (!orderedLoad || (cell.condition === 'candidate' && !tracedLoad))) {
       return { valid: false, recalled: false, reason: 'native load-before-artifact evidence is missing' };
     }
-    if (expected.requiresCapture === true && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
+    if (expected.requiresCapture === true && cell.condition === 'candidate' && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
       return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
+    }
+    const captureOperations = (runtime.toolOperations ?? []).filter((operation) =>
+      operation.name === 'Learn' || /knowledge-cli\.mjs\s+(?:capture|learn)\b/.test(operation?.input?.command ?? '')
+    );
+    if (expected.requiresCapture === true && captureOperations.some((operation) => operation.actorRole === 'worker')) {
+      return { valid: false, recalled: false, reason: 'worker-owned knowledge capture is not primary evidence' };
     }
     const ghCommands = runtime.workflowEvidence?.ghCommands ?? [];
     if (Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
@@ -152,7 +168,8 @@ export function judgeCell(cell, runtime, oracle) {
     }
     if (expected.requiresSameWorkId === true) {
       const workRecords = runtime.snapshots?.after?.workRecords ?? [];
-      if (workRecords.length !== 1 || !workRecords[0].id || !workRecords[0].revisionToken) {
+      if (workRecords.length !== 1 || !workRecords[0].id || !workRecords[0].revisionToken ||
+        !workRecords[0].execution || !workRecords[0].verification || !workRecords[0].pullRequest) {
         return { valid: false, recalled: false, reason: 'same work identity evidence is missing' };
       }
     }
@@ -191,7 +208,10 @@ export async function runCells(freezeManifest, outputDir, invoke) {
         results.push({
           ...cell,
           status: runtime?.status === 'completed' && judged.valid ? 'completed' : runtime?.status === 'completed' ? 'invalid' : runtime?.status ?? 'invalid',
-          runtime: { ...runtime, usage: normalizeUsage(runtime?.usage?.primary ?? runtime?.usage) },
+          runtime: {
+            ...runtime,
+            usage: { ...(runtime?.usage ?? {}), primary: normalizeUsage(runtime?.usage?.primary ?? runtime?.usage) },
+          },
           judged,
         });
       } finally {
@@ -207,8 +227,12 @@ export async function runCells(freezeManifest, outputDir, invoke) {
 function cohortReport(cells) {
   const cohorts = {};
   for (const cell of cells) {
-    const key = `${cell.condition}:${cell.host}`;
-    const cohort = cohorts[key] ?? { samples: 0, completed: 0, invalid: 0, recalled: 0, manualPending: 0, sessions: [], messages: [], historyEntries: [], loadedBodyTokens: [] };
+    const key = `${cell.condition}:${cell.host}:${cell.cohort ?? 'workflow'}`;
+    const cohort = cohorts[key] ?? {
+      samples: 0, completed: 0, invalid: 0, recalled: 0, manualPending: 0,
+      sessions: [], messages: [], workflowOperations: [], historyEntries: [], loadedBodyTokens: [],
+      nativeInput: [], nativeCache: [], nativeCacheWrite: [], nativeOutput: [], nativeReasoning: [], nativeTotal: [],
+    };
     cohort.samples += 1;
     if (cell.status === 'completed') cohort.completed += 1;
     if (cell.status === 'invalid') cohort.invalid += 1;
@@ -216,17 +240,42 @@ function cohortReport(cells) {
     if (cell.judged?.structuralValid === true) cohort.manualPending += 1;
     cohort.sessions.push(cell.runtime?.sessions?.length ?? 1);
     cohort.messages.push(cell.runtime?.textFinalAnswers?.length ?? 0);
+    cohort.workflowOperations.push((cell.runtime?.toolOperations ?? []).filter((operation) => ['Skill', 'Task', 'Plan', 'Execute', 'Ship', 'CreatePR'].includes(operation.name)).length);
     cohort.historyEntries.push(cell.runtime?.snapshots?.after?.history?.length ?? null);
     cohort.loadedBodyTokens.push(cell.runtime?.loadedBodyTokens ?? null);
+    const native = cell.runtime?.nativeFullCycleUsage?.total;
+    cohort.nativeInput.push(native?.input ?? null);
+    cohort.nativeCache.push(native?.cache ?? null);
+    cohort.nativeCacheWrite.push(native?.cacheWrite ?? null);
+    cohort.nativeOutput.push(native?.output ?? null);
+    cohort.nativeReasoning.push(native?.reasoning ?? null);
+    cohort.nativeTotal.push(nativeUsageTokenTotal(cell.host, native));
     cohorts[key] = cohort;
   }
   return Object.fromEntries(Object.entries(cohorts).map(([key, cohort]) => [key, {
     ...cohort,
-    sessions: { median: percentile(cohort.sessions, .5), p95: percentile(cohort.sessions, .95) },
-    messages: { median: percentile(cohort.messages, .5), p95: percentile(cohort.messages, .95) },
-    historyEntries: { median: percentile(cohort.historyEntries, .5), p95: percentile(cohort.historyEntries, .95) },
-    loadedBodyTokens: { median: percentile(cohort.loadedBodyTokens, .5), p95: percentile(cohort.loadedBodyTokens, .95) },
+    sessions: metricSummary(cohort.sessions),
+    messages: metricSummary(cohort.messages),
+    workflowOperations: metricSummary(cohort.workflowOperations),
+    historyEntries: metricSummary(cohort.historyEntries),
+    loadedBodyTokens: metricSummary(cohort.loadedBodyTokens),
+    nativePrimaryPlusWorkerTokens: {
+      input: metricSummary(cohort.nativeInput), cache: metricSummary(cohort.nativeCache), cacheWrite: metricSummary(cohort.nativeCacheWrite),
+      output: metricSummary(cohort.nativeOutput), reasoning: metricSummary(cohort.nativeReasoning), total: metricSummary(cohort.nativeTotal),
+    },
   }]));
+}
+
+function metricSummary(values) {
+  return { known: values.filter(Number.isFinite).length, missing: values.filter((value) => !Number.isFinite(value)).length, median: percentile(values, .5), p95: percentile(values, .95) };
+}
+
+function nativeUsageTokenTotal(host, value) {
+  if (!value || !Number.isFinite(value.input) || !Number.isFinite(value.output)) return null;
+  // Claude modelUsage separates ordinary and cache input; Codex input already includes its cache dimensions.
+  if (host === 'codex') return value.input + value.output;
+  return Number.isFinite(value.cache) && Number.isFinite(value.cacheWrite)
+    ? value.input + value.cache + value.cacheWrite + value.output : null;
 }
 
 function pairedReport(cells) {
@@ -245,8 +294,31 @@ function pairedReport(cells) {
     comparable: Boolean(group.baseline && group.candidate && group['no-knowledge']),
     loadedBodyTokenDelta: Number.isFinite(group.candidate?.runtime?.loadedBodyTokens) && Number.isFinite(group.baseline?.runtime?.loadedBodyTokens)
       ? group.candidate.runtime.loadedBodyTokens - group.baseline.runtime.loadedBodyTokens : null,
+    nativeFullCycleTokenDelta: pairedDelta(group.candidate, group.baseline),
+    noKnowledgeNativeOverhead: pairedDelta(group['no-knowledge'], group.baseline),
     candidateVsNoKnowledge: group.candidate?.judged?.recalled === true && group['no-knowledge']?.judged?.recalled === false,
   }));
+}
+
+function pairedDelta(left, right) {
+  const leftValue = nativeUsageTokenTotal(left?.host, left?.runtime?.nativeFullCycleUsage?.total);
+  const rightValue = nativeUsageTokenTotal(right?.host, right?.runtime?.nativeFullCycleUsage?.total);
+  return Number.isFinite(leftValue) && Number.isFinite(rightValue) ? leftValue - rightValue : null;
+}
+
+function thresholdReport(cells, paired) {
+  const required = cells.filter((cell) => cell.critical === true);
+  const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.recalled === true)
+    ? 'pass' : required.some((cell) => cell.judged?.recalled === false) ? 'fail' : 'unknown';
+  const pairedCosts = paired.map((pair) => pair.nativeFullCycleTokenDelta).filter(Number.isFinite);
+  return {
+    thresholds: ACCEPTANCE_THRESHOLDS,
+    requiredRecall,
+    pairedEfficiency: pairedCosts.length > 0
+      ? { medianDelta: percentile(pairedCosts, .5), hypothesis: percentile(pairedCosts, .5) < 0 ? 'supported-pending-correctness' : 'not-supported' }
+      : { medianDelta: 'unknown', hypothesis: 'unknown' },
+    note: 'Semantic correctness and relevance remain pending manual adjudication; unknown telemetry cannot satisfy a threshold.',
+  };
 }
 
 function readArtifact(projectDir) {
@@ -255,6 +327,15 @@ function readArtifact(projectDir) {
     return Array.isArray(parsed?.recordIds) && Array.isArray(parsed?.actions) ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+function deliverableEvidence(projectDir, deliverablePath) {
+  try {
+    const stat = fs.statSync(path.join(projectDir, deliverablePath));
+    return { exists: stat.isFile(), bytes: stat.isFile() ? stat.size : null };
+  } catch {
+    return { exists: false, bytes: null };
   }
 }
 
@@ -292,7 +373,12 @@ function mergeHostRuns(runs) {
   return {
     ...runs.at(-1),
     status: completed ? 'completed' : runs.find((run) => run.status !== 'completed').status,
-    usage: { primary: runs.at(-1)?.usage?.primary ?? null, workers: null, sessions: runs.map((run) => run.usage ?? null) },
+    usage: {
+      primary: runs.at(-1)?.usage?.primary ?? null,
+      workers: runs.at(-1)?.usage?.workers ?? null,
+      fullCycle: nativeFullCycleUsage(runs),
+      sessions: runs.map((run) => run.usage ?? null),
+    },
     toolOperations: runs.flatMap((run, sessionOrdinal) =>
       (run.toolOperations ?? []).map((operation) => ({ ...operation, sessionOrdinal }))
     ),
@@ -301,6 +387,21 @@ function mergeHostRuns(runs) {
     ),
     textFinalAnswers: runs.flatMap((run) => run.textFinalAnswers ?? []),
     sessions: runs.map((run) => ({ status: run.status, exit: run.exit ?? null })),
+  };
+}
+
+function nativeFullCycleUsage(runs) {
+  const sources = runs.map((run) => run.usage?.fullCycle?.total ?? run.usage?.primary).filter(Boolean);
+  if (sources.length !== runs.length) return null;
+  const total = {};
+  for (const field of ['input', 'cache', 'cacheWrite', 'output', 'reasoning']) {
+    total[field] = sources.every((value) => Number.isFinite(value[field]))
+      ? sources.reduce((sum, value) => sum + value[field], 0) : null;
+  }
+  return {
+    source: runs.every((run) => run.usage?.fullCycle?.total) ? 'inclusive-model-totals' : 'primary-turn-totals',
+    sessions: runs.length,
+    total,
   };
 }
 
@@ -338,6 +439,7 @@ function traceRuntimeFacts(trace, hostResult) {
     redundantTokens: null,
     totalTokens: null,
     nativePrimaryUsage: hostResult.usage?.primary ?? null,
+    nativeFullCycleUsage: hostResult.usage?.fullCycle ?? null,
   };
 }
 
@@ -406,6 +508,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       return {
         ...hostResult,
         deliverablePath,
+        deliverable: deliverableEvidence(staged.projectDir, deliverablePath),
         snapshots: { before: snapshotBefore, after: snapshotAfter },
         artifact: readArtifact(staged.projectDir),
         workflowEvidence: workflowEvidence(staged),
@@ -420,7 +523,11 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       fs.rmSync(staged.root, { recursive: true, force: true });
     }
   });
-  const report = { ...result, freeze: { hashes: freezeManifest.hashes, baseline: freezeManifest.baseline }, cohorts: cohortReport(result.cells), paired: pairedReport(result.cells) };
+  const paired = pairedReport(result.cells);
+  const report = {
+    ...result, freeze: { hashes: freezeManifest.hashes, baseline: freezeManifest.baseline },
+    cohorts: cohortReport(result.cells), paired, thresholds: thresholdReport(result.cells, paired),
+  };
   if (options.reportPath) fs.writeFileSync(options.reportPath, `${JSON.stringify(report, null, 2)}\n`);
   return report;
 }

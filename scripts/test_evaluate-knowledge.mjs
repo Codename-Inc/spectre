@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,7 +21,7 @@ test('knowledge evaluation freezes twelve hidden-oracle cases and matched host c
 });
 
 test('usage normalization preserves missing native fields as unknown and aggregates runtime separately', () => {
-  assert.deepEqual(normalizeUsage({ input: 4, output: 3 }), { input: 4, cache: 'unknown', output: 3, reasoning: 'unknown' });
+  assert.deepEqual(normalizeUsage({ input: 4, output: 3 }), { input: 4, cache: 'unknown', cacheWrite: 'unknown', output: 3, reasoning: 'unknown' });
   const report = aggregate([{ runtime: { injectedTokens: 3, previewTokens: 4, loadedBodyTokens: 5, redundantTokens: 0, totalTokens: 12 }, judged: { required: true, recalled: true } }]);
   assert.equal(report.runtime.totalTokens.median, 12);
   assert.equal(report.judged.requiredRecall, true);
@@ -37,7 +38,7 @@ test('freeze binds configuration and candidate content, while missing oracle jud
   const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'), { configurationPath: configuration, candidatePath: candidate });
   assert.match(frozen.hashes.configuration, /^sha256:/);
   assert.match(frozen.hashes.candidate, /^sha256:/);
-  const cells = await runCells(frozen, path.join(root, 'cells'), async () => ({ status: 'completed', textFinalAnswers: ['answer-0'], trace: { availability: 'available', events: [] } }));
+  const cells = await runCells(frozen, path.join(root, 'cells'), async () => ({ status: 'completed', textFinalAnswers: ['answer-0'], deliverable: { exists: true, bytes: 1 }, trace: { availability: 'available', events: [] } }));
   assert.equal(cells.cells.find((cell) => cell.caseId === 'case-0').judged.recalled, true);
   assert.equal(cells.cells.find((cell) => cell.caseId === 'case-1').status, 'invalid');
   assert.deepEqual(judgeCell({ caseId: 'case-1' }, { status: 'completed', textFinalAnswers: [] }, null), {
@@ -69,4 +70,27 @@ test('deterministic freeze gates native calls', async () => {
   const oracle = path.join(root, 'oracle.json'); fs.writeFileSync(oracle, JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`case-${index}`, { requiredPhrases: [] }]))));
   const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'));
   await assert.rejects(() => evaluateKnowledge(frozen, { fixtureRoot: fixtures }), /allowNative/);
+});
+
+test('judging requires an exact successful load and a later persisted decision artifact', () => {
+  const recordId = 'payments-dual-settlement';
+  const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;
+  const cell = { caseId: 'case', condition: 'candidate' };
+  const oracle = { case: { requiredRecordHashes: [recordHash], manualRubric: 'manual review' } };
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/case.md', deliverable: { exists: true, bytes: 21 },
+    toolOperations: [
+      { id: 'load-1', name: 'exec', status: 'completed', eventOrdinal: 4, input: { command: `node knowledge-cli.mjs load ${recordId}` } },
+      { id: 'write-1', name: 'Write', status: 'completed', eventOrdinal: 8, input: { file_path: 'artifacts/case.md' } },
+    ],
+    toolResults: [{ toolUseId: 'load-1', eventOrdinal: 5, content: JSON.stringify({ id: recordId, revisionToken: 'rev-1' }) }],
+    trace: { availability: 'available', events: [{ type: 'load', id: recordId, revisionToken: 'rev-1' }] },
+    snapshots: { before: { records: [{ id: recordId, revisionToken: 'rev-1' }] } }, bypass: [],
+  };
+  assert.equal(judgeCell(cell, { ...runtime, deliverable: { exists: false, bytes: null } }, oracle).recalled, false);
+  const pending = judgeCell(cell, runtime, oracle);
+  assert.deepEqual(pending, { valid: false, recalled: null, reason: 'manual semantic adjudication pending', structuralValid: true, manualRubric: 'manual review' });
+  assert.equal(judgeCell(cell, { ...runtime, toolOperations: [
+    { ...runtime.toolOperations[0], eventOrdinal: 9 }, runtime.toolOperations[1],
+  ], toolResults: [{ ...runtime.toolResults[0], eventOrdinal: 9 }] }, oracle).recalled, false);
 });

@@ -46,10 +46,10 @@ function usage(input = {}) {
 
 function claudeUsage(value) {
   return usage({
-    input: value?.input_tokens,
-    cache: value?.cache_read_input_tokens,
-    cacheWrite: value?.cache_creation_input_tokens,
-    output: value?.output_tokens,
+    input: value?.input_tokens ?? value?.inputTokens,
+    cache: value?.cache_read_input_tokens ?? value?.cacheReadInputTokens,
+    cacheWrite: value?.cache_creation_input_tokens ?? value?.cacheCreationInputTokens,
+    output: value?.output_tokens ?? value?.outputTokens,
   });
 }
 
@@ -61,6 +61,26 @@ function codexUsage(value) {
     output: value?.output_tokens,
     reasoning: value?.reasoning_output_tokens,
   });
+}
+
+function aggregateUsage(values) {
+  const total = {};
+  for (const field of ['input', 'cache', 'cacheWrite', 'output', 'reasoning']) {
+    total[field] = values.length > 0 && values.every((value) => Number.isFinite(value[field]))
+      ? values.reduce((sum, value) => sum + value[field], 0)
+      : null;
+  }
+  return total;
+}
+
+function claudeModelUsage(modelUsage) {
+  if (!modelUsage || typeof modelUsage !== 'object' || Array.isArray(modelUsage)) return null;
+  const models = Object.entries(modelUsage).flatMap(([model, value]) =>
+    value && typeof value === 'object' ? [{ model, ...claudeUsage(value) }] : []
+  );
+  if (models.length === 0) return null;
+  // Claude result.usage excludes subagents; modelUsage is already inclusive. Never add primary again.
+  return { source: 'result.modelUsage', models, total: aggregateUsage(models) };
 }
 
 function parseJsonLines(raw) {
@@ -84,7 +104,19 @@ function workerId(event, fallback) {
 
 function isWorkerEvent(event) {
   return event.is_sidechain === true || event.is_worker === true ||
-    event.worker_id != null || event.workerId != null || event.agent_id != null || event.agentId != null;
+    event.worker_id != null || event.workerId != null ||
+    event.parent_tool_use_id != null || event.parentToolUseId != null ||
+    event.parent_agent_id != null || event.parentAgentId != null;
+}
+
+function actorDetails(event) {
+  const worker = isWorkerEvent(event);
+  const id = event.worker_id ?? event.workerId ?? event.agent_id ?? event.agentId ?? null;
+  return {
+    actorRole: worker ? 'worker' : 'primary',
+    actorId: typeof id === 'string' ? id : null,
+    parentToolUseId: event.parent_tool_use_id ?? event.parentToolUseId ?? null,
+  };
 }
 
 function textBlocks(content) {
@@ -94,7 +126,7 @@ function textBlocks(content) {
   );
 }
 
-function claudeOperation(block) {
+function claudeOperation(block, event) {
   return {
     id: typeof block.id === 'string' ? block.id : null,
     host: 'claude',
@@ -105,10 +137,11 @@ function claudeOperation(block) {
     startedAt: null,
     endedAt: null,
     durationMs: null,
+    ...actorDetails(event),
   };
 }
 
-function codexOperation(item) {
+function codexOperation(item, event) {
   const type = item?.type;
   if (type === 'command_execution') {
     return {
@@ -118,6 +151,7 @@ function codexOperation(item) {
       startedAt: item.started_at ?? item.startedAt ?? null,
       endedAt: item.ended_at ?? item.endedAt ?? null,
       durationMs: Number.isFinite(item.duration_ms) ? item.duration_ms : null,
+      ...actorDetails({ ...event, agent_id: event.agent_id ?? event.agentId ?? item.agent_id ?? item.agentId }),
     };
   }
   if (['mcp_tool_call', 'web_search', 'file_change', 'function_call'].includes(type)) {
@@ -128,6 +162,7 @@ function codexOperation(item) {
       startedAt: item.started_at ?? item.startedAt ?? null,
       endedAt: item.ended_at ?? item.endedAt ?? null,
       durationMs: Number.isFinite(item.duration_ms) ? item.duration_ms : null,
+      ...actorDetails({ ...event, agent_id: event.agent_id ?? event.agentId ?? item.agent_id ?? item.agentId }),
     };
   }
   return null;
@@ -141,12 +176,17 @@ function normalizeClaude(events) {
   let primary = usage();
   let nativeDurationMs = null;
   let workerSequence = 0;
+  let fullCycle = null;
+  const workerMessageIds = new Set();
   for (const [eventOrdinal, event] of events.entries()) {
     if (event.type === 'assistant') {
       const content = event.message?.content ?? [];
-      operations.push(...content.filter((block) => block?.type === 'tool_use').map((block) => ({ ...claudeOperation(block), eventOrdinal })));
+      operations.push(...content.filter((block) => block?.type === 'tool_use').map((block) => ({ ...claudeOperation(block, event), eventOrdinal })));
       if (!isWorkerEvent(event)) answers.push(...textBlocks(content));
-      if (isWorkerEvent(event) && event.message?.usage) {
+      const messageId = event.message?.id;
+      if (isWorkerEvent(event) && event.message?.usage &&
+        (typeof messageId !== 'string' || !workerMessageIds.has(messageId))) {
+        if (typeof messageId === 'string') workerMessageIds.add(messageId);
         if (workers === null) workers = [];
         workerSequence += 1;
         workers.push({ id: workerId(event, `worker-${workerSequence}`), ...claudeUsage(event.message.usage) });
@@ -164,11 +204,12 @@ function normalizeClaude(events) {
     }
     if (event.type === 'result') {
       primary = claudeUsage(event.usage);
+      fullCycle = claudeModelUsage(event.modelUsage ?? event.model_usage) ?? fullCycle;
       nativeDurationMs = Number.isFinite(event.duration_ms) ? event.duration_ms : null;
       if (typeof event.result === 'string' && event.result) answers.push(event.result);
     }
   }
-  return { usage: { primary, workers }, toolOperations: operations, toolResults, textFinalAnswers: [...new Set(answers)], nativeDurationMs };
+  return { usage: { primary, workers, fullCycle }, toolOperations: operations, toolResults, textFinalAnswers: [...new Set(answers)], nativeDurationMs };
 }
 
 function normalizeCodex(events) {
@@ -181,7 +222,7 @@ function normalizeCodex(events) {
   for (const [eventOrdinal, event] of events.entries()) {
     const item = event.item;
     if (event.type === 'item.completed' && item) {
-      const operation = codexOperation(item);
+      const operation = codexOperation(item, event);
       if (operation) operations.push({ ...operation, eventOrdinal });
       if (typeof item.aggregated_output === 'string') {
         toolResults.push({ host: 'codex', toolUseId: item.id ?? null, eventOrdinal, content: safeLog(item.aggregated_output) });
@@ -198,10 +239,13 @@ function normalizeCodex(events) {
     }
     if (event.type === 'turn.completed') primary = codexUsage(event.usage);
   }
-  return { usage: { primary, workers }, toolOperations: operations, toolResults, textFinalAnswers: [...new Set(answers)], nativeDurationMs: null };
+  return { usage: { primary, workers, fullCycle: null }, toolOperations: operations, toolResults, textFinalAnswers: [...new Set(answers)], nativeDurationMs: null };
 }
 
-/** Normalize only structured native host output; no token totals are inferred or summed. */
+/**
+ * Normalize structured native host output. Claude's inclusive modelUsage is the sole full-cycle
+ * aggregate. Codex input_tokens already includes cached dimensions, so consumers must not add them.
+ */
 export function normalizeKnowledgeHostTranscript(host, rawStdout) {
   const { events, malformedLineCount } = parseJsonLines(rawStdout);
   const normalized = host === 'claude' ? normalizeClaude(events) : normalizeCodex(events);

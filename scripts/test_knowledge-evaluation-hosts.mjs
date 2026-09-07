@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { invokeKnowledgeHost } from './knowledge-evaluation-hosts.mjs';
+import { invokeKnowledgeHost, normalizeKnowledgeHostTranscript } from './knowledge-evaluation-hosts.mjs';
 
 function childFor({ stdout = '', stderr = '', exitCode = 0, signal = null, delay = 0 }) {
   const child = new EventEmitter();
@@ -60,6 +60,7 @@ test('Claude transcript preserves primary and worker native usage, tools, and fi
   assert.deepEqual(result.usage.primary, {
     input: 101, cache: 7, cacheWrite: 2, output: 13, reasoning: null,
   });
+  assert.equal(result.usage.fullCycle, null);
   assert.deepEqual(result.usage.workers, [{
     id: 'worker-a', input: 9, cache: null, cacheWrite: null, output: 4, reasoning: null,
   }]);
@@ -68,6 +69,23 @@ test('Claude transcript preserves primary and worker native usage, tools, and fi
   assert.ok(result.textFinalAnswers.includes('Claude final answer'));
   assert.equal(result.timing.nativeDurationMs, 123);
   assert.equal(result.isolation.freshStore, true);
+});
+
+test('Claude model totals are the only full-cycle aggregate and duplicate worker messages do not inflate it', () => {
+  const transcript = normalizeKnowledgeHostTranscript('claude', [
+    JSON.stringify({ type: 'assistant', is_sidechain: true, worker_id: 'worker-a', message: { id: 'same-step', usage: { input_tokens: 9, output_tokens: 999 } } }),
+    JSON.stringify({ type: 'assistant', is_sidechain: true, worker_id: 'worker-a', message: { id: 'same-step', usage: { input_tokens: 9, output_tokens: 999 } } }),
+    JSON.stringify({ type: 'result', usage: { input_tokens: 10, output_tokens: 4 }, modelUsage: {
+      'claude-test': { inputTokens: 12, cacheReadInputTokens: 3, cacheCreationInputTokens: 2, outputTokens: 8 },
+    } }),
+  ].join('\n'));
+  assert.deepEqual(transcript.usage.primary, { input: 10, cache: null, cacheWrite: null, output: 4, reasoning: null });
+  assert.equal(transcript.usage.workers.length, 1);
+  assert.deepEqual(transcript.usage.fullCycle, {
+    source: 'result.modelUsage',
+    models: [{ model: 'claude-test', input: 12, cache: 3, cacheWrite: 2, output: 8, reasoning: null }],
+    total: { input: 12, cache: 3, cacheWrite: 2, output: 8, reasoning: null },
+  });
 });
 
 test('Codex transcript reports command timing without inventing omitted usage fields', async () => {
@@ -91,10 +109,12 @@ test('Codex transcript reports command timing without inventing omitted usage fi
     input: 22, cache: null, cacheWrite: null, output: 6, reasoning: null,
   });
   assert.equal(result.usage.workers, null);
+  assert.equal(result.usage.fullCycle, null);
   assert.deepEqual(result.toolOperations[0], {
     id: 'exec-1', host: 'codex', name: 'exec', type: 'command_execution',
     input: { command: 'cat record.json' }, status: 'completed',
-    startedAt: '2026-01-01T00:00:00.000Z', endedAt: '2026-01-01T00:00:00.025Z', durationMs: 25, eventOrdinal: 0,
+    startedAt: '2026-01-01T00:00:00.000Z', endedAt: '2026-01-01T00:00:00.025Z', durationMs: 25,
+    actorRole: 'primary', actorId: null, parentToolUseId: null, eventOrdinal: 0,
   });
   assert.deepEqual(result.toolResults, [{ host: 'codex', toolUseId: 'exec-1', eventOrdinal: 0, content: 'loaded record-id' }]);
   assert.deepEqual(result.textFinalAnswers, ['Codex final answer']);
