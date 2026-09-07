@@ -746,6 +746,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
         ? baselineRuntimeFacts({
           toolOperations: hostResult.toolOperations, toolResults: hostResult.toolResults,
           sessionStartMeasurement: hostResult.usage.sessionStartMeasurement,
+          workingDir: staged.projectDir, knownKnowledgePaths: staged.knownPaths,
         })
         : cell.condition === 'no-knowledge' ? noKnowledgeRuntimeFacts(hostResult)
           : traceRuntimeFacts(trace, { ...hostResult, sessionStartMeasurement: hostResult.usage.sessionStartMeasurement });
