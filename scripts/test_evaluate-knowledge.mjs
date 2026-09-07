@@ -777,6 +777,42 @@ test('post-hoc bypass replay ignores outside-store Read paths but retains canoni
   assert.deepEqual(replayCachedRuntime({ condition: 'candidate' }, aliasRuntime).bypass.map((entry) => entry.reason), ['direct-read']);
 });
 
+test('post-hoc crosscheck binds successful work JSON wrappers to one historical event each', () => {
+  const workId = 'evaluation-cell-capture-reconciliation';
+  const revision = 'captured-revision';
+  const session = [{
+    contextHash: 'captured-context',
+    before: { records: [{ id: workId, revisionToken: revision }] },
+    after: { records: [{ id: workId, revisionToken: revision }] },
+  }];
+  const operation = {
+    id: 'wrapped-work', status: 'completed', sessionOrdinal: 0,
+    input: { command: `node knowledge-cli.mjs load ${workId} --work-id ${workId} --allowance-tokens 6000 --json > proposal.json 2>&1; node summarize.js proposal.json` },
+  };
+  const result = {
+    toolUseId: 'wrapped-work', sessionOrdinal: 0, isError: false,
+    content: "top keys: ok, status, id, kind, applicability, revisionToken, estimatedTokens, historical, activation, record\nrevisionToken: [REDACTED]\nrecord keys: schemaVersion, id, kind, work",
+  };
+  const trace = { availability: 'available', events: [{
+    type: 'history-read', subtype: 'history-body', id: workId, revisionToken: revision, contextHash: 'captured-context',
+  }] };
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [result], session).availability, 'available');
+  const historySummary = {
+    ...result,
+    content: `provenance: { "origin": "captured" }\napplicability: { "scope": "work", "workId": "${workId}" }\n=== HISTORY ===\n${JSON.stringify({ ok: true, id: workId, entries: [{ id: workId, revisionToken: revision, historical: true }] })}`,
+  };
+  const loadExitSummary = { ...result, content: 'load exit=0\nrevisionToken: [REDACTED]\npullRequest: {"state":"draft-open"}' };
+  const registrationSummary = { ...result, content: `expected-revision: sha256:abcdef\n${JSON.stringify({ ok: true, status: 'noop', id: workId, revisionToken: revision })}` };
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [historySummary], session).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [loadExitSummary], session).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [registrationSummary], session).availability, 'available');
+  assert.equal(traceWithOperationCrosscheck({ ...trace, events: [{ ...trace.events[0], id: 'other-work' }] }, [operation], [result], session).availability, 'unavailable');
+  assert.equal(traceWithOperationCrosscheck({ ...trace, events: [{ ...trace.events[0], revisionToken: 'other-revision' }] }, [operation], [result], session).availability, 'unavailable');
+  assert.equal(traceWithOperationCrosscheck({ ...trace, events: [{ ...trace.events[0], contextHash: 'other-context' }] }, [operation], [result], session).availability, 'unavailable');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation], [{ ...result, isError: true }, { toolUseId: 'wrapped-work', sessionOrdinal: 0, isError: false, content: 'wrapper finished' }], session).availability, 'unavailable');
+  assert.equal(traceWithOperationCrosscheck(trace, [operation, { ...operation, id: 'second-wrapper' }], [result, { ...result, toolUseId: 'second-wrapper' }], session).availability, 'unavailable');
+});
+
 test('post-hoc crosscheck binds only successful wrapped historical loads and ignores expansion preflights', () => {
   const workId = 'evaluation-cell-cache-rotation-procedure';
   const revision = 'historic-revision';

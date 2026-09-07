@@ -1070,6 +1070,26 @@ function wrappedLoadEvidence(result) {
   );
 }
 
+function successfulWorkJsonWrapperEvidence(result, commandId) {
+  if (result?.isError === true || typeof result?.content !== 'string' || typeof commandId !== 'string') return false;
+  const content = result.content;
+  // JSON wrappers often print only parsed field names after the CLI has delivered a body.
+  const fieldSummary = ['ok', 'status', 'id', 'kind', 'applicability', 'revisionToken', 'record'].every((field) =>
+    new RegExp(`['\"]?${field}['\"]?`).test(content)
+  );
+  const loadExitSummary = /\bload\s+exit=0\b/.test(content) && /\brevisionToken\s*:/.test(content) && /\bpullRequest\s*:/.test(content);
+  const historySummary = /\bprovenance\s*:/.test(content) && /\bapplicability\s*:/.test(content) &&
+    content.includes(`\"workId\": \"${commandId}\"`) && jsonPayloads(content).some((payload) =>
+      payload?.ok === true && payload.id === commandId && payload.entries?.some((entry) =>
+        entry?.id === commandId && entry.historical === true && typeof entry.revisionToken === 'string'
+      )
+    );
+  const registrationSummary = new RegExp(`(?:^|\\n)(?:expected-)?revision:\\s*sha256:[a-f0-9]+`, 'i').test(content) &&
+    jsonPayloads(content).some((payload) => payload?.ok === true && payload.id === commandId &&
+      ['noop', 'updated'].includes(payload.status) && typeof payload.revisionToken === 'string');
+  return fieldSummary || loadExitSummary || historySummary || registrationSummary;
+}
+
 function returnedRevision(result) {
   if (typeof result?.content !== 'string') return null;
   return result.content.match(/(?:materialized at revision:|--- current revision ---\s*)(sha256:[a-f0-9]+)/i)?.[1] ?? null;
@@ -1157,6 +1177,7 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
       const humanHistorical = commandId && loadResults.some((result) => result.isError !== true &&
         typeof result.content === 'string' && result.content.includes(`- ID: ${commandId}`) && /Historical work record: historical evidence only/.test(result.content));
       const wrappedHistorical = commandId && loadResults.some(wrappedLoadEvidence);
+      const workJsonWrapper = commandId && /--json\b/.test(operation.input?.command ?? '') && loadResults.some((result) => successfulWorkJsonWrapperEvidence(result, commandId));
       const reportedRevision = loadResults.map(returnedRevision).find(Boolean);
       const snapshotRevisions = new Set([session?.before, session?.after].flatMap((snapshot) =>
         (snapshot?.records ?? []).filter((record) => record.id === commandId).map((record) => record.revisionToken)
@@ -1167,7 +1188,7 @@ export function traceWithOperationCrosscheck(trace, toolOperations, toolResults 
         }
       }
       const expectedHistorical = historicalWork.length > 0 ? historicalWork
-        : (humanHistorical || wrappedHistorical) && typeof session?.contextHash === 'string'
+        : (humanHistorical || wrappedHistorical || workJsonWrapper) && typeof session?.contextHash === 'string'
           ? [...snapshotRevisions].map((revisionToken) => ({ id: commandId, revisionToken }))
           : reportedRevision && snapshotRevisions.has(reportedRevision) && typeof session?.contextHash === 'string'
             ? [{ id: commandId, revisionToken: reportedRevision }] : [];
