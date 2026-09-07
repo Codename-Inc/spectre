@@ -109,15 +109,23 @@ export function aggregate(cells = []) {
 export function judgeCell(cell, runtime, oracle) {
   const expected = oracle?.[cell.caseId];
   if (!expected) return { valid: false, recalled: false, reason: 'oracle judgment is missing' };
-  if (runtime?.trace?.availability === 'unavailable') return { valid: false, recalled: false, reason: 'evaluation trace is unavailable' };
+  if (cell.condition === 'candidate' && runtime?.trace?.availability === 'unavailable') return { valid: false, recalled: false, reason: 'candidate evaluation trace is unavailable' };
   if (runtime?.status !== 'completed') return { valid: false, recalled: false, reason: `host status is ${runtime?.status ?? 'missing'}` };
+  if (runtime?.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   if (Array.isArray(expected.requiredRecordHashes)) {
     const actual = new Set((runtime.artifact?.recordIds ?? []).map((id) => hash(id)));
     if (!expected.requiredRecordHashes.every((value) => actual.has(value))) {
       return { valid: false, recalled: false, reason: 'structured artifact lacks required record evidence' };
     }
-    if (expected.requiresCapture === true && !runtime.trace.events.some((event) => event.type === 'capture')) {
+    if (expected.requiresCapture === true && !runtime.trace?.events?.some((event) => event.type === 'capture')) {
       return { valid: false, recalled: false, reason: 'capture trace evidence is missing' };
+    }
+    const ghCommands = runtime.workflowEvidence?.ghCommands ?? [];
+    if (Number.isInteger(expected.minimumPrCreates) && ghCommands.filter((command) => /^pr create\b/.test(command)).length < expected.minimumPrCreates) {
+      return { valid: false, recalled: false, reason: 'direct PR fallback evidence is missing' };
+    }
+    if (expected.requiresPrView === true && !ghCommands.some((command) => /^pr view\b/.test(command))) {
+      return { valid: false, recalled: false, reason: 'repeat/noop PR evidence is missing' };
     }
     return { valid: true, recalled: true, reason: null, manualRubric: expected.manualRubric ?? null };
   }
@@ -125,7 +133,6 @@ export function judgeCell(cell, runtime, oracle) {
   const required = Array.isArray(expected.requiredPhrases) ? expected.requiredPhrases : [];
   const missing = required.filter(phrase => !answer.includes(String(phrase).toLocaleLowerCase()));
   if (missing.length > 0) return { valid: false, recalled: false, reason: 'required oracle phrase was not found' };
-  if (runtime.bypass?.length > 0) return { valid: false, recalled: false, reason: 'direct knowledge-store bypass detected' };
   return { valid: true, recalled: true, reason: null };
 }
 
@@ -201,6 +208,24 @@ export async function stageKnowledgeCell(cell, fixtureCase, options) {
   fs.mkdirSync(projectDir, { recursive: true });
   fs.mkdirSync(storeDir, { recursive: true });
   fs.mkdirSync(hostHome, { recursive: true });
+  const mockBin = path.join(root, 'bin');
+  const ghLogPath = path.join(root, 'gh.log');
+  const ghStatePath = path.join(root, 'gh-state');
+  fs.mkdirSync(mockBin, { recursive: true });
+  fs.writeFileSync(path.join(mockBin, 'gh'), [
+    '#!/bin/sh',
+    'printf "%s\\n" "$*" >> "$SPECTRE_EVALUATION_GH_LOG"',
+    'if [ "$1 $2" = "pr create" ]; then',
+    '  count=0; [ -f "$SPECTRE_EVALUATION_GH_STATE" ] && count=$(cat "$SPECTRE_EVALUATION_GH_STATE")',
+    '  count=$((count + 1)); printf "%s" "$count" > "$SPECTRE_EVALUATION_GH_STATE"',
+    '  if [ "$count" -eq 1 ]; then echo "simulated CreatePR save failure" >&2; exit 1; fi',
+    '  if [ "$count" -gt 2 ]; then echo "existing PR: https://example.invalid/evaluation/pr/1"; exit 0; fi',
+    '  echo "https://example.invalid/evaluation/pr/1"; exit 0',
+    'fi',
+    'if [ "$1 $2" = "pr view" ]; then echo "https://example.invalid/evaluation/pr/1"; exit 0; fi',
+    'echo "{}"',
+  ].join('\n'));
+  fs.chmodSync(path.join(mockBin, 'gh'), 0o755);
   fs.cpSync(pluginSource, pluginDir, { recursive: true });
   fs.writeFileSync(path.join(projectDir, 'TASK.md'), `${fixtureCase.task}\n`);
   const resolved = await resolveProjectStore(projectDir, { spectreHome: storeDir });
@@ -216,6 +241,12 @@ export async function stageKnowledgeCell(cell, fixtureCase, options) {
   const tracePath = path.join(root, 'trace.jsonl');
   return {
     root, projectDir, storeDir, pluginDir, freshStore: true, knownPaths, tracePath,
+    ghLogPath,
+    environment: {
+      PATH: `${mockBin}${path.delimiter}${process.env.PATH ?? ''}`,
+      SPECTRE_EVALUATION_GH_LOG: ghLogPath,
+      SPECTRE_EVALUATION_GH_STATE: ghStatePath,
+    },
     ...(cell.host === 'codex' ? { codexHome: hostHome } : { claudeHome: hostHome }),
   };
 }
@@ -260,12 +291,20 @@ function readArtifact(projectDir) {
   }
 }
 
+function workflowEvidence(staged) {
+  try {
+    return { ghCommands: fs.readFileSync(staged.ghLogPath, 'utf8').split(/\r?\n/).filter(Boolean) };
+  } catch {
+    return { ghCommands: [] };
+  }
+}
+
 function mergeHostRuns(runs) {
   const completed = runs.every((run) => run.status === 'completed');
   return {
     ...runs.at(-1),
     status: completed ? 'completed' : runs.find((run) => run.status !== 'completed').status,
-    usage: { primary: null, workers: null, sessions: runs.map((run) => run.usage ?? null) },
+    usage: { primary: runs.at(-1)?.usage?.primary ?? null, workers: null, sessions: runs.map((run) => run.usage ?? null) },
     toolOperations: runs.flatMap((run, sessionOrdinal) =>
       (run.toolOperations ?? []).map((operation) => ({ ...operation, sessionOrdinal }))
     ),
@@ -293,6 +332,23 @@ function traceWithOperationCrosscheck(trace, toolOperations) {
   return missing.length === 0
     ? trace
     : { availability: 'unavailable', reason: `trace lacks native ${missing.join(', ')} event evidence`, events: trace.events };
+}
+
+function traceRuntimeFacts(trace, hostResult) {
+  const sum = (events) => events.length > 0 && events.every((event) => Number.isFinite(event.responseTokens) || Number.isFinite(event.loadedTokens))
+    ? events.reduce((total, event) => total + (event.responseTokens ?? event.loadedTokens), 0)
+    : null;
+  const events = trace.availability === 'available' ? trace.events : [];
+  const previews = events.filter((event) => event.subtype === 'history-preview');
+  const loaded = events.filter((event) => event.type === 'load' || event.subtype === 'history-body' || event.type === 'resource-read');
+  return {
+    injectedTokens: sum(events.filter((event) => event.type === 'search')),
+    previewTokens: sum(previews),
+    loadedBodyTokens: sum(loaded),
+    redundantTokens: null,
+    totalTokens: null,
+    nativePrimaryUsage: hostResult.usage?.primary ?? null,
+  };
 }
 
 function assertFrozenInputs(freezeManifest) {
@@ -337,7 +393,9 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
       return {
         ...hostResult,
         artifact: readArtifact(staged.projectDir),
+        workflowEvidence: workflowEvidence(staged),
         trace,
+        ...traceRuntimeFacts(trace, hostResult),
         bypass: [
           ...detectTraceBypass(hostResult.toolOperations, { knownPaths: staged.knownPaths }),
           ...trace.events.filter((event) => event.type === 'bypass'),

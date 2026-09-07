@@ -9,6 +9,6 @@
   "verified-gotcha":{"requiredRecordHashes":["sha256:61fe70b5d8bf58229e3a6795c320c204d567ea26552039eba6ec146dcc969211"],"requiresCapture":true,"manualRubric":"The safe worker-drain procedure is captured and executed."},
   "pattern-speculation":{"requiredRecordHashes":["sha256:a0ccf42207fe4ac45c5f3d43a047c9187d0150ca514da33670b33c1e02eedba3"],"manualRubric":"The recommendation does not promote an observation to a decision."},
   "blocker-resolution":{"requiredRecordHashes":["sha256:18cecbfd43ebb20144e52f295f4f07c64a82e86470dd0d593805824d1193b5c6"],"manualRubric":"The report states the verified resolution accurately."},
-  "lifecycle-identity":{"requiredRecordHashes":["sha256:e03569f4610a5494812b0e05f8a8bcc8ed43b6ab5f5b68f5d49bb0da3754e7e0"],"requiresCapture":true,"manualRubric":"The rename preserves one work identity through repair and PR fallback."},
+  "lifecycle-identity":{"requiredRecordHashes":["sha256:e03569f4610a5494812b0e05f8a8bcc8ed43b6ab5f5b68f5d49bb0da3754e7e0"],"requiresCapture":true,"minimumPrCreates":3,"manualRubric":"The rename preserves one work identity through repair, direct PR fallback, repeat/noop, and retained URL."},
   "longitudinal-correction":{"requiredRecordHashes":["sha256:226eab3f4979ddc94a7b55210ca70f20dde5aa0e20df7c0777da612e4fccd815"],"requiresCapture":true,"manualRubric":"The corrected revision, rather than the earlier retry value, is reused."}
 }
