@@ -18,7 +18,16 @@
       "sha256:6f8b66eda3c0329f7460f94803e5028789d8d653b3fb8ef4ad12dcc2dc21003f"
     ],
     "manualRubric": "The plan preserves source ownership before import.",
-    "requiredReadCommand": "inspect"
+    "requiredReadCommand": "inspect",
+    "requiresFreshExtractedReuse": true,
+    "importedRecordHashes": [
+      "sha256:6f8b66eda3c0329f7460f94803e5028789d8d653b3fb8ef4ad12dcc2dc21003f"
+    ],
+    "requiredStates": [
+      "import-inspect",
+      "maintained-extraction",
+      "fresh-reuse-no-import-reload"
+    ]
   },
   "irrelevant-task": {
     "requiredRecordHashes": [],
@@ -43,7 +52,10 @@
   "accepted-decision": {
     "requiredRecordHashes": [],
     "requiresCapture": true,
-    "requiredStates": ["bare-learn-noop", "accepted-decision-capture"],
+    "requiredStates": [
+      "bare-learn-noop",
+      "accepted-decision-capture"
+    ],
     "manualRubric": "The newly accepted pagination decision is automatically captured and carried into the artifact."
   },
   "verified-gotcha": {
@@ -56,7 +68,10 @@
       "sha256:a0ccf42207fe4ac45c5f3d43a047c9187d0150ca514da33670b33c1e02eedba3"
     ],
     "forbiddenLegacyExposure": true,
-    "requiredStates": ["bare-learn-noop", "unchanged-repeat-noop"],
+    "requiredStates": [
+      "bare-learn-noop",
+      "unchanged-repeat-noop"
+    ],
     "manualRubric": "The recommendation does not promote an observation to a decision."
   },
   "blocker-resolution": {
@@ -64,14 +79,22 @@
       "sha256:18cecbfd43ebb20144e52f295f4f07c64a82e86470dd0d593805824d1193b5c6"
     ],
     "requiresCapture": true,
-    "requiredStates": ["blocker-resolution-capture"],
+    "requiredStates": [
+      "blocker-resolution-capture"
+    ],
     "manualRubric": "The report states the verified resolution accurately."
   },
   "lifecycle-identity": {
     "requiredRecordHashes": [],
     "minimumPrCreates": 2,
     "requiresSameWorkId": true,
-    "requiredStates": ["capture", "refresh", "noop", "save-failure", "draft"],
+    "requiredStates": [
+      "capture",
+      "refresh",
+      "noop",
+      "save-failure",
+      "draft"
+    ],
     "manualRubric": "Execute creates one work identity; Ship refreshes it before the draft; repair, URL update, and unchanged capture retain that ID; a registration failure is reported while the direct draft opens."
   },
   "longitudinal-correction": {
@@ -79,7 +102,12 @@
       "sha256:226eab3f4979ddc94a7b55210ca70f20dde5aa0e20df7c0777da612e4fccd815"
     ],
     "requiresCapture": true,
-    "requiredStates": ["capture", "fresh-reuse", "correction", "fresh-corrected-reuse"],
+    "requiredStates": [
+      "capture",
+      "fresh-reuse",
+      "correction",
+      "fresh-corrected-reuse"
+    ],
     "manualRubric": "The corrected revision, rather than the earlier retry value, is reused."
   }
 }

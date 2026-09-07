@@ -53,7 +53,12 @@
           "content": "Imported deployment files remain read-only until their source ownership and rollback contact are recorded."
         }
       ],
-      "cohort": "history"
+      "cohort": "history",
+      "longitudinal": true,
+      "longitudinalSteps": [
+        "Start a fresh session. Inspect the imported acquired-deploy work history and verify the source ownership and rollback-contact constraint. Once that evidence is accepted, capture a maintained project constraint with the verified import boundary; do not treat the imported work itself as current guidance.",
+        "Start a fresh ordinary project session. Reuse the maintained constraint captured from the accepted import evidence to plan the safe import. Do not reload the imported work record; write the evaluation artifact."
+      ]
     },
     {
       "id": "irrelevant-task",

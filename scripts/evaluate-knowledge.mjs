@@ -254,6 +254,25 @@ export function judgeCell(cell, runtime, oracle) {
         return { valid: false, recalled: false, reason: 'required knowledge save-failure evidence is missing' };
       }
     }
+    if (cell.condition === 'candidate' && expected.requiresFreshExtractedReuse === true) {
+      const importedHashes = new Set(expected.importedRecordHashes ?? []);
+      const importedReads = (runtime.toolOperations ?? []).filter((operation) => {
+        const command = operation?.input?.command ?? '';
+        return ['inspect', 'load'].some((action) => commandActions.get(operation)?.has(action)) &&
+          [...command.matchAll(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g)].some((match) => importedHashes.has(hash(match[0])));
+      });
+      const freshSession = runtime.sessionSnapshots?.[1];
+      const freshLoadedExtract = (runtime.trace?.events ?? []).some((event) =>
+        event.type === 'load' && event.contextHash === freshSession?.contextHash &&
+        !importedHashes.has(hash(event.id ?? '')) && (freshSession?.before?.records ?? []).some((record) => record.id === event.id)
+      );
+      const captureOutcomes = (runtime.trace?.events ?? []).filter((event) => event.type === 'capture').map((event) => event.outcome);
+      if (!importedReads.some((operation) => (operation.sessionOrdinal ?? 0) === 0) ||
+        importedReads.some((operation) => (operation.sessionOrdinal ?? 0) > 0) ||
+        !captureOutcomes.some((outcome) => outcome === 'created' || outcome === 'updated') || !freshLoadedExtract) {
+        return { valid: false, recalled: false, reason: 'fresh extracted-import reuse evidence is missing' };
+      }
+    }
     const captureOperations = (runtime.toolOperations ?? []).filter((operation) =>
       operation.name === 'Learn' || ['register', 'capture', 'learn'].some((action) => commandActions.get(operation)?.has(action))
     );
@@ -458,17 +477,42 @@ function pairedDelta(left, right) {
   return Number.isFinite(leftValue) && Number.isFinite(rightValue) ? leftValue - rightValue : null;
 }
 
-function thresholdReport(cells, paired) {
+export function primaryJudgmentReport(cells, primaryJudgments = []) {
+  const judgments = new Map(primaryJudgments.filter((judgment) => judgment?.cellId).map((judgment) => [judgment.cellId, judgment]));
+  const reviewed = cells.filter((cell) => judgments.has(cell.id)).map((cell) => {
+    const judgment = judgments.get(cell.id);
+    const artifactHashMatches = typeof judgment.artifactHash === 'string' && judgment.artifactHash === cell.runtime?.deliverable?.hash &&
+      judgment.artifactEvidence === judgment.artifactHash;
+    return {
+      cellId: cell.id, artifactHashMatches,
+      correct: judgment.correct === true ? true : judgment.correct === false ? false : null,
+      relevant: judgment.relevant === true ? true : judgment.relevant === false ? false : null,
+      requiredRecallBeforeDecision: judgment.requiredRecallBeforeDecision === true ? true : judgment.requiredRecallBeforeDecision === false ? false : null,
+      irrelevantTokens: Number.isFinite(judgment.irrelevantTokens) ? judgment.irrelevantTokens : null,
+      unnecessaryHistoryLoads: Number.isFinite(judgment.unnecessaryHistoryLoads) ? judgment.unnecessaryHistoryLoads : null,
+      justifiedExpansions: Array.isArray(judgment.justifiedExpansions) ? judgment.justifiedExpansions.length : null,
+    };
+  });
+  const failed = reviewed.some((judgment) => !judgment.artifactHashMatches || judgment.correct === false || judgment.relevant === false || judgment.requiredRecallBeforeDecision === false);
+  const pending = cells.some((cell) => cell.condition === 'candidate' && cell.critical === true && !judgments.has(cell.id)) ||
+    reviewed.some((judgment) => judgment.correct === null || judgment.relevant === null || judgment.requiredRecallBeforeDecision === null);
+  return { reviewed, status: failed ? 'fail' : pending ? 'pending' : 'reviewed' };
+}
+
+function thresholdReport(cells, paired, primaryJudgments = []) {
   const required = cells.filter((cell) => cell.critical === true);
   const requiredRecall = required.length > 0 && required.every((cell) => cell.judged?.recalled === true)
     ? 'pass' : required.some((cell) => cell.judged?.recalled === false) ? 'fail' : 'unknown';
   const pairedCosts = paired.map((pair) => pair.nativeFullCycleTokenDelta).filter(Number.isFinite);
+  const manual = primaryJudgmentReport(cells, primaryJudgments);
   return {
     thresholds: ACCEPTANCE_THRESHOLDS,
     requiredRecall,
     pairedEfficiency: pairedCosts.length > 0
       ? { medianDelta: percentile(pairedCosts, .5), hypothesis: percentile(pairedCosts, .5) < 0 ? 'supported-pending-correctness' : 'not-supported' }
       : { medianDelta: 'unknown', hypothesis: 'unknown' },
+    manual,
+    status: cells.length < 144 || manual.status !== 'reviewed' ? 'pending' : manual.status,
     note: 'Semantic correctness and relevance remain pending manual adjudication; unknown telemetry cannot satisfy a threshold.',
   };
 }
@@ -808,9 +852,11 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
     }
   });
   const paired = pairedReport(result.cells);
+  const primaryJudgments = Array.isArray(options.primaryJudgments) ? options.primaryJudgments : [];
   const report = {
     ...result, freeze: { hashes: freezeManifest.hashes, baseline: freezeManifest.baseline },
-    cohorts: cohortReport(result.cells), paired, thresholds: thresholdReport(result.cells, paired),
+    cohorts: cohortReport(result.cells), paired, primaryJudgments: primaryJudgmentReport(result.cells, primaryJudgments),
+    thresholds: thresholdReport(result.cells, paired, primaryJudgments),
   };
   if (options.reportPath) fs.writeFileSync(options.reportPath, `${JSON.stringify(report, null, 2)}\n`);
   return report;
@@ -834,12 +880,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const candidateClaudePluginRoot = argument(process.argv, '--candidate-claude-plugin');
     const candidateCodexPluginRoot = argument(process.argv, '--candidate-codex-plugin');
     const reportPath = argument(process.argv, '--report');
+    const judgmentsPath = argument(process.argv, '--primary-judgments');
     if (!freezePath || !fixtures || !configurationPath || !baselinePluginRoot || (!candidatePluginRoot && !(candidateClaudePluginRoot && candidateCodexPluginRoot)) || !output || !reportPath || !process.argv.includes('--allow-native')) throw new Error(usage());
     const report = await evaluateKnowledge(readJson(path.resolve(freezePath)), {
       allowNative: true, fixtureRoot: path.resolve(fixtures), outputDir: path.resolve(output), reportPath: path.resolve(reportPath),
       configuration: readJson(path.resolve(configurationPath)), baselinePluginRoot: path.resolve(baselinePluginRoot),
       ...(candidatePluginRoot ? { candidatePluginRoot: path.resolve(candidatePluginRoot) } : { candidatePluginRoots: { claude: path.resolve(candidateClaudePluginRoot), codex: path.resolve(candidateCodexPluginRoot) } }),
       rawLogRoot: argument(process.argv, '--raw-logs') ?? undefined, cellIds: argumentsNamed(process.argv, '--cell'),
+      primaryJudgments: judgmentsPath ? readJson(path.resolve(judgmentsPath)) : [],
     });
     process.stdout.write(`${JSON.stringify({ status: 'completed', report: path.resolve(reportPath), samples: report.cells.length })}\n`);
   } else {

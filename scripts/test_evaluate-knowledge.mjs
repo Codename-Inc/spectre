@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
+import { aggregate, evaluateKnowledge, freeze, judgeCell, normalizeUsage, primaryJudgmentReport, runCells, selectFrozenCells, traceRuntimeFacts } from './evaluate-knowledge.mjs';
 
 test('knowledge evaluation freezes twelve hidden-oracle cases and matched host cells', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-'));
@@ -103,6 +103,16 @@ test('manual semantic adjudication remains pending rather than an invalid host r
   assert.equal(result.cells[0].status, 'pending');
 });
 
+test('primary judgments bind a reviewed conclusion to the persisted artifact hash', () => {
+  const cells = [{ id: 'critical:candidate:claude:1', condition: 'candidate', critical: true, runtime: { deliverable: { hash: 'sha256:artifact' } } }];
+  const accepted = primaryJudgmentReport(cells, [{
+    cellId: cells[0].id, artifactHash: 'sha256:artifact', artifactEvidence: 'sha256:artifact',
+    correct: true, relevant: true, requiredRecallBeforeDecision: true, irrelevantTokens: 0, unnecessaryHistoryLoads: 0, justifiedExpansions: [],
+  }]);
+  assert.equal(accepted.status, 'reviewed');
+  assert.equal(primaryJudgmentReport(cells, [{ ...accepted.reviewed[0], cellId: cells[0].id, artifactHash: 'sha256:wrong', artifactEvidence: 'sha256:wrong' }]).status, 'fail');
+});
+
 test('judging requires an exact successful load and a later persisted decision artifact', () => {
   const recordId = 'payments-dual-settlement';
   const recordHash = `sha256:${createHash('sha256').update(recordId).digest('hex')}`;
@@ -148,6 +158,43 @@ test('judging requires an exact successful load and a later persisted decision a
   }, oracle);
   assert.equal(control.recalled, null);
   assert.equal(judgeCell(cell, runtime, { case: { requiredRecordHashes: [], allowedLoads: 0, manualRubric: 'manual review' } }).recalled, false);
+});
+
+test('imported work requires a captured extraction and a fresh reuse without reloading the import', () => {
+  const importedId = 'acquisition-deploy-boundary';
+  const importedHash = `sha256:${createHash('sha256').update(importedId).digest('hex')}`;
+  const extractedId = 'maintained-import-boundary';
+  const imported = { id: importedId, revisionToken: 'import-rev' };
+  const extracted = { id: extractedId, revisionToken: 'maintained-rev' };
+  const runtime = {
+    status: 'completed', deliverablePath: 'artifacts/imported-work.md', deliverable: { exists: true, bytes: 24 }, bypass: [],
+    toolOperations: [
+      { id: 'inspect-import', name: 'exec', status: 'completed', sessionOrdinal: 0, eventOrdinal: 2, input: { command: `node knowledge-cli.mjs inspect ${importedId}` } },
+      { id: 'capture-extract', name: 'exec', status: 'completed', sessionOrdinal: 0, eventOrdinal: 4, input: { command: `node knowledge-cli.mjs register ${extractedId}` } },
+      { id: 'load-extract', name: 'exec', status: 'completed', sessionOrdinal: 1, eventOrdinal: 2, input: { command: `node knowledge-cli.mjs load ${extractedId}` } },
+      { id: 'write-artifact', name: 'Write', status: 'completed', sessionOrdinal: 1, eventOrdinal: 5, input: { file_path: 'artifacts/imported-work.md' } },
+    ],
+    toolResults: [{ toolUseId: 'inspect-import', sessionOrdinal: 0, eventOrdinal: 3, content: JSON.stringify(imported) }],
+    trace: { availability: 'available', events: [
+      { type: 'history-read', subtype: 'history-body', id: importedId, revisionToken: 'import-rev', contextHash: 'first' },
+      { type: 'capture', id: extractedId, outcome: 'created', contextHash: 'first' },
+      { type: 'load', id: extractedId, revisionToken: 'maintained-rev', contextHash: 'fresh' },
+    ] },
+    sessionSnapshots: [
+      { contextHash: 'first', before: { records: [imported] } },
+      { contextHash: 'fresh', before: { records: [imported, extracted] } },
+    ],
+  };
+  const oracle = { imported: {
+    requiredRecordHashes: [importedHash], requiredReadCommand: 'inspect', importedRecordHashes: [importedHash],
+    requiresFreshExtractedReuse: true, manualRubric: 'manual review',
+  } };
+  assert.equal(judgeCell({ caseId: 'imported', condition: 'candidate' }, runtime, oracle).structuralValid, true);
+  const reloadedImport = {
+    ...runtime,
+    toolOperations: [...runtime.toolOperations, { id: 'reload-import', name: 'exec', status: 'completed', sessionOrdinal: 1, eventOrdinal: 3, input: { command: `node knowledge-cli.mjs load ${importedId}` } }],
+  };
+  assert.equal(judgeCell({ caseId: 'imported', condition: 'candidate' }, reloadedImport, oracle).reason, 'fresh extracted-import reuse evidence is missing');
 });
 
 test('trace metrics distinguish SessionStart, previews, bodies, resources, and redundant same-context loads', () => {
