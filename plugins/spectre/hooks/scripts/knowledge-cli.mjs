@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveKnowledgeProjectDir } from './knowledge/cli-arguments.mjs';
+import { runtimeEvaluationTrace } from './knowledge/evaluation-trace.mjs';
 import { inspectKnowledgeRevision, listKnowledgeHistory } from './knowledge/history.mjs';
 import { formatKnowledgeLoadHuman, loadKnowledgeById, serializeKnowledgeLoadError } from './knowledge/loader.mjs';
 import { migrateLegacyKnowledge } from './knowledge/migration.mjs';
@@ -106,6 +107,7 @@ function sourceRunId(flags) {
 export async function main(argv = process.argv.slice(2)) {
   const { positional, flags } = parseArgs(argv);
   const [command, subcommand] = positional;
+  const trace = runtimeEvaluationTrace();
   if (!command || command === 'help' || command === '--help') {
     process.stdout.write(usage());
     return;
@@ -119,6 +121,7 @@ export async function main(argv = process.argv.slice(2)) {
         limit: numericFlag(flags, '--limit'), cursor: flags.get('--cursor'),
       });
       const output = { ok: true, query, ...result };
+      trace.record({ type: 'search', query, results: result.results, responseBytes: Buffer.byteLength(JSON.stringify(output), 'utf8') });
       if (flags.has('--json')) process.stdout.write(`${JSON.stringify(output)}\n`);
       else { process.stdout.write(formatKnowledgeSearchHuman(result, query)); process.stderr.write(formatKnowledgeSearchWarningsHuman(result.warnings)); }
     } catch (error) { throw codedError('KNOWLEDGE_SEARCH_FAILED', error instanceof Error ? error.message : String(error)); }
@@ -145,6 +148,9 @@ export async function main(argv = process.argv.slice(2)) {
         workId: flags.get('--work-id'), runId: flags.get('--run-id'), allowanceTokens: numericFlag(flags, '--allowance-tokens'),
         inspectHistorical: flags.has('--inspect-historical'),
       });
+      trace.record(result.status === 'expansion-needed'
+        ? { type: 'expansion', id: result.id, revisionToken: result.revisionToken, loadedTokens: result.estimatedTokens }
+        : { type: result.historical ? 'history-read' : 'load', id: result.id, revisionToken: result.revisionToken, loadedBytes: Buffer.byteLength(result.rendered, 'utf8'), loadedTokens: result.estimatedTokens });
       if (flags.has('--json')) process.stdout.write(`${JSON.stringify(result)}\n`);
       else process.stdout.write(formatKnowledgeLoadHuman(result));
     } catch (error) { const payload = serializeKnowledgeLoadError(error); throw codedError(payload.code, payload.message); }
@@ -155,6 +161,7 @@ export async function main(argv = process.argv.slice(2)) {
       const result = command === 'history'
         ? await listKnowledgeHistory({ projectDir: projectDir(flags), id: subcommand, cursor: flags.get('--cursor'), lockOptions: lockOptions(flags) })
         : await inspectKnowledgeRevision({ projectDir: projectDir(flags), id: subcommand, revisionToken: flags.get('--revision'), lockOptions: lockOptions(flags) });
+      trace.record({ type: 'history-read', id: result.id, revisionToken: result.revisionToken, results: result.entries, responseBytes: Buffer.byteLength(JSON.stringify(result), 'utf8') });
       writeResult(result, flags);
     } catch (error) { throw codedError(error?.code || 'KNOWLEDGE_HISTORY_FAILED', error instanceof Error ? error.message : String(error)); }
     return;
@@ -177,8 +184,9 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'register') {
     try {
       const result = await registerCanonicalKnowledge({ projectDir: projectDir(flags), recordPath: flags.get('--record'), expectedRevision: flags.get('--expected-revision'), lockOptions: lockOptions(flags) });
+      trace.record({ type: 'capture', id: result.id, revisionToken: result.revisionToken, outcome: result.status });
       writeResult(result, flags, (value) => `Registered knowledge record ${value.id}\n`);
-    } catch (error) { const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message, payload); }
+    } catch (error) { trace.record({ type: 'capture', outcome: 'failed' }); const payload = serializeKnowledgeError(error); throw codedError(payload.code, payload.message, payload); }
     return;
   }
   if (command === 'migrate') {
