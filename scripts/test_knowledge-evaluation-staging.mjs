@@ -111,11 +111,12 @@ test('isolates login shells, Git config, and GitHub commands for every condition
     const environment = { ...process.env, ...staged.environment };
     const expectedGh = path.join(staged.root, 'bin', 'gh');
     for (const shell of ['/bin/zsh', '/bin/bash']) {
-      const result = spawnSync(shell, ['-lc', 'command -v gh; gh auth status >/dev/null; gh repo view --json nameWithOwner --jq .nameWithOwner; git config --global --list'], {
+      const result = spawnSync(shell, ['-lc', 'command -v gh; printf "TMP=%s\\n" "$TMPDIR"; gh auth status >/dev/null; gh repo view --json nameWithOwner --jq .nameWithOwner; git config --global --list'], {
         cwd: staged.projectDir, env: environment, encoding: 'utf8',
       });
       assert.equal(result.status, 0, `${condition} ${shell}: ${result.stderr}`);
       assert.equal(result.stdout.split('\n')[0], expectedGh);
+      assert.equal(result.stdout.includes(`TMP=${staged.environment.TMPDIR}`), true);
       assert.match(result.stdout, /evaluation-fixture\/knowledge-evaluation/);
     }
     const created = spawnSync('/bin/zsh', ['-lc', 'gh pr create --draft --head evaluation/knowledge-cell --base main --title fixture --body fixture'], {
@@ -127,6 +128,8 @@ test('isolates login shells, Git config, and GitHub commands for every condition
     assert.equal(JSON.parse(fs.readFileSync(staged.ghStatePath, 'utf8')).pullRequests.length, 1);
     assert.notEqual(staged.environment.HOME, os.homedir());
     assert.notEqual(staged.environment.GIT_CONFIG_GLOBAL, path.join(os.homedir(), '.gitconfig'));
+    assert.equal(staged.environment.TMPDIR, staged.environment.TMP);
+    assert.equal(staged.environment.TMPDIR, staged.environment.TEMP);
   }
 });
 
@@ -361,6 +364,10 @@ test('stages a stateful local GitHub fixture for draft lifecycle operations', as
   const auth = execute(['auth', 'status']);
   assert.equal(auth.status, 0, auth.stderr);
   assert.match(auth.stdout, /evaluation-fixture/);
+
+  const version = execute(['--version']);
+  assert.equal(version.status, 0, version.stderr);
+  assert.match(version.stdout, /^gh version .*evaluation fixture/m);
 
   const repository = execute(['repo', 'view', '--json', 'owner,name,defaultBranchRef']);
   assert.equal(repository.status, 0, repository.stderr);

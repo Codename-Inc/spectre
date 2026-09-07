@@ -212,22 +212,29 @@ test('Codex permits git metadata writes only for an attested isolated fixture', 
   assert.equal(result.isolation.codexSandbox, 'danger-full-access');
 });
 
-test('every host invocation receives both isolated provider homes and removes staged Codex auth', async () => {
-  const setup = await fixture('claude');
-  const authSource = path.join(setup.root, 'source-auth.json');
-  await fs.writeFile(authSource, '{}');
-  let environment;
-  const result = await invokeKnowledgeHost({
-    host: 'claude', model: 'opus', effort: 'medium', prompt: 'workflow task',
-    preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
-  }, {
-    baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json' },
-    spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
-  });
-  assert.equal(environment.CODEX_HOME, setup.value.codexHome);
-  assert.equal(environment.CLAUDE_CONFIG_DIR, setup.value.claudeHome);
-  assert.equal(environment.CLAUDE_SECURESTORAGE_CONFIG_DIR, '');
-  assert.equal(environment.MCP_CONFIG_PATH, undefined);
-  assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
-  assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
+test('every host invocation receives isolated homes, removes staged Codex auth, and clears Claude OAuth', async () => {
+  for (const host of ['claude', 'codex']) {
+    const setup = await fixture(host);
+    const authSource = path.join(setup.root, 'source-auth.json');
+    await fs.writeFile(authSource, '{}');
+    let environment;
+    const oauthToken = `fixture-claude-oauth-token-${host}`;
+    const result = await invokeKnowledgeHost({
+      host, model: host === 'claude' ? 'opus' : 'gpt-test', effort: 'medium', prompt: 'workflow task',
+      preparedFixture: setup.value, rawLogDirectory: setup.rawLogDirectory, authSourcePath: authSource,
+    }, {
+      baseEnvironment: { ...process.env, MCP_CONFIG_PATH: '/live-user/mcp.json' },
+      readClaudeOauthToken: () => oauthToken,
+      spawn: (_command, _args, options) => { environment = options.env; return childFor({ stdout: JSON.stringify({ type: 'result', usage: {} }) }); },
+    });
+    assert.equal(environment.CODEX_HOME, setup.value.codexHome);
+    assert.equal(environment.CLAUDE_CONFIG_DIR, setup.value.claudeHome);
+    assert.equal(environment.CLAUDE_SECURESTORAGE_CONFIG_DIR, '');
+    assert.equal(environment.CLAUDE_CODE_OAUTH_TOKEN, oauthToken);
+    assert.equal(environment.MCP_CONFIG_PATH, undefined);
+    assert.deepEqual({ claudeHome: result.isolation.claudeHome, codexHome: result.isolation.codexHome }, { claudeHome: setup.value.claudeHome, codexHome: setup.value.codexHome });
+    assert.equal(await fs.stat(path.join(setup.value.codexHome, 'auth.json')).then(() => true, () => false), false);
+    assert.equal(result.cleanup.claudeOauth, 'cleared');
+    assert.equal(JSON.stringify(result).includes(oauthToken), false);
+  }
 });

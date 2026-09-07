@@ -332,6 +332,10 @@ function emit(value) {
 }
 if (args.includes('-q')) fail('unsupported local gh fixture query option: -q');
 
+if (args[0] === '--version' || args[0] === 'version') {
+  process.stdout.write('gh version 0.0.0-evaluation fixture\\n');
+  process.exit(0);
+}
 if (args[0] === 'auth' && args[1] === 'status') {
   process.stdout.write('github.com: logged in as evaluation-fixture (local evaluation token)\\n');
   process.exit(0);
@@ -440,8 +444,9 @@ function writeIsolatedEnvironment(root, gh) {
   const xdgConfig = path.join(root, 'xdg-config');
   const xdgData = path.join(root, 'xdg-data');
   const xdgCache = path.join(root, 'xdg-cache');
+  const temporaryDirectory = path.join(root, 'tmp');
   const pathValue = `${gh.bin}${path.delimiter}${process.env.PATH || '/usr/bin:/bin'}`;
-  for (const directory of [home, shellHome, ghConfig, xdgConfig, xdgData, xdgCache]) {
+  for (const directory of [home, shellHome, ghConfig, xdgConfig, xdgData, xdgCache, temporaryDirectory]) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
   fs.writeFileSync(gitConfig, '# isolated evaluation Git config\n', { mode: 0o600 });
@@ -457,9 +462,12 @@ function writeIsolatedEnvironment(root, gh) {
     XDG_CONFIG_HOME: xdgConfig,
     XDG_DATA_HOME: xdgData,
     XDG_CACHE_HOME: xdgCache,
+    TMPDIR: temporaryDirectory,
+    TMP: temporaryDirectory,
+    TEMP: temporaryDirectory,
   };
   const exports = Object.entries(environment)
-    .filter(([key]) => ['HOME', 'PATH', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GH_CONFIG_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'].includes(key))
+    .filter(([key]) => ['HOME', 'PATH', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GH_CONFIG_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'TMPDIR', 'TMP', 'TEMP'].includes(key))
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('\n');
   fs.writeFileSync(path.join(shellHome, '.zshenv'), `${exports}\n`);

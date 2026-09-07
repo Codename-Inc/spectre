@@ -1,4 +1,4 @@
-import { spawn as nativeSpawn } from 'node:child_process';
+import { spawn as nativeSpawn, spawnSync } from 'node:child_process';
 import { access, chmod, copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -307,6 +307,22 @@ async function stageCodexAuth(codexHome, authSourcePath) {
   return destination;
 }
 
+function readClaudeOauthToken() {
+  const result = spawnSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0) return null;
+  try {
+    const credentials = JSON.parse(result.stdout);
+    return typeof credentials?.claudeAiOauth?.accessToken === 'string' && credentials.claudeAiOauth.accessToken
+      ? credentials.claudeAiOauth.accessToken
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function runChild(command, args, options, spawn) {
   return new Promise((resolveRun) => {
     let stdout = '';
@@ -410,12 +426,21 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
   const startedAt = new Date().toISOString();
   const started = performance.now();
   let stagedAuth = null;
+  let claudeOauthStaged = false;
   let processResult;
   let cleanup = { stagedAuth: 'not-staged' };
   try {
     stagedAuth = await stageCodexAuth(fixture.codexHome, request.authSourcePath);
+    {
+      const readOauthToken = dependencies.readClaudeOauthToken ?? (dependencies.spawn ? null : readClaudeOauthToken);
+      const oauthToken = readOauthToken?.();
+      if (typeof oauthToken === 'string' && oauthToken) {
+        environment.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+        claudeOauthStaged = true;
+      }
+    }
     processResult = await runChild(native.command, native.args, {
-      cwd: paths.projectDir, env: environment, timeoutMs: limits.timeoutMs,
+      cwd: paths.projectDir, env: { ...environment }, timeoutMs: limits.timeoutMs,
       maxOutputBytes: limits.maxOutputBytes, terminationGraceMs: limits.terminationGraceMs,
     }, dependencies.spawn ?? nativeSpawn);
   } catch (error) {
@@ -424,12 +449,16 @@ export async function invokeKnowledgeHost(request, dependencies = {}) {
       error: error instanceof Error ? error.message : String(error), stdout: '', stderr: '',
     };
   } finally {
+    if (claudeOauthStaged) {
+      delete environment.CLAUDE_CODE_OAUTH_TOKEN;
+      cleanup = { ...cleanup, claudeOauth: 'cleared' };
+    }
     if (stagedAuth) {
       try {
         await (dependencies.removeFile ?? rm)(stagedAuth, { force: true });
-        cleanup = { stagedAuth: 'removed' };
+        cleanup = { ...cleanup, stagedAuth: 'removed' };
       } catch {
-        cleanup = { stagedAuth: 'cleanup-failed' };
+        cleanup = { ...cleanup, stagedAuth: 'cleanup-failed' };
       }
     }
   }
