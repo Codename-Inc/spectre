@@ -60,7 +60,7 @@ describe('isolated real-host registry fixture', () => {
       assert.equal(value.preflight.observation.omittedCount, null);
       const omittedPath = path.join(value.storePath, 'knowledge', OMITTED_ID, 'record.json');
       const omitted = parseKnowledgeRecord(omittedPath).record;
-      assert.equal(omitted.category, 'pattern');
+      assert.equal(omitted.category, 'gotcha');
       assert.ok(omitted.tags.length > 0);
       const catalog = readTagCatalog(value.storePath);
       for (const tag of omitted.tags) assert.ok(Object.hasOwn(catalog.tags, tag), tag);
