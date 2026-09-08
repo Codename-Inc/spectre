@@ -93,6 +93,31 @@ function legacyRows(projectDir) {
   return rows;
 }
 
+function storeResidentLegacyRows(storePath) {
+  const knowledgeDir = path.join(storePath, 'knowledge');
+  if (!fs.existsSync(knowledgeDir)) return [];
+  const rows = [];
+  for (const entry of fs.readdirSync(knowledgeDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const sourceDir = path.join(knowledgeDir, entry.name);
+    // A typed package is already authoritative even if it retains an old SKILL.md
+    // as an imported resource. Only packages without record.json are legacy sources.
+    if (
+      !fs.existsSync(path.join(sourceDir, 'SKILL.md'))
+      || fs.existsSync(path.join(sourceDir, 'record.json'))
+    ) continue;
+    rows.push({
+      id: entry.name,
+      category: '',
+      cues: '',
+      description: '',
+      sourceDir,
+      storeResident: true,
+    });
+  }
+  return rows;
+}
+
 function parseLegacySource(sourceDir, expectedId, row) {
   const sourcePath = path.join(sourceDir, 'SKILL.md');
   let text;
@@ -249,9 +274,13 @@ function workRecord(id, source, sourceDigest, now) {
   };
 }
 
-function destinationId(storePath, sourceId, sourceDigest) {
+function destinationId(storePath, sourceId, sourceDigest, sourceDir) {
   const primary = path.join(storePath, 'knowledge', sourceId);
   if (!fs.existsSync(primary)) return sourceId;
+  if (
+    path.resolve(sourceDir) === path.resolve(primary)
+    && !fs.existsSync(path.join(primary, 'record.json'))
+  ) return sourceId;
   try {
     const parsed = parseKnowledgeRecord(path.join(primary, 'record.json'));
     if (
@@ -319,17 +348,24 @@ function importOne(storePath, row, options) {
   } catch (error) {
     return { id: row.id, code: 'RECOVERABLE_FAILURE', sourceDigest, message: error.message };
   }
-  const id = destinationId(storePath, row.id, sourceDigest);
+  const id = destinationId(storePath, row.id, sourceDigest, row.sourceDir);
   const destination = path.join(storePath, 'knowledge', id);
   if (fs.existsSync(destination)) {
-    const parsed = parseKnowledgeRecord(path.join(destination, 'record.json'));
-    if (parsed.record.provenance.sourceFingerprint === sourceDigest) {
-      atomicWriteJson(path.join(storePath, 'import-receipts.json'), withImportReceipt(
-        readImportReceipts(storePath), receiptEntry(sourceDigest, id, parsed.revisionToken, options.now),
-      ));
-      return { id: row.id, code: 'NOOP', sourceDigest, recordId: id };
+    const canReplaceStoreResidentSource = (
+      row.storeResident
+      && path.resolve(row.sourceDir) === path.resolve(destination)
+      && !fs.existsSync(path.join(destination, 'record.json'))
+    );
+    if (!canReplaceStoreResidentSource) {
+      const parsed = parseKnowledgeRecord(path.join(destination, 'record.json'));
+      if (parsed.record.provenance.sourceFingerprint === sourceDigest) {
+        atomicWriteJson(path.join(storePath, 'import-receipts.json'), withImportReceipt(
+          readImportReceipts(storePath), receiptEntry(sourceDigest, id, parsed.revisionToken, options.now),
+        ));
+        return { id: row.id, code: 'NOOP', sourceDigest, recordId: id };
+      }
+      throw recoverable(`${destination}: import redirect collision is not recoverable automatically`);
     }
-    throw recoverable(`${destination}: import redirect collision is not recoverable automatically`);
   }
   const stageRoot = path.join(storePath, `.migration-stage-${process.pid}-${Date.now()}`);
   const stage = path.join(stageRoot, id);
@@ -337,7 +373,19 @@ function importOne(storePath, row, options) {
   atomicWriteJson(path.join(stage, 'record.json'), workRecord(id, source, sourceDigest, options.now));
   const parsed = parseKnowledgeRecord(path.join(stage, 'record.json'));
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.renameSync(stage, destination);
+  if (fs.existsSync(destination)) {
+    const sourceBackup = `${destination}.migration-source-${process.pid}-${Date.now()}`;
+    fs.renameSync(destination, sourceBackup);
+    try {
+      fs.renameSync(stage, destination);
+    } catch (error) {
+      fs.renameSync(sourceBackup, destination);
+      throw error;
+    }
+    fs.rmSync(sourceBackup, { recursive: true, force: true });
+  } else {
+    fs.renameSync(stage, destination);
+  }
   fs.rmSync(stageRoot, { recursive: true, force: true });
   atomicWriteJson(path.join(storePath, 'import-receipts.json'), withImportReceipt(
     readImportReceipts(storePath), receiptEntry(sourceDigest, id, parsed.revisionToken, options.now),
@@ -347,18 +395,19 @@ function importOne(storePath, row, options) {
 
 export async function migrateLegacyKnowledge(options) {
   const projectDir = path.resolve(options.projectDir);
-  const rows = legacyRows(projectDir);
+  const projectRows = legacyRows(projectDir);
   let storePath = options.storePath ? path.resolve(options.storePath) : null;
   if (!storePath) {
     const resolved = await resolveProjectStore(projectDir, {
       spectreHome: options.spectreHome,
       gitRunner: options.gitRunner,
-      readOnly: rows.length === 0,
+      readOnly: projectRows.length === 0,
       allocationLockOptions: options.allocationLockOptions,
     });
     storePath = resolved.storePath;
   }
   if (!storePath) return { schemaVersion: 1, entries: [] };
+  const rows = [...projectRows, ...storeResidentLegacyRows(storePath)];
 
   return withStoreLock(storePath, 'migrate-legacy-knowledge', async () => {
     if (rows.length === 0) {
@@ -390,7 +439,11 @@ export async function migrateLegacyKnowledge(options) {
           });
           continue;
         }
-        entries.push(importOne(storePath, sources[0], options));
+        entries.push(importOne(
+          storePath,
+          sources.find((source) => source.storeResident) || sources[0],
+          options,
+        ));
       } catch (error) {
         entries.push({ id, code: 'RECOVERABLE_FAILURE', message: error.message });
       }
@@ -409,7 +462,7 @@ export async function migrateLegacyKnowledge(options) {
         return false;
       }
     });
-    removeRegistryRows(verifiedRows);
+    removeRegistryRows(verifiedRows.filter((row) => row.registryPath));
     return {
       schemaVersion: 1,
       entries,
