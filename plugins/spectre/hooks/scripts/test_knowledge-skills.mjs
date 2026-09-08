@@ -49,6 +49,7 @@ test('workflow skills make capture primary-owned and preserve delivery lifecycle
 
 test('Learn delegates capture and planning retains only loaded knowledge provenance', () => {
   const learn = skill('spectre-learn');
+  const capture = skill('spectre-capture');
   const scope = skill('spectre-scope');
   const plan = skill('spectre-plan');
   const createPlan = skill('spectre-create_plan');
@@ -61,6 +62,22 @@ test('Learn delegates capture and planning retains only loaded knowledge provena
   assert.match(learn, /insight|correction/i);
   assert.match(learn, /work record/i);
   assert.match(learn, /Skill\(spectre-capture\)/);
+  assert.match(learn, /User-invoked front door for durable capture/);
+  assert.match(learn, /Learn owns user intent and routing[\s\S]*owns persistence/i);
+  assert.match(learn, /Spectre feature root is not required/i);
+  assert.match(learn, /disable-model-invocation: true/);
+  assert.match(learn, /explicit user statement[\s\S]*accepted authoritative evidence/i);
+  assert.match(learn, /do not seek independent corroboration or reconfirmation/i);
+  assert.match(learn, /absence of repository corroboration is not missing evidence/i);
+  assert.match(capture, /explicit user statement[\s\S]*accepted authoritative evidence/i);
+  assert.match(capture, /absence of corroborating repository evidence does not block the save or require reconfirmation/i);
+  assert.match(capture, /disagreeing repository statements as stale or historical context/i);
+  assert.match(capture, /Proactively preserve consequential project knowledge/);
+  assert.match(capture, /without waiting for a user request/i);
+  assert.match(capture, /not a Spectre feature root/i);
+  assert.match(capture, /maintained knowledge[\s\S]*requires no workflow, feature, run, or PR association/i);
+  assert.match(capture, /For work records only[\s\S]*exact run, PR, or repository\/base\/head\/diff association/i);
+  assert.match(capture, /user-invocable: false/);
   assert.doesNotMatch(learn, /stop and wait for the user/i);
   assert.doesNotMatch(learn, /feature dossier/i);
 

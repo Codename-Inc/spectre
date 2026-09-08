@@ -1,6 +1,6 @@
 ---
 name: "spectre-learn"
-description: "Preserve consequential, evidenced project knowledge or a work account from this conversation. Use for /learn, a correction, or a request to summarize work; do not use for routine progress, unsupported hypotheses, personal preferences, or ordinary knowledge search."
+description: "User-invoked front door for durable capture. Use when the user invokes /learn or asks to remember, correct, preserve, or summarize consequential project work; interpret the request and delegate persistence to Capture. Do not use for autonomous capture, routine progress, unsupported hypotheses, personal preferences, or knowledge lookup."
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,18 +9,18 @@ disable-model-invocation: true
 
 ## Purpose
 
-Make on-demand capture available without reviving knowledge-skill authoring, proposal gates, dossiers, or SessionStart output. `Skill(spectre-capture)` remains the only record-writing contract.
+Turn an explicit user capture request into a qualified knowledge or work-record request. Learn owns user intent and routing; `Skill(spectre-capture)` owns persistence. Do not revive knowledge-skill authoring, proposal gates, dossiers, or SessionStart output.
 
 ## Inputs
 
-- `$ARGUMENTS` and the current conversation; bare invocation means review the conversation for consequential, evidenced knowledge.
-- Explicit intent: an insight or correction targets maintained knowledge; `summarize this work` or a broad feature account targets a typed work record.
-- The current project and any exact record/work identity already in context.
+- An explicit user capture request, `$ARGUMENTS`, and the current conversation; bare invocation means review the conversation for consequential, evidenced knowledge.
+- User intent: an insight or correction targets maintained knowledge; `summarize this work` or a broad feature account targets a typed work record.
+- The current project directory and any exact record/work identity already in context. A Spectre feature root is not required.
 
 ## Working Set
 
 - Search metadata and exact verified loads needed to identify a maintained record or answer a stated work question.
-- Current evidence. Investigate only missing material evidence; do not reconstruct a conversation or manufacture a durable fact.
+- Current evidence. An explicit user statement that a lasting decision is current, corrected, or superseded is accepted authoritative evidence for that decision. Investigate only genuinely missing material evidence; do not seek independent corroboration or reconfirmation for that statement, reconstruct a conversation, or manufacture a durable fact.
 
 ## Outputs + DONE
 
@@ -30,8 +30,8 @@ Make on-demand capture available without reviving knowledge-skill authoring, pro
 
 ## Method / guardrails
 
-1. Identify intent from the request. A bare request scans the conversation for accepted consequential decisions, verified reusable constraints, corrections, or confirmed blockers/resolutions. Routine progress and unsupported hypotheses are no-ops.
-2. For an insight or correction, provide Capture the evidence and maintained-knowledge target. For work summary intent, provide the exact run/PR/candidate association and only truthful lifecycle facts.
+1. Identify intent from the request. A bare request scans the conversation for accepted consequential decisions, verified reusable constraints, corrections, or confirmed blockers/resolutions. An explicit user correction is already-authorized evidence, not an unsupported hypothesis; routine progress and model-generated hypotheses are no-ops.
+2. For an insight or correction, provide Capture the evidence, its authority, and the maintained-knowledge target. For an explicit user correction, cite that direction as the evidence, revise the current record, and retain disagreeing repository statements only as stale or historical context; absence of repository corroboration is not missing evidence. For work summary intent, provide the exact run/PR/candidate association and only truthful lifecycle facts.
 3. Delegate search, exact loads, applicability, tags, deduplication, revisions, saving, conflict repair, and save outcomes to `Skill(spectre-capture)`. Already-authorized facts need no new proposal or approval loop.
 
 ## Handoff
@@ -40,4 +40,4 @@ Return the compact Capture result: `knowledge|work`, ID, and `saved|updated|no-o
 
 ## Escalate-If
 
-The request requires an unverified durable claim, cannot identify an ambiguous work association, or conflicts with an explicit user decision.
+The request is ambiguous, would persist a model-generated or unaccepted third-party claim, cannot identify an ambiguous work association, or contains conflicting explicit authoritative directions without a clear latest decision.
