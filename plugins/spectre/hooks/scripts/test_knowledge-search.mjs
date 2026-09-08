@@ -166,3 +166,42 @@ test('retains malformed-neighbor diagnostics and succeeds on an empty store', as
   const empty = await searchKnowledge({ projectDir: emptyRoot, spectreHome: path.join(emptyRoot, 'home'), gitRunner: noGit, query: 'anything' });
   assert.deepEqual(empty, { results: [], warnings: [], cursor: null });
 });
+
+test('never repeats a pagination cursor when an oversized first candidate cannot fit the result budget', async (t) => {
+  const value = await fixture(t);
+  write(value.storePath, knowledge('a-oversized-first', {
+    useWhen: `Use for oversized pagination ${'metadata '.repeat(3_000)}`,
+  }));
+  write(value.storePath, knowledge('later-small-result', {
+    useWhen: 'Use for the later pagination result.',
+  }));
+
+  const first = await searchKnowledge(options(value, { query: '' }));
+
+  assert.ok(first.results.length > 0 || first.cursor === null, 'an oversized first candidate must not create an empty continuation page');
+  if (first.cursor) {
+    const next = await searchKnowledge(options(value, { query: '', cursor: first.cursor }));
+    assert.notDeepEqual(
+      { results: next.results, cursor: next.cursor },
+      { results: first.results, cursor: first.cursor },
+      'a continuation cursor must advance or terminate rather than repeat the same empty page',
+    );
+  }
+});
+
+test('returns fitting results even when malformed-record warnings are too large for the response budget', async (t) => {
+  const value = await fixture(t);
+  write(value.storePath, knowledge('valid-after-warnings', {
+    useWhen: 'Use for warning-tolerant result pagination.',
+  }));
+  for (let index = 0; index < 40; index += 1) {
+    const broken = path.join(value.storePath, 'knowledge', `broken-warning-${String(index).padStart(2, '0')}`);
+    fs.mkdirSync(broken, { recursive: true });
+    fs.writeFileSync(path.join(broken, 'record.json'), `{ malformed ${'diagnostic '.repeat(30)}`);
+  }
+
+  const page = await searchKnowledge(options(value, { query: 'warning tolerant result pagination' }));
+
+  assert.deepEqual(page.results.map(({ id }) => id), ['valid-after-warnings']);
+  assert.ok(page.warnings.length >= 40);
+});

@@ -8,7 +8,9 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { loadKnowledgeById } from './knowledge/loader.mjs';
 import { registerCanonicalKnowledge } from './knowledge/registration.mjs';
+import { resolveProjectStore } from './knowledge/store.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATION_MODULE = path.join(SCRIPT_DIR, 'knowledge', 'migration.mjs');
@@ -148,6 +150,57 @@ describe('recoverable legacy-to-work import', () => {
     const receipt = JSON.parse(fs.readFileSync(path.join(storePath, 'import-receipts.json'))).receipts[0];
     assert.equal(receipt.recordId, 'feature-repeat');
     assert.match(receipt.revisionToken, /^sha256:/);
+  });
+
+  it('recovers a retired store-resident package through the same archive and receipt path', async (t) => {
+    const projectDir = path.join(makeTmp(t), 'project');
+    const spectreHome = path.join(makeTmp(t), 'spectre-home');
+    const id = 'store-resident-legacy';
+    fs.mkdirSync(projectDir, { recursive: true });
+    const { storePath } = await resolveProjectStore(projectDir, {
+      spectreHome,
+      gitRunner() { throw new Error('not a Git project'); },
+    });
+    const sourceDir = path.join(storePath, 'knowledge', id);
+    fs.mkdirSync(path.join(sourceDir, 'references'), { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'SKILL.md'), legacySkill(
+      id,
+      'Use when recovering a prior canonical store-resident package.',
+      '\n# Prior package\n\nRetain this historical evidence.\n',
+    ));
+    fs.writeFileSync(path.join(sourceDir, 'references', 'evidence.txt'), 'preserve these bytes\n');
+    const digest = sourceDigest(sourceDir);
+
+    const report = await migrate({ projectDir, storePath, now: fixedNow });
+
+    assert.deepEqual(report.entries.map(({ code }) => code), ['IMPORTED']);
+    const destination = path.join(storePath, 'knowledge', id);
+    const record = JSON.parse(fs.readFileSync(path.join(destination, 'record.json'), 'utf8'));
+    assert.equal(record.kind, 'work');
+    assert.equal(record.provenance.origin, 'legacy-import');
+    assert.equal(record.provenance.sourceFingerprint, digest);
+    assert.deepEqual(
+      fs.readFileSync(path.join(destination, 'imported-source', 'references', 'evidence.txt')),
+      Buffer.from('preserve these bytes\n'),
+    );
+    assert.deepEqual(
+      fs.readFileSync(path.join(storePath, 'knowledge-history', 'imported-sources', digest.replace(':', '-'), 'SKILL.md')),
+      fs.readFileSync(path.join(destination, 'imported-source', 'SKILL.md')),
+    );
+    const receipts = JSON.parse(fs.readFileSync(path.join(storePath, 'import-receipts.json'), 'utf8'));
+    assert.deepEqual(receipts.receipts.map(({ sourceDigest, recordId }) => ({ sourceDigest, recordId })), [
+      { sourceDigest: digest, recordId: id },
+    ]);
+    const loaded = await loadKnowledgeById({
+      projectDir,
+      spectreHome,
+      gitRunner() { throw new Error('not a Git project'); },
+      id,
+      allowanceTokens: 10_000,
+    });
+    assert.equal(loaded.ok, true);
+    assert.equal(loaded.id, id);
+    assert.equal(loaded.kind, 'work');
   });
 
   it('deduplicates byte-identical legacy copies without creating a second work record', async (t) => {
