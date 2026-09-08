@@ -139,7 +139,27 @@ function boundedPage(results, base, limit, cursorState, offset) {
       results: candidate,
       ...(next < results.length ? { cursor: cursor({ ...cursorState, offset: next }) } : {}),
     };
-    if (measurePayload('codex', JSON.stringify(response)).measured > SEARCH_RESPONSE_TOKEN_LIMIT) break;
+    // Diagnostics remain in the response, but must not consume the result-page budget.
+    // A malformed-neighbor warning can be arbitrarily large and must not hide valid records.
+    const { warnings: _warnings, ...resultPage } = response;
+    if (measurePayload('codex', JSON.stringify(resultPage)).measured > SEARCH_RESPONSE_TOKEN_LIMIT) {
+      if (entries.length === 0) {
+        const id = results[position].id;
+        return {
+          ...base,
+          results: [],
+          cursor: null,
+          status: 'page-entry-too-large',
+          error: {
+            code: 'SEARCH_RESULT_TOO_LARGE',
+            id,
+            limit: SEARCH_RESPONSE_TOKEN_LIMIT,
+            message: `Search result ${id} exceeds the ${SEARCH_RESPONSE_TOKEN_LIMIT}-token response budget.`,
+          },
+        };
+      }
+      break;
+    }
     entries.push(results[position]);
   }
   const next = offset + entries.length;
@@ -197,7 +217,8 @@ export async function searchKnowledge(options = {}) {
   );
 }
 
-export function formatKnowledgeSearchHuman({ results }, query = '') {
+export function formatKnowledgeSearchHuman({ results, error }, query = '') {
+  if (error) return `${error.message}\n`;
   if (results.length === 0) return query ? `No knowledge matches "${query}".\n` : 'No knowledge found.\n';
   return `${results.map((result) => `${result.id} [${result.kind}]${result.historical ? ` [historical: ${result.activation}]` : ''}\n  ${result.summary || result.useWhen}\n  ${result.loadCommand}`).join('\n\n')}\n`;
 }
