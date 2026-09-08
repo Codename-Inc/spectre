@@ -15,6 +15,7 @@ Source review: `reviews/comprehensive_code_review.md` (unchanged).
 ## Verification
 
 - `node --test scripts/test_evaluate-knowledge.mjs`
+- `node --test scripts/test_evaluate-knowledge.mjs scripts/test_knowledge-evaluation-baseline-metrics.mjs scripts/test_knowledge-evaluation-hosts.mjs scripts/test_knowledge-evaluation-staging.mjs` — 94/94 pass
 - `npm run sync-codex -- --check --quiet`
 - JSON parse and compact-row audit: 16 rows; every row includes `elapsedMs`; all eight no-knowledge rows use `knowledgeRelevance: none`.
 

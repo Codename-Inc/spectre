@@ -59,7 +59,7 @@ All four candidate correction cells were invalid because `traceWithOperationCros
 | `longitudinal-correction:candidate:codex:1` | missing native history-read evidence | 0 | correct three |
 | `longitudinal-correction:candidate:codex:2` | missing native history-read evidence | 1 | correct three |
 
-The stale-five Claude artifact is a serious directional warning, but it is not the deciding rule because that cell is integrity-invalid. The deciding evidence is the repeated valid Codex irrelevant-task grounding regression.
+The stale-five Claude artifact is a serious directional warning, but it cannot decide the result because that cell is integrity-invalid. The repeated valid Codex irrelevant-task grounding regression is likewise retained only as a negative signal; the aggregate remains `INCONCLUSIVE` for the reasons above.
 
 ## Cost signal
 
