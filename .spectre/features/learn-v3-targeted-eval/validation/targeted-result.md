@@ -1,10 +1,10 @@
 # Learn v3 Targeted Effectiveness Result
 
-## Result: NEGATIVE
+## Result: INCONCLUSIVE
 
-The targeted pass is **NEGATIVE under the predeclared harm rule**, because the candidate produced the same irrelevant-task grounding regression in both valid Codex repeats while the no-knowledge controls stayed grounded. Both candidate artifacts remained task-correct and did not load the irrelevant knowledge body, so this is a narrow quality regression rather than a correctness collapse.
+The targeted pass is **INCONCLUSIVE under the predeclared rules**. The valid irrelevant-task pairs split by host (Claude tie/win; Codex loss/loss), Codex did not preserve complete full-cycle usage, and all four candidate correction cells failed the trace-integrity gate.
 
-The core durable-correction question is still **INCONCLUSIVE**. All four candidate correction cells completed and wrote artifacts, but every one failed the required trace-integrity gate. Their artifact-only directions split cleanly by host—two Claude losses and two Codex wins—and therefore cannot establish a causal correction benefit.
+The repeated valid Codex irrelevant-task grounding losses remain a **negative signal**: both candidate artifacts added noncritical elaboration while their no-knowledge controls were grounded. Both candidate artifacts were task-correct and did not load the irrelevant knowledge body, but that signal does not override the host split, incomplete usage, and correction integrity gaps.
 
 No retries or replacement cells were run.
 
@@ -22,6 +22,7 @@ No retries or replacement cells were run.
 | Incorrect artifacts | 2 |
 | Complete full-cycle token records | 8 (all Claude) |
 | Unknown full-cycle token records | 8 (all Codex) |
+| Preserved full-cycle elapsed records | 0 (all rows `elapsedMs: null`) |
 | Automatic retries | 0 |
 
 The 13/16 correct-complete count is descriptive only. It must not be read as a candidate win because it combines conditions, includes four integrity-invalid candidate artifacts, and ignores paired grounding differences.
@@ -39,7 +40,7 @@ The 13/16 correct-complete count is descriptive only. It must not be read as a c
 | irrelevant task | Codex | 1 | Yes | correct; noncritical elaboration | correct; grounded | candidate loss | unknown |
 | irrelevant task | Codex | 2 | Yes | correct; noncritical elaboration | correct; grounded | candidate loss | unknown |
 
-The two valid Codex losses independently fire the fixed rule: `NEGATIVE` when the candidate introduces a repeated irrelevant-task correctness/grounding regression. The plan allows a valid subset to select a terminal rule even when other cells are invalid; no invalid correction pair was imputed.
+The two valid Codex losses are a repeated negative signal, but the valid irrelevant-task pair directions split by host and Codex usage is incomplete. Together with the four integrity-invalid candidate correction cells, those predeclared conditions select `INCONCLUSIVE`; no invalid correction pair was imputed.
 
 ## Integrity findings
 
@@ -49,7 +50,7 @@ All eight no-knowledge cells and all four irrelevant-task candidate cells were i
 - SessionStart payloads of 185, 185, 199, and 200 tokens, all below the 300-token cap;
 - complete artifacts, isolated homes/filesystems, and no bypass findings.
 
-All four candidate correction cells were invalid because their recorded traces could not be reconciled with native history-read evidence. Three also carried shell-read bypass findings:
+All four candidate correction cells were invalid because `traceWithOperationCrosscheck` could not reconcile their recorded traces with native history-read evidence. Three also carried shell-read bypass findings:
 
 | Cell | Trace disposition | Bypass findings | Artifact outcome |
 | --- | --- | ---: | --- |
@@ -68,9 +69,9 @@ Codex reported session counts but not complete native token totals, so no cross-
 
 ## Interpretation
 
-This pass does not validate Learn v3 as more effective than no persisted knowledge. Under the deliberately strict, precommitted rule set it produces a narrow `NEGATIVE` result: task correctness tied on all irrelevant controls, but candidate grounding was worse in both Codex repeats.
+This pass does not validate Learn v3 as more effective than no persisted knowledge. Under the deliberately strict, precommitted rule set its aggregate result is `INCONCLUSIVE`; the repeated Codex grounding losses are retained as a negative signal rather than generalized into an outcome.
 
-It also does not establish that durable learning is broadly harmful. The correction artifacts show a host split, and the candidate-side trace failures prevent accepting either the Claude losses or Codex wins as causal evidence. A one-off rerun could target only those four invalid candidate correction cells, but that would require explicit authorization and a fresh freeze; none was performed here.
+It also does not establish that durable learning is broadly harmful. The correction artifacts show a host split, and the candidate-side trace failures prevent accepting either the Claude losses or Codex wins as causal evidence. Before any separately authorized fresh evaluation, diagnose whether `traceWithOperationCrosscheck` or candidate behavior caused the correction trace mismatch; no rerun is proposed from this evidence alone.
 
 ## Provenance
 
@@ -83,4 +84,4 @@ It also does not establish that durable learning is broadly harmful. The correct
 - Local blinded judgments: `/tmp/learnv3-targeted-eval.zeg03j/blind-judgments.json` (`a552596515c1555d70ef0eba4d5b15b3a83fe2e8e3965b82ae579e45bcc0fa07`)
 - Raw logs: `/tmp/learnv3-targeted-eval.zeg03j/raw` (40 stdout + 40 stderr; tree hash `sha256:89b22275158da2673835156cac9a3a9357f9c5c11ede095022a432a58f11bf88`)
 
-The compact JSON preserves all 16 cell rows, all eight pairs, artifact hashes, integrity dispositions, targeted judgments, token coverage, and the exact deciding rule. The larger local evidence remains hash-bound but is intentionally not added to the repository.
+The compact JSON preserves all 16 cell rows, all eight pairs, artifact hashes, integrity dispositions, targeted judgments, token coverage, and the exact deciding rule. Full-cycle elapsed time was not preserved, so every row records `elapsedMs: null` rather than inventing one. The larger local evidence remains hash-bound but is intentionally not added to the repository.

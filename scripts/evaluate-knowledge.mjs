@@ -1459,6 +1459,8 @@ function assertSelectedPromptHashes(freezeManifest, cases) {
   for (const cell of freezeManifest.cells) {
     const fixtureCase = cases.get(cell.caseId);
     if (!fixtureCase) throw new Error(`selected cell fixture is missing: ${cell.id}`);
+    const fixtureHash = hash(JSON.stringify({ entry: fixtureCase, artifactPath: cell.artifactPath }));
+    if (fixtureHash !== cell.fixtureHash) throw new Error(`selected cell fixture hash changed after freeze: ${cell.id}`);
     const actual = hash(JSON.stringify(promptContract(fixtureCase, cell.artifactPath, cell.host, cell.condition)));
     if (actual !== cell.promptHash) throw new Error(`selected cell prompt hash changed after freeze: ${cell.id}`);
   }

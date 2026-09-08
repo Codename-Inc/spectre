@@ -221,6 +221,39 @@ test('selected cells reject a re-derived prompt hash mismatch before host invoca
   assert.equal(hostCalls, 0);
 });
 
+test('selected cells reject a re-derived fixture hash mismatch before host invocation', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-fixture-hash-'));
+  const sourceFixtures = path.resolve('scripts/knowledge-evaluation-fixtures');
+  const fixtures = path.join(root, 'fixtures-copy');
+  const oracle = path.resolve('scripts/knowledge-evaluation-oracle.json');
+  const config = path.join(root, 'config.json');
+  fs.cpSync(sourceFixtures, fixtures, { recursive: true });
+  const manifestPath = path.join(fixtures, 'manifest.json');
+  const copiedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  copiedManifest.cases.find((entry) => entry.id === 'irrelevant-task').initialFacts[0].content = 'Warehouse snapshots are retained for ninety-one days.';
+  fs.writeFileSync(manifestPath, `${JSON.stringify(copiedManifest, null, 2)}\n`);
+  fs.writeFileSync(config, JSON.stringify({ hosts: { claude: { model: 'fake', effort: 'low' } } }));
+  const frozen = freeze(sourceFixtures, oracle, path.join(root, 'freeze.json'), {
+    configurationPath: config,
+    candidatePath: path.resolve('plugins/spectre'),
+  });
+  const cell = frozen.cells.find((entry) => entry.id === 'irrelevant-task:no-knowledge:claude:1');
+  frozen.cells = [cell];
+  let hostCalls = 0;
+
+  await assert.rejects(() => evaluateKnowledge(frozen, {
+    allowNative: true,
+    fixtureRoot: fixtures,
+    configuration: JSON.parse(fs.readFileSync(config, 'utf8')),
+    repositoryRoot: process.cwd(),
+    outputDir: path.join(root, 'output'),
+    temporaryRoot: root,
+    cellIds: [cell.id],
+    invokeHost: async () => { hostCalls += 1; throw new Error('host must not run'); },
+  }), /fixture hash.*irrelevant-task:no-knowledge:claude:1/i);
+  assert.equal(hostCalls, 0);
+});
+
 test('workflow fixtures receive the frozen extended timeout without changing ordinary tasks', () => {
   const limits = { ordinary: { timeoutMs: 600000 }, workflow: { timeoutMs: 1200000 } };
   assert.deepEqual(limitsForFixture({ cohort: 'chat' }, limits), limits.ordinary);
