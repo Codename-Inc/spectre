@@ -144,6 +144,10 @@ test("Execute owns unified plan preparation with proportional task creation", ()
     join(repositoryRoot, "plugins", "spectre", "skills", "spectre-execute", "SKILL.md"),
     "utf8",
   );
+  const fixSource = readFileSync(
+    join(repositoryRoot, "plugins", "spectre", "skills", "spectre-execute", "references", "fix-source.md"),
+    "utf8",
+  );
   const architecture = readFileSync(join(repositoryRoot, "Architecture.md"), "utf8");
   const planReview = readFileSync(
     join(planReviewDir, "SKILL.md"),
@@ -212,6 +216,11 @@ test("Execute owns unified plan preparation with proportional task creation", ()
   assert.doesNotMatch(execute, /depth hint is invalid[^\n]*NEEDS_AUTHORITY/i);
   assert.match(execute, /Never escalate solely[^\n]*unavailable\/red baseline/i);
   assert.match(execute, /scope-safe result proceeds without a second user gate/i);
+  assert.match(execute, /bug-report path\/root or identifying content—not `--origin`—selects `fix`/i);
+  assert.match(execute, /load `references\/fix-source\.md`, not Plan preparation/i);
+  assert.match(fixSource, /Never invoke `spectre-plan_review`/i);
+  assert.match(fixSource, /ATOMIC\/DIRECT[^\n]*coarse-map path/i);
+  assert.match(fixSource, /STRUCTURED[^\n]*task-generation path/i);
   assert.match(architecture, /Execute.*reuses applicable plan-routing records.*classifies once when absent/i);
 
   assert.match(planReview, /reviews\/plan_correctness\.md/);

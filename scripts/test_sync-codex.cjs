@@ -632,6 +632,50 @@ test('execute resolves explicit plans through one authorized preparation path', 
   }
 });
 
+test('execute detects bug reports by source shape and loads only their preparation delta', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  for (const rootName of ['spectre', 'spectre-codex']) {
+    const skillsRoot = path.join(repoRoot, 'plugins', rootName, 'skills');
+    const execute = fs.readFileSync(
+      path.join(skillsRoot, 'spectre-execute', 'SKILL.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const fixSource = fs.readFileSync(
+      path.join(skillsRoot, 'spectre-execute', 'references', 'fix-source.md'),
+      'utf8',
+    ).replaceAll('/spectre:', 'spectre-');
+    const planDirect = fs.readFileSync(
+      path.join(skillsRoot, 'spectre-execute', 'references', 'plan-direct.md'),
+      'utf8',
+    );
+    const createTasks = fs.readFileSync(
+      path.join(skillsRoot, 'spectre-create_tasks', 'SKILL.md'),
+      'utf8',
+    );
+
+    assert.match(execute, /`fix-source`:[^\n]*bug-report path\/root or identifying content/i);
+    assert.match(execute, /not `--origin`[^\n]*selects `fix`/i);
+    assert.match(execute, /load `references\/fix-source\.md`, not Plan preparation/i);
+    assert.match(execute, /`plan-direct`:[^\n]*explicit readable plan/i);
+
+    assert.match(fixSource, /bug-report path\/root or content identifying `Bug`[^\n]*verification wins source resolution/i);
+    assert.match(fixSource, /`PLAN_SOURCE` as `FIX_SOURCE`[^\n]*`FEATURE_ROOT` as `BUG_ROOT`/i);
+    assert.match(fixSource, /Execute owns every other step/i);
+    assert.match(fixSource, /Never invoke `spectre-plan_review`/i);
+    assert.match(fixSource, /ATOMIC\/DIRECT[^\n]*existing coarse-map path/i);
+    assert.match(fixSource, /STRUCTURED[^\n]*existing task-generation path/i);
+    assert.match(fixSource, /without Plan Review evidence or Task Review/i);
+    assert.match(fixSource, /Return `PREPARATION_READY`/i);
+    assert.doesNotMatch(fixSource, /Skill\(spectre-(?:execute|create_tasks|code_review|prove)\)/);
+    assert.ok(fixSource.split(/\s+/).length <= 100, `${rootName} fix-source delta should stay thin`);
+
+    assert.match(createTasks, /plans require closed-review evidence/i);
+    assert.match(createTasks, /Fix: `\{FEATURE_ROOT\}` = `BUG_ROOT`/i);
+    assert.match(createTasks, /Fixes need no Plan Review/i);
+  }
+});
+
 test('execute preflight reuses observed assessment and proportionally creates tasks', () => {
   const repoRoot = path.resolve(__dirname, '..');
 
@@ -704,7 +748,7 @@ test('execute preflight reuses observed assessment and proportionally creates ta
     assert.match(planReview, /exact selected plan path/i);
     assert.match(planReview, /authority sources/i);
     assert.match(execute, /finalized plan path\/hash[\s\S]*closed review evidence[\s\S]*Skill\(spectre-create_tasks\)/i);
-    assert.match(createTasks, /finalized plan path\/hash and closed-review evidence/i);
+    assert.match(createTasks, /plans require closed-review evidence/i);
     assert.match(createTasks, /Execution Mode: direct/);
     assert.doesNotMatch(createTasks, /authorized Execute caller/i);
     assert.match(planDirect, /selected\/final plan\+authority hashes/i);
@@ -1471,7 +1515,7 @@ test('workflow artifacts keep canonical decisions and proof while lifecycle resi
   }
 });
 
-test('Fix persists an approval-gated managed repair plan before its Execute handoff', () => {
+test('Fix persists a complete managed repair plan and returns its Execute handoff immediately', () => {
   const repoRoot = path.resolve(__dirname, '..');
   for (const rootName of ['spectre', 'spectre-codex']) {
     const fix = fs.readFileSync(
@@ -1479,11 +1523,9 @@ test('Fix persists an approval-gated managed repair plan before its Execute hand
       'utf8',
     ).replaceAll('/spectre:', 'spectre-');
     const repairPlanIndex = fix.search(/self-locating (?:compact )?(?:managed )?repair plan/i);
-    const fixApprovalIndex = fix.indexOf('HoldForApproval');
     const fixExecuteIndex = fix.indexOf('spectre-execute {BUG_REPORT_PATH} --origin fix');
     assert.ok(repairPlanIndex !== -1);
-    assert.ok(repairPlanIndex < fixApprovalIndex);
-    assert.ok(fixApprovalIndex < fixExecuteIndex);
+    assert.ok(repairPlanIndex < fixExecuteIndex);
     assert.match(fix, /repair plan[^\n]*before (?:code )?mutation/i);
     assert.match(fix, /scoped name if one already exists/i);
     assert.match(fix, /\{BUG_REPORT_PATH\}/);
@@ -1491,8 +1533,10 @@ test('Fix persists an approval-gated managed repair plan before its Execute hand
     assert.doesNotMatch(fix, /specs\/plan\.md/);
     assert.match(fix, /`KIND=bug`/);
     assert.match(fix, /Never adopt an ambient feature root/);
-    assert.match(fix, /explicit `fix` provenance/i);
-    assert.match(fix, /Displaying the command never starts repair/i);
+    assert.match(fix, /explicit `fix` origin/i);
+    assert.match(fix, /same response/i);
+    assert.match(fix, /invoking Execute is the mutation boundary/i);
+    assert.doesNotMatch(fix, /HoldForApproval|approval-gated|After approval|return to (?:the )?approval gate/i);
     assert.doesNotMatch(fix, /PHASE=repair/);
 
     // The transcript is the decision surface; bug-report.md is the matching record.
@@ -1502,7 +1546,7 @@ test('Fix persists an approval-gated managed repair plan before its Execute hand
     const mirrorIndex = fix.indexOf('Mirror that render into');
     assert.ok(presentIndex !== -1 && mirrorIndex !== -1);
     assert.ok(presentIndex < mirrorIndex);
-    assert.ok(mirrorIndex < fixApprovalIndex);
+    assert.ok(mirrorIndex < fixExecuteIndex);
     const readSkill = (skillName) => fs.readFileSync(
       path.join(repoRoot, 'plugins', rootName, 'skills', skillName, 'SKILL.md'),
       'utf8',
@@ -1510,6 +1554,10 @@ test('Fix persists an approval-gated managed repair plan before its Execute hand
     assert.match(
       readSkill('spectre-fix-core'),
       /`--orchestrated` — withhold user-facing routing, never content\./,
+    );
+    assert.doesNotMatch(
+      readSkill('spectre-fix-core'),
+      /post-diagnosis approval pause|unapproved\/out-of-scope collateral change/i,
     );
     const delegate = readSkill('spectre-delegate');
     assert.match(delegate, /Type `fix` initializes `KIND=bug`/);
@@ -1663,7 +1711,7 @@ test('Execute self-owned handoff links proof without contaminating parent delive
   }
 });
 
-test('Execute delivery contract changes stay within its Handoff', () => {
+test('Execute pre-Handoff contract stays pinned after fix-source preparation', () => {
   const repoRoot = path.resolve(__dirname, '..');
   const execute = fs.readFileSync(path.join(
     repoRoot, 'plugins', 'spectre', 'skills', 'spectre-execute', 'SKILL.md',
@@ -1672,12 +1720,12 @@ test('Execute delivery contract changes stay within its Handoff', () => {
 
   assert.equal(
     crypto.createHash('sha256').update(beforeHandoff).digest('hex'),
-    'ae18c8e8e6b2d124f2c50d014c5c48d12794e2cac76a041163d946d0cfc2d52b',
+    '7f0a21a5d42d64a35cdb0d14e2325c43ed7695169da9c645f303dee5abf293f2',
   );
   assert.match(beforeHandoff, /Keep the invocation checkout/);
   assert.match(
     beforeHandoff,
-    /--origin fix` approved bug-report source adopts its containing `BUG_ROOT` directly, before feature-root resolution/,
+    /bug-report path\/root or identifying content—not `--origin`—selects `fix`/,
   );
   assert.match(beforeHandoff, /`SCOPE_DOCS`: manifest paths or scope\/UX\/research cited by the plan/);
   assert.match(beforeHandoff, /Maintain compact verification ledger by HEAD, check id, changed\/dependency surface/);
@@ -1736,7 +1784,7 @@ test('user-facing handoffs use the compact table contract without changing inter
 
   const routeRequirements = {
     'spectre-plan': /resolved absolute plan path[\s\S]*--origin plan[\s\S]*resolved preflight depth/i,
-    'spectre-fix': /resolved absolute plan path[\s\S]*--origin fix/i,
+    'spectre-fix': /resolved absolute bug-report path[\s\S]*--origin fix/i,
     'spectre-create_tasks': /resolved absolute execute index[\s\S]*--origin plan/i,
     'spectre-task_review': /resolved absolute execute index[\s\S]*--origin plan/i,
     'spectre-kickoff': /resolved kickoff document path[\s\S]*FROM_KICKOFF=true[\s\S]*SKIP_EXPLORATION=true/i,
@@ -2178,12 +2226,13 @@ test('delegate replaces quick_dev, deliver, and align-and-deliver with compact a
     assert.doesNotMatch(scope, /NEEDS_FULL_SCOPE/);
 
     assert.match(fix, /disable-model-invocation: true/);
-    assert.match(fix, /HoldForApproval/);
+    assert.doesNotMatch(fix, /HoldForApproval/);
     assert.match(fix, /Skill\(spectre-fix-core\)/);
     assert.match(fix, /experience contract first in product language/);
     assert.match(fix, /what users do and observe now, what they will do and observe after repair/);
     assert.match(fix, /preserved invariants, and disclosed collateral changes/);
     assert.match(fix, /spectre-execute \{BUG_REPORT_PATH\} --origin fix/);
+    assert.match(fix, /same response/i);
     assert.match(fixCore, /user-invocable: false/);
     assert.match(fixCore, /PARENT_AUTHORIZATION/);
     assert.match(fixCore, /AUTHORIZED_SCOPE_SHA256/);

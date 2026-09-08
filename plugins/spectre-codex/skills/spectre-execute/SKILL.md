@@ -10,9 +10,10 @@ Preserve dependency-safe parallelism, authority, gates, repairs, finalization.
 
 ## Inputs
 
-- `$ARGUMENTS`: path; `--origin plan|fix|delegate`; `--preflight-plan <xs|light|standard|comprehensive>`; wave hints; `--orchestrated`; orchestrated-only `--finalization-owner parent`. Default owner: `self`. Callers provide origin; unknown stays `unknown` rather than inferred.
+- `$ARGUMENTS`: path; `--origin plan|fix|delegate`; `--preflight-plan <xs|light|standard|comprehensive>`; wave hints; `--orchestrated`; orchestrated-only `--finalization-owner parent`. Default owner: `self`.
 - `--review-profile final-only`, valid only with `--orchestrated --finalization-owner parent`; defers intermediate review and requires the orchestrating caller to invoke `Skill(spectre-code_review)` exactly once on the final candidate; caller owns sequencing, never semantic review.
 - `structured`: execute index + resolvable `tasks.json`; malformed structured input escalates, never becomes a plan.
+- `fix-source`: bug-report path/root or identifying content—not `--origin`—selects `fix`; load `references/fix-source.md`, not Plan preparation.
 - `plan-direct`: any explicit readable plan, including paths, Plan handoff markers, legacy `Execution Mode: direct` headers. The explicit supplied plan wins over ambient task artifacts and enters this preparation contract.
 - No path: use existing same-run source evidence first, then a plan at the confirmed root, then structured-only fallback. No-path selected plans receive this preparation before dispatch. Never infer from branch/recency.
 - `--preflight-plan <depth>` remains a preparation-depth hint, not authorization, classification, or a task-graph switch; a depth hint must not create authority pause. `Execution Mode: direct` is a legacy coordination hint. No selected readable plan needs a completeness/header ceremony.
@@ -20,7 +21,6 @@ Preserve dependency-safe parallelism, authority, gates, repairs, finalization.
 ## Working Set
 
 - Reuse a managed `FEATURE_ROOT` only when explicit/current-thread evidence ties it to this work (physical directory wins; never branch/recency/lifecycle/scans); distinct work ignores ambient roots. Otherwise, including on collision, standalone MUST first load and follow `Skill(spectre-feature-root)` through DONE; orchestrated calls escalate. Keep writes beneath it and pass it unchanged.
-- A `--origin fix` approved bug-report source adopts its containing `BUG_ROOT` directly, before feature-root resolution.
 - Keep the invocation checkout.
 - Structured detail precedence: declared `Tasks JSON` → adjacent `tasks.json` → sibling `.tasks.json`; else escalate. Read index whole and task detail by targeted slices.
 - Structured/plan-direct read `references/telemetry.md`, start/resume one local event run with origin, and follow its primary/worker authority contract. The local workflow store is the sole lifecycle/progress authority; source plans/tasks stay immutable. Summaries retain origin, shape, category, elapsed time, aggregate token measurements only. Plan-direct emits workstream events. Telemetry failure degrades observation, never delivery authority.
@@ -74,7 +74,7 @@ High → Fix; coverage → Test; else `spectre-ship`; blocked/failed → same ta
 
 ## Escalate-If
 
-- Structured index/task detail is missing or malformed → `spectre-create_tasks`; unreadable plan or genuine authority/safety impasse → `NEEDS_AUTHORITY` against that plan.
-- A supplied plan is unreadable; Scope changes; a correctness Blocker/High remains unresolved; an explicit-design contradiction or unavailable authority appears; or the generated pair does not validate → `NEEDS_AUTHORITY` before task generation or delivery as applicable.
+- Structured index/task detail is missing or malformed → `spectre-create_tasks`; unreadable source or genuine authority/safety impasse → `NEEDS_AUTHORITY` against that source.
+- A supplied source is unreadable; Scope changes; a correctness Blocker/High remains unresolved; an explicit-design contradiction or unavailable authority appears; or the generated pair does not validate → `NEEDS_AUTHORITY` before task generation or delivery as applicable.
 - Invalid parent ownership; `--review-profile final-only` without an orchestrated caller that explicitly owns the one final `Skill(spectre-code_review)` invocation; unsafe/unrelated prompt slice; conflicting acceptance; unavailable authority/capability; required scope change; or unauthorized destructive action.
 - Never escalate solely for check failure, unavailable/red baseline, review/proof finding, diff growth, or related-file changes; continue independent work and terminalize only when every remaining non-PASS row is `NEEDS_AUTHORITY`.
