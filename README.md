@@ -244,7 +244,7 @@ The primary captures supported decisions, reusable patterns and constraints, cor
 `/spectre:learn` is the on-demand route: use it to preserve an evidenced insight or correction, or to request a work summary. A bare invocation can truthfully return a no-op; it does not create a knowledge skill, a startup entry, or a mandatory post-work task.
 
 1. **Bounded discovery** — startup metadata and `knowledge search` return only a relevance-ranked preview: canonical tags, applicability, revision, estimated load size, and an exact load command. Work previews are historical evidence, not active guidance.
-2. **Verified retrieval** — when both the task subject and a record's use condition apply, your Agent loads that exact revision before relying on it. Linked resources and historical revisions stay opt-in.
+2. **Verified retrieval** — when the task subject and a record's use condition match, your Agent uses the neutral knowledge CLI to search and load records, then verifies and loads the full record at that exact revision before relying on it. Linked resources and historical revisions stay opt-in.
 3. **Stable work identity** — Execute, Ship, and Create PR carry or resolve the same exact work ID from a run, PR, or candidate association, never from a branch-name guess.
 
 ### The Hook + Skill Loop
