@@ -172,6 +172,55 @@ test('lifecycle prompts use user transport only where the plugin exists', () => 
   assert.doesNotMatch(promptContract(learn, 'artifacts/decision.md', 'claude', 'no-knowledge')[0], /^\/spectre:|^spectre-learn/);
 });
 
+test('longitudinal correction table keeps ordinary evidence identical while only candidates invoke Learn', () => {
+  const fixtures = JSON.parse(fs.readFileSync('scripts/knowledge-evaluation-fixtures/manifest.json', 'utf8'));
+  const correction = fixtures.cases.find((entry) => entry.id === 'longitudinal-correction');
+  for (const { host, learnCommand } of [
+    { host: 'claude', learnCommand: '/spectre:spectre-learn' },
+    { host: 'codex', learnCommand: 'spectre-learn' },
+  ]) {
+    const candidate = promptContract(correction, fixtures.artifactPath, host, 'candidate');
+    const noKnowledge = promptContract(correction, fixtures.artifactPath, host, 'no-knowledge');
+    const command = new RegExp(`^${learnCommand.replace('/', '\\/')}(?:\\s|$)`);
+    const withoutCandidateCommand = candidate.map((prompt) => prompt.replace(new RegExp(`^${learnCommand.replace('/', '\\/')}\\n`), ''));
+
+    assert.equal(candidate.filter((prompt) => command.test(prompt)).length, 2, host);
+    assert.doesNotMatch(noKnowledge.join('\n'), /learn|spectre-learn|missing workflow command/i, host);
+    assert.deepEqual(withoutCandidateCommand, noKnowledge, host);
+    assert.match(noKnowledge[0], /retry-ceiling is five/, host);
+    assert.match(noKnowledge[2], /current ceiling is three/, host);
+    assert.doesNotMatch(noKnowledge.at(-1), /three attempts|five attempts/, host);
+    assert.doesNotMatch(candidate.at(-1), /three attempts|five attempts/, host);
+  }
+});
+
+test('selected cells reject a re-derived prompt hash mismatch before host invocation', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-evaluation-prompt-hash-'));
+  const fixtures = path.resolve('scripts/knowledge-evaluation-fixtures');
+  const oracle = path.resolve('scripts/knowledge-evaluation-oracle.json');
+  const config = path.join(root, 'config.json');
+  fs.writeFileSync(config, JSON.stringify({ hosts: { claude: { model: 'fake', effort: 'low' } } }));
+  const frozen = freeze(fixtures, oracle, path.join(root, 'freeze.json'), {
+    configurationPath: config,
+    candidatePath: path.resolve('plugins/spectre'),
+  });
+  const cell = frozen.cells.find((entry) => entry.id === 'longitudinal-correction:no-knowledge:claude:1');
+  frozen.cells = [{ ...cell, promptHash: 'sha256:tampered' }];
+  let hostCalls = 0;
+
+  await assert.rejects(() => evaluateKnowledge(frozen, {
+    allowNative: true,
+    fixtureRoot: fixtures,
+    configuration: JSON.parse(fs.readFileSync(config, 'utf8')),
+    repositoryRoot: process.cwd(),
+    outputDir: path.join(root, 'output'),
+    temporaryRoot: root,
+    cellIds: [cell.id],
+    invokeHost: async () => { hostCalls += 1; throw new Error('host must not run'); },
+  }), /prompt hash.*longitudinal-correction:no-knowledge:claude:1/i);
+  assert.equal(hostCalls, 0);
+});
+
 test('workflow fixtures receive the frozen extended timeout without changing ordinary tasks', () => {
   const limits = { ordinary: { timeoutMs: 600000 }, workflow: { timeoutMs: 1200000 } };
   assert.deepEqual(limitsForFixture({ cohort: 'chat' }, limits), limits.ordinary);

@@ -94,8 +94,9 @@ function promptContract(entry, artifactPath, host = 'claude', condition = 'candi
     if (entry.id === 'lifecycle-identity' && condition !== 'no-knowledge' && index === 2) {
       resolved = `${commands.SHIP_COMMAND} ${featureRoot}\n${resolved.replace(/^Start a fresh session\. As the user-requested workflow command, run \S+:\s*/, '')}`;
     }
-    if (condition !== 'no-knowledge' && entry.userLearnSessions?.includes(index)) {
-      resolved = `${commands.LEARN_COMMAND}\n${resolved.replace(/\b(?:Invoke|Use) Learn\b/gi, 'Complete the requested on-demand capture')}`;
+    if (entry.userLearnSessions?.includes(index)) {
+      resolved = resolved.replace(/\b(?:Invoke|Use) Learn\b/gi, 'Record the supplied project evidence');
+      if (condition !== 'no-knowledge') resolved = `${commands.LEARN_COMMAND}\n${resolved}`;
     }
     return resolved;
   });
@@ -1454,6 +1455,15 @@ function assertFrozenInputs(freezeManifest) {
   if (freezeManifest.hashes.nativePipelineInputs && freezeManifest.hashes.nativePipelineInputs !== nativePipelineInputsHash()) throw new Error('native pipeline input changed after freeze');
 }
 
+function assertSelectedPromptHashes(freezeManifest, cases) {
+  for (const cell of freezeManifest.cells) {
+    const fixtureCase = cases.get(cell.caseId);
+    if (!fixtureCase) throw new Error(`selected cell fixture is missing: ${cell.id}`);
+    const actual = hash(JSON.stringify(promptContract(fixtureCase, cell.artifactPath, cell.host, cell.condition)));
+    if (actual !== cell.promptHash) throw new Error(`selected cell prompt hash changed after freeze: ${cell.id}`);
+  }
+}
+
 /** Run the frozen native evaluation only after the deterministic hash gate succeeds. */
 export async function evaluateKnowledge(freezeManifest, options = {}) {
   assertFrozenInputs(freezeManifest);
@@ -1463,6 +1473,7 @@ export async function evaluateKnowledge(freezeManifest, options = {}) {
   const rawLogRoot = path.resolve(options.rawLogRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-logs-')));
   const invoke = options.invokeHost ?? invokeKnowledgeHost;
   const selectedFreeze = selectFrozenCells(freezeManifest, options.cellIds);
+  assertSelectedPromptHashes(selectedFreeze, cases);
   const result = await runCells(selectedFreeze, options.outputDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-knowledge-evaluation-results-')), async (cell) => {
     const staged = await stagePreparedKnowledgeCell(cell, cases.get(cell.caseId), {
       repositoryRoot: options.repositoryRoot ?? process.cwd(),
