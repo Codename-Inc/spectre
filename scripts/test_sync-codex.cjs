@@ -12,6 +12,17 @@ const hooks = require('./translators/hooks.cjs');
 const skills = require('./translators/skills.cjs');
 const { runSync } = require('./sync-codex.cjs');
 
+test('knowledge translators retain every public operation', () => {
+  const operations = ['search', 'tags', 'load', 'register', 'work', 'history', 'inspect', 'registry', 'migrate'];
+  const source = operations.map(operation => `spectre knowledge ${operation} fixture`).join('\n');
+  for (const rewrite of [hooks.rewriteRuntimeScript, skills.rewriteTextForCodex]) {
+    const translated = rewrite(source);
+    for (const operation of operations) {
+      assert.match(translated, new RegExp(`knowledge-cli\\.mjs" ${operation} fixture`));
+    }
+  }
+});
+
 function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'spectre-sync-test-'));
 }
